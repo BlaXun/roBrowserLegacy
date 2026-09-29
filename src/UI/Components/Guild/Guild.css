@@ -400,8 +400,11 @@
 	padding-left: 2px;
 	margin-left: 3px;
 }
-#Guild .content.positions ui-button {
+/* A plain button, not a ui-button: that one re-applies its `bg` bitmap on every
+ * mouseout, which wiped the tick Guild.js draws as soon as the pointer left. */
+#Guild .content.positions .checkbox {
 	border: none;
+	padding: 0;
 	width: 10px;
 	height: 10px;
 	background-repeat: no-repeat;
