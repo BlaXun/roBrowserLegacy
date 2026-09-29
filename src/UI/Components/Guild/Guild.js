@@ -160,10 +160,12 @@ Guild.init = function init() {
 		);
 
 		posBody.addEventListener('click', e => {
-			const btn = e.target.closest('ui-button');
+			const btn = e.target.closest('.checkbox');
 			if (btn && Session.isGuildMaster) {
-				btn.className = btn.className.replace(/\b(on|off)\b/g, '').trim();
+				// Read the state before clearing it, or the test never sees an `on`
+				// and a ticked box can never be unticked.
 				const isOn = !btn.classList.contains('on');
+				btn.className = btn.className.replace(/\b(on|off)\b/g, '').trim();
 				btn.classList.add(isOn ? 'on' : 'off');
 				btn.style.backgroundImage = `url(${isOn ? _checkbox_on : _checkbox_off})`;
 				const btnOk = root.querySelector('.footer .btn_ok');
@@ -810,14 +812,14 @@ Guild.updatePositionView = function updatePositionView() {
 			taxInput.value = rank.payRate;
 		}
 
-		const inviteBtn = view.querySelector('.invite ui-button');
+		const inviteBtn = view.querySelector('.invite .checkbox');
 		if (inviteBtn) {
 			inviteBtn.style.backgroundImage = `url(${rank.right & 0x01 ? _checkbox_on : _checkbox_off})`;
 			inviteBtn.className = inviteBtn.className.replace(/\b(on|off)\b/g, '').trim();
 			inviteBtn.classList.add(rank.right & 0x01 ? 'on' : 'off');
 		}
 
-		const punishBtn = view.querySelector('.punish ui-button');
+		const punishBtn = view.querySelector('.punish .checkbox');
 		if (punishBtn) {
 			punishBtn.style.backgroundImage = `url(${rank.right & 0x10 ? _checkbox_on : _checkbox_off})`;
 			punishBtn.className = punishBtn.className.replace(/\b(on|off)\b/g, '').trim();
@@ -1323,12 +1325,12 @@ function onValidate() {
 				const payRate = parseInt(position.querySelector('.tax input')?.value || '0', 10);
 				let right = 0;
 
-				const inviteBtn = position.querySelector('.invite ui-button');
+				const inviteBtn = position.querySelector('.invite .checkbox');
 				if (inviteBtn && inviteBtn.classList.contains('on')) {
 					right |= 0x01;
 				}
 
-				const punishBtn = position.querySelector('.punish ui-button');
+				const punishBtn = position.querySelector('.punish .checkbox');
 				if (punishBtn && punishBtn.classList.contains('on')) {
 					right |= 0x10;
 				}
