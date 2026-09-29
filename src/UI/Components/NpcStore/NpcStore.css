@@ -139,6 +139,31 @@
 	text-shadow: -1px -1px white;
 	color: red;
 }
+/*
+ * A market shop's stock can run to six digits, which does not fit over the 24px
+ * icon, and .content clips horizontal overflow, so a number wider than the icon
+ * would be cut off rather than spill. Give it its own right-aligned column
+ * between the item name and the price instead, the way a buying store's
+ * quantity already sits apart from the icon.
+ */
+#NpcStore .content .item .amountStock {
+	top: 13px;
+	left: auto;
+	right: 76px;
+	text-align: right;
+}
+/*
+ * An item name is free to overflow its box, which was harmless while nothing
+ * sat to its right. Beside a stock column it runs under the number, so in a
+ * market shop the name is cut to its box with an ellipsis and keeps a small
+ * gutter. The amount comes immediately before the name in the markup.
+ */
+#NpcStore .content .item .amountStock + .name {
+	box-sizing: border-box;
+	padding-right: 5px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
 #NpcStore .content .item .name {
 	position: absolute;
 	top: 13px;
