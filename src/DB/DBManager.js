@@ -634,9 +634,18 @@ class DB {
 
 			// Quest
 			const onQuestEnd = onLoad();
+			// customQuestInfo: further quest tables, loaded after the base in the
+			// order given. Each registers its quests by id over what came before,
+			// so one can add a quest or reword an existing one without carrying
+			// the whole table.
+			const customQuestInfo = Configs.get('customQuestInfo', []);
+			const loadCustomQuestInfo = (index = 0) =>
+				index < customQuestInfo.length
+					? loadQuestInfo(customQuestInfo[index], null, () => loadCustomQuestInfo(index + 1))
+					: onQuestEnd();
 			tryLoadLuaAliases(loadQuestInfo, getSystemAliases('System/OngoingQuestInfoList.lub'), null, () => {
 				// this is not official, its a translation file
-				loadQuestInfo('SystemEN/OngoingQuests.lub', null, onQuestEnd);
+				loadQuestInfo('SystemEN/OngoingQuests.lub', null, () => loadCustomQuestInfo());
 			});
 
 			// TODO: System/RecommendedQuests.lub
