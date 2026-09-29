@@ -27,7 +27,6 @@ import StatusConst from 'DB/Status/StatusState.js';
 import SpriteRenderer from 'Renderer/SpriteRenderer.js';
 import Ground from 'Renderer/Map/Ground.js';
 import Altitude from 'Renderer/Map/Altitude.js';
-import Water from 'Renderer/Map/Water.js';
 import Session from 'Engine/SessionStorage.js';
 import DB from 'DB/DBManager.js';
 import GraphicsSettings from 'Preferences/Graphics.js';
@@ -564,10 +563,13 @@ function renderWaterDepth() {
 		return;
 	}
 
-	if (!Water.isSubmerged(this.position[0], this.position[1])) {
-		return;
-	}
-
+	// Every non-player sprite, not only those standing in water: none of them
+	// writes depth in the colour pass, so without this the water drawn next
+	// paints over any part of a sprite that has water *behind* it -- an NPC at
+	// a cliff edge above the sea (the captain on int_land) lost his head and
+	// shoulders to it. Transparent pixels are discarded, so only the
+	// silhouette writes depth; for a submerged sprite that is still what hides
+	// the part below the surface.
 	const self = this;
 	// renderLayer grows boundingRect for every 'body' layer, in sprite-local
 	// units. By now renderGUI has already turned this frame's rect into the
