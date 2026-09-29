@@ -569,6 +569,16 @@ function renderWaterDepth() {
 	}
 
 	const self = this;
+	// renderLayer grows boundingRect for every 'body' layer, in sprite-local
+	// units. By now renderGUI has already turned this frame's rect into the
+	// screen box picking tests against; redrawing the body here would mix
+	// local points back into it, and a monster standing in water could no
+	// longer be clicked. The depth pass must not change picking: keep the rect.
+	const rect = this.boundingRect;
+	const x1 = rect.x1,
+		y1 = rect.y1,
+		x2 = rect.x2,
+		y2 = rect.y2;
 	SpriteRenderer.position.set(this.position);
 	SpriteRenderer.position[2] = SpriteRenderer.position[2] + 0.2;
 	SpriteRenderer.zIndex = 150;
@@ -578,6 +588,10 @@ function renderWaterDepth() {
 		}
 	});
 	SpriteRenderer.zIndex = 1;
+	rect.x1 = x1;
+	rect.y1 = y1;
+	rect.x2 = x2;
+	rect.y2 = y2;
 }
 
 /**
