@@ -6249,7 +6249,10 @@ function loadSignBoardData(filename, callback, onEnd) {
 
 				// create required functions in context
 				ctx.AddSignBoardData = (key, translation) => {
-					const decoded_key = key && key.length > 1 ? userStringDecoder.decode(key) : null;
+					// Decoded as SignBoardList.lub decodes its descriptions, which is what
+					// the key is looked up by: under another codepage the Korean key
+					// comes out different and no signboard is ever translated.
+					const decoded_key = key && key.length > 1 ? userStringDecoder.decode(key, userCharpage) : null;
 					const decoded_translation =
 						translation && translation.length > 1 ? userStringDecoder.decode(translation) : null;
 					SignBoardTranslatedTable[decoded_key] = decoded_translation;
