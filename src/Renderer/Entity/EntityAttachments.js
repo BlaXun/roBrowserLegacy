@@ -334,6 +334,23 @@ class AttachmentManager {
 		const self = this;
 		const zIdx = attachment.renderBefore ? 1 : 500;
 
+		// Kept for the depth-only pass before the water (renderWaterDepth):
+		// attachments write no depth here either, so an emotion or quest icon
+		// above a head with water behind it was painted over by the water.
+		const recorded = this.entity.waterDepthAttachments;
+		if (recorded) {
+			recorded.push({
+				layers,
+				spr,
+				x: _position[0],
+				y: _position[1],
+				depth: SpriteRenderer.depth,
+				zIndex: zIdx,
+				opacity: attachment.opacity,
+				position: [SpriteRenderer.position[0], SpriteRenderer.position[1], SpriteRenderer.position[2]]
+			});
+		}
+
 		SpriteRenderer.runWithDepth(true, false, false, function () {
 			SpriteRenderer.zIndex = zIdx;
 			for (i = 0, count = layers.length; i < count; ++i) {
