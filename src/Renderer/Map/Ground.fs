@@ -62,7 +62,6 @@ void main(void) {
     }
 
     float sun = vLightWeighting;
-    if (uShadow > 0.0) sun *= 1.0 - shadowed() * uShadow;
     vec3 color = (sun * uLightDiffuse + uLightAmbient);
     textureSample.rgb *= clamp(color, 0.0, 1.0);
     textureSample.rgb *= clamp(uLightEnv, 0.0, 1.0);
@@ -77,6 +76,11 @@ void main(void) {
         textureSample.rgb *= lightmap.a;
         textureSample.rgb += clamp(lightmap.rgb, 0.0, 1.0);
     }
+
+    // Real-time shadows darken the lit result. Taken off the sun's term
+    // instead, they vanished wherever sun and ambient together pass 1.0 and
+    // are clamped, which is most of the ground on most maps.
+    if (uShadow > 0.0) textureSample.rgb *= 1.0 - shadowed() * uShadow * 0.6;
 
     fragColor = textureSample;
 

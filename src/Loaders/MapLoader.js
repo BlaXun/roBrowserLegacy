@@ -213,6 +213,10 @@ class MapLoader {
 			}
 
 			// Loading Gound and Water textures
+			// The names, before they become the loaded files' URLs: what the
+			// ground's textures are called is what says which tiles are grass
+			// (Renderer/Map/Grass.js).
+			compiledGround.textureNames = compiledGround.textures.slice();
 			loader.loadGroundTextures(world, compiledGround, function onLoaded(waters, textures) {
 				world.water.images = waters;
 				compiledGround.textures = textures;

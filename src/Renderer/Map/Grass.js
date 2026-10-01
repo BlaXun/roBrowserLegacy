@@ -135,7 +135,9 @@ function build(gl, settings) {
 	if (!patterns.length) {
 		return;
 	}
-	const grassy = _data.textures.map(name => {
+	// The texture names; by now `textures` holds the loaded files' URLs.
+	const names = _data.textureNames || _data.textures;
+	const grassy = names.map(name => {
 		const decoded = decodeName(name);
 		return patterns.some(pattern => decoded.includes(pattern));
 	});
