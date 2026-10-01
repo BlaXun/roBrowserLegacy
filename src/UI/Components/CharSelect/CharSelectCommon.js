@@ -30,6 +30,7 @@ import Camera from 'Renderer/Camera.js';
 import UIManager from 'UI/UIManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
 import ScreenHooks from 'UI/ScreenHooks.js';
+import ExitHooks from 'UI/ExitHooks.js';
 import 'UI/Elements/Elements.js';
 import PACKETVER from 'Network/PacketVerManager.js';
 
@@ -704,6 +705,7 @@ export function createCharSelect(config) {
 					'ok',
 					'cancel',
 					() => {
+						ExitHooks.emit('login', 'charSelect');
 						Component.onExitRequest();
 						Component.clearAllSlots();
 					},
@@ -716,6 +718,7 @@ export function createCharSelect(config) {
 					'ok',
 					'cancel',
 					() => {
+						ExitHooks.emit('login', 'charSelect');
 						Component.onExitRequest();
 					},
 					null
