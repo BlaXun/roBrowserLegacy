@@ -169,10 +169,12 @@ function random(i, k) {
 	return x - Math.floor(x);
 }
 /**
- * The plants, painted once into a texture. Two painted plants side by side: a clump of grass blades (left) and a
-	// fern (right). R is how lit the paint is, G a per-blade number for hue,
-	// B marks the fern, A coverage. Each stroke has a thin dark rim, the
-	// inked edge that makes it read as painted, like RO's own foliage.
+ * The plants, painted once into a texture: a clump of grass blades (left)
+ * and a fern (right). R is how lit the paint is, G a per-blade number for
+ * hue, B marks the fern, A coverage. Each blade is two soft strokes, a shaded
+ * side and a lit one, like RO's own painted foliage.
+ */
+function bladeTexture(gl) {
 	const size = 128;
 	const canvas = document.createElement("canvas");
 	canvas.width = size * 2;
@@ -334,7 +336,16 @@ function init(gl, data) {
 function render(gl, modelView, projection, fog, light, tick, lightmapOn) {
 	const settings = Enhancements.grass;
 	if (!settings || !_data || typeof WebGL2RenderingContext === "undefined" || !(gl instanceof WebGL2RenderingContext)) return;
-	if (settings !== _builtFor) build(gl, settings);
+	if (settings !== _builtFor) {
+		try {
+			build(gl, settings);
+		} catch (error) {
+			// Never take the rest of the frame down: no grass on this map.
+			console.error('[Grass] could not build, grass is off for this map', error);
+			_builtFor = settings;
+			_count = 0;
+		}
+	}
 	if (!_count || !_program) return;
 	const textures = Ground.textures();
 	const uniform = _program.uniform;
