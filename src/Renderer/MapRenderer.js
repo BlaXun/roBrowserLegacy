@@ -502,6 +502,9 @@ function onGroundComplete(data) {
 		cellUv: data.cellUv,
 		// The ground textures' names (CP949 bytes in a binary string).
 		textureNames: data.textureNames || [],
+		// The loaded ground texture files (URLs), at their own size: the
+		// atlas (groundTextures()) holds each at 256x256. Same order.
+		textureUrls: Array.isArray(data.textures) ? data.textures.slice() : [],
 		groundTextures: () => Ground.textures(),
 		water: () => Water.state(),
 		lights: this.lights,
