@@ -13,6 +13,7 @@ import Preferences from 'Core/Preferences.js';
 import KEYS from 'Controls/KeyEventHandler.js';
 import UIManager from 'UI/UIManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
+import ScreenHooks from 'UI/ScreenHooks.js';
 import 'UI/Elements/Elements.js';
 
 export function createWinLogin({ name, htmlText, cssText }) {
@@ -25,6 +26,28 @@ export function createWinLogin({ name, htmlText, cssText }) {
 	let _inputUsername;
 	let _inputPassword;
 	let _buttonSave;
+
+	/**
+	 * What a plugin drawing this screen sees (UI/ScreenHooks.js). login()
+	 * goes the way the Connect button does, so a different sign-in -- a
+	 * token in place of a password -- reaches the server the same way.
+	 */
+	const _screen = {
+		get savedId() {
+			return _preferences.saveID ? _preferences.ID : '';
+		},
+		get saveId() {
+			return Boolean(_preferences.saveID);
+		},
+		login(user, pass, saveId) {
+			if (typeof saveId === 'boolean') {
+				_preferences.saveID = saveId;
+			}
+			submit(String(user), String(pass));
+		},
+		signup: () => signup(),
+		exit: () => exit()
+	};
 
 	Component.init = function init() {
 		this.draggable();
@@ -104,6 +127,13 @@ export function createWinLogin({ name, htmlText, cssText }) {
 		}
 
 		Component.placeOnTop();
+
+		// A plugin may draw this screen instead
+		ScreenHooks.show('login', _screen, this._host);
+	};
+
+	Component.onRemove = function onRemove() {
+		ScreenHooks.hide('login');
 	};
 
 	Component.onKeyDown = function onKeyDown(event) {
@@ -146,8 +176,11 @@ export function createWinLogin({ name, htmlText, cssText }) {
 	}
 
 	function connect() {
-		const user = _inputUsername.value;
-		const pass = _inputPassword.value;
+		submit(_inputUsername.value, _inputPassword.value);
+		return false;
+	}
+
+	function submit(user, pass) {
 		if (_preferences.saveID) {
 			_preferences.saveID = true;
 			_preferences.ID = user;
@@ -157,7 +190,6 @@ export function createWinLogin({ name, htmlText, cssText }) {
 		}
 		_preferences.save();
 		Component.onConnectionRequest(user, pass);
-		return false;
 	}
 
 	async function loadReplay(file) {
