@@ -24,6 +24,7 @@ import EntityManager from 'Renderer/EntityManager.js';
 import GridSelector from 'Renderer/Map/GridSelector.js';
 import Ground from 'Renderer/Map/Ground.js';
 import Altitude from 'Renderer/Map/Altitude.js';
+import MapHooks from 'Renderer/MapHooks.js';
 import Water from 'Renderer/Map/Water.js';
 import Models from 'Renderer/Map/Models.js';
 import AnimatedModels from 'Renderer/Map/AnimatedModels.js';
@@ -44,10 +45,6 @@ import PACKETVER from 'Network/PacketVerManager.js';
 import JoystickUI from 'UI/Components/JoystickUI/JoystickUI.js';
 
 import PostProcess from 'Renderer/Effects/PostProcess.js';
-import Enhancements from 'Renderer/Effects/Enhancements.js';
-import WaterReflection from 'Renderer/Map/WaterReflection.js';
-import Grass from 'Renderer/Map/Grass.js';
-import Shadows from 'Renderer/Map/Shadows.js';
 import Bloom from 'Renderer/Effects/Shaders/Bloom.js';
 import VerticalFlip from 'Renderer/Effects/Shaders/VerticalFlip.js';
 import GaussianBlur from 'Renderer/Effects/Shaders/GaussianBlur.js';
@@ -205,11 +202,9 @@ class MapRenderer {
 		GridSelector.free(gl);
 		Sounds.free();
 		Effects.free();
+		MapHooks.mapFree(gl);
 		Ground.free(gl);
 		Water.free(gl);
-		Grass.free(gl);
-		Shadows.free(gl);
-		WaterReflection.free(gl);
 		Models.free(gl);
 		AnimatedModels.free(gl);
 		OccluderFade.free(gl);
@@ -243,7 +238,7 @@ class MapRenderer {
 
 		const fog = MapRenderer.fog;
 		fog.use = MapPreferences.fog;
-		const light = effectiveLight(MapRenderer.light);
+		const light = MapHooks.light(MapRenderer.light);
 
 		let x, y;
 
@@ -259,39 +254,13 @@ class MapRenderer {
 		const projection = Camera.projection;
 		const normalMat = Camera.normalMat;
 
-		// Shadow map (Enhancements.shadows): the models from the sun, around the
-		// player, before anything that draws the ground.
-		let rebind = false;
-		if (Enhancements.shadows > 0 && Session.Entity) {
-			const p = Session.Entity.position;
-			Shadows.render(gl, light, [p[0] + 0.5, -p[2], p[1] + 0.5], Enhancements.shadows, program => Models.renderDepth(gl, program));
-			rebind = true;
-		} else {
-			Shadows.clear();
-		}
-
-		// Water reflection (Enhancements.waterReflection): the sky, ground and
-		// models again, mirrored across the water, before the scene itself.
-		const waterLevel = Water.level();
-		if (Enhancements.waterReflection > 0 && waterLevel !== null) {
-			const texture = WaterReflection.render(gl, modelView, projection, waterLevel, (view, clipped) => {
-				Sky.render(gl, view, clipped, fog, tick);
-				Ground.render(gl, view, clipped, normalMat, fog, light);
-				Models.render(gl, view, clipped, normalMat, fog, light);
-				AnimatedModels.render(gl, view, clipped, normalMat, fog, light, tick);
-			});
-			Water.setReflection(texture ? { texture, strength: Math.min(1, Enhancements.waterReflection) } : null);
-			rebind = true;
-		} else {
-			Water.setReflection(null);
-		}
-		if (rebind) {
-			// Back to the scene's own target, cleared.
-			PostProcess.prepare(gl);
-		}
+		// What hooks draw is described in MapHooks.js.
+		const hooks = hookContext(gl, modelView, projection, normalMat, fog, light, tick);
+		MapHooks.stage('begin', hooks);
 
 		// Render Ground
 		Ground.render(gl, modelView, projection, normalMat, fog, light);
+		MapHooks.stage('ground', hooks);
 
 		// Spam map effects
 		Effects.spam(Session.Entity.position, tick);
@@ -342,8 +311,7 @@ class MapRenderer {
 		// entity pose one frame stale). Ordering is intentional (opaque geometry pass).
 		GR2ModelRenderer.render(gl, modelView, projection, normalMat, fog, light, tick);
 
-		// Grass after the models, so it can tell where they cover the ground.
-		Grass.render(gl, modelView, projection, fog, light, tick, MapPreferences.lightmap);
+		MapHooks.stage('models', hooks);
 
 		// Render transparent elements before ground
 		ScreenEffectManager.render(gl, modelView, projection, fog, tick, true);
@@ -357,7 +325,11 @@ class MapRenderer {
 		EntityManager.renderWaterDepth(gl, modelView, projection, fog);
 
 		// Rendering water (after sprites, billboard projection pushes it to back)
-		Water.render(gl, modelView, projection, fog, light, tick);
+		if (MapHooks.replaces('water')) {
+			MapHooks.stage('water', hooks);
+		} else {
+			Water.render(gl, modelView, projection, fog, light, tick);
+		}
 
 		// Third person see-through: translucent part of the models blocking
 		// the player, drawn over the entities so they stay visible through it
@@ -386,6 +358,8 @@ class MapRenderer {
 
 		// Clean up
 		MemoryManager.clean(gl, tick);
+
+		MapHooks.stage('end', hooks);
 
 		// Finalize frame with post-processing effects
 		PostProcess.scene = {
@@ -452,33 +426,44 @@ function onWorldComplete(data) {
 	this.light.direction[2] = -dirVec[2];
 }
 
-const _lit = { ambient: new Float32Array(3), diffuse: new Float32Array(3), env: new Float32Array(3) };
-let _litFor = null;
-let _litView = null;
-
 /**
- * The map's light, or a mod's replacement for its sun and sky
- * (Enhancements.light). Direction and opacity always stay the map's.
+ * What a hook gets each frame (MapHooks.js). One object, refreshed in place.
  */
-function effectiveLight(light) {
-	const over = Enhancements.light;
-	if (!light || !over || typeof over !== 'object') {
-		return light;
+const _hookContext = {};
+function hookContext(gl, modelView, projection, normalMat, fog, light, tick) {
+	const ctx = _hookContext;
+	ctx.gl = gl;
+	ctx.modelView = modelView;
+	ctx.projection = projection;
+	ctx.normalMat = normalMat;
+	ctx.fog = fog;
+	ctx.light = light;
+	ctx.tick = tick;
+	ctx.lightmap = MapPreferences.lightmap;
+	ctx.player = Session.Entity ? Session.Entity.position : null;
+	if (!ctx.drawScene) {
+		// The sky, ground and models again, with another camera, into
+		// whatever target is bound, depth tested.
+		ctx.drawScene = (view, proj) => {
+			const depthTest = gl.isEnabled(gl.DEPTH_TEST);
+			gl.enable(gl.DEPTH_TEST);
+			gl.depthMask(true);
+			Sky.render(gl, view, proj, ctx.fog, ctx.tick);
+			Ground.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light);
+			Models.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light);
+			AnimatedModels.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light, ctx.tick);
+			if (!depthTest) {
+				gl.disable(gl.DEPTH_TEST);
+			}
+		};
+		// The map's models with the caller's program bound (aPosition,
+		// aTextureCoord; texture unit 0 holds each model's texture).
+		ctx.drawModelsDepth = program => Models.renderDepth(gl, program);
+		// Back to the scene's own target, cleared, after drawing elsewhere.
+		ctx.restoreTarget = () => PostProcess.prepare(gl);
+		ctx.createProgram = (vertex, fragment) => WebGL.createShaderProgram(gl, vertex, fragment);
 	}
-	const pick = (value, fallback) =>
-		Array.isArray(value) && value.length === 3 && value.every(v => Number.isFinite(v)) ? value : fallback;
-	const ambient = pick(over.ambient, light.ambient);
-	const diffuse = pick(over.diffuse, light.diffuse);
-	for (let i = 0; i < 3; i++) {
-		_lit.ambient[i] = ambient[i];
-		_lit.diffuse[i] = diffuse[i];
-		_lit.env[i] = 1 - (1 - Math.min(1, diffuse[i])) * (1 - Math.min(1, ambient[i]));
-	}
-	if (_litFor !== light) {
-		_litFor = light;
-		_litView = Object.assign(Object.create(light), _lit);
-	}
-	return _litView;
+	return ctx;
 }
 
 /**
@@ -491,7 +476,6 @@ function onGroundComplete(data) {
 	this.water.vertCount = data.waterVertCount;
 
 	Ground.init(gl, data);
-	Grass.init(gl, data);
 	Water.init(gl, this.water);
 
 	// Point lights in world space, the same translation RSW models get
@@ -503,6 +487,31 @@ function onGroundComplete(data) {
 		const scale = max > 1 ? 255 : 1;
 		light.rgb = [light.color[0] / scale, light.color[1] / scale, light.color[2] / scale];
 		light.radius = light.range * 0.2;
+	});
+
+	// The map, for hooks (MapHooks.js). Read the live parts through the
+	// functions: textures and walk data may arrive after this.
+	MapHooks.mapReady(gl, {
+		name: stripMapExtension(this.currentMap),
+		width: data.width,
+		height: data.height,
+		// Per ground cell: top tile texture index (-1 none), the four corner
+		// heights, and the tile's middle in the atlas (xy) and lightmap (zw).
+		cellTexture: data.cellTexture,
+		cellHeights: data.cellHeights,
+		cellUv: data.cellUv,
+		// The ground textures' names (CP949 bytes in a binary string).
+		textureNames: data.textureNames || [],
+		groundTextures: () => Ground.textures(),
+		water: () => Water.state(),
+		lights: this.lights,
+		altitude: {
+			TYPE: Altitude.TYPE,
+			width: () => Altitude.width,
+			height: () => Altitude.height,
+			cellType: (x, y) => Altitude.getCellType(x, y),
+			cellHeight: (x, y) => Altitude.getCellHeight(x, y)
+		}
 	});
 
 	// Initialize sounds

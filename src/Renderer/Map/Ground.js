@@ -13,10 +13,7 @@ import Texture from 'Utils/Texture.js';
 import Preferences from 'Preferences/Map.js';
 import Configs from 'Core/Configs.js';
 import _vertexShader from './Ground.vs?raw';
-import _fragmentShader from './Ground.fs?raw';
-import Shadows from 'Renderer/Map/Shadows.js';
-
-const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+import _fragmentShader from './Ground.fs?raw';
 
 const procCanvas = document.createElement('canvas');
 const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
@@ -96,18 +93,6 @@ function render(gl, modelView, projection, normalMat, fog, light) {
 	// Render lightmap ?
 	gl.uniform1i(uniform.uLightMapUse, Preferences.lightmap);
 	gl.uniform1i(uniform.uPosterize, Preferences.smoothlight === 0);
-
-	// Real-time shadows, when Shadows.js drew a map this frame.
-	const shadow = Shadows.current();
-	gl.uniform1f(uniform.uShadow, shadow ? shadow.strength : 0);
-	gl.uniformMatrix4fv(uniform.uShadowMat, false, shadow ? shadow.matrix : IDENTITY);
-	if (shadow) {
-		gl.activeTexture(gl.TEXTURE3);
-		gl.bindTexture(gl.TEXTURE_2D, shadow.texture);
-		gl.uniform1i(uniform.uShadowMap, 3);
-		gl.uniform1f(uniform.uShadowTexel, shadow.texel);
-		gl.activeTexture(gl.TEXTURE0);
-	}
 	gl.uniform1i(uniform.uGammaCorrection, Preferences.smoothlight === 2);
 
 	// Fog settings
@@ -340,14 +325,6 @@ function onTextureAtlasComplete(gl, atlas) {
  * @param {object} gl context
  * @param {object} data - ground
  */
-/**
- * The ground's texture atlas and lightmap, for things drawn on the ground
- * that should take its colour and its shadows (Grass.js).
- */
-function textures() {
-	return { atlas: _textureAtlas, lightmap: _lightmap };
-}
-
 function init(gl, data) {
 	_vertCount = data.meshVertCount;
 	_width = data.width;
@@ -450,6 +427,14 @@ function getShadowFactor(x, y) {
 /**
  * Export
  */
+/**
+ * The ground's texture atlas and lightmap, for things drawn on the ground
+ * that should take its colour and its light (MapHooks).
+ */
+function textures() {
+	return { atlas: _textureAtlas, lightmap: _lightmap };
+}
+
 export default {
 	init: init,
 	free: free,

@@ -760,7 +760,7 @@ class GND {
 		}
 
 		// Return mesh informations
-		// Per cell, for things drawn on the ground (Renderer/Map/Grass.js): the
+		// Per cell, for things hooks draw on the ground (Renderer/MapHooks.js): the
 		// top tile's texture (-1 for none), the four corner heights, and the
 		// middle of the tile in the texture atlas (xy) and the lightmap (zw).
 		const cells = width * height;

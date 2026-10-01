@@ -237,8 +237,9 @@ function unbind(gl) {
  * @param {object} light structure
  */
 /**
- * Draw the models into a shadow map (Shadows.js) with its depth program:
- * the same buffer and batches, position and texture coordinates only.
+ * Draw the models with someone else's program bound -- a hook's shadow map
+ * (Renderer/MapHooks.js): the same buffer and batches, position and texture
+ * coordinates only.
  */
 function renderDepth(gl, program) {
 	if (!_buffer || !_objects.length) {
