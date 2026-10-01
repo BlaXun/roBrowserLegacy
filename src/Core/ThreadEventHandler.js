@@ -35,6 +35,12 @@ function sendLog() {
  *
  * @param {object} event - EventHandler
  */
+/**
+ * Map models a hook draws in the client's place (MapHooks), for the next map:
+ * lower-case names under data/model/, with forward slashes.
+ */
+let _replaceModels = new Set();
+
 onmessage = function receive(event) {
 	const msg = event.data;
 
@@ -134,8 +140,13 @@ onmessage = function receive(event) {
 			break;
 
 		// Start loading a map
+		case 'MAP_REPLACE_MODELS':
+			_replaceModels = new Set(Array.isArray(msg.data) ? msg.data : []);
+			break;
+
 		case 'LOAD_MAP': {
 			const map = new MapLoader();
+			map.replaceModels = _replaceModels;
 
 			map.onprogress = function (progress) {
 				postMessage({ type: 'MAP_PROGRESS', data: progress });

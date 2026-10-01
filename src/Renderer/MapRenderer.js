@@ -24,6 +24,7 @@ import EntityManager from 'Renderer/EntityManager.js';
 import GridSelector from 'Renderer/Map/GridSelector.js';
 import Ground from 'Renderer/Map/Ground.js';
 import Altitude from 'Renderer/Map/Altitude.js';
+import MapHooks from 'Renderer/MapHooks.js';
 import Water from 'Renderer/Map/Water.js';
 import Models from 'Renderer/Map/Models.js';
 import AnimatedModels from 'Renderer/Map/AnimatedModels.js';
@@ -90,6 +91,7 @@ class MapRenderer {
 	 * @var {array} Sounds object list
 	 */
 	static sounds = null;
+	static lights = [];
 
 	/**
 	 * @var {array} Effects object list
@@ -162,10 +164,12 @@ class MapRenderer {
 				Thread.hook('MAP_ALTITUDE', onAltitudeComplete.bind(MapRenderer));
 				Thread.hook('MAP_MODELS', onModelsComplete.bind(MapRenderer));
 				Thread.hook('MAP_ANIMATED_MODEL', onAnimatedModelComplete.bind(MapRenderer));
+				Thread.hook('MAP_REPLACED_MODELS', models => MapHooks.modelsReady(Renderer.getContext(), models));
 
 				// Start Loading
 				MapRenderer.free();
 				Renderer.remove();
+				Thread.send('MAP_REPLACE_MODELS', MapHooks.modelNames());
 				Thread.send('LOAD_MAP', filename, onMapComplete.bind(MapRenderer));
 			});
 
@@ -200,6 +204,7 @@ class MapRenderer {
 		GridSelector.free(gl);
 		Sounds.free();
 		Effects.free();
+		MapHooks.mapFree(gl);
 		Ground.free(gl);
 		Water.free(gl);
 		Models.free(gl);
@@ -220,6 +225,7 @@ class MapRenderer {
 		this.light = null;
 		this.water = null;
 		this.sounds = null;
+		this.lights = [];
 		this.effects = null;
 	}
 
@@ -234,7 +240,7 @@ class MapRenderer {
 
 		const fog = MapRenderer.fog;
 		fog.use = MapPreferences.fog;
-		const light = MapRenderer.light;
+		const light = MapHooks.light(MapRenderer.light);
 
 		let x, y;
 
@@ -250,8 +256,13 @@ class MapRenderer {
 		const projection = Camera.projection;
 		const normalMat = Camera.normalMat;
 
+		// What hooks draw is described in MapHooks.js.
+		const hooks = hookContext(gl, modelView, projection, normalMat, fog, light, tick);
+		MapHooks.stage('begin', hooks);
+
 		// Render Ground
 		Ground.render(gl, modelView, projection, normalMat, fog, light);
+		MapHooks.stage('ground', hooks);
 
 		// Spam map effects
 		Effects.spam(Session.Entity.position, tick);
@@ -302,6 +313,8 @@ class MapRenderer {
 		// entity pose one frame stale). Ordering is intentional (opaque geometry pass).
 		GR2ModelRenderer.render(gl, modelView, projection, normalMat, fog, light, tick);
 
+		MapHooks.stage('models', hooks);
+
 		// Render transparent elements before ground
 		ScreenEffectManager.render(gl, modelView, projection, fog, tick, true);
 
@@ -314,7 +327,11 @@ class MapRenderer {
 		EntityManager.renderWaterDepth(gl, modelView, projection, fog);
 
 		// Rendering water (after sprites, billboard projection pushes it to back)
-		Water.render(gl, modelView, projection, fog, light, tick);
+		if (MapHooks.replaces('water')) {
+			MapHooks.stage('water', hooks);
+		} else {
+			Water.render(gl, modelView, projection, fog, light, tick);
+		}
 
 		// Third person see-through: translucent part of the models blocking
 		// the player, drawn over the entities so they stay visible through it
@@ -344,7 +361,18 @@ class MapRenderer {
 		// Clean up
 		MemoryManager.clean(gl, tick);
 
+		MapHooks.stage('end', hooks);
+
 		// Finalize frame with post-processing effects
+		PostProcess.scene = {
+			modelView,
+			projection,
+			light,
+			lights: MapRenderer.lights,
+			tick,
+			near: 1,
+			far: 1000
+		};
 		PostProcess.render(gl);
 	}
 
@@ -371,6 +399,9 @@ function onWorldComplete(data) {
 	this.water = data.water;
 	this.sounds = data.sound;
 	this.effects = data.effect;
+	// The map's point lights (RSW), which the original client bakes into the
+	// lightmap. Kept for post-process passes (PostProcess.scene.lights).
+	this.lights = data.lights || [];
 	this.diffuse = new Float32Array(this.light.diffuse);
 
 	// Set default env color
@@ -398,6 +429,46 @@ function onWorldComplete(data) {
 }
 
 /**
+ * What a hook gets each frame (MapHooks.js). One object, refreshed in place.
+ */
+const _hookContext = {};
+function hookContext(gl, modelView, projection, normalMat, fog, light, tick) {
+	const ctx = _hookContext;
+	ctx.gl = gl;
+	ctx.modelView = modelView;
+	ctx.projection = projection;
+	ctx.normalMat = normalMat;
+	ctx.fog = fog;
+	ctx.light = light;
+	ctx.tick = tick;
+	ctx.lightmap = MapPreferences.lightmap;
+	ctx.player = Session.Entity ? Session.Entity.position : null;
+	if (!ctx.drawScene) {
+		// The sky, ground and models again, with another camera, into
+		// whatever target is bound, depth tested.
+		ctx.drawScene = (view, proj) => {
+			const depthTest = gl.isEnabled(gl.DEPTH_TEST);
+			gl.enable(gl.DEPTH_TEST);
+			gl.depthMask(true);
+			Sky.render(gl, view, proj, ctx.fog, ctx.tick);
+			Ground.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light);
+			Models.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light);
+			AnimatedModels.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light, ctx.tick);
+			if (!depthTest) {
+				gl.disable(gl.DEPTH_TEST);
+			}
+		};
+		// The map's models with the caller's program bound (aPosition,
+		// aTextureCoord; texture unit 0 holds each model's texture).
+		ctx.drawModelsDepth = program => Models.renderDepth(gl, program);
+		// Back to the scene's own target, cleared, after drawing elsewhere.
+		ctx.restoreTarget = () => PostProcess.prepare(gl);
+		ctx.createProgram = (vertex, fragment) => WebGL.createShaderProgram(gl, vertex, fragment);
+	}
+	return ctx;
+}
+
+/**
  * Received ground data from Thread
  */
 function onGroundComplete(data) {
@@ -408,6 +479,54 @@ function onGroundComplete(data) {
 
 	Ground.init(gl, data);
 	Water.init(gl, this.water);
+
+	// Point lights in world space, the same translation RSW models get
+	// (Loaders/Model.js). Colour is three 32-bit numbers the loader reads as
+	// integers: 0-255 from some tools, but floats (0-1) from others -- read as
+	// integers those are their bit patterns (0.2 is 1045220557), so anything
+	// far past 255 is taken as the float it is.
+	const asFloat = value => new Float32Array(Int32Array.of(value).buffer)[0];
+	this.lights.forEach(light => {
+		light.world = [light.pos[0] + data.width, light.pos[1], light.pos[2] + data.height];
+		const color = light.color.map(v => (Math.abs(v) > 65535 ? asFloat(v) : v));
+		const max = Math.max(color[0], color[1], color[2]);
+		const scale = max > 1 ? 255 : 1;
+		light.rgb = color.map(v => Math.min(Math.max(v / scale, 0), 1));
+		light.radius = light.range * 0.2;
+	});
+
+	// The map, for hooks (MapHooks.js). Read the live parts through the
+	// functions: textures and walk data may arrive after this.
+	MapHooks.mapReady(gl, {
+		name: stripMapExtension(this.currentMap),
+		width: data.width,
+		height: data.height,
+		// Per ground cell: top tile texture index (-1 none), the four corner
+		// heights, and the tile's middle in the atlas (xy) and lightmap (zw).
+		cellTexture: data.cellTexture,
+		cellHeights: data.cellHeights,
+		cellUv: data.cellUv,
+		// Per ground cell: the top tile's corners in the atlas (8: u, v of
+		// (x,y), (x+1,y), (x,y+1), (x+1,y+1)) and its lightmap rectangle
+		// (4: u1, v1, u2, v2), to find any point's texture exactly.
+		cellAtlas: data.cellAtlas,
+		cellLight: data.cellLight,
+		// The ground textures' names (CP949 bytes in a binary string).
+		textureNames: data.textureNames || [],
+		// The loaded ground texture files (URLs), at their own size: the
+		// atlas (groundTextures()) holds each at 256x256. Same order.
+		textureUrls: Array.isArray(data.textures) ? data.textures.slice() : [],
+		groundTextures: () => Ground.textures(),
+		water: () => Water.state(),
+		lights: this.lights,
+		altitude: {
+			TYPE: Altitude.TYPE,
+			width: () => Altitude.width,
+			height: () => Altitude.height,
+			cellType: (x, y) => Altitude.getCellType(x, y),
+			cellHeight: (x, y) => Altitude.getCellHeight(x, y)
+		}
+	});
 
 	// Initialize sounds
 	this.sounds.forEach(sound => {
@@ -472,6 +591,9 @@ function registerPostProcessModules(gl) {
 		PostProcess.register(Bloom, gl);
 	}
 	PostProcess.register(GaussianBlur, gl);
+	// Passes a client plugin added (PostProcess.addExternal) go after the
+	// scene-wide blur and bloom, and before anti-aliasing and upsampling.
+	PostProcess.registerExternal(gl);
 	PostProcess.register(FXAA, gl);
 	PostProcess.register(CAS, gl);
 	PostProcess.register(Cartoon, gl);
