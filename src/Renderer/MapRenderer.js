@@ -164,10 +164,12 @@ class MapRenderer {
 				Thread.hook('MAP_ALTITUDE', onAltitudeComplete.bind(MapRenderer));
 				Thread.hook('MAP_MODELS', onModelsComplete.bind(MapRenderer));
 				Thread.hook('MAP_ANIMATED_MODEL', onAnimatedModelComplete.bind(MapRenderer));
+				Thread.hook('MAP_REPLACED_MODELS', models => MapHooks.modelsReady(Renderer.getContext(), models));
 
 				// Start Loading
 				MapRenderer.free();
 				Renderer.remove();
+				Thread.send('MAP_REPLACE_MODELS', MapHooks.modelNames());
 				Thread.send('LOAD_MAP', filename, onMapComplete.bind(MapRenderer));
 			});
 

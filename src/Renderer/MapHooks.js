@@ -19,6 +19,15 @@
  *                                   water in the client's place
  *                          'end'    everything is drawn, before the passes
  *   replaces             ['water']: the client does not draw its water
+ *   replacesModels       names of map models (under data/model/, e.g.
+ *                        'prontera/tree01.rsm') the hook draws itself: the
+ *                        client leaves them out, for maps loaded from now on
+ *   models(gl, list)     the replaced models on this map, once loaded:
+ *                        [{ name, instances: [mat4], height, width, depth }].
+ *                        Each instance matrix maps the model's own space --
+ *                        standing on the origin, centred, up being -y -- to
+ *                        the world; height, width and depth are the
+ *                        original's, in that space
  *   light(light)         the sun and sky to use this frame, or null for the
  *                        map's: { ambient: [r,g,b], diffuse: [r,g,b] }
  *   free(gl)             the map is going away, or the hook is: let go of
@@ -106,6 +115,35 @@ function mapFree(gl) {
 	_map = null;
 }
 
+function modelKey(name) {
+	return String(name).replace(/\\/g, '/').replace(/^data\/model\//i, '').toLowerCase();
+}
+
+/** Every model some hook draws itself, for the map loader. */
+function modelNames() {
+	const names = new Set();
+	for (const hook of _hooks) {
+		if (Array.isArray(hook.replacesModels)) {
+			hook.replacesModels.forEach(name => names.add(modelKey(name)));
+		}
+	}
+	return Array.from(names);
+}
+
+/** The map's replaced models are loaded: each hook gets its own. */
+function modelsReady(gl, list) {
+	for (const hook of _hooks.slice()) {
+		if (typeof hook.models !== 'function' || !Array.isArray(hook.replacesModels)) {
+			continue;
+		}
+		const mine = new Set(hook.replacesModels.map(modelKey));
+		const models = list.filter(model => mine.has(model.name));
+		if (models.length) {
+			call(hook, 'models', gl, models);
+		}
+	}
+}
+
 /** Run a stage. For 'water', only the hooks that replace it. */
 function stage(name, ctx) {
 	for (const hook of _hooks.slice()) {
@@ -168,4 +206,4 @@ function light(mapLight) {
 	return _litView;
 }
 
-export default { register, mapReady, mapFree, stage, replaces, light };
+export default { register, mapReady, mapFree, stage, replaces, light, modelNames, modelsReady };
