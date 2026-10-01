@@ -43,18 +43,43 @@ function _isNumeric(val) {
 	return !isNaN(parseFloat(val)) && isFinite(val);
 }
 
+let _skillConstNames = null;
+
+/**
+ * The skill-constant names for an id, built once on the first miss: a skill
+ * tree refresh loads every row's icon, and almost all of them hit on Name.
+ */
+function skillConstNames(skillId) {
+	if (!_skillConstNames) {
+		_skillConstNames = new Map();
+		for (const [name, id] of Object.entries(SK)) {
+			if (!_skillConstNames.has(id)) {
+				_skillConstNames.set(id, []);
+			}
+			_skillConstNames.get(id).push(name);
+		}
+	}
+	return _skillConstNames.get(Number(skillId)) || [];
+}
+
 function loadSkillIcon(skill, skillId, onload) {
-	const aliases = Object.entries(SK)
-		.filter(([, id]) => id === Number(skillId))
-		.map(([name]) => name);
-	const names = [...new Set([skill?.Name, ...aliases].filter(Boolean))];
+	const primary = skill?.Name;
+	let names = null;
 	const load = index => {
 		if (index >= names.length) {
 			return;
 		}
 		Client.loadFile(`${DB.INTERFACE_PATH}item/${names[index]}.bmp`, onload, () => load(index + 1));
 	};
-	load(0);
+	const fallback = () => {
+		names = skillConstNames(skillId).filter(name => name !== primary);
+		load(0);
+	};
+	if (primary) {
+		Client.loadFile(`${DB.INTERFACE_PATH}item/${primary}.bmp`, onload, fallback);
+	} else {
+		fallback();
+	}
 }
 
 export function createSkillList({

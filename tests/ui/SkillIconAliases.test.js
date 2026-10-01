@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync('src/UI/Components/SkillList/SkillListCommon.js', 'utf8');
-const start = source.indexOf('function loadSkillIcon(');
+const start = source.indexOf('let _skillConstNames');
 const end = source.indexOf('export function createSkillList', start);
 function loader(available, constants) {
     const requests = [];
@@ -14,8 +14,8 @@ function loader(available, constants) {
             if (available.has(path)) success(path); else failure();
         }
     } });
-    vm.runInContext(source.slice(start, end) + ';this.loadIcon = loadSkillIcon;', context);
-    return { load: context.loadIcon, requests };
+    vm.runInContext(source.slice(start, end) + ';this.loadIcon = loadSkillIcon; this.aliasIndexBuilt = () => _skillConstNames !== null;', context);
+    return { load: context.loadIcon, aliasIndexBuilt: context.aliasIndexBuilt, requests };
 }
 describe('skill icon aliases', () => {
     it('keeps the configured resource preferred and loads once', () => {
@@ -24,6 +24,8 @@ describe('skill icon aliases', () => {
         x.load({ Name: 'preferred' }, 42, path => loaded.push(path));
         assert.deepEqual(x.requests, ['interface/item/preferred.bmp']);
         assert.equal(loaded.length, 1);
+        // The constant table is only walked after a miss.
+        assert.equal(x.aliasIndexBuilt(), false);
     });
     it('tries matching skill-constant aliases when the configured icon is missing', () => {
         const x = loader(new Set(['interface/item/NATIVE_ALIAS.bmp']), { OLD_ALIAS: 42, NATIVE_ALIAS: 42, OTHER_SKILL: 99 });
