@@ -25,6 +25,7 @@ import Camera from 'Renderer/Camera.js';
 import Client from 'Core/Client.js';
 import UIManager from 'UI/UIManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
+import ScreenHooks from 'UI/ScreenHooks.js';
 import 'UI/Elements/Elements.js';
 
 const TYPE = {
@@ -159,6 +160,72 @@ export function createCharCreate(config) {
 	let _curcolor = 0;
 
 	const render = hasRace ? renderRace : renderLegacy;
+
+	/**
+	 * What a plugin drawing this screen sees (UI/ScreenHooks.js).
+	 * create() goes the way the Make button does.
+	 */
+	const _screen = {
+		get sex() {
+			return _accountSex;
+		},
+		get races() {
+			return raceOptions();
+		},
+		chooseSex: hasRace,
+		hasStats,
+		create(look) {
+			const stats = (look && look.stats) || {};
+			const stat = key => (hasStats ? parseInt(stats[key], 10) || 1 : 1);
+			const args = [
+				String((look && look.name) || ''),
+				stat('str'),
+				stat('agi'),
+				stat('vit'),
+				stat('int'),
+				stat('dex'),
+				stat('luk'),
+				look.hair,
+				look.hairColor
+			];
+			if (hasRace) {
+				args.push(look.job, look.sex);
+			}
+			Component.onCharCreationRequest(...args);
+		},
+		exit: () => cancel()
+	};
+
+	/**
+	 * The jobs a character can start as, and the hair each can have.
+	 */
+	function raceOptions() {
+		if (!hasRace) {
+			return [{ job: 0, hair: { min: 2, max: 26 }, hairColor: { min: 0, max: 9 } }];
+		}
+		const root = Component.getRoot && Component.__loaded ? Component.getRoot() : null;
+		return [
+			['human', RACE.HUMAN],
+			['doram', RACE.DORAM]
+		].map(([race, job]) => {
+			const cap = CAP[job];
+			let hairMax = cap.HEAD.MAX;
+			let colorMax = cap.HEADPALETTE.MAX;
+			if (gridHairstyle && root) {
+				// This layout lists its hairstyles in its own HTML
+				hairMax = root.querySelectorAll(`[id$="_${race}_male"]`).length || hairMax;
+				colorMax = root.querySelectorAll('[id$="_color"]').length - 1;
+				if (colorMax < 0) {
+					colorMax = cap.HEADPALETTE.MAX;
+				}
+			}
+			return {
+				job,
+				hair: { min: cap.HEAD.MIN, max: hairMax },
+				hairColor: { min: cap.HEADPALETTE.MIN, max: colorMax }
+			};
+		});
+	}
 
 	/**
 	 * Initialize UI
@@ -298,6 +365,9 @@ export function createCharCreate(config) {
 		if (hasStats) {
 			updateGraphic();
 		}
+
+		// A plugin may draw this screen instead
+		ScreenHooks.show('charCreate', _screen, this._host);
 	};
 
 	/**
@@ -305,6 +375,7 @@ export function createCharCreate(config) {
 	 * Stop rendering
 	 */
 	Component.onRemove = function onRemove() {
+		ScreenHooks.hide('charCreate');
 		Renderer.stop(render);
 	};
 

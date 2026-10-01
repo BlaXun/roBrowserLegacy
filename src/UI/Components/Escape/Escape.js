@@ -12,6 +12,7 @@ import KEYS from 'Controls/KeyEventHandler.js';
 import Renderer from 'Renderer/Renderer.js';
 import UIManager from 'UI/UIManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
+import ExitHooks from 'UI/ExitHooks.js';
 import SoundOption from 'UI/Components/SoundOption/SoundOption.js';
 import GraphicsOption from 'UI/Components/GraphicsOption/GraphicsOption.js';
 import ShortCutOption from 'UI/Components/ShortCutOption/ShortCutOption.js';
@@ -63,10 +64,12 @@ Escape.init = function init() {
 		Escape.onReturnSavePointRequest();
 	});
 	root.querySelector('.charselect').addEventListener('click', function () {
+		ExitHooks.emit('charSelect', 'escape');
 		Escape.onCharSelectionRequest();
 	});
 	root.querySelector('.hotkey').addEventListener('click', onToggleShortcutUI);
 	root.querySelector('.exit').addEventListener('click', function () {
+		ExitHooks.emit('login', 'escape');
 		Escape.onExitRequest();
 	});
 	root.querySelector('.cancel').addEventListener('click', function () {

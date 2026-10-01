@@ -95,6 +95,19 @@ class Loader {
 	}
 }
 /**
+ * A file name as read from a map: CP949 bytes in a binary string. As text,
+ * for comparing with the names mods give (MapHooks).
+ */
+function decodeName(name) {
+	const text = String(name || '');
+	try {
+		return new TextDecoder('euc-kr').decode(Uint8Array.from(text, c => c.charCodeAt(0) & 0xff));
+	} catch {
+		return text;
+	}
+}
+
+/**
  * MapLoader constructor
  *
  * @param {string} mapname
@@ -213,6 +226,10 @@ class MapLoader {
 			}
 
 			// Loading Gound and Water textures
+			// The names, before they become the loaded files' URLs: what the
+			// ground's textures are called says what a tile is (grass, for
+			// a hook that draws it: Renderer/MapHooks.js).
+			compiledGround.textureNames = compiledGround.textures.slice();
 			loader.loadGroundTextures(world, compiledGround, function onLoaded(waters, textures) {
 				world.water.images = waters;
 				compiledGround.textures = textures;
@@ -339,10 +356,33 @@ class MapLoader {
 		const progress = this.progress;
 		const models = [];
 		const animatedModels = [];
+		const replaced = [];
+		const replace = this.replaceModels;
 
 		bufferSize = 0;
 
 		for (i = 0, count = objects.length; i < count; ++i) {
+			// A hook draws this model in the client's place (MapHooks): send its
+			// placements and size, and leave it out of the merged mesh.
+			const name = decodeName(objects[i].filename)
+				.replace(/^data\\model\\/i, '')
+				.replace(/\\/g, '/')
+				.toLowerCase();
+			if (replace && replace.has(name)) {
+				const box = objects[i].box;
+				replaced.push({
+					name,
+					// Each placement maps the model's own space to the world. In
+					// it the model stands on the origin, centred, up being -y.
+					instances: objects[i].instances.map(matrix => Array.from(matrix)),
+					height: box.max[1] - box.min[1],
+					width: box.range[0] * 2,
+					depth: box.range[2] * 2
+				});
+				this.setProgress(progress + (((100 - progress) / count) * (i + 1)) / 2);
+				continue;
+			}
+
 			// Check if this model has animation - skip static compilation
 			if (objects[i].hasAnimation && objects[i].hasAnimation()) {
 				animatedModels.push(objects[i]);
@@ -372,6 +412,10 @@ class MapLoader {
 
 		// Store animated models for later
 		this._animatedModels = animatedModels;
+
+		if (replaced.length) {
+			this.ondata('MAP_REPLACED_MODELS', replaced);
+		}
 
 		// Merge mesh
 		this.mergeMeshes(models, bufferSize);
