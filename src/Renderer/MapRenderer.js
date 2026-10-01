@@ -481,13 +481,17 @@ function onGroundComplete(data) {
 	Water.init(gl, this.water);
 
 	// Point lights in world space, the same translation RSW models get
-	// (Loaders/Model.js). Colour arrives as 0-255 or 0-1 depending on the tool
-	// that saved the map.
+	// (Loaders/Model.js). Colour is three 32-bit numbers the loader reads as
+	// integers: 0-255 from some tools, but floats (0-1) from others -- read as
+	// integers those are their bit patterns (0.2 is 1045220557), so anything
+	// far past 255 is taken as the float it is.
+	const asFloat = value => new Float32Array(Int32Array.of(value).buffer)[0];
 	this.lights.forEach(light => {
 		light.world = [light.pos[0] + data.width, light.pos[1], light.pos[2] + data.height];
-		const max = Math.max(light.color[0], light.color[1], light.color[2]);
+		const color = light.color.map(v => (Math.abs(v) > 65535 ? asFloat(v) : v));
+		const max = Math.max(color[0], color[1], color[2]);
 		const scale = max > 1 ? 255 : 1;
-		light.rgb = [light.color[0] / scale, light.color[1] / scale, light.color[2] / scale];
+		light.rgb = color.map(v => Math.min(Math.max(v / scale, 0), 1));
 		light.radius = light.range * 0.2;
 	});
 
