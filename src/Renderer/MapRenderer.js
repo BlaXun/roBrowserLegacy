@@ -44,6 +44,8 @@ import PACKETVER from 'Network/PacketVerManager.js';
 import JoystickUI from 'UI/Components/JoystickUI/JoystickUI.js';
 
 import PostProcess from 'Renderer/Effects/PostProcess.js';
+import Enhancements from 'Renderer/Effects/Enhancements.js';
+import WaterReflection from 'Renderer/Map/WaterReflection.js';
 import Bloom from 'Renderer/Effects/Shaders/Bloom.js';
 import VerticalFlip from 'Renderer/Effects/Shaders/VerticalFlip.js';
 import GaussianBlur from 'Renderer/Effects/Shaders/GaussianBlur.js';
@@ -251,6 +253,23 @@ class MapRenderer {
 		const modelView = Camera.modelView;
 		const projection = Camera.projection;
 		const normalMat = Camera.normalMat;
+
+		// Water reflection (Enhancements.waterReflection): the sky, ground and
+		// models again, mirrored across the water, before the scene itself.
+		const waterLevel = Water.level();
+		if (Enhancements.waterReflection > 0 && waterLevel !== null) {
+			const texture = WaterReflection.render(gl, modelView, projection, waterLevel, (view, clipped) => {
+				Sky.render(gl, view, clipped, fog, tick);
+				Ground.render(gl, view, clipped, normalMat, fog, light);
+				Models.render(gl, view, clipped, normalMat, fog, light);
+				AnimatedModels.render(gl, view, clipped, normalMat, fog, light, tick);
+			});
+			Water.setReflection(texture ? { texture, strength: Math.min(1, Enhancements.waterReflection) } : null);
+			// Back to the scene's own target, cleared.
+			PostProcess.prepare(gl);
+		} else {
+			Water.setReflection(null);
+		}
 
 		// Render Ground
 		Ground.render(gl, modelView, projection, normalMat, fog, light);

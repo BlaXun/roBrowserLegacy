@@ -65,6 +65,25 @@ let _animSpeed = 0;
 let _waterOpacity = 0.9;
 
 /**
+ * @var {object|null} this frame's reflection: { texture, strength }
+ */
+let _reflection = null;
+
+/**
+ * The water plane's height, and whether there is water to reflect in.
+ */
+function level() {
+	return _vertCount ? _waterLevel : null;
+}
+
+/**
+ * Hand the water this frame's reflection (WaterReflection.render), or null.
+ */
+function setReflection(reflection) {
+	_reflection = reflection;
+}
+
+/**
  * Initialize water data
  *
  * @param {object} gl context
@@ -151,6 +170,29 @@ function render(gl, modelView, projection, fog, light, tick) {
 	gl.activeTexture(gl.TEXTURE0);
 	gl.uniform1i(uniform.uDiffuse, 0);
 
+	// Reflection (MapRenderer passes it in, WaterReflection.js draws it)
+	const reflect = _reflection && _reflection.texture ? _reflection.strength : 0;
+	gl.uniform1f(uniform.uReflect, reflect);
+	if (reflect > 0) {
+		const viewport = gl.getParameter(gl.VIEWPORT);
+		gl.activeTexture(gl.TEXTURE1);
+		gl.bindTexture(gl.TEXTURE_2D, _reflection.texture);
+		gl.uniform1i(uniform.uReflection, 1);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.uniform2f(uniform.uScreen, viewport[2], viewport[3]);
+		gl.uniform1f(uniform.uTime, tick / 1000);
+		// Up (-y in RO) and the sun, in eye space.
+		const n = [-modelView[4], -modelView[5], -modelView[6]];
+		const nl = Math.hypot(n[0], n[1], n[2]) || 1;
+		gl.uniform3f(uniform.uEyeNormal, n[0] / nl, n[1] / nl, n[2] / nl);
+		const d = light && light.direction ? light.direction : [0, -1, 0];
+		gl.uniform3f(uniform.uEyeSun,
+			modelView[0] * d[0] + modelView[4] * d[1] + modelView[8] * d[2],
+			modelView[1] * d[0] + modelView[5] * d[1] + modelView[9] * d[2],
+			modelView[2] * d[0] + modelView[6] * d[1] + modelView[10] * d[2]);
+		gl.uniform3fv(uniform.uLightDiffuse, light && light.diffuse ? light.diffuse : [1, 1, 1]);
+	}
+
 	// Water infos
 	gl.uniform1f(uniform.uWaveHeight, _waveHeight);
 	gl.uniform1f(uniform.uOpacity, _waterOpacity);
@@ -232,5 +274,7 @@ export default {
 	free: free,
 	render: render,
 	isSubmerged: isSubmerged,
-	hasWater: hasWater
+	hasWater: hasWater,
+	level: level,
+	setReflection: setReflection
 };
