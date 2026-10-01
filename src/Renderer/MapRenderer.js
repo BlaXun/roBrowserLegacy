@@ -90,6 +90,7 @@ class MapRenderer {
 	 * @var {array} Sounds object list
 	 */
 	static sounds = null;
+	static lights = [];
 
 	/**
 	 * @var {array} Effects object list
@@ -220,6 +221,7 @@ class MapRenderer {
 		this.light = null;
 		this.water = null;
 		this.sounds = null;
+		this.lights = [];
 		this.effects = null;
 	}
 
@@ -345,6 +347,15 @@ class MapRenderer {
 		MemoryManager.clean(gl, tick);
 
 		// Finalize frame with post-processing effects
+		PostProcess.scene = {
+			modelView,
+			projection,
+			light,
+			lights: MapRenderer.lights,
+			tick,
+			near: 1,
+			far: 1000
+		};
 		PostProcess.render(gl);
 	}
 
@@ -371,6 +382,9 @@ function onWorldComplete(data) {
 	this.water = data.water;
 	this.sounds = data.sound;
 	this.effects = data.effect;
+	// The map's point lights (RSW), which the original client bakes into the
+	// lightmap. Kept for post-process passes (PostProcess.scene.lights).
+	this.lights = data.lights || [];
 	this.diffuse = new Float32Array(this.light.diffuse);
 
 	// Set default env color
@@ -408,6 +422,17 @@ function onGroundComplete(data) {
 
 	Ground.init(gl, data);
 	Water.init(gl, this.water);
+
+	// Point lights in world space, the same translation RSW models get
+	// (Loaders/Model.js). Colour arrives as 0-255 or 0-1 depending on the tool
+	// that saved the map.
+	this.lights.forEach(light => {
+		light.world = [light.pos[0] + data.width, light.pos[1], light.pos[2] + data.height];
+		const max = Math.max(light.color[0], light.color[1], light.color[2]);
+		const scale = max > 1 ? 255 : 1;
+		light.rgb = [light.color[0] / scale, light.color[1] / scale, light.color[2] / scale];
+		light.radius = light.range * 0.2;
+	});
 
 	// Initialize sounds
 	this.sounds.forEach(sound => {
@@ -472,6 +497,9 @@ function registerPostProcessModules(gl) {
 		PostProcess.register(Bloom, gl);
 	}
 	PostProcess.register(GaussianBlur, gl);
+	// Passes a client plugin added (PostProcess.addExternal) go after the
+	// scene-wide blur and bloom, and before anti-aliasing and upsampling.
+	PostProcess.registerExternal(gl);
 	PostProcess.register(FXAA, gl);
 	PostProcess.register(CAS, gl);
 	PostProcess.register(Cartoon, gl);
