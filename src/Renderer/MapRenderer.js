@@ -292,7 +292,6 @@ class MapRenderer {
 
 		// Render Ground
 		Ground.render(gl, modelView, projection, normalMat, fog, light);
-		Grass.render(gl, modelView, projection, fog, light, tick, MapPreferences.lightmap);
 
 		// Spam map effects
 		Effects.spam(Session.Entity.position, tick);
@@ -342,6 +341,9 @@ class MapRenderer {
 		// -- hence the 1-frame lag documented in GR2ModelRenderer.render (syncFromEntity reads the
 		// entity pose one frame stale). Ordering is intentional (opaque geometry pass).
 		GR2ModelRenderer.render(gl, modelView, projection, normalMat, fog, light, tick);
+
+		// Grass after the models, so it can tell where they cover the ground.
+		Grass.render(gl, modelView, projection, fog, light, tick, MapPreferences.lightmap);
 
 		// Render transparent elements before ground
 		ScreenEffectManager.render(gl, modelView, projection, fog, tick, true);
