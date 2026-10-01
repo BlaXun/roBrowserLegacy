@@ -2,6 +2,8 @@
 
 This is **Flux159/roBrowserLegacy**, the roBrowserLegacy fork that [Ragnarok Offline](https://github.com/Flux159/ragnarokoffline.app) builds its game client from. It is not upstream (MrAntares/roBrowserLegacy). For the codebase itself (layout, subsystems, conventions), read [AGENTS.md](AGENTS.md), which comes from upstream.
 
+**On `master` right now?** That's upstream plus this file. The fork's code is on `ragnarokoffline`: run `git switch ragnarokoffline` before you change anything.
+
 ## Pull requests go to `ragnarokoffline`, not `master`
 
 | Branch | What it is | Open PRs against it? |
