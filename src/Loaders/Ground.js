@@ -760,10 +760,44 @@ class GND {
 		}
 
 		// Return mesh informations
+		// Per cell, for things hooks draw on the ground (Renderer/MapHooks.js): the
+		// top tile's texture (-1 for none), the four corner heights, and the
+		// middle of the tile in the texture atlas (xy) and the lightmap (zw).
+		const cells = width * height;
+		const cellTexture = new Int16Array(cells).fill(-1);
+		const cellHeights = new Float32Array(cells * 4);
+		const cellUv = new Float32Array(cells * 4);
+		// The top tile's four corners in the atlas (u, v for (x,y), (x+1,y),
+		// (x,y+1), (x+1,y+1), as the heights are) and its lightmap rectangle.
+		const cellAtlas = new Float32Array(cells * 8);
+		const cellLight = new Float32Array(cells * 4);
+		for (let i = 0; i < cells; ++i) {
+			const cell = surfaces[i];
+			cellHeights.set(cell.height, i * 4);
+			if (cell.tile_up > -1) {
+				const top = tiles[cell.tile_up];
+				if (top && top.texture > -1) {
+					cellTexture[i] = top.texture;
+					lightmap_atlas(top.light);
+					cellUv[i * 4] = (top.u1 + top.u2 + top.u3 + top.u4) / 4;
+					cellUv[i * 4 + 1] = (top.v1 + top.v2 + top.v3 + top.v4) / 4;
+					cellUv[i * 4 + 2] = (l.u1 + l.u2) / 2;
+					cellUv[i * 4 + 3] = (l.v1 + l.v2) / 2;
+					cellAtlas.set([top.u1, top.v1, top.u2, top.v2, top.u3, top.v3, top.u4, top.v4], i * 8);
+					cellLight.set([l.u1, l.v1, l.u2, l.v2], i * 4);
+				}
+			}
+		}
+
 		return {
 			width: this.width,
 			height: this.height,
 			textures: this.textures,
+			cellTexture: cellTexture,
+			cellHeights: cellHeights,
+			cellUv: cellUv,
+			cellAtlas: cellAtlas,
+			cellLight: cellLight,
 
 			lightmap: lightmap,
 			lightmapSize: this.lightmap.count,
