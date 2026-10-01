@@ -167,7 +167,12 @@ class LoginEngine {
 			Configs.set('autoLogin', null);
 		} else {
 			q.add(function () {
-				WinLogin.getUI().append();
+				// The window chosen above may have no art in this client's data
+				WinLogin.selectUIVersionForData(() => {
+					WinLogin.getUI().onConnectionRequest = onConnectionRequest;
+					WinLogin.getUI().onExitRequest = onExitRequest;
+					WinLogin.getUI().append();
+				});
 			});
 		}
 
