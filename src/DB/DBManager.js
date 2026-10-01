@@ -407,9 +407,10 @@ class DB {
 				tryLoadLuaAliases(loadItemInfo, iteminfoNames, null, onLoad());
 			}
 
-			loadLuaTable(
+			loadLuaTableWithCustom(
 				[DB.LUA_PATH + 'datainfo/accessoryid.lub', DB.LUA_PATH + 'datainfo/accname.lub'],
 				'AccNameTable',
+				'accessory',
 				function (json) {
 					Object.assign(HatTable, json);
 				},
@@ -417,9 +418,10 @@ class DB {
 				null,
 				true
 			);
-			loadLuaTable(
+			loadLuaTableWithCustom(
 				[DB.LUA_PATH + 'datainfo/spriterobeid.lub', DB.LUA_PATH + 'datainfo/spriterobename.lub'],
 				'RobeNameTable',
+				'robe',
 				function (json) {
 					Object.assign(RobeTable, json);
 				},
@@ -429,9 +431,10 @@ class DB {
 			);
 
 			if (PACKETVER.value >= 20141008) {
-				loadLuaTable(
+				loadLuaTableWithCustom(
 					[DB.LUA_PATH + 'datainfo/npcidentity.lub', DB.LUA_PATH + 'datainfo/jobname.lub'],
 					'JobNameTable',
+					'monster',
 					function (json) {
 						Object.assign(MonsterTable, json);
 					},
@@ -448,9 +451,10 @@ class DB {
 					}
 				);
 			} else {
-				loadLuaTable(
+				loadLuaTableWithCustom(
 					[DB.LUA_PATH + 'datainfo/npcidentity.lub', DB.LUA_PATH + 'datainfo/jobname.lub'],
 					'JobNameTable',
+					'monster',
 					function (json) {
 						Object.assign(MonsterTable, json);
 					},
@@ -469,7 +473,14 @@ class DB {
 			loadItemDBTable(DB.LUA_PATH + 'ItemDBNameTbl.lub', null, onLoad());
 
 			// Weapon tables
-			loadWeaponTable(DB.LUA_PATH + 'datainfo/weapontable.lub', null, onLoad());
+			// customLuaTables.weapon: further weapon tables, after the base, in order.
+			const onWeaponEnd = onLoad();
+			const customWeapons = customLuaTables('weapon');
+			const loadCustomWeapon = (index = 0) =>
+				index < customWeapons.length
+					? loadWeaponTable(customWeapons[index], null, () => loadCustomWeapon(index + 1))
+					: onWeaponEnd();
+			loadWeaponTable(DB.LUA_PATH + 'datainfo/weapontable.lub', null, () => loadCustomWeapon());
 
 			// Title tables
 			if (PACKETVER.value >= 20170208) {
@@ -7118,9 +7129,89 @@ function loadStateIconInfo(basePath, callback, onEnd) {
  *
  * @author alisonrag
  */
-function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isResourceTable = false) {
+/**
+ * customLuaTables: tables a mod adds rows to, instead of replacing the whole
+ * file. `Configs.get('customLuaTables')` is an object of lists:
+ *
+ *   accessory: [[idfile, namefile], ...]   headgear looks   (accessoryid / accname)
+ *   robe:      [[idfile, namefile], ...]   garment looks    (spriterobeid / spriterobename)
+ *   monster:   [[idfile, namefile], ...]   monster sprites  (npcidentity / jobname)
+ *   weapon:    [file, ...]                 weapon looks     (weapontable)
+ *
+ * Each is loaded after the base table, in order, and merged over it by id --
+ * the counterpart of customItemInfo and customQuestInfo for the view tables.
+ *
+ * @param {string} key
+ * @return {Array}
+ */
+function customLuaTables(key) {
+	const all = Configs.get('customLuaTables', {});
+	const list = all && typeof all === 'object' ? all[key] : null;
+	return Array.isArray(list) ? list : [];
+}
+
+/**
+ * loadLuaTable, then each customLuaTables[key] pair after it.
+ *
+ * A mod's rows must land after the base's, or the base would overwrite them,
+ * so each table starts when the one before it has been parsed or has failed.
+ * `onEnd` waits for the whole chain: loadLuaTable on its own calls onEnd as
+ * soon as it has *started*, which let the game place the player before a
+ * mod's headgear row existed -- the look was looked up, not found, and never
+ * shown. A table that fails says so in the console and the chain goes on.
+ */
+function loadLuaTableWithCustom(file_list, table_name, key, callback, onEnd, contextFunc, isResourceTable = false) {
+	const custom = customLuaTables(key);
+	const next = index => {
+		if (index >= custom.length) {
+			onEnd.call();
+			return;
+		}
+		const advance = once(() => next(index + 1));
+		loadLuaTable(
+			custom[index],
+			table_name,
+			function (json) {
+				callback.call(null, json);
+				advance();
+			},
+			function () {},
+			null,
+			isResourceTable,
+			advance
+		);
+	};
+	const start = once(() => next(0));
+	loadLuaTable(
+		file_list,
+		table_name,
+		function (json) {
+			callback.call(null, json);
+			start();
+		},
+		function () {},
+		contextFunc,
+		isResourceTable,
+		start
+	);
+}
+
+/** fn, callable once; later calls do nothing. */
+function once(fn) {
+	let called = false;
+	return (...args) => {
+		if (!called) {
+			called = true;
+			fn(...args);
+		}
+	};
+}
+
+function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isResourceTable = false, onError = null) {
 	const id_filename = file_list[0];
 	const value_table_filename = file_list[1];
+	// Told when the table will not arrive: a file missing, or a Lua error.
+	const fail = typeof onError === 'function' ? onError : function () {};
 
 	try {
 		console.log('Loading file "' + id_filename + '"...');
@@ -7135,8 +7226,9 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 				loadValueTable();
 			} catch (hException) {
 				console.error(`(${id_filename}) error: `, hException);
+				fail(hException);
 			}
-		});
+		}, () => fail(new Error(`${id_filename} not found`)));
 
 		function loadValueTable() {
 			console.log('Loading file "' + value_table_filename + '"...');
@@ -7151,8 +7243,9 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 					parseTable();
 				} catch (hException) {
 					console.error(`(${value_table_filename}) error: `, hException);
+					fail(hException);
 				}
-			});
+			}, () => fail(new Error(`${value_table_filename} not found`)));
 		}
 
 		function parseTable() {
@@ -7216,6 +7309,7 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 		}
 	} catch (e) {
 		console.error('error: ', e);
+		fail(e);
 	} finally {
 		onEnd.call();
 	}

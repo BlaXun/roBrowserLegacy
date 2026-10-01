@@ -12,6 +12,7 @@ import Renderer from 'Renderer/Renderer.js';
 import KEYS from 'Controls/KeyEventHandler.js';
 import UIManager from 'UI/UIManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
+import ScreenHooks from 'UI/ScreenHooks.js';
 import 'UI/Elements/Elements.js';
 import htmlText from './WinList.html?raw';
 import cssText from './WinList.css?raw';
@@ -22,6 +23,30 @@ import cssText from './WinList.css?raw';
 const WinList = new GUIComponent('WinList', cssText);
 
 WinList.render = () => htmlText;
+
+/**
+ * What a plugin drawing this screen sees (UI/ScreenHooks.js)
+ */
+const _screen = {
+	get servers() {
+		return WinList.list ? WinList.list.slice() : [];
+	},
+	get index() {
+		return WinList.index;
+	},
+	select(index) {
+		WinList.setIndex(index);
+		WinList.selectIndex();
+	},
+	exit: () => WinList.exit()
+};
+
+/**
+ * Once in the page: a plugin may draw this screen instead
+ */
+WinList.onAppend = function onAppend() {
+	ScreenHooks.show('serverList', _screen, this._host);
+};
 
 /**
  * Initialize UI
@@ -69,6 +94,7 @@ WinList.setList = function setList(list) {
 	}
 
 	this.setIndex(0);
+	ScreenHooks.update('serverList');
 };
 
 /**
@@ -99,6 +125,7 @@ WinList.setIndex = function setIndex(id) {
 			nodes[id].style.backgroundColor = '#cde0ff';
 		}
 		this.index = id;
+		ScreenHooks.update('serverList');
 	}
 };
 
@@ -141,6 +168,7 @@ WinList.onKeyDown = function onKeyDown(event) {
  * Free variables once removed from HTML
  */
 WinList.onRemove = function onRemove() {
+	ScreenHooks.hide('serverList');
 	this._listEl.innerHTML = '';
 	this.list = null;
 	this.index = 0;

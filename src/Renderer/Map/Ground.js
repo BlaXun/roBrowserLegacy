@@ -427,9 +427,18 @@ function getShadowFactor(x, y) {
 /**
  * Export
  */
+/**
+ * The ground's texture atlas and lightmap, for things drawn on the ground
+ * that should take its colour and its light (MapHooks).
+ */
+function textures() {
+	return { atlas: _textureAtlas, lightmap: _lightmap };
+}
+
 export default {
 	init: init,
 	free: free,
 	render: render,
-	getShadowFactor: getShadowFactor
+	getShadowFactor: getShadowFactor,
+	textures: textures
 };
