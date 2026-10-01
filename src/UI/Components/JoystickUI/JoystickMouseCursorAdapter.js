@@ -345,6 +345,20 @@ function quickCastClick() {
 		}, 100);
 	}, 100);
 }
+
+/**
+ * Snap the virtual cursor back to the middle of the viewport.
+ */
+function recenter() {
+	Mouse.screen.x = Math.floor(Renderer.width / 2);
+	Mouse.screen.y = Math.floor(Renderer.height / 2);
+	const cursor = document.querySelector('.cursor');
+	if (cursor) {
+		cursor.style.left = Mouse.screen.x + 'px';
+		cursor.style.top = Mouse.screen.y + 'px';
+	}
+}
+
 export default {
 	quickCastClick: quickCastClick,
 	moveMouseToEntity: moveMouseToEntity,
@@ -356,5 +370,6 @@ export default {
 	changeCameraAngle: changeCameraAngle,
 	move: move,
 	leftClick: leftClick,
-	rightClick: rightClick
+	rightClick: rightClick,
+	recenter: recenter
 };

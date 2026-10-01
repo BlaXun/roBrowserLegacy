@@ -76,15 +76,26 @@ const ButtonInput = {
 			pressed = true;
 		}
 
-		// X → attack
-		if (btn[2] !== 'unpressed') {
+		// X → attack. Fire only on initial press, not on 'holding': the server
+		// handles continuous attack via action=7 on REQUEST_ACT, so re-sending
+		// every poll keeps cancelling and restarting the walk path with new
+		// REQUEST_MOVE packets -- visible as zig-zag / stop-and-turn behaviour
+		// that mouse-click combat does not exhibit.
+		if (btn[2] === 'pressed') {
 			Interaction.attackTargeted();
 			pressed = true;
 		}
 
-		// Y → pickup item
-		if (btn[3] !== 'unpressed') {
+		// Y → pickup item (single-fire; nothing to do while held)
+		if (btn[3] === 'pressed') {
 			Interaction.pickUpItem();
+			pressed = true;
+		}
+
+		// R3 (right stick click) → clear cycle focus + recenter cursor
+		// Single-fire so holding R3 does not keep re-clearing / re-centering.
+		if (btn[11] === 'pressed') {
+			Interaction.resetFocus();
 			pressed = true;
 		}
 

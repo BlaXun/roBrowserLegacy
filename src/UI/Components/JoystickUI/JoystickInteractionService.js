@@ -175,6 +175,15 @@ export default {
 		Target.cycle(direction);
 	},
 
+	/**
+	 * Clear the cycle focus and recenter the virtual cursor. Lets the player
+	 * drop the current target so the next D-pad step starts from the closest
+	 * mob again.
+	 */
+	resetFocus: function () {
+		Target.clear();
+	},
+
 	moveCharacter: function (x, y) {
 		Character.move(x, y);
 	}
