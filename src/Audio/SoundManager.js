@@ -56,12 +56,8 @@ class SoundManager {
 	 * @param {optional|number} vol (volume)
 	 */
 	static play(filename, vol) {
-		let volume;
-		if (vol) {
-			volume = vol * this.volume;
-		} else {
-			volume = this.volume;
-		}
+		const relativeVolume = typeof vol === 'number' && Number.isFinite(vol) ? Math.max(vol, 0) : 1;
+		const volume = relativeVolume * this.volume;
 		if (volume <= 0 || !Preferences.Sound.play) {
 			return;
 		}
@@ -74,11 +70,11 @@ class SoundManager {
 		const sound = getSoundFromCache(filename);
 		if (sound) {
 			sound.volume = Math.min(volume, 1.0);
-			sound._volume = volume;
+			sound._volume = relativeVolume;
 			const playPromise = sound.play();
 			if (playPromise) {
 				playPromise.catch(err => {
-					// blob revogado / src inválido → descarta e recarrega do zero
+					// Discard revoked or invalid media and reload from the source.
 					if (err.name === 'NotSupportedError' || err.name === 'AbortError') {
 						const idx = _sounds[filename]?.instances.indexOf(sound);
 						if (idx !== undefined && idx !== -1) {
@@ -112,7 +108,7 @@ class SoundManager {
 			audio.filename = filename;
 			audio.src = url;
 			audio.volume = Math.min(volume, 1.0);
-			audio._volume = volume;
+			audio._volume = relativeVolume;
 			audio.addEventListener('error', onSoundError, false);
 			audio.addEventListener('ended', onSoundEnded, false);
 			audio.play().catch(err => {
