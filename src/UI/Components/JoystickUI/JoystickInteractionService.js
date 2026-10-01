@@ -21,6 +21,7 @@ import Input from './JoystickInputService.js';
 import DB from 'DB/DBManager.js';
 import SkillInfo from 'DB/Skills/SkillInfo.js';
 import ShortcutMapper from './JoystickShortcutMapper.js';
+import Mouse from 'Controls/MouseEventHandler.js';
 
 export default {
 	prepare: function () {},
@@ -156,6 +157,22 @@ export default {
 
 	navigateDpad: function (direction) {
 		return Cursor.navigateDraggableItems(direction);
+	},
+
+	/**
+	 * D-pad left/right. If the virtual cursor is parked over an item or
+	 * skill container, keep today's grid navigation so inventory nav still
+	 * works with the D-pad. Over the world, cycle the targeted mob.
+	 *
+	 * @param {string} direction 'next' or 'prev'
+	 */
+	cycleTarget: function (direction) {
+		const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+		if (el && el.closest('.item, .skill')) {
+			this.navigateDpad(direction === 'next' ? 'right' : 'left');
+			return;
+		}
+		Target.cycle(direction);
 	},
 
 	moveCharacter: function (x, y) {

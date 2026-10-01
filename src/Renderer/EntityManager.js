@@ -602,6 +602,47 @@ function getLowestHpEntity(sourceEntity, type) {
 }
 
 /**
+ * Returns entities of the given type sorted by straight-line distance from
+ * the source entity, closest first. Same filters as getClosestEntity: not
+ * self, right type, alive, not pending removal, within view range.
+ *
+ * Straight-line (dx*dx + dy*dy), not PathFinding.search: running A* for
+ * every nearby mob on every cycle step is too expensive, and visual
+ * distance order is what the player expects when cycling targets.
+ *
+ * @param {entity} source entity
+ * @param {type} entity type to look for
+ */
+function getEntitiesSortedByDistance(sourceEntity, type) {
+	const srcX = sourceEntity.position[0];
+	const srcY = sourceEntity.position[1];
+	const view_range = GraphicsSettings.performanceMode ? GraphicsSettings.viewArea : 20;
+	const viewRangeSq = view_range * view_range;
+
+	const candidates = [];
+
+	_list.forEach(entity => {
+		if (
+			entity.GID !== sourceEntity.GID &&
+			entity.objecttype === type &&
+			entity.action !== entity.ACTION.DIE &&
+			entity.remove_tick === 0
+		) {
+			const dx = entity.position[0] - srcX;
+			const dy = entity.position[1] - srcY;
+			const distSq = dx * dx + dy * dy;
+			if (distSq <= viewRangeSq) {
+				candidates.push({ entity: entity, distSq: distSq });
+			}
+		}
+	});
+
+	candidates.sort((a, b) => a.distSq - b.distSq);
+
+	return candidates.map(c => c.entity);
+}
+
+/**
  * Returns the distance between two entities based on direct walkpath
  *
  * @param {entity} from entity
@@ -663,6 +704,7 @@ const EntityManager = {
 
 	getClosestEntity: getClosestEntity,
 	getLowestHpEntity: getLowestHpEntity,
+	getEntitiesSortedByDistance: getEntitiesSortedByDistance,
 
 	storeLife: storeLife,
 	getLife: getLife,

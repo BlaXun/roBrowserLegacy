@@ -154,12 +154,12 @@ const ButtonInput = {
 			Interaction.navigateDpad('down');
 			pressed = true;
 		} else if (buttons[14] !== 'unpressed') {
-			// D-pad Left
-			Interaction.navigateDpad('left');
+			// D-pad Left: cycle to the previous nearby mob (or grid nav over a UI)
+			Interaction.cycleTarget('prev');
 			pressed = true;
 		} else if (buttons[15] !== 'unpressed') {
-			// D-pad Right
-			Interaction.navigateDpad('right');
+			// D-pad Right: cycle to the next nearby mob (or grid nav over a UI)
+			Interaction.cycleTarget('next');
 			pressed = true;
 		} else if (buttons[9] !== 'unpressed') {
 			// Start button
