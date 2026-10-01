@@ -22,6 +22,7 @@ import Renderer from 'Renderer/Renderer.js';
 import Session from 'Engine/SessionStorage.js';
 import SkillDescription from 'UI/Components/SkillDescription/SkillDescription.js';
 import SkillInfo from 'DB/Skills/SkillInfo.js';
+import SK from 'DB/Skills/SkillConst.js';
 import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTargetSelection.js';
 import SkillTreeView from 'DB/Skills/SkillTreeView.js';
 import { attachTouchDrag } from 'UI/TouchDrag.js';
@@ -40,6 +41,45 @@ function _escapeHTML(text) {
 
 function _isNumeric(val) {
 	return !isNaN(parseFloat(val)) && isFinite(val);
+}
+
+let _skillConstNames = null;
+
+/**
+ * The skill-constant names for an id, built once on the first miss: a skill
+ * tree refresh loads every row's icon, and almost all of them hit on Name.
+ */
+function skillConstNames(skillId) {
+	if (!_skillConstNames) {
+		_skillConstNames = new Map();
+		for (const [name, id] of Object.entries(SK)) {
+			if (!_skillConstNames.has(id)) {
+				_skillConstNames.set(id, []);
+			}
+			_skillConstNames.get(id).push(name);
+		}
+	}
+	return _skillConstNames.get(Number(skillId)) || [];
+}
+
+function loadSkillIcon(skill, skillId, onload) {
+	const primary = skill?.Name;
+	let names = null;
+	const load = index => {
+		if (index >= names.length) {
+			return;
+		}
+		Client.loadFile(`${DB.INTERFACE_PATH}item/${names[index]}.bmp`, onload, () => load(index + 1));
+	};
+	const fallback = () => {
+		names = skillConstNames(skillId).filter(name => name !== primary);
+		load(0);
+	};
+	if (primary) {
+		Client.loadFile(`${DB.INTERFACE_PATH}item/${primary}.bmp`, onload, fallback);
+	} else {
+		fallback();
+	}
 }
 
 export function createSkillList({
@@ -661,7 +701,7 @@ export function createSkillList({
 
 								miniBox.appendChild(miniTr);
 
-								Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, data => {
+								loadSkillIcon(sk, key, data => {
 									const img = miniTr.querySelector('.icon img');
 									if (img) {
 										img.src = data;
@@ -672,7 +712,7 @@ export function createSkillList({
 					}
 				}
 
-				Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, data => {
+				loadSkillIcon(sk, key, data => {
 					const img = element.querySelector('.icon img');
 					if (img) {
 						img.src = data;
@@ -794,7 +834,7 @@ export function createSkillList({
 			}
 		}
 
-		Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, data => {
+		loadSkillIcon(sk, skill.SKID, data => {
 			const img = element.querySelector('.icon img');
 			if (img) {
 				img.src = data;
@@ -875,7 +915,7 @@ export function createSkillList({
 
 		this.parseHTML.call(levelup);
 
-		Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, data => {
+		loadSkillIcon(sk, skill.SKID, data => {
 			const img = tr.querySelector('.icon img');
 			if (img) {
 				img.src = data;
