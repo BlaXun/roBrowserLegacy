@@ -13,6 +13,7 @@ import Configs from 'Core/Configs.js';
 import Context from 'Core/Context.js';
 import Preferences from 'Core/Preferences.js';
 import GraphicsSettings from 'Preferences/Graphics.js';
+import MapPreferences from 'Preferences/Map.js';
 import Renderer from 'Renderer/Renderer.js';
 import UIManager from 'UI/UIManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
@@ -92,6 +93,7 @@ GraphicsOption.init = function init() {
 	// Post-Processing
 	bindChange('.bloom', onToggleBloom);
 	bindChange('.bloom-intensity', onUpdateBloomIntensity);
+	bindChange('.smoothlight', onUpdateSmoothLight);
 	bindChange('.blur', onToggleBlur);
 	bindChange('.blur-intensity', onUpdateBlurIntensity);
 	bindChange('.blur-area', onUpdateBlurArea);
@@ -138,6 +140,7 @@ GraphicsOption.onAppend = function onAppend() {
 	// Post-Processing
 	root.querySelector('.bloom').checked = GraphicsSettings.bloom;
 	root.querySelector('.bloom-intensity').value = GraphicsSettings.bloomIntensity;
+	root.querySelector('.smoothlight').value = String(MapPreferences.smoothlight);
 	root.querySelector('.blur').checked = GraphicsSettings.blur;
 	root.querySelector('.blur-area').value = GraphicsSettings.blurArea;
 	root.querySelector('.blur-intensity').value = GraphicsSettings.blurIntensity;
@@ -253,6 +256,15 @@ function onToggleBloom() {
 function onUpdateBloomIntensity() {
 	GraphicsSettings.bloomIntensity = parseFloat(this.value);
 	GraphicsSettings.save();
+}
+
+/**
+ * Lighting: the same setting /smoothlight cycles. The ground shader reads it
+ * every frame, so it applies at once.
+ */
+function onUpdateSmoothLight() {
+	MapPreferences.smoothlight = parseInt(this.value, 10) || 0;
+	MapPreferences.save();
 }
 
 function onToggleBlur() {

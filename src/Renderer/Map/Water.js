@@ -227,10 +227,33 @@ function hasWater() {
 /**
  * Export
  */
+/**
+ * The water as the client has it, for a hook that draws water in its place
+ * (MapHooks): the mesh (x, y, z, u, v per vertex), the 32 animation frames,
+ * and the map's wave settings. Null with no water.
+ */
+function state() {
+	if (!_vertCount) {
+		return null;
+	}
+	return {
+		buffer: _buffer,
+		vertCount: _vertCount,
+		textures: _textures,
+		level: _waterLevel,
+		waveHeight: _waveHeight,
+		waveSpeed: _waveSpeed,
+		wavePitch: _wavePitch,
+		animSpeed: _animSpeed,
+		opacity: _waterOpacity
+	};
+}
+
 export default {
 	init: init,
 	free: free,
 	render: render,
 	isSubmerged: isSubmerged,
-	hasWater: hasWater
+	hasWater: hasWater,
+	state: state
 };
