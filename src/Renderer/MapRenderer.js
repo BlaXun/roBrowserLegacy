@@ -502,6 +502,11 @@ function onGroundComplete(data) {
 		cellTexture: data.cellTexture,
 		cellHeights: data.cellHeights,
 		cellUv: data.cellUv,
+		// Per ground cell: the top tile's corners in the atlas (8: u, v of
+		// (x,y), (x+1,y), (x,y+1), (x+1,y+1)) and its lightmap rectangle
+		// (4: u1, v1, u2, v2), to find any point's texture exactly.
+		cellAtlas: data.cellAtlas,
+		cellLight: data.cellLight,
 		// The ground textures' names (CP949 bytes in a binary string).
 		textureNames: data.textureNames || [],
 		// The loaded ground texture files (URLs), at their own size: the
