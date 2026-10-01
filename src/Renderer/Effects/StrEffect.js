@@ -241,6 +241,22 @@ class StrEffect {
 		this.ready = false;
 	}
 
+	/** Advance expiration even when distance culling skips drawing. */
+	updateLifetime(tick) {
+		if (this.needCleanUp || this.persistent || tick < this.startTick) {
+			return;
+		}
+		const endTick = this._Params?.Inst?.endTick;
+		if (endTick > 0 && tick >= endTick) {
+			this.needCleanUp = true;
+			return;
+		}
+		const strFile = Client.loadFile(this.filename, null, null, { texturePath: this.texturePath });
+		if (strFile && tick >= this.startTick + (strFile.maxKey / strFile.fps) * 1000) {
+			this.needCleanUp = true;
+		}
+	}
+
 	/**
 	 * Render in 3D effect
 	 *
@@ -248,6 +264,10 @@ class StrEffect {
 	 * @param {number} tick
 	 */
 	render(gl, tick) {
+		this.updateLifetime(tick);
+		if (this.needCleanUp || tick < this.startTick) {
+			return;
+		}
 		let layer;
 		let i, keyIndex;
 

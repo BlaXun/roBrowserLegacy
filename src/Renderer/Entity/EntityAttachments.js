@@ -52,7 +52,7 @@ class AttachmentManager {
 
 		attachment.startTick = Date.now();
 		attachment.opacity = !isNaN(attachment.opacity) ? attachment.opacity : 1.0;
-		attachment.direction = attachment.hasOwnProperty('frame') ? false : true;
+		attachment.direction = Number.isFinite(attachment.frame) ? false : true;
 		attachment.frame = attachment.frame || 0;
 		attachment.depth = attachment.depth || 0.0;
 		attachment.head = attachment.head || false;
@@ -242,6 +242,11 @@ class AttachmentManager {
 		}
 
 		// Render STR attachment
+		// Duration applies to STR and sprite attachments, including looping ones.
+		if (attachment.duration > 0 && tick - attachment.startTick >= attachment.duration) {
+			return true;
+		}
+
 		if (attachment.isStr && attachment.strEffect) {
 			const strEffect = attachment.strEffect;
 			// dynamic access to Renderer to avoid cycle

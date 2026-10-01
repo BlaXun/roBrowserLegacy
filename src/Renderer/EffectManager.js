@@ -287,7 +287,10 @@ function cleanRepeat(name, AID, effectID) {
 	const list = _list[name];
 
 	list.forEach(item => {
-		if ((!AID || item._Params.Init.ownerAID === AID) && (!effectID || effectIdList.includes(item.effectID))) {
+		if (
+			(!AID || item._Params.Init.ownerAID === AID) &&
+			(!effectID || effectIdList.includes(item._Params.Inst.effectID))
+		) {
 			if (item._Params.Inst.persistent) {
 				item._Params.Inst.persistent = false;
 			}
@@ -446,6 +449,9 @@ class EffectManager {
 					}
 
 					const effect = list[j];
+					if (effect.updateLifetime) {
+						effect.updateLifetime(tick);
+					}
 					const pos = effect._Params && effect._Params.Inst ? effect._Params.Inst.position : null;
 
 					// Culling: If effect has position, check distance
@@ -473,7 +479,7 @@ class EffectManager {
 								shouldRemove = true;
 							}
 
-							if (shouldRemove) {
+							if (shouldRemove || effect.needCleanUp) {
 								effect.needCleanUp = true;
 								culled = true;
 							} else {
@@ -484,7 +490,7 @@ class EffectManager {
 						}
 					}
 
-					if (!culled) {
+					if (!culled && !effect.needCleanUp) {
 						if (!effect.ready && effect.needInit) {
 							effect.init(gl);
 							effect.needInit = false;
