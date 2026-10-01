@@ -22,6 +22,7 @@ import Renderer from 'Renderer/Renderer.js';
 import Session from 'Engine/SessionStorage.js';
 import SkillDescription from 'UI/Components/SkillDescription/SkillDescription.js';
 import SkillInfo from 'DB/Skills/SkillInfo.js';
+import SK from 'DB/Skills/SkillConst.js';
 import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTargetSelection.js';
 import SkillTreeView from 'DB/Skills/SkillTreeView.js';
 import { attachTouchDrag } from 'UI/TouchDrag.js';
@@ -40,6 +41,20 @@ function _escapeHTML(text) {
 
 function _isNumeric(val) {
 	return !isNaN(parseFloat(val)) && isFinite(val);
+}
+
+function loadSkillIcon(skill, skillId, onload) {
+	const aliases = Object.entries(SK)
+		.filter(([, id]) => id === Number(skillId))
+		.map(([name]) => name);
+	const names = [...new Set([skill?.Name, ...aliases].filter(Boolean))];
+	const load = index => {
+		if (index >= names.length) {
+			return;
+		}
+		Client.loadFile(`${DB.INTERFACE_PATH}item/${names[index]}.bmp`, onload, () => load(index + 1));
+	};
+	load(0);
 }
 
 export function createSkillList({
@@ -661,7 +676,7 @@ export function createSkillList({
 
 								miniBox.appendChild(miniTr);
 
-								Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, data => {
+								loadSkillIcon(sk, key, data => {
 									const img = miniTr.querySelector('.icon img');
 									if (img) {
 										img.src = data;
@@ -672,7 +687,7 @@ export function createSkillList({
 					}
 				}
 
-				Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, data => {
+				loadSkillIcon(sk, key, data => {
 					const img = element.querySelector('.icon img');
 					if (img) {
 						img.src = data;
@@ -794,7 +809,7 @@ export function createSkillList({
 			}
 		}
 
-		Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, data => {
+		loadSkillIcon(sk, skill.SKID, data => {
 			const img = element.querySelector('.icon img');
 			if (img) {
 				img.src = data;
@@ -875,7 +890,7 @@ export function createSkillList({
 
 		this.parseHTML.call(levelup);
 
-		Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, data => {
+		loadSkillIcon(sk, skill.SKID, data => {
 			const img = tr.querySelector('.icon img');
 			if (img) {
 				img.src = data;
