@@ -21,7 +21,14 @@ const Enhancements = {
 	 *   names that are grass, density 0..1, height, width, wind 0..1,
 	 *   distance (fade), tint [r,g,b] }
 	 */
-	grass: null
+	grass: null,
+
+	/**
+	 * Real-time shadows from buildings and trees onto the ground
+	 * (Renderer/Map/Shadows.js): 0 off .. 1 full. On top of the shadows the
+	 * map's lightmap already bakes in.
+	 */
+	shadows: 0
 };
 
 export default Enhancements;

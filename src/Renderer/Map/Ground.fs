@@ -5,6 +5,7 @@ in vec2 vTextureCoord;
 in vec2 vLightmapCoord;
 in vec2 vTileColorCoord;
 in float vLightWeighting;
+in vec4 vShadow;
 out vec4 fragColor;
 
 uniform sampler2D uDiffuse;
@@ -25,6 +26,25 @@ uniform float uLightOpacity;
 uniform vec3  uLightDirection;
 uniform vec3 uLightEnv;
 
+// Real-time shadows (Shadows.js), off when uShadow is 0.
+uniform float uShadow;
+uniform sampler2D uShadowMap;
+uniform float uShadowTexel;
+
+// 0 lit .. 1 hidden from the sun, averaged over 3x3 texels for soft edges.
+float shadowed() {
+    vec3 p = vShadow.xyz / vShadow.w * 0.5 + 0.5;
+    if (p.x <= 0.0 || p.x >= 1.0 || p.y <= 0.0 || p.y >= 1.0 || p.z >= 1.0) return 0.0;
+    float hidden = 0.0;
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            float closest = texture(uShadowMap, p.xy + vec2(float(x), float(y)) * uShadowTexel).r;
+            hidden += p.z - 0.0015 > closest ? 1.0 : 0.0;
+        }
+    }
+    return hidden / 9.0;
+}
+
 vec3 posterize(vec3 c) {
     c *= 255.0;
     c = floor(c / 16.0) * 16.0;
@@ -41,7 +61,9 @@ void main(void) {
         textureSample    *= texture( uTileColor, vTileColorCoord.st);
     }
 
-    vec3 color = (vLightWeighting * uLightDiffuse + uLightAmbient);
+    float sun = vLightWeighting;
+    if (uShadow > 0.0) sun *= 1.0 - shadowed() * uShadow;
+    vec3 color = (sun * uLightDiffuse + uLightAmbient);
     textureSample.rgb *= clamp(color, 0.0, 1.0);
     textureSample.rgb *= clamp(uLightEnv, 0.0, 1.0);
 

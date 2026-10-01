@@ -11,6 +11,10 @@ out vec2 vTextureCoord;
 out vec2 vLightmapCoord;
 out vec2 vTileColorCoord;
 out float vLightWeighting;
+out vec4 vShadow;
+
+// Shadows.js: the light's view, used when uShadow > 0.
+uniform mat4 uShadowMat;
 
 uniform mat4 uModelViewMat;
 uniform mat4 uProjectionMat;
@@ -20,6 +24,7 @@ uniform vec3 uLightEnv;
 
 void main(void) {
     gl_Position     = uProjectionMat * uModelViewMat * vec4( aPosition, 1.0);
+    vShadow         = uShadowMat * vec4( aPosition, 1.0);
 
     vTextureCoord   = aTextureCoord;
     vLightmapCoord  = aLightmapCoord;

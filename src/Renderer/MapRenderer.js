@@ -47,6 +47,7 @@ import PostProcess from 'Renderer/Effects/PostProcess.js';
 import Enhancements from 'Renderer/Effects/Enhancements.js';
 import WaterReflection from 'Renderer/Map/WaterReflection.js';
 import Grass from 'Renderer/Map/Grass.js';
+import Shadows from 'Renderer/Map/Shadows.js';
 import Bloom from 'Renderer/Effects/Shaders/Bloom.js';
 import VerticalFlip from 'Renderer/Effects/Shaders/VerticalFlip.js';
 import GaussianBlur from 'Renderer/Effects/Shaders/GaussianBlur.js';
@@ -207,6 +208,7 @@ class MapRenderer {
 		Ground.free(gl);
 		Water.free(gl);
 		Grass.free(gl);
+		Shadows.free(gl);
 		WaterReflection.free(gl);
 		Models.free(gl);
 		AnimatedModels.free(gl);
@@ -257,6 +259,17 @@ class MapRenderer {
 		const projection = Camera.projection;
 		const normalMat = Camera.normalMat;
 
+		// Shadow map (Enhancements.shadows): the models from the sun, around the
+		// player, before anything that draws the ground.
+		let rebind = false;
+		if (Enhancements.shadows > 0 && Session.Entity) {
+			const p = Session.Entity.position;
+			Shadows.render(gl, light, [p[0] + 0.5, -p[2], p[1] + 0.5], Enhancements.shadows, program => Models.renderDepth(gl, program));
+			rebind = true;
+		} else {
+			Shadows.clear();
+		}
+
 		// Water reflection (Enhancements.waterReflection): the sky, ground and
 		// models again, mirrored across the water, before the scene itself.
 		const waterLevel = Water.level();
@@ -268,10 +281,13 @@ class MapRenderer {
 				AnimatedModels.render(gl, view, clipped, normalMat, fog, light, tick);
 			});
 			Water.setReflection(texture ? { texture, strength: Math.min(1, Enhancements.waterReflection) } : null);
-			// Back to the scene's own target, cleared.
-			PostProcess.prepare(gl);
+			rebind = true;
 		} else {
 			Water.setReflection(null);
+		}
+		if (rebind) {
+			// Back to the scene's own target, cleared.
+			PostProcess.prepare(gl);
 		}
 
 		// Render Ground
