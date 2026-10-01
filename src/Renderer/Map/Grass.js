@@ -402,17 +402,18 @@ function render(gl, modelView, projection, fog, light, tick, lightmapOn) {
 	gl.enableVertexAttribArray(attribute.aUv);
 	gl.vertexAttribPointer(attribute.aUv, 4, gl.FLOAT, false, 0, 0);
 	gl.vertexAttribDivisor(attribute.aUv, 1);
-	// The clumps hide each other and sit behind what stands in front of
-	// them, but leave no depth behind: the sprites drawn next are never
-	// cut off by grass. The scene's depth is put back as it was.
+	// Grass writes no depth. Sprites drawn after it are tested against the
+	// depth buffer, and a sprite "behind" a blade is drawn as a faded
+	// silhouette -- grass must never do that to a player or monster. Models
+	// in front still hide it: the clump's root is tested against the scene's
+	// depth in the vertex shader.
 	const cull = gl.isEnabled(gl.CULL_FACE);
 	gl.disable(gl.CULL_FACE);
-	gl.depthMask(!!saved);
+	gl.depthMask(false);
 	gl.drawArraysInstanced(gl.TRIANGLES, 0, 18, _count);
 	gl.depthMask(true);
-	if (cull) gl.enable(gl.CULL_FACE);
-	if (saved) {
-		SceneCopy.restoreDepth(gl);
+	if (cull) {
+		gl.enable(gl.CULL_FACE);
 	}
 	gl.vertexAttribDivisor(attribute.aInstance, 0);
 	gl.vertexAttribDivisor(attribute.aUv, 0);

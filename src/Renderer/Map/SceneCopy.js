@@ -78,17 +78,4 @@ function color(gl) {
 	return blit(gl, _color, gl.COLOR_BUFFER_BIT);
 }
 
-/** Put the depth from the last depth() back, undoing what was drawn since. */
-function restoreDepth(gl) {
-	if (!_depth) {
-		return;
-	}
-	const current = gl.getParameter(gl.FRAMEBUFFER_BINDING);
-	const vp = gl.getParameter(gl.VIEWPORT);
-	gl.bindFramebuffer(gl.READ_FRAMEBUFFER, _depth.fbo);
-	gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, current);
-	gl.blitFramebuffer(0, 0, _depth.w, _depth.h, vp[0], vp[1], vp[0] + vp[2], vp[1] + vp[3], gl.DEPTH_BUFFER_BIT, gl.NEAREST);
-	gl.bindFramebuffer(gl.FRAMEBUFFER, current);
-}
-
-export default { depth, color, restoreDepth };
+export default { depth, color };
