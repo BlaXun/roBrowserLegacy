@@ -11,6 +11,8 @@
 import WebGL from 'Utils/WebGL.js';
 import SpriteRenderer from 'Renderer/SpriteRenderer.js';
 import Altitude from 'Renderer/Map/Altitude.js';
+import SceneCopy from 'Renderer/Map/SceneCopy.js';
+import Enhancements from 'Renderer/Effects/Enhancements.js';
 import _vertexShader from './Water.vs?raw';
 import _fragmentShader from './Water.fs?raw';
 
@@ -172,6 +174,8 @@ function render(gl, modelView, projection, fog, light, tick) {
 
 	// Reflection (MapRenderer passes it in, WaterReflection.js draws it)
 	const reflect = _reflection && _reflection.texture ? _reflection.strength : 0;
+	// What is under the surface, to know how deep the water is at each pixel.
+	const sceneDepth = reflect > 0 ? SceneCopy.depth(gl) : null;
 	gl.uniform1f(uniform.uReflect, reflect);
 	if (reflect > 0) {
 		const viewport = gl.getParameter(gl.VIEWPORT);
@@ -181,6 +185,15 @@ function render(gl, modelView, projection, fog, light, tick) {
 		gl.activeTexture(gl.TEXTURE0);
 		gl.uniform2f(uniform.uScreen, viewport[2], viewport[3]);
 		gl.uniform1f(uniform.uTime, tick / 1000);
+		gl.uniform1i(uniform.uHasDepth, sceneDepth ? 1 : 0);
+		if (sceneDepth) {
+			gl.activeTexture(gl.TEXTURE2);
+			gl.bindTexture(gl.TEXTURE_2D, sceneDepth);
+			gl.uniform1i(uniform.uSceneDepth, 2);
+			gl.activeTexture(gl.TEXTURE0);
+		}
+		gl.uniform2f(uniform.uProj, projection[10], projection[14]);
+		gl.uniform1f(uniform.uRain, Math.min(1, Math.max(0, Number(Enhancements.rain) || 0)));
 		// Up (-y in RO) and the sun, in eye space.
 		const n = [-modelView[4], -modelView[5], -modelView[6]];
 		const nl = Math.hypot(n[0], n[1], n[2]) || 1;

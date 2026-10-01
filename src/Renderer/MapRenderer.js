@@ -243,7 +243,7 @@ class MapRenderer {
 
 		const fog = MapRenderer.fog;
 		fog.use = MapPreferences.fog;
-		const light = MapRenderer.light;
+		const light = effectiveLight(MapRenderer.light);
 
 		let x, y;
 
@@ -450,6 +450,35 @@ function onWorldComplete(data) {
 	this.light.direction[0] = -dirVec[0];
 	this.light.direction[1] = -dirVec[1];
 	this.light.direction[2] = -dirVec[2];
+}
+
+const _lit = { ambient: new Float32Array(3), diffuse: new Float32Array(3), env: new Float32Array(3) };
+let _litFor = null;
+let _litView = null;
+
+/**
+ * The map's light, or a mod's replacement for its sun and sky
+ * (Enhancements.light). Direction and opacity always stay the map's.
+ */
+function effectiveLight(light) {
+	const over = Enhancements.light;
+	if (!light || !over || typeof over !== 'object') {
+		return light;
+	}
+	const pick = (value, fallback) =>
+		Array.isArray(value) && value.length === 3 && value.every(v => Number.isFinite(v)) ? value : fallback;
+	const ambient = pick(over.ambient, light.ambient);
+	const diffuse = pick(over.diffuse, light.diffuse);
+	for (let i = 0; i < 3; i++) {
+		_lit.ambient[i] = ambient[i];
+		_lit.diffuse[i] = diffuse[i];
+		_lit.env[i] = 1 - (1 - Math.min(1, diffuse[i])) * (1 - Math.min(1, ambient[i]));
+	}
+	if (_litFor !== light) {
+		_litFor = light;
+		_litView = Object.assign(Object.create(light), _lit);
+	}
+	return _litView;
 }
 
 /**

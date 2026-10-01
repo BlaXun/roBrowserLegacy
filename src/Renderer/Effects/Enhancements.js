@@ -28,7 +28,21 @@ const Enhancements = {
 	 * (Renderer/Map/Shadows.js): 0 off .. 1 full. On top of the shadows the
 	 * map's lightmap already bakes in.
 	 */
-	shadows: 0
+	shadows: 0,
+
+	/**
+	 * Rain on the water: rings where drops land, and a duller surface.
+	 * 0 dry .. 1 pouring.
+	 */
+	rain: 0,
+
+	/**
+	 * The map's sun and sky, replaced, or null for the map's own:
+	 * { ambient: [r,g,b], diffuse: [r,g,b] }, each 0..1 (diffuse may go a
+	 * little over). A warmer sun, a cooler sky. The lightmap baked into the
+	 * map is not changed.
+	 */
+	light: null
 };
 
 export default Enhancements;

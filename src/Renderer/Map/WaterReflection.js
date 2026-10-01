@@ -126,7 +126,14 @@ export function render(gl, modelView, projection, level, draw) {
 	gl.viewport(0, 0, width, height);
 	gl.clearColor(0, 0, 0, 0);
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+	// Whatever the last pass of the previous frame left, the mirror needs depth.
+	const depthTest = gl.isEnabled(gl.DEPTH_TEST);
+	gl.enable(gl.DEPTH_TEST);
+	gl.depthMask(true);
 	draw(view, clipped);
+	if (!depthTest) {
+		gl.disable(gl.DEPTH_TEST);
+	}
 	gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 	return _fbo.texture;
 }
