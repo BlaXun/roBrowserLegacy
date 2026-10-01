@@ -52,7 +52,14 @@ class AttachmentManager {
 
 		attachment.startTick = Date.now();
 		attachment.opacity = !isNaN(attachment.opacity) ? attachment.opacity : 1.0;
-		attachment.direction = attachment.hasOwnProperty('frame') ? false : true;
+		// An explicit `direction` decides: spamSprite passes the EffectTable flag
+		// ("the sprite will inherit character's direction"), which used to be
+		// overwritten here. Without one, a caller that names a frame wants that
+		// fixed action -- even when its lookup came back undefined, as an unknown
+		// emotion or quest icon does, which must not start following the camera.
+		if (typeof attachment.direction !== 'boolean') {
+			attachment.direction = !attachment.hasOwnProperty('frame');
+		}
 		attachment.frame = attachment.frame || 0;
 		attachment.depth = attachment.depth || 0.0;
 		attachment.head = attachment.head || false;
@@ -242,6 +249,11 @@ class AttachmentManager {
 		}
 
 		// Render STR attachment
+		// Duration applies to STR and sprite attachments, including looping ones.
+		if (attachment.duration > 0 && tick - attachment.startTick >= attachment.duration) {
+			return true;
+		}
+
 		if (attachment.isStr && attachment.strEffect) {
 			const strEffect = attachment.strEffect;
 			// dynamic access to Renderer to avoid cycle
