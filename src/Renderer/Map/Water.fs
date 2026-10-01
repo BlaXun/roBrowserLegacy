@@ -80,7 +80,7 @@ void main(void) {
             float behind = uProj.y / (zn + uProj.x);
             thick = max(behind - (-vEye.z), 0.0);
         }
-        float clear = exp(-thick * 0.9);            // 1 right at the shore .. 0 a little out
+        float clear = exp(-thick * 0.35);           // 1 at the shore, fading out over a few cells
 
         // Mostly a mirror of what stands above it, darkened, with a deep
         // navy where nothing does; a teal see-through band at the shore.
@@ -96,9 +96,9 @@ void main(void) {
         vec3 color = mix(mirror, body, 0.18);
         // Light scattered in the water near the rock: a broad teal glow
         // along the shore, the rock just visible through the narrowest band.
-        float glow = exp(-thick * 0.12);
-        color = mix(color, vec3(0.12, 0.42, 0.42), glow * 0.55);
-        float alpha = mix(0.95, 0.55, clear);
+        float glow = exp(-thick * 0.07);
+        color = mix(color, vec3(0.12, 0.42, 0.42), glow * 0.5);
+        float alpha = mix(0.95, 0.5, clear * clear * (3.0 - 2.0 * clear));
         vec3 view = normalize(-vEye);
         vec3 n = normalize(uEyeNormal + vec3(swell.x, 0.0, swell.y) * 0.08);
         float sun = pow(max(dot(reflect(-normalize(uEyeSun), n), view), 0.0), 60.0);
@@ -106,7 +106,7 @@ void main(void) {
         color += vec3(0.4, 0.5, 0.55) * rings * 0.5 * uRain;
         color *= mix(1.0, 0.85, uRain);  // overcast
         // A line of light where it meets the shore.
-        color += vec3(0.35, 0.45, 0.42) * smoothstep(0.8, 0.0, thick) * (0.7 + 0.3 * sin(t * 2.0 + vWorld.x + vWorld.z));
+        color += vec3(0.18, 0.24, 0.22) * exp(-thick * 1.2) * (0.75 + 0.25 * sin(t * 2.0 + vWorld.x + vWorld.z));  // a soft lap of light at the edge
         textureSample = vec4(color, mix(textureSample.a, alpha, uReflect));
     }
 
