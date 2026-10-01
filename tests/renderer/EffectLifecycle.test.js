@@ -132,12 +132,28 @@ describe('effect lifetime and attachment direction', () => {
         assert.equal(attachments.renderAttachment(item, 1500), true);
         assert.equal(attachments.renderAttachment(item, 1200), false);
     });
-    it('keeps normal sprite attachments directional when frame is undefined', () => {
+    it('follows the explicit direction flag spamSprite passes, whatever frame says', () => {
         const AttachmentManager = attachmentManager();
         const attachments = new AttachmentManager({ position: [0, 0, 0] });
-        const item = { file: 'synthetic', frame: undefined };
-        attachments.add(item);
-        assert.equal(item.direction, true);
+        const directional = { file: 'synthetic', frame: undefined, direction: true };
+        attachments.add(directional);
+        assert.equal(directional.direction, true);
+        const fixedEffect = { file: 'synthetic', frame: undefined, direction: false };
+        attachments.add(fixedEffect);
+        assert.equal(fixedEffect.direction, false);
+    });
+    it('keeps a named frame fixed without a direction flag, even an undefined one', () => {
+        const AttachmentManager = attachmentManager();
+        const attachments = new AttachmentManager({ position: [0, 0, 0] });
+        const free = { file: 'synthetic' };
+        attachments.add(free);
+        assert.equal(free.direction, true);
+        // An emotion or quest icon whose index lookup missed: it used to show
+        // action 0, and must not start turning with the camera instead.
+        const missedLookup = { file: 'emotion', frame: undefined };
+        attachments.add(missedLookup);
+        assert.equal(missedLookup.direction, false);
+        assert.equal(missedLookup.frame, 0);
         const fixed = { file: 'synthetic', frame: 0 };
         attachments.add(fixed);
         assert.equal(fixed.direction, false);

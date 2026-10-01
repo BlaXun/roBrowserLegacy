@@ -7,7 +7,7 @@ This patch addresses four shared renderer defects. It changes no skill balance, 
 - `endRepeat` matches the effect ID stored in `item._Params.Inst`. Previously it checked an unset top-level field, so selecting an effect ID could leave its persistent flag and scheduled repeats active. Owner and effect filters remain independent.
 - STR expiration now advances before distance culling. It respects a supplied positive `endTick` and the STR frame count / FPS, even if the effect is offscreen or its resource finishes loading late. Future starts and internally persistent attachment loops are preserved; the manager still restarts explicitly repeated effect cycles.
 - Attachment duration now applies before the STR branch. A looping STR attachment can consequently expire at its configured duration instead of returning before that check.
-- Sprite attachments only disable automatic direction when `frame` is a finite number. `spamSprite` can supply `frame: undefined`; that previously disabled entity/camera direction merely because the property existed. Explicit frame zero still selects a fixed action.
+- Sprite attachments honour an explicit `direction` flag. `spamSprite` passes the EffectTable's `direction` (documented as "the sprite will inherit character's direction"), but `add` overwrote it from the presence of `frame`, and `spamSprite` always supplies `frame` (usually `undefined`), so no effect sprite could follow its owner's direction. Callers that pass no flag keep the old rule: naming a frame, even one whose lookup returned `undefined` (an unknown emotion or quest icon), selects a fixed action.
 
 ## Validation
 
