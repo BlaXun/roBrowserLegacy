@@ -29,6 +29,7 @@ import StatusConst from 'DB/Status/StatusState.js';
 import Camera from 'Renderer/Camera.js';
 import UIManager from 'UI/UIManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
+import ScreenHooks from 'UI/ScreenHooks.js';
 import 'UI/Elements/Elements.js';
 import PACKETVER from 'Network/PacketVerManager.js';
 
@@ -110,7 +111,40 @@ export function createCharSelect(config) {
 	let _bgInterval = null;
 
 	const render = gridLayout ? renderGrid : renderPaginated;
-	const moveCursorTo = gridLayout ? moveCursorToGrid : moveCursorToPaginated;
+	const moveCursorTo = index => {
+		(gridLayout ? moveCursorToGrid : moveCursorToPaginated)(index);
+		ScreenHooks.update('charSelect');
+	};
+
+	/**
+	 * What a plugin drawing this screen sees (UI/ScreenHooks.js). The
+	 * actions are the window's own buttons, acting on the selected slot.
+	 */
+	const _screen = {
+		get characters() {
+			return _list.slice();
+		},
+		get maxSlots() {
+			return _maxSlots;
+		},
+		get index() {
+			return _index;
+		},
+		get sex() {
+			return _sex;
+		},
+		get enabled() {
+			return !_disable_UI;
+		},
+		deleteReservation: deleteReservation && (!packetverGatedDelete || PACKETVER.value >= 20100803),
+		select: slot => moveCursorTo(slot),
+		play: () => connect(),
+		create: () => create(),
+		requestDelete: () => (_screen.deleteReservation ? reserve() : suppress()),
+		cancelDelete: () => _screen.deleteReservation && removedelete(),
+		confirmDelete: () => suppress(),
+		exit: () => cancel()
+	};
 
 	/**
 	 * Initialize UI
@@ -230,6 +264,7 @@ export function createCharSelect(config) {
 			_bgInterval = setInterval(changeBackgroundEverySecond, 250);
 			// Start rendering
 			Renderer.render(render);
+			ScreenHooks.show('charSelect', _screen, this._host);
 			return;
 		}
 
@@ -250,12 +285,16 @@ export function createCharSelect(config) {
 
 		// Start rendering
 		Renderer.render(render);
+
+		// A plugin may draw this screen instead
+		ScreenHooks.show('charSelect', _screen, this._host);
 	};
 
 	/**
 	 * Stop rendering
 	 */
 	Component.onRemove = function onRemove() {
+		ScreenHooks.hide('charSelect');
 		if (gridLayout) {
 			if (_bgInterval) {
 				clearInterval(_bgInterval);
@@ -558,6 +597,7 @@ export function createCharSelect(config) {
 			_entitySlots[character.CharNum].hideShadow = true;
 
 			Component.updateCharSlot(character.CharNum);
+			ScreenHooks.update('charSelect');
 			return;
 		}
 
@@ -598,6 +638,7 @@ export function createCharSelect(config) {
 				});
 			}
 		}
+		ScreenHooks.update('charSelect');
 	};
 
 	/**
@@ -607,6 +648,7 @@ export function createCharSelect(config) {
 	 */
 	Component.setUIEnabled = function setUIEnabled(value) {
 		_disable_UI = !value;
+		ScreenHooks.update('charSelect');
 	};
 
 	/**
@@ -823,6 +865,7 @@ export function createCharSelect(config) {
 	 */
 	function requestdelete(index, timer) {
 		const root = Component.getRoot();
+		ScreenHooks.update('charSelect');
 
 		if (gridLayout) {
 			// Make it sit
@@ -885,6 +928,7 @@ export function createCharSelect(config) {
 
 			// Delete here as well? Though server should tell us this
 			_slots[_index].DeleteDate = 0;
+			ScreenHooks.update('charSelect');
 
 			if (gridLayout) {
 				// Make it stand
