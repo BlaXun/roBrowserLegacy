@@ -46,6 +46,7 @@ import JoystickUI from 'UI/Components/JoystickUI/JoystickUI.js';
 import PostProcess from 'Renderer/Effects/PostProcess.js';
 import Enhancements from 'Renderer/Effects/Enhancements.js';
 import WaterReflection from 'Renderer/Map/WaterReflection.js';
+import Grass from 'Renderer/Map/Grass.js';
 import Bloom from 'Renderer/Effects/Shaders/Bloom.js';
 import VerticalFlip from 'Renderer/Effects/Shaders/VerticalFlip.js';
 import GaussianBlur from 'Renderer/Effects/Shaders/GaussianBlur.js';
@@ -205,6 +206,8 @@ class MapRenderer {
 		Effects.free();
 		Ground.free(gl);
 		Water.free(gl);
+		Grass.free(gl);
+		WaterReflection.free(gl);
 		Models.free(gl);
 		AnimatedModels.free(gl);
 		OccluderFade.free(gl);
@@ -273,6 +276,7 @@ class MapRenderer {
 
 		// Render Ground
 		Ground.render(gl, modelView, projection, normalMat, fog, light);
+		Grass.render(gl, modelView, projection, fog, light, tick, MapPreferences.lightmap);
 
 		// Spam map effects
 		Effects.spam(Session.Entity.position, tick);
@@ -440,6 +444,7 @@ function onGroundComplete(data) {
 	this.water.vertCount = data.waterVertCount;
 
 	Ground.init(gl, data);
+	Grass.init(gl, data);
 	Water.init(gl, this.water);
 
 	// Point lights in world space, the same translation RSW models get

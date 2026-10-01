@@ -325,6 +325,14 @@ function onTextureAtlasComplete(gl, atlas) {
  * @param {object} gl context
  * @param {object} data - ground
  */
+/**
+ * The ground's texture atlas and lightmap, for things drawn on the ground
+ * that should take its colour and its shadows (Grass.js).
+ */
+function textures() {
+	return { atlas: _textureAtlas, lightmap: _lightmap };
+}
+
 function init(gl, data) {
 	_vertCount = data.meshVertCount;
 	_width = data.width;
@@ -431,5 +439,6 @@ export default {
 	init: init,
 	free: free,
 	render: render,
-	getShadowFactor: getShadowFactor
+	getShadowFactor: getShadowFactor,
+	textures: textures
 };

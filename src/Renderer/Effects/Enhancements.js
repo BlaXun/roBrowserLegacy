@@ -13,7 +13,15 @@ const Enhancements = {
 	 * Water mirrors the scene above it: 0 off .. 1 full. Costs a second
 	 * render of the ground and models, at half resolution, on maps with water.
 	 */
-	waterReflection: 0
+	waterReflection: 0,
+
+	/**
+	 * Grass on grass tiles (Renderer/Map/Grass.js), or null for none:
+	 * { textures: ['풀', 'grass', ...] -- substrings of the ground texture
+	 *   names that are grass, density 0..1, height, width, wind 0..1,
+	 *   distance (fade), tint [r,g,b] }
+	 */
+	grass: null
 };
 
 export default Enhancements;
