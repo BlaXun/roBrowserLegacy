@@ -337175,6 +337175,15 @@ function onBuyCashResult(pkt) {
 	NpcStore_default.ui.find(".cashuser .cashpoints").text(pkt.KafraPoint);
 }
 /**
+* Sold to a buying store: the server takes the items without the usual
+* removal packet and sends this one instead (price is per item).
+*
+* @param {object} pkt - PACKET.ZC.ITEM_DELETE_BUYING_STORE
+*/
+function onSellToBuyingStoreDelete(pkt) {
+	InventoryController.getUI().removeItem(pkt.index, pkt.count);
+}
+/**
 * Received purchased informations
 *
 * @param {object} pkt - FAILED_TRADE_BUYING_STORE_TO_SELLER
@@ -337379,6 +337388,7 @@ function MainEngine$9() {
 	Network.hookPacket(PACKET.ZC.PC_PURCHASE_ITEMLIST_FROMMC3, onVendingStoreList);
 	Network.hookPacket(PACKET.ZC.ACK_ITEMLIST_BUYING_STORE, onBuyingStoreList);
 	Network.hookPacket(PACKET.ZC.FAILED_TRADE_BUYING_STORE_TO_SELLER, onSellToBuyingStoreResult);
+	Network.hookPacket(PACKET.ZC.ITEM_DELETE_BUYING_STORE, onSellToBuyingStoreDelete);
 	Network.hookPacket(PACKET.ZC.NPC_MARKET_OPEN2, onMarketShop);
 	Network.hookPacket(PACKET.ZC.NPC_MARKET_PURCHASE_RESULT, onMarketShopResult);
 	Network.hookPacket(PACKET.ZC.NPC_MARKET_PURCHASE_RESULT2, onMarketShopResult);
