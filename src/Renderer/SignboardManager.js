@@ -2,6 +2,7 @@
 
 import glMatrix from 'Utils/gl-matrix.js';
 import Renderer from 'Renderer/Renderer.js';
+import Altitude from 'Renderer/Map/Altitude.js';
 import DB from 'DB/DBManager.js';
 import EntitySignboard from 'UI/Components/EntitySignboard/EntitySignboard.js';
 import VerticalFlip from 'Renderer/Effects/Shaders/VerticalFlip.js';
@@ -70,7 +71,7 @@ class SignboardManager {
 
 			// Calculate world position
 			_vector[0] = signboard.x + 0.5;
-			_vector[1] = 0; // Ground level
+			_vector[1] = -Altitude.getCellHeight(signboard.x, signboard.y); // Terrain height, as entities do
 			_vector[2] = signboard.y + 0.5;
 			mat4.translate(_matrix, modelView, _vector);
 
