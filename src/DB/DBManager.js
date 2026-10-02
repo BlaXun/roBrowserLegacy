@@ -50,6 +50,7 @@ import PetHungryState from './Pets/PetHungryState.js';
 import PetFriendlyState from './Pets/PetFriendlyState.js';
 import PetMessageConst from './Pets/PetMessageConst.js';
 import MapInfo from './Map/MapTable.js';
+import { mergeSignboards } from './Map/SignboardMerge.js';
 import Network from 'Network/NetworkManager.js';
 import PACKET from 'Network/PacketStructure.js';
 import PACKETVER from 'Network/PacketVerManager.js';
@@ -634,10 +635,19 @@ class DB {
 
 			// EntitySignBoard
 			const onSignBoardEnd = onLoad();
-			loadSignBoardList(DB.LUA_PATH + 'SignBoardList.lub', null, () => {
-				// this is not official, its a translation file
-				loadSignBoardData('SystemEN/Sign_Data.lub', null, onSignBoardEnd);
-			});
+			// customSignBoardList: further signboard tables, loaded after the base
+			// in the order given. Each adds its signs to what came before, and a
+			// sign on a cell that already has one replaces it, so a mod can put an
+			// icon over its own NPC without carrying the whole table.
+			const customSignBoardList = Configs.get('customSignBoardList', []);
+			// Emptied first, because the tables are merged: a second load (another
+			// server) must not keep the first one's signs.
+			SignBoardTable = {};
+			const loadCustomSignBoardList = (index = 0) =>
+				index < customSignBoardList.length
+					? loadSignBoardList(customSignBoardList[index], null, () => loadCustomSignBoardList(index + 1))
+					: loadSignBoardData('SystemEN/Sign_Data.lub', null, onSignBoardEnd); // this is not official, its a translation file
+			loadSignBoardList(DB.LUA_PATH + 'SignBoardList.lub', null, () => loadCustomSignBoardList());
 
 			// CheckAttendance
 			if (Configs.get('enableCheckAttendance') && PACKETVER.value >= 20180307) {
@@ -6367,6 +6377,11 @@ function loadSignBoardList(filename, callback, onEnd) {
 				// mount file
 				lua.mountFile('SignBoardList.lub', buffer);
 
+				// Cleared first: the tables share one Lua state, and a file that
+				// failed to define its own would otherwise add the previous
+				// file's signs a second time.
+				lua.doStringSync('SignBoardList = nil');
+
 				// execute file
 				await lua.doFile('SignBoardList.lub');
 
@@ -6391,7 +6406,9 @@ function loadSignBoardList(filename, callback, onEnd) {
                         main_SignBoardList()
 					`);
 
-				SignBoardTable = preprocessSignboardData(signBoardList);
+				// Merged over what earlier tables loaded rather than replacing it,
+				// so customSignBoardList can add to the base.
+				mergeSignboards(signBoardList, SignBoardTable);
 			} catch (error) {
 				console.error('[loadSignBoardList] Error: ', error);
 			} finally {
@@ -6403,29 +6420,6 @@ function loadSignBoardList(filename, callback, onEnd) {
 		},
 		onEnd
 	);
-}
-
-/**
- * Preprocesses an array of signboard objects and organizes them into a nested dictionary.
- *
- * @param {Array} signboardArray - The array of signboard objects.
- * @return {Object} The nested dictionary containing the preprocessed signboard data.
- */
-function preprocessSignboardData(signboardArray) {
-	const signboardDict = {};
-
-	for (const signboard of signboardArray) {
-		const { mapname, x, y } = signboard;
-		if (!signboardDict[mapname]) {
-			signboardDict[mapname] = {};
-		}
-		if (!signboardDict[mapname][x]) {
-			signboardDict[mapname][x] = {};
-		}
-		signboardDict[mapname][x][y] = signboard;
-	}
-
-	return signboardDict;
 }
 
 /**
