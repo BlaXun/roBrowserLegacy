@@ -36,6 +36,7 @@ import EntityAction from './EntityAction.js';
 import PACKETVER from 'Network/PacketVerManager.js';
 import JobConst from 'DB/Jobs/JobConst.js';
 import GR2ModelRenderer from 'Renderer/GR2/GR2ModelRenderer.js';
+import Session from 'Engine/SessionStorage.js';
 
 // Client directory the GR2 3D-mob models resolve against (GR2ModelRenderer fetches from here).
 const GR2_MODEL_ROOT = 'data/model/3dmob/';
@@ -259,7 +260,7 @@ function UpdateBody(job) {
 	// Don't force the GM/admin sprite when the entity is displaying a monster
 	// form (disguise or transformation) - otherwise a GM disguised as a monster
 	// shows the headless admin sprite instead of the monster.
-	const showAdminSprite = this.isAdmin && !shouldSuppressHead.call(this);
+	const showAdminSprite = Session.showsAdmin(this, 'sprite') && !shouldSuppressHead.call(this);
 	let path = showAdminSprite ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex);
 	const Entity = this.constructor;
 
@@ -563,13 +564,13 @@ function UpdateBodyStyle(look) {
 				}
 			}
 
-			path = this.isAdmin ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex, look, cashMountCostume);
+			path = Session.showsAdmin(this, 'sprite') ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex, look, cashMountCostume);
 
 			// The job whose sprite getBodyPath picked, so the palette can be the one made for it: a
 			// body style draws the `costume_1` body of `look`, mounted or not, and that body has
 			// palettes of its own. Null when the style draws the job's own body, and for an admin,
 			// whose body is the admin sprite whatever the style.
-			const styled = !this.isAdmin && PACKETVER.value > 20141022 && look > 0 && look !== job && !cashMountCostume;
+			const styled = !Session.showsAdmin(this, 'sprite') && PACKETVER.value > 20141022 && look > 0 && look !== job && !cashMountCostume;
 			this._bodyStyleJob = styled ? look : null;
 			Entity = this.constructor;
 

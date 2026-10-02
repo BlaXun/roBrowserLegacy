@@ -1037,7 +1037,7 @@ function onEntityTalk(pkt) {
 		// Should not happen
 		if (entity === Session.Entity) {
 			type |= ChatBox.TYPE.SELF;
-		} else if (entity.isAdmin) {
+		} else if (Session.showsAdmin(entity, 'chat')) {
 			type |= ChatBox.TYPE.ADMIN;
 		}
 	}
@@ -1137,7 +1137,7 @@ function updateEntityStyle(entity) {
 							? entity.display.STYLE.NPC
 							: entity.objecttype === Entity.TYPE_NPC2
 								? entity.display.STYLE.NPC
-								: entity.objecttype === Entity.TYPE_PC && entity.isAdmin
+								: entity.objecttype === Entity.TYPE_PC && Session.showsAdmin(entity, 'name')
 									? entity.display.STYLE.ADMIN
 									: entity.display.STYLE.DEFAULT
 	);

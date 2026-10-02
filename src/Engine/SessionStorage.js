@@ -32,6 +32,26 @@ export default {
 
 	AdminList: [],
 
+	/**
+	 * Which parts of the GM look an account on AdminList gets: the GM sprite
+	 * in place of its class body, the GM name style, and GM-styled chat. All
+	 * on by default, as before; a plugin can turn each off (a GM who wants to
+	 * look like their class). Read through showsAdmin.
+	 */
+	AdminLook: { sprite: true, name: true, chat: true },
+
+	/**
+	 * Whether an entity gets one part of the GM look: only an admin does, and
+	 * only the parts AdminLook has not turned off.
+	 *
+	 * @param {{isAdmin?: boolean}} entity
+	 * @param {'sprite'|'name'|'chat'} part
+	 * @return {boolean}
+	 */
+	showsAdmin(entity, part) {
+		return Boolean(entity?.isAdmin) && this.AdminLook?.[part] !== false;
+	},
+
 	underAutoCounter: false,
 
 	moveAction: null,

@@ -103,4 +103,22 @@ describe('EntityView body palette', () => {
 		styled(rk, 1);
 		expect(rk.files.body.pal).toBe(`${PalNameTable[JobId.RUNE_KNIGHT]}_1_3.pal`);
 	});
+
+	it('draws an admin as their class when the GM sprite is turned off', async () => {
+		const { default: Session } = await import('Engine/SessionStorage.js');
+		Session.AdminLook.sprite = false;
+		try {
+			const rk = entity(JobId.RUNE_KNIGHT, 0);
+			rk.isAdmin = true;
+			rk.bodypalette = 3;
+			styled(rk, 1);
+			// The body style's palette, as for anyone: not the admin sprite's.
+			expect(rk.files.body.pal).toBe(`${PalNameTable[JobId.RUNE_KNIGHT_2ND]}_1_3.pal`);
+			expect(Session.showsAdmin(rk, 'sprite')).toBe(false);
+			expect(Session.showsAdmin(rk, 'name')).toBe(true);
+			expect(Session.showsAdmin({ isAdmin: false }, 'name')).toBe(false);
+		} finally {
+			Session.AdminLook.sprite = true;
+		}
+	});
 });
