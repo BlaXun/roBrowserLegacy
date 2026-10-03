@@ -226524,6 +226524,13 @@ var init_SkillTargetSelection = __esmMin((() => {
 	* Intersect with an entity ID
 	* (used in party UI)
 	*/
+	/**
+	* Target types the pending skill accepts (SkillTargetSelection.TYPE bits),
+	* or 0 when no skill is waiting for a target.
+	*/
+	SkillTargetSelection.getFlag = function getFlag() {
+		return Mouse.state === Mouse.MOUSE_STATE.USESKILL ? _flag : 0;
+	};
 	SkillTargetSelection.intersectEntityId = function intersectEntityId(id) {
 		const entity = EntityManager.get(id);
 		if (entity) intersectEntity(entity);
@@ -235340,8 +235347,19 @@ function navigateDraggableItems(direction) {
 		}
 	}
 }
-function quickCastClick() {
+/**
+* Click the map for Quick-Cast, but only while a skill is still waiting for
+* a target. Items, self skills and skills already cast leave the game in
+* normal mode, where this click would be a plain left click on the ground:
+* it cancelled the running attack and walked to the cursor.
+*
+* @param {function} [beforeClick] runs just before the click, e.g. to put
+*   the cursor on the selected target
+*/
+function quickCastClick(beforeClick) {
 	setTimeout(function() {
+		if (Mouse.state !== Mouse.MOUSE_STATE.USESKILL) return;
+		if (beforeClick) beforeClick();
 		_dispatchMouseEvent(Renderer.canvas, "mousedown", 1);
 		setTimeout(function() {
 			_dispatchMouseEvent(Renderer.canvas, "mouseup", 1);
@@ -235443,20 +235461,7 @@ function focusItem(item) {
 }
 function getEntityInContext() {
 	const focus = EntityManager.getFocusEntity();
-	if (typeof window !== "undefined") window.__dpadAttackPick = {
-		at: Date.now(),
-		hasFocus: !!focus,
-		focusGid: focus ? focus.GID : null,
-		focusType: focus ? focus.objecttype : null,
-		focusAction: focus ? focus.action : null,
-		dieConst: focus && focus.ACTION ? focus.ACTION.DIE : null,
-		focusRemoveTick: focus ? focus.remove_tick : null
-	};
-	if (focus && focus.action !== focus.ACTION.DIE && focus.remove_tick === 0) {
-		if (typeof window !== "undefined") window.__dpadAttackPick.chosen = "focus";
-		return focus;
-	}
-	if (typeof window !== "undefined") window.__dpadAttackPick.chosen = "fallback";
+	if (focus && focus.action !== focus.ACTION.DIE && focus.remove_tick === 0) return focus;
 	let target = null;
 	if (Controls_default.attackTargetMode === 1) {
 		target = EntityManager.getLowestHpEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_MOB);
@@ -235529,19 +235534,6 @@ function cycle(direction) {
 	}
 	focusTarget(target);
 	JoystickMouseCursorAdapter_default.moveMouseToEntity(target);
-	if (typeof window !== "undefined") {
-		window.__dpadLastSort = sorted.map((e, i) => ({
-			i,
-			gid: e.GID,
-			type: e.objecttype,
-			pos: [e.position[0], e.position[1]],
-			dsq: Math.round(((e.position[0] - player.position[0]) ** 2 + (e.position[1] - player.position[1]) ** 2) * 100) / 100
-		}));
-		window.__dpadLastPlayer = [player.position[0], player.position[1]];
-		window.__dpadLastSetFocusGid = target.GID;
-		const after = EntityManager.getFocusEntity();
-		window.__dpadFocusAfterCycle = after ? after.GID : null;
-	}
 }
 /**
 * Clear the focused entity (if any) and snap the virtual cursor back to the
@@ -235549,7 +235541,6 @@ function cycle(direction) {
 * starts from the closest mob again.
 */
 function clearFocus() {
-	if (typeof window !== "undefined") window.__dpadResetCalls = (window.__dpadResetCalls || 0) + 1;
 	releaseItem();
 	const focus = EntityManager.getFocusEntity();
 	if (focus) {
@@ -235614,11 +235605,9 @@ function move(x, y) {
 	if (!player || _stickHeld) return;
 	SessionStorage_default.moveAction = null;
 	_lastAttackGid = null;
-	direction$1[0] = x;
-	direction$1[1] = y;
-	exports$3.mat2.identity(rotate$1);
-	exports$3.mat2.rotate(rotate$1, rotate$1, -Camera.direction * 45 / 180 * Math.PI);
-	exports$3.vec2.transformMat2(direction$1, direction$1, rotate$1);
+	const angle = Camera.angle[1] * Math.PI / 180;
+	direction$1[0] = x * Math.cos(angle) - y * Math.sin(angle);
+	direction$1[1] = x * Math.sin(angle) + y * Math.cos(angle);
 	const nx = Math.round(player.position[0] + direction$1[0] * 3);
 	const ny = Math.round(player.position[1] + direction$1[1] * 3);
 	const movePacket = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.REQUEST_MOVE2() : new PACKET.CZ.REQUEST_MOVE();
@@ -235687,7 +235676,7 @@ function pickUp() {
 	}
 	Network.sendPacket(pkt);
 }
-var direction$1, rotate$1, _stickHeld, _lastAttackGid, JoystickCharacterControl_default;
+var direction$1, _stickHeld, _lastAttackGid, JoystickCharacterControl_default;
 var init_JoystickCharacterControl = __esmMin((() => {
 	init_SessionStorage();
 	init_EntityManager();
@@ -235699,7 +235688,6 @@ var init_JoystickCharacterControl = __esmMin((() => {
 	init_PathFinding();
 	init_JoystickTargetService();
 	direction$1 = exports$3.vec2.create();
-	rotate$1 = exports$3.mat2.create();
 	_stickHeld = false;
 	_lastAttackGid = null;
 	JoystickCharacterControl_default = {
@@ -235950,6 +235938,8 @@ var init_JoystickInteractionService = __esmMin((() => {
 	init_SkillInfo();
 	init_JoystickShortcutMapper();
 	init_MouseEventHandler();
+	init_EntityManager();
+	init_SkillTargetSelection();
 	JoystickInteractionService_default = {
 		prepare: function() {},
 		dispose: function() {},
@@ -235965,8 +235955,11 @@ var init_JoystickInteractionService = __esmMin((() => {
 				if (targetEntity) JoystickMouseCursorAdapter_default.moveMouseToEntity(targetEntity);
 			}
 			ShortCut_default.onShortCut({ cmd: "EXECUTE" + index });
-			if (Controls_default.joyQuick === 2) JoystickMouseCursorAdapter_default.quickCastClick();
-			else if (Controls_default.joyQuick === 1) {
+			if (Controls_default.joyQuick === 2) {
+				if (!this.castAtFocus()) JoystickMouseCursorAdapter_default.quickCastClick(function() {
+					JoystickTargetService_default.snapCursorToFocus();
+				});
+			} else if (Controls_default.joyQuick === 1) {
 				this.cancelQuick = false;
 				const waitforRelease = () => {
 					setTimeout(() => {
@@ -235977,6 +235970,22 @@ var init_JoystickInteractionService = __esmMin((() => {
 				};
 				waitforRelease();
 			}
+		},
+		/**
+		* Cast the skill waiting for a target on the focused mob, if it takes an
+		* enemy target. Goes through SkillTargetSelection's own entity check, as
+		* the party window does for its members.
+		*
+		* @return {boolean} whether the skill was cast
+		*/
+		castAtFocus: function() {
+			const flag = SkillTargetSelection_default.getFlag();
+			if (!(flag & SkillTargetSelection_default.TYPE.ENEMY) || flag & SkillTargetSelection_default.TYPE.PLACE) return false;
+			const focus = EntityManager.getFocusEntity();
+			if (!focus || focus.action === focus.ACTION.DIE || focus.remove_tick !== 0) return false;
+			SkillTargetSelection_default.intersectEntityId(focus.GID);
+			SkillTargetSelection_default.remove();
+			return true;
 		},
 		openSelectionWindow: function(draggableElement) {
 			const index = parseInt(draggableElement.getAttribute("data-index"), 10);
@@ -236217,13 +236226,14 @@ function isRebound(x, y) {
 	if (!lastMove || Date.now() - lastMoveAt > REBOUND_MS) return false;
 	return Math.hypot(x, y) < REBOUND_MAX && x * lastMove[0] + y * lastMove[1] < 0;
 }
-var REBOUND_MS, REBOUND_MAX, lastMove, lastMoveAt, JoystickAxisInput_default;
+var REBOUND_MS, REBOUND_MAX, MOVE_MIN, lastMove, lastMoveAt, JoystickAxisInput_default;
 var init_JoystickAxisInput = __esmMin((() => {
 	init_JoystickInteractionService();
 	init_Controls();
 	init_JoystickUIRenderer();
 	REBOUND_MS = 250;
 	REBOUND_MAX = .6;
+	MOVE_MIN = .5;
 	lastMove = null;
 	lastMoveAt = 0;
 	JoystickAxisInput_default = { update: function(axes) {
@@ -236234,10 +236244,11 @@ var init_JoystickAxisInput = __esmMin((() => {
 			lx = axes[2];
 			ly = axes[3];
 		}
-		if ((Math.abs(lx) > Controls_default.joyDeadline || Math.abs(ly) > Controls_default.joyDeadline) && !isRebound(lx, ly)) {
+		const magnitude = Math.hypot(lx, ly);
+		if (magnitude >= Math.max(Controls_default.joyDeadline, MOVE_MIN) && !isRebound(lx, ly)) {
 			lastMove = [lx, ly];
 			lastMoveAt = Date.now();
-			JoystickInteractionService_default.moveCharacter(lx, -ly);
+			JoystickInteractionService_default.moveCharacter(lx / magnitude, -ly / magnitude);
 			JoystickInteractionService_default.cancelQuick = true;
 			active = true;
 		} else JoystickInteractionService_default.releaseStick();
