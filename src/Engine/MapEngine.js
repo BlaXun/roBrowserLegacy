@@ -93,7 +93,7 @@ import Achievement from 'UI/Components/Achievement/Achievement.js';
 import MainEngine from './MapEngine/Main.js';
 import MapStateEngine from './MapEngine/MapState.js';
 import NPCEngine from './MapEngine/NPC.js';
-import EntityEngine from './MapEngine/Entity.js';
+import EntityEngine, { clearQuestEffects } from './MapEngine/Entity.js';
 import ItemEngine from './MapEngine/Item.js';
 import MailEngine from './MapEngine/Mail.js';
 import PrivateMessageEngine from './MapEngine/PrivateMessage.js';
@@ -637,6 +637,8 @@ function onConnectionRefused(pkt) {
  * @param {object} pkt - PACKET.ZC.NPCACK_MAPMOVE
  */
 function onMapChange(pkt) {
+	clearQuestEffects();
+
 	MapRenderer.onLoad = () => {
 		Session.Entity.set({
 			PosDir: [pkt.xPos, pkt.yPos, 0],
