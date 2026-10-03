@@ -2106,7 +2106,13 @@ class DB {
 
 		const baseClass = WeaponJobTable[job] || WeaponJobTable[0];
 
-		id = DB.getWeaponType(id);
+		// A look id that weapontable.lub names is drawn under that name. The
+		// official ones are all below WeaponType.MAX, which getWeaponType passes
+		// through; a mod's own look needs a higher id, which getWeaponType would
+		// turn into its base weapon type (or an unrelated item's ClassNum), so
+		// the mod's sprite was never asked for. Attack motions still come from
+		// the base type, through getWeaponType(id, true) and Expansion_Weapon_IDs.
+		id = id >= WeaponType.MAX && WeaponTable[id] !== undefined ? id : DB.getWeaponType(id);
 
 		// TODO: CHECK IF THIS IS CORRECT
 		if (leftid) {
