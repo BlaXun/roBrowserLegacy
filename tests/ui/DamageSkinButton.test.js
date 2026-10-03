@@ -86,4 +86,22 @@ describe('Damage Indicator style button', () => {
 		loadAll();
 		expect(image(button)).toBe('btn_damage_pick');
 	});
+
+	it('follows the pick after its window is removed and appended again', async () => {
+		const button = styleButton();
+		GUIComponent.processDataAttrs(button);
+		await requested(4);
+		loadAll();
+
+		// What GUIComponent.remove() sends every node, as on a map change
+		button.dispatchEvent(new Event('x_remove'));
+
+		button.classList.add('active');
+		await Promise.resolve();
+		expect(image(button)).toBe('btn_damage_pick');
+
+		button.classList.remove('active');
+		await Promise.resolve();
+		expect(image(button)).toBe('btn_damage');
+	});
 });
