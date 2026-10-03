@@ -105,6 +105,8 @@ ShortCutOption.init = function () {
 	bindChange('.attackTargetMode', onUpdateTargetOption);
 	bindChange('.joyCycleMode', onUpdateCycleMode);
 	bindChange('.joyAimEnabled', onUpdateAimEnabled);
+	bindChange('.joyAimRing', onUpdateAimRing);
+	bindChange('.joyAimLine', onUpdateAimLine);
 
 	// Gamepad button mapping panel
 	const gamepadTab = root.querySelector('.content.t_gamepad');
@@ -164,6 +166,14 @@ ShortCutOption.onAppend = function () {
 		cycleMode.value = String(Controls.joyCycleMode | 0);
 	}
 	const aimEnabled = this.getRoot().querySelector('.joyAimEnabled');
+	const aimRing = this.getRoot().querySelector('.joyAimRing');
+	if (aimRing) {
+		aimRing.checked = !!Controls.joyAimRing;
+	}
+	const aimLine = this.getRoot().querySelector('.joyAimLine');
+	if (aimLine) {
+		aimLine.checked = !!Controls.joyAimLine;
+	}
 	if (aimEnabled) {
 		aimEnabled.checked = !!Controls.joyAimEnabled;
 	}
@@ -603,6 +613,16 @@ function startRemap(root, logical, label, remapButton) {
 
 function onUpdateAimEnabled() {
 	JoystickAim.setEnabled(this.checked);
+}
+
+function onUpdateAimRing() {
+	Controls.joyAimRing = this.checked;
+	Controls.save();
+}
+
+function onUpdateAimLine() {
+	Controls.joyAimLine = this.checked;
+	Controls.save();
 }
 
 function onUpdateCycleMode() {

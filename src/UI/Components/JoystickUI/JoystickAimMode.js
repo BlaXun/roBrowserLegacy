@@ -48,11 +48,15 @@ const HIT_SPREAD = 0.075;
 
 const RING_RADIUS = 0.6; // cells
 const RING_POINTS = 24;
+const RING_FADE_MS = 2000; // the ring fades out over this long after a new target
+const LINE_STEP = 0.5; // cells between projected line points, so it follows the ground
 
 let _aimLastHit = null;
 let _aimOverlay = null;
 let _aimCtx = null;
 let _aimDrawn = false;
+let _aimRingTarget = null; // the target the aim selected last
+let _aimRingAt = 0; // when, for the fade-out
 
 const _aimWorld = glMatrix.vec4.create();
 const _aimView = glMatrix.vec4.create();
@@ -183,14 +187,12 @@ function clearOverlay() {
 
 /**
  * A red ring flat on the ground under the entity, in perspective.
+ *
+ * @param {CanvasRenderingContext2D} ctx overlay, already cleared
+ * @param {Entity} entity
+ * @param {number} alpha 0-1, for the fade-out
  */
-function drawRing(entity) {
-	const ctx = getContext();
-	if (!ctx) {
-		return;
-	}
-	clearOverlay();
-
+function drawRing(ctx, entity, alpha) {
 	const points = [];
 	for (let i = 0; i < RING_POINTS; i++) {
 		const a = (i / RING_POINTS) * Math.PI * 2;
@@ -204,19 +206,63 @@ function drawRing(entity) {
 		points.push(p);
 	}
 
-	const dpr = window.devicePixelRatio || 1;
-	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 	ctx.beginPath();
 	ctx.moveTo(points[0][0], points[0][1]);
 	for (let i = 1; i < points.length; i++) {
 		ctx.lineTo(points[i][0], points[i][1]);
 	}
 	ctx.closePath();
-	ctx.fillStyle = 'rgba(255, 64, 64, 0.2)';
+	ctx.fillStyle = 'rgba(255, 64, 64, ' + 0.2 * alpha + ')';
 	ctx.fill();
 	ctx.lineWidth = 2.5;
-	ctx.strokeStyle = 'rgba(255, 64, 64, 0.9)';
+	ctx.strokeStyle = 'rgba(255, 64, 64, ' + 0.9 * alpha + ')';
 	ctx.stroke();
+	_aimDrawn = true;
+}
+
+/**
+ * The aim line, from the character to the target it hit, sampled along
+ * the ground so it follows the terrain.
+ *
+ * @param {CanvasRenderingContext2D} ctx overlay, already cleared
+ * @param {Array<number>} from [x, y] map position
+ * @param {Entity} to target
+ */
+function drawAimLine(ctx, from, to) {
+	const dx = to.position[0] - from[0];
+	const dy = to.position[1] - from[1];
+	const length = Math.hypot(dx, dy);
+
+	const points = [];
+	for (let t = 0; t < length; t += LINE_STEP) {
+		const p = project(from[0] + (dx / length) * t, from[1] + (dy / length) * t);
+		if (p) {
+			points.push(p);
+		}
+	}
+	const end = project(to.position[0], to.position[1]);
+	if (end) {
+		points.push(end);
+	}
+	if (points.length < 2) {
+		return;
+	}
+
+	ctx.lineCap = 'round';
+	ctx.lineJoin = 'round';
+	[
+		['rgba(0, 0, 0, 0.45)', 5],
+		['rgba(255, 82, 82, 0.9)', 2.5]
+	].forEach(([stroke, width]) => {
+		ctx.strokeStyle = stroke;
+		ctx.lineWidth = width;
+		ctx.beginPath();
+		ctx.moveTo(points[0][0], points[0][1]);
+		for (let i = 1; i < points.length; i++) {
+			ctx.lineTo(points[i][0], points[i][1]);
+		}
+		ctx.stroke();
+	});
 	_aimDrawn = true;
 }
 
@@ -237,6 +283,7 @@ function getTarget() {
  */
 function release() {
 	_aimLastHit = null;
+	_aimRingTarget = null;
 	clearOverlay();
 }
 
@@ -254,31 +301,52 @@ function update(x, y, held) {
 		return;
 	}
 
+	const origin = [player.position[0], player.position[1]];
+	let hit = null;
+
 	if (held) {
-		const origin = [player.position[0], player.position[1]];
 		const dir = stickToMapDirection(x, y, Camera.angle[1]);
 		const candidates = Target.getCycleCandidates(player).filter(isOnScreen);
-		const hit = findFirstHit(origin, dir, candidates);
+		hit = findFirstHit(origin, dir, candidates);
 
 		if (hit && hit.entity !== _aimLastHit) {
 			Target.aimAt(hit.entity);
 			_aimLastHit = hit.entity;
+			_aimRingTarget = hit.entity;
+			_aimRingAt = performance.now();
 		}
 	} else {
 		_aimLastHit = null;
 	}
 
 	const target = getTarget();
-	if (!target) {
-		clearOverlay();
-		return;
-	}
 
 	// Keep the virtual cursor on the target while aiming, so A clicks it
-	if (held) {
+	if (held && target) {
 		Cursor.moveMouseToEntity(target);
 	}
-	drawRing(target);
+
+	// Both indicators are off by default (Settings > Gamepad > Aim Settings)
+	const line = ControlsSettings.joyAimLine && hit && hit.entity === target ? target : null;
+	const fade = 1 - (performance.now() - _aimRingAt) / RING_FADE_MS;
+	const ring = ControlsSettings.joyAimRing && _aimRingTarget === target && target && fade > 0 ? target : null;
+
+	clearOverlay();
+	if (!line && !ring) {
+		return;
+	}
+	const ctx = getContext();
+	if (!ctx) {
+		return;
+	}
+	const dpr = window.devicePixelRatio || 1;
+	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	if (line) {
+		drawAimLine(ctx, origin, line);
+	}
+	if (ring) {
+		drawRing(ctx, ring, fade);
+	}
 }
 
 /**
