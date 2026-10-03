@@ -309,7 +309,10 @@ function rodexGetZeny(pkt) {
 			break;
 		default:
 			ChatBox.addText(DB.getMessage(2591), ChatBox.TYPE.INFO_MAIL, ChatBox.FILTER.PUBLIC_LOG);
-			ReadRodex.clearZeny();
+			// Claim All claims mail that isn't the one open, if any is
+			if (pkt.MailID === ReadRodex.MailID) {
+				ReadRodex.clearZeny();
+			}
 	}
 }
 
@@ -328,7 +331,10 @@ function rodexGetItem(pkt) {
 			break;
 		default:
 			ChatBox.addText(DB.getMessage(2588), ChatBox.TYPE.INFO_MAIL, ChatBox.FILTER.PUBLIC_LOG);
-			ReadRodex.clearItemList();
+			// Claim All claims mail that isn't the one open, if any is
+			if (pkt.MailID === ReadRodex.MailID) {
+				ReadRodex.clearItemList();
+			}
 	}
 }
 
