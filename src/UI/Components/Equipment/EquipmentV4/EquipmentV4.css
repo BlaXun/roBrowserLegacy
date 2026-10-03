@@ -59,17 +59,29 @@
 	display: flex;
 }
 
+/* A tab is as wide as its label, so a long one ("Damage Indicator") stays on
+   one line instead of wrapping below the bar onto the window. The minimum fits
+   the short labels in bold, so selecting one doesn't move the tabs. A label too
+   long for the bar ends in an ellipsis. */
+#EquipmentV4 .tab {
+	flex: 0 1 auto;
+	min-width: 0;
+}
 #EquipmentV4 .tab a {
-	width: 60px;
+	box-sizing: border-box;
+	min-width: 57px;
 	height: 100%;
+	padding: 0 2px;
 	color: #42454a;
 	border: 1px solid #c9c3ba;
 	border-bottom: none;
 	text-decoration: none;
-	display: inline-block;
-	vertical-align: bottom;
+	display: block;
 	border-radius: 3px 3px 0 0;
 	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 #EquipmentV4 .tab a.selected {
 	color: #000;
