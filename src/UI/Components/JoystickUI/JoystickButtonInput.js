@@ -76,15 +76,32 @@ const ButtonInput = {
 			pressed = true;
 		}
 
-		// X → attack
-		if (btn[2] !== 'unpressed') {
-			Interaction.attackTargeted();
+		// X → attack. A fresh press always attacks. While held, attack only
+		// when the target changes (previous one died, D-pad cycled): the
+		// server keeps attacking on its own (action 7), and re-sending every
+		// poll restarted the walk -- zig-zag that mouse combat does not have.
+		// Handling 'holding' too means a press that lands inside the click
+		// lock is not lost.
+		if (btn[2] !== 'unpressed' && Interaction.attackTargeted(btn[2] === 'holding')) {
 			pressed = true;
 		}
 
-		// Y → pickup item
-		if (btn[3] !== 'unpressed') {
+		// Y → pickup item (single-fire; nothing to do while held)
+		if (btn[3] === 'pressed') {
 			Interaction.pickUpItem();
+			pressed = true;
+		}
+
+		// R3 (right stick click) → clear cycle focus + recenter cursor
+		// Single-fire so holding R3 does not keep re-clearing / re-centering.
+		if (btn[11] === 'pressed') {
+			Interaction.resetFocus();
+			pressed = true;
+		}
+
+		// L3 (left stick click) → switch D-pad cycle mode (mobs/items/both)
+		if (btn[10] === 'pressed') {
+			Interaction.nextCycleMode();
 			pressed = true;
 		}
 
@@ -154,12 +171,12 @@ const ButtonInput = {
 			Interaction.navigateDpad('down');
 			pressed = true;
 		} else if (buttons[14] !== 'unpressed') {
-			// D-pad Left
-			Interaction.navigateDpad('left');
+			// D-pad Left: cycle to the previous nearby mob/item (or grid nav over a UI)
+			Interaction.cycleTarget('prev');
 			pressed = true;
 		} else if (buttons[15] !== 'unpressed') {
-			// D-pad Right
-			Interaction.navigateDpad('right');
+			// D-pad Right: cycle to the next nearby mob/item (or grid nav over a UI)
+			Interaction.cycleTarget('next');
 			pressed = true;
 		} else if (buttons[9] !== 'unpressed') {
 			// Start button

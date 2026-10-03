@@ -21,6 +21,8 @@ import Input from './JoystickInputService.js';
 import DB from 'DB/DBManager.js';
 import SkillInfo from 'DB/Skills/SkillInfo.js';
 import ShortcutMapper from './JoystickShortcutMapper.js';
+import Mouse from 'Controls/MouseEventHandler.js';
+import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTargetSelection.js';
 
 export default {
 	prepare: function () {},
@@ -51,7 +53,14 @@ export default {
 		});
 
 		if (ControlsSettings.joyQuick === 2) {
-			Cursor.quickCastClick();
+			// Instant: a selected mob gets the skill wherever the cursor is
+			// (it may have walked away from where the cycle left it); ground
+			// skills land where the mob stands at the moment of the click.
+			if (!this.castAtFocus()) {
+				Cursor.quickCastClick(function () {
+					Target.snapCursorToFocus();
+				});
+			}
 		} else if (ControlsSettings.joyQuick === 1) {
 			this.cancelQuick = false;
 
@@ -67,6 +76,34 @@ export default {
 			};
 			waitforRelease();
 		}
+	},
+
+	/**
+	 * Cast the skill waiting for a target on the focused mob, if it takes an
+	 * enemy target. Goes through SkillTargetSelection's own entity check, as
+	 * the party window does for its members.
+	 *
+	 * A focus that is not an attackable target (an NPC or friendly player
+	 * the player clicked, or a stale focus from the previous map) is left
+	 * alone and false returned, so the caller's quick-cast click runs
+	 * instead of the skill being cancelled on a target it refuses.
+	 *
+	 * @return {boolean} whether the skill was cast
+	 */
+	castAtFocus: function () {
+		const flag = SkillTargetSelection.getFlag();
+		if (!(flag & SkillTargetSelection.TYPE.ENEMY) || flag & SkillTargetSelection.TYPE.PLACE) {
+			return false;
+		}
+
+		const focus = Target.getAttackableFocus();
+		if (!focus) {
+			return false;
+		}
+
+		SkillTargetSelection.intersectEntityId(focus.GID);
+		SkillTargetSelection.remove();
+		return true;
 	},
 
 	openSelectionWindow: function (draggableElement) {
@@ -126,8 +163,24 @@ export default {
 		Character.pickUp();
 	},
 
-	attackTargeted: function () {
-		Character.attack();
+	/**
+	 * @param {boolean} repeat true while X is held (see Character.attack)
+	 * @return {boolean} whether an attack was sent
+	 */
+	attackTargeted: function (repeat) {
+		const sent = Character.attack(repeat);
+
+		// Park the virtual cursor on the target, as a D-pad cycle does, so a
+		// following A press (a real left click at the cursor) lands on the
+		// mob instead of the ground, which would cancel the attack and walk.
+		if (sent) {
+			Target.snapCursorToFocus();
+		}
+		return sent;
+	},
+
+	releaseStick: function () {
+		Character.releaseStick();
 	},
 
 	moveCursor: function (dx, dy) {
@@ -156,6 +209,38 @@ export default {
 
 	navigateDpad: function (direction) {
 		return Cursor.navigateDraggableItems(direction);
+	},
+
+	/**
+	 * D-pad left/right. If the virtual cursor is parked over an item or
+	 * skill container, keep today's grid navigation so inventory nav still
+	 * works with the D-pad. Over the world, cycle the targeted mob.
+	 *
+	 * @param {string} direction 'next' or 'prev'
+	 */
+	cycleTarget: function (direction) {
+		const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+		if (el && el.closest('.item, .skill')) {
+			this.navigateDpad(direction === 'next' ? 'right' : 'left');
+			return;
+		}
+		Target.cycle(direction);
+	},
+
+	/**
+	 * Clear the cycle focus and recenter the virtual cursor. Lets the player
+	 * drop the current target so the next D-pad step starts from the closest
+	 * mob again.
+	 */
+	resetFocus: function () {
+		Target.clear();
+	},
+
+	/**
+	 * Switch what the D-pad cycle walks through: mobs, items, or both.
+	 */
+	nextCycleMode: function () {
+		Target.nextCycleMode();
 	},
 
 	moveCharacter: function (x, y) {

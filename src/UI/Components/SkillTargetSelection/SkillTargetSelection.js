@@ -387,6 +387,14 @@ function intersectEntity(entity) {
 }
 
 /**
+ * Target types the pending skill accepts (SkillTargetSelection.TYPE bits),
+ * or 0 when no skill is waiting for a target.
+ */
+SkillTargetSelection.getFlag = function getFlag() {
+	return Mouse.state === Mouse.MOUSE_STATE.USESKILL ? _flag : 0;
+};
+
+/**
  * Intersect with an entity ID
  * (used in party UI)
  */

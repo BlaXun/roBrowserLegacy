@@ -288,8 +288,14 @@
 				</table>
 			</div>
 			<div class="content t_gamepad">
-				<table border="1" cellspacing="0" bordercolor="#aaa">
+				<table class="joySettings" border="1" cellspacing="0" bordercolor="#aaa">
 					<tbody>
+						<tr title="Show which button does what, and remap them">
+							<td>Button Mapping</td>
+							<td>
+								<button type="button" class="joyBtn joyMappingOpen">Mapping</button>
+							</td>
+						</tr>
 						<tr title="Define how targets are selected in combat">
 							<td>Attack Target Mode</td>
 							<td>
@@ -297,6 +303,16 @@
 									<option value="0">Off</option>
 									<option value="1">Lowest HP</option>
 									<option value="2">Closest</option>
+								</select>
+							</td>
+						</tr>
+						<tr title="What the D-pad left/right cycles through (L3 switches in game)">
+							<td>D-pad Cycle Targets</td>
+							<td>
+								<select class="joyCycleMode">
+									<option value="0">Mobs</option>
+									<option value="1">Items</option>
+									<option value="2">Both</option>
 								</select>
 							</td>
 						</tr>
@@ -364,6 +380,23 @@
 						</tr>
 					</tbody>
 				</table>
+				<div class="joyMapping">
+					<div class="joyMappingHeader">
+						<button type="button" class="joyBtn joyMappingBack">&#9664; Back</button>
+						<span class="joyMappingTitle">Button mapping</span>
+						<button type="button" class="joyBtn joyMappingReset">Reset to defaults</button>
+					</div>
+					<div class="joyMappingStatus">Remap: press Remap, then a button on the gamepad. The two buttons trade places.</div>
+					<div class="joyMappingScroll">
+						<table class="joyMappingRoles" border="1" cellspacing="0" bordercolor="#aaa">
+							<tbody></tbody>
+						</table>
+						<div class="joyMappingSub">Combinations (follow the buttons above)</div>
+						<table class="joyMappingCombos" border="1" cellspacing="0" bordercolor="#aaa">
+							<tbody></tbody>
+						</table>
+					</div>
+				</div>
 			</div>
 			<button
 				class="button reset left"

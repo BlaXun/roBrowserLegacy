@@ -16,8 +16,15 @@ import ControlsSettings from 'Preferences/Controls.js';
 import Interaction from './JoystickInteractionService.js';
 
 function move(dx, dy) {
-	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, Mouse.screen.x + dx * ControlsSettings.joySense));
-	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, Mouse.screen.y + dy * ControlsSettings.joySense));
+	moveBy(dx * ControlsSettings.joySense, dy * ControlsSettings.joySense);
+}
+
+/**
+ * Move the virtual cursor by a pixel offset, clamped to the viewport.
+ */
+function moveBy(dx, dy) {
+	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, Mouse.screen.x + dx));
+	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, Mouse.screen.y + dy));
 
 	const cursor = document.querySelector('.cursor');
 	if (cursor) {
@@ -337,14 +344,43 @@ function navigateDraggableItems(direction) {
 	}
 }
 
-function quickCastClick() {
+/**
+ * Click the map for Quick-Cast, but only while a skill is still waiting for
+ * a target. Items, self skills and skills already cast leave the game in
+ * normal mode, where this click would be a plain left click on the ground:
+ * it cancelled the running attack and walked to the cursor.
+ *
+ * @param {function} [beforeClick] runs just before the click, e.g. to put
+ *   the cursor on the selected target
+ */
+function quickCastClick(beforeClick) {
 	setTimeout(function () {
+		if (Mouse.state !== Mouse.MOUSE_STATE.USESKILL) {
+			return;
+		}
+		if (beforeClick) {
+			beforeClick();
+		}
 		_dispatchMouseEvent(Renderer.canvas, 'mousedown', 1);
 		setTimeout(function () {
 			_dispatchMouseEvent(Renderer.canvas, 'mouseup', 1);
 		}, 100);
 	}, 100);
 }
+
+/**
+ * Snap the virtual cursor back to the middle of the viewport.
+ */
+function recenter() {
+	Mouse.screen.x = Math.floor(Renderer.width / 2);
+	Mouse.screen.y = Math.floor(Renderer.height / 2);
+	const cursor = document.querySelector('.cursor');
+	if (cursor) {
+		cursor.style.left = Mouse.screen.x + 'px';
+		cursor.style.top = Mouse.screen.y + 'px';
+	}
+}
+
 export default {
 	quickCastClick: quickCastClick,
 	moveMouseToEntity: moveMouseToEntity,
@@ -355,6 +391,8 @@ export default {
 	changeCameraZoom: changeCameraZoom,
 	changeCameraAngle: changeCameraAngle,
 	move: move,
+	moveBy: moveBy,
 	leftClick: leftClick,
-	rightClick: rightClick
+	rightClick: rightClick,
+	recenter: recenter
 };
