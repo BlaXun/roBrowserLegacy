@@ -105,6 +105,24 @@ const MAX_ATTACKMT = AVG_ATTACK_SPEED * 2;
 const clanEmblems = {};
 
 /**
+ * Quest icon of each NPC on the current map, by NPC id.
+ * The server sends ZC_QUEST_NOTIFY_EFFECT for every quest NPC on the map when
+ * the map loads, in sight or not, and afterwards only when an icon changes. It
+ * never sends it again when an NPC comes into view, so the client keeps it here
+ * and draws it whenever the NPC appears.
+ */
+const questEffects = new Map();
+
+const QUEST_EFFECT_NONE = 9999; // QTYPE_NONE: hide the icon
+
+// Minimap colour of each e_questinfo_markcolor; QMARK_NONE (0) draws no mark
+const QuestMarkColors = {
+	1: 0xffff00, // QMARK_YELLOW
+	2: 0x00e16a, // QMARK_GREEN
+	3: 0x800080 // QMARK_PURPLE
+};
+
+/**
  * Spam an entity on the map
  * Generic packet handler
  */
@@ -131,6 +149,9 @@ function onEntitySpam(pkt) {
 			}
 		}
 		EntityManager.add(entity);
+		if (questEffects.has(entity.GID)) {
+			attachQuestEffect(entity, questEffects.get(entity.GID));
+		}
 		const cachedLife = EntityManager.getLife(entity.GID);
 		if (cachedLife && entity.life.hp <= -1) {
 			if (cachedLife.hp !== undefined) entity.life.hp = cachedLife.hp;
@@ -1194,46 +1215,59 @@ function onEntityLifeUpdateTiny(pkt) {
  */
 function onEntityQuestNotifyEffect(pkt) {
 	const entity = EntityManager.get(pkt.npcID);
-	let color = 0;
+	// Before 2012-04-10 the server hides an icon with QTYPE_QUEST and no mark
+	const hide =
+		pkt.effect === QUEST_EFFECT_NONE || (PACKETVER.value < 20120410 && pkt.effect === 0 && pkt.color === 0);
 
-	if (pkt.effect !== 9999) {
-		const emotionId = pkt.effect + 81;
-
-		if (entity && pkt.effect in Emotions.indexes) {
-			entity.attachments.add({
-				frame: Emotions.indexes[emotionId],
-				file: 'emotion',
-				play: true,
-				head: true,
-				repeat: true,
-				depth: 5.0
-			});
-		}
+	if (hide) {
+		questEffects.delete(pkt.npcID);
+	} else {
+		questEffects.set(pkt.npcID, pkt.effect);
 	}
 
-	switch (pkt.color + 1) {
-		case 1:
-			// yellow
-			color = 0xffff00;
-			break;
-		case 2:
-			// orange
-			color = 0xffa500;
-			break;
-		case 3:
-			// green
-			color = 0x00e16a;
-			break;
-		case 4:
-			// purple
-			color = 0x800080;
-			break;
-		case 0:
-		default:
-			return;
+	if (entity) {
+		attachQuestEffect(entity, hide ? QUEST_EFFECT_NONE : pkt.effect);
 	}
 
-	MiniMap.getUI().addNpcMark(pkt.npcID, pkt.xPos, pkt.yPos, color, Infinity);
+	const color = hide ? undefined : QuestMarkColors[pkt.color];
+
+	if (color === undefined) {
+		MiniMap.getUI().removeNpcMark(pkt.npcID);
+	} else {
+		MiniMap.getUI().addNpcMark(pkt.npcID, pkt.xPos, pkt.yPos, color, Infinity);
+	}
+}
+
+/**
+ * Draw a quest icon over an NPC's head, replacing the one it has
+ *
+ * @param {Entity} entity
+ * @param {number} effect - e_questinfo_types, QUEST_EFFECT_NONE to remove the icon
+ */
+function attachQuestEffect(entity, effect) {
+	const emotionId = effect + 81;
+
+	if (effect === QUEST_EFFECT_NONE || !(emotionId in Emotions.indexes)) {
+		entity.attachments.remove('questinfo');
+		return;
+	}
+
+	entity.attachments.add({
+		uid: 'questinfo',
+		frame: Emotions.indexes[emotionId],
+		file: 'emotion',
+		play: true,
+		head: true,
+		repeat: true,
+		depth: 5.0
+	});
+}
+
+/**
+ * Forget the quest icons of the map being left
+ */
+function clearQuestEffects() {
+	questEffects.clear();
 }
 
 /**
@@ -2971,4 +3005,4 @@ export default function EntityEngine() {
 	Network.hookPacket(PACKET.ZC.HAT_EFFECT, onHatEffects);
 }
 
-export { onEntityActionPosition, onEntityAction };
+export { onEntityActionPosition, onEntityAction, clearQuestEffects };
