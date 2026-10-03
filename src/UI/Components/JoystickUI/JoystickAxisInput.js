@@ -20,6 +20,15 @@ import JoystickUIRenderer from './JoystickUIRenderer.js';
 const REBOUND_MS = 250;
 const REBOUND_MAX = 0.6;
 
+// A stick on its way back to centre passes through small values in the
+// direction it was held. Each one used to send a walk scaled by the push --
+// a 0.15 push aimed half a cell away, which rounds to the character's own
+// cell or the next one: one extra step, or a turn on the spot. Walking now
+// needs a firm push, always heads the full step in the pushed direction,
+// and anything weaker counts as centre. RO has no slow walk, so a gentle
+// push had nothing to offer.
+const MOVE_MIN = 0.5;
+
 let lastMove = null; // [x, y] of the last stick move
 let lastMoveAt = 0;
 
@@ -44,12 +53,13 @@ export default {
 			ly = axes[3];
 		}
 
-		const deflected = Math.abs(lx) > ControlsSettings.joyDeadline || Math.abs(ly) > ControlsSettings.joyDeadline;
+		const magnitude = Math.hypot(lx, ly);
+		const pushed = magnitude >= Math.max(ControlsSettings.joyDeadline, MOVE_MIN);
 
-		if (deflected && !isRebound(lx, ly)) {
+		if (pushed && !isRebound(lx, ly)) {
 			lastMove = [lx, ly];
 			lastMoveAt = Date.now();
-			Interaction.moveCharacter(lx, -ly);
+			Interaction.moveCharacter(lx / magnitude, -ly / magnitude);
 			Interaction.cancelQuick = true;
 			active = true;
 		} else {

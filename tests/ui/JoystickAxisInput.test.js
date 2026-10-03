@@ -40,22 +40,41 @@ describe('JoystickAxisInput left stick release', () => {
 		vi.advanceTimersByTime(100);
 		AxisInput.update([0.9, 0, 0, 0]);
 
-		expect(mocks.interaction.moveCharacter).toHaveBeenLastCalledWith(0.9, -0);
+		expect(mocks.interaction.moveCharacter).toHaveBeenLastCalledWith(1, -0);
 	});
 
-	it('accepts a gentle push the other way once the window has passed', () => {
+	it('accepts a moderate push the other way once the window has passed', () => {
 		AxisInput.update([-1, 0, 0, 0]);
 		vi.advanceTimersByTime(400);
-		AxisInput.update([0.25, 0, 0, 0]);
+		AxisInput.update([0.55, 0, 0, 0]);
 
-		expect(mocks.interaction.moveCharacter).toHaveBeenLastCalledWith(0.25, -0);
+		expect(mocks.interaction.moveCharacter).toHaveBeenLastCalledWith(1, -0);
 	});
 
 	it('does not hold back a sideways change of direction', () => {
 		AxisInput.update([-1, 0, 0, 0]);
 		vi.advanceTimersByTime(100);
-		AxisInput.update([0, -0.3, 0, 0]); // gentle up, perpendicular
+		AxisInput.update([0, -0.55, 0, 0]); // moderate up, perpendicular
 
-		expect(mocks.interaction.moveCharacter).toHaveBeenLastCalledWith(0, 0.3);
+		expect(mocks.interaction.moveCharacter).toHaveBeenLastCalledWith(0, 1);
+	});
+
+	it('treats a stick fading back to centre as released, not as a short step', () => {
+		AxisInput.update([-1, 0, 0, 0]);
+		vi.advanceTimersByTime(100);
+		AxisInput.update([-0.3, 0, 0, 0]); // on its way back, same direction
+		vi.advanceTimersByTime(100);
+		AxisInput.update([-0.12, 0, 0, 0]);
+
+		expect(mocks.interaction.moveCharacter).toHaveBeenCalledTimes(1);
+		expect(mocks.interaction.releaseStick).toHaveBeenCalledTimes(2);
+	});
+
+	it('walks the full step whatever the push strength', () => {
+		AxisInput.update([-0.6, 0.8, 0, 0]); // magnitude 1
+		vi.advanceTimersByTime(400);
+		AxisInput.update([0, 0.7, 0, 0]);
+
+		expect(mocks.interaction.moveCharacter).toHaveBeenLastCalledWith(0, -1);
 	});
 });
