@@ -13,15 +13,10 @@
  *
  * The ring is drawn on a 2D canvas laid over the game canvas, below the
  * UI windows, by projecting ground points through the camera.
- *
- * Module-level names carry an _aim prefix on purpose: the bundler renames
- * clashing top-level names with $N suffixes, and the app's bundle patches
- * anchor on other modules' suffixed names (e.g. Navigation's _ctx$2).
  */
 
 import glMatrix from 'Vendors/gl-matrix.js';
 import Session from 'Engine/SessionStorage.js';
-import EntityManager from 'Renderer/EntityManager.js';
 import Renderer from 'Renderer/Renderer.js';
 import Camera from 'Renderer/Camera.js';
 import Altitude from 'Renderer/Map/Altitude.js';
@@ -275,15 +270,13 @@ function drawAimLine(ctx, from, to, color) {
 }
 
 /**
- * The entity aim mode marks: the cycled item, else the focused mob, if
- * still alive and in the scene.
+ * The entity aim mode marks: the marked item, NPC or portal, else the
+ * focus if it is still an attackable target on this map (not an NPC or
+ * friendly player the player clicked, nor a focus left over from the
+ * previous map).
  */
 function getTarget() {
-	const target = Target.getMarked() || EntityManager.getFocusEntity();
-	if (!target || target.remove_tick !== 0 || target.action === target.ACTION.DIE) {
-		return null;
-	}
-	return target;
+	return Target.getMarked() || Target.getAttackableFocus();
 }
 
 /**
