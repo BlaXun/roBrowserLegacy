@@ -103,20 +103,35 @@ function attack() {
 	Network.sendPacket(pkt);
 }
 
+/**
+ * Pick up the item the D-pad cycle rests on, else the closest one. Out of
+ * reach (more than 2 cells, same rule as a mouse click in EntityControl),
+ * walk to it first and let onWalkEnd send the pickup via Session.moveAction.
+ */
 function pickUp() {
 	const Player = Session.Entity;
 	if (!Player) {
 		return;
 	}
 
-	const item = EntityManager.getClosestEntity(Player, EntityManager.TYPE_ITEM);
+	const item = Target.getItem() || EntityManager.getClosestEntity(Player, Player.constructor.TYPE_ITEM);
 	if (!item) {
 		return;
 	}
 
-	const pkt = PACKETVER.value >= 20180307 ? new PACKET.CZ.ITEM_PICKUP2() : new PACKET.CZ.ITEM_PICKUP();
-
+	let pkt = PACKETVER.value >= 20180307 ? new PACKET.CZ.ITEM_PICKUP2() : new PACKET.CZ.ITEM_PICKUP();
 	pkt.ITAID = item.GID;
+
+	Player.lookTo(item.position[0], item.position[1]);
+
+	if (glMatrix.vec2.distance(Player.position, item.position) > 2) {
+		Session.moveAction = pkt;
+
+		pkt = PACKETVER.value >= 20180307 ? new PACKET.CZ.REQUEST_MOVE2() : new PACKET.CZ.REQUEST_MOVE();
+		pkt.dest[0] = item.position[0] | 0;
+		pkt.dest[1] = item.position[1] | 0;
+	}
+
 	Network.sendPacket(pkt);
 }
 export default {

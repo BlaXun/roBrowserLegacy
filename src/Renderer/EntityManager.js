@@ -602,7 +602,7 @@ function getLowestHpEntity(sourceEntity, type) {
 }
 
 /**
- * Returns entities of the given type sorted by straight-line distance from
+ * Returns entities of the given type(s) sorted by straight-line distance from
  * the source entity, closest first. Same filters as getClosestEntity: not
  * self, right type, alive, not pending removal, within view range.
  *
@@ -611,9 +611,10 @@ function getLowestHpEntity(sourceEntity, type) {
  * distance order is what the player expects when cycling targets.
  *
  * @param {entity} source entity
- * @param {type} entity type to look for
+ * @param {number|Array<number>} entity type, or list of types, to look for
  */
 function getEntitiesSortedByDistance(sourceEntity, type) {
+	const types = Array.isArray(type) ? type : [type];
 	const srcX = sourceEntity.position[0];
 	const srcY = sourceEntity.position[1];
 	const view_range = GraphicsSettings.performanceMode ? GraphicsSettings.viewArea : 20;
@@ -624,7 +625,7 @@ function getEntitiesSortedByDistance(sourceEntity, type) {
 	_list.forEach(entity => {
 		if (
 			entity.GID !== sourceEntity.GID &&
-			entity.objecttype === type &&
+			types.includes(entity.objecttype) &&
 			entity.action !== entity.ACTION.DIE &&
 			entity.remove_tick === 0
 		) {

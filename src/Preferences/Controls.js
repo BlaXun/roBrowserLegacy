@@ -22,6 +22,7 @@ export default Preferences.get(
 		itemsnap: false,
 		/* Joystick */
 		attackTargetMode: 0,
+		joyCycleMode: 0, // D-pad cycle: 0 mobs, 1 ground items, 2 both
 		joyQuick: 0,
 		joyDeadline: 0.1,
 		joyDisableVirtualMouse: false,

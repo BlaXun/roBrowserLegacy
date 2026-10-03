@@ -100,6 +100,7 @@ ShortCutOption.init = function () {
 	};
 
 	bindChange('.attackTargetMode', onUpdateTargetOption);
+	bindChange('.joyCycleMode', onUpdateCycleMode);
 	bindChange('.joySense', onUpdateSense);
 	bindChange('.joyQuick', onUpdateJoyQuick);
 	bindChange('.joyDeadline', onUpdateJoyDeadline);
@@ -136,6 +137,12 @@ ShortCutOption.init = function () {
  * Apply preferences once append to body
  */
 ShortCutOption.onAppend = function () {
+	// Reflect the current value; L3 can change it while the window is closed.
+	const cycleMode = this.getRoot().querySelector('.joyCycleMode');
+	if (cycleMode) {
+		cycleMode.value = String(Controls.joyCycleMode | 0);
+	}
+
 	this._host.style.left = _preferences.x + 'px';
 	this._host.style.top = _preferences.y + 'px';
 	this._host.style.zIndex = 100;
@@ -439,6 +446,11 @@ function getShift(sc) {
 // Joystick
 function onUpdateTargetOption() {
 	Controls.attackTargetMode = parseInt(this.value, 10);
+	Controls.save();
+}
+
+function onUpdateCycleMode() {
+	Controls.joyCycleMode = parseInt(this.value, 10);
 	Controls.save();
 }
 

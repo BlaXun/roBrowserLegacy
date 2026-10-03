@@ -11,6 +11,78 @@ import Session from 'Engine/SessionStorage.js';
 import EntityManager from 'Renderer/EntityManager.js';
 import ControlsSettings from 'Preferences/Controls.js';
 import Cursor from './JoystickMouseCursorAdapter.js';
+import ChatBox from 'UI/Components/ChatBox/ChatBox.js';
+import GameCursor from 'UI/CursorManager.js';
+
+/**
+ * What the D-pad cycle walks through. Values match ControlsSettings.joyCycleMode.
+ */
+const CYCLE_MODE = {
+	MOBS: 0,
+	ITEMS: 1,
+	BOTH: 2
+};
+const CYCLE_MODE_NAMES = ['mobs', 'items', 'mobs and items'];
+
+/**
+ * Ground item the cycle is resting on. Items are deliberately not stored as
+ * the EntityManager focus: that slot is the combat lock-on (X attacks it,
+ * touch-targeting skills cast on it, onFocusEnd sends CANCEL_LOCKON), so an
+ * item there would leak into those paths. Only the cycle and Y pickup read it.
+ */
+let _cycledItem = null;
+
+function getCycleTypes(Entity) {
+	switch (ControlsSettings.joyCycleMode) {
+		case CYCLE_MODE.ITEMS:
+			return [Entity.TYPE_ITEM];
+		case CYCLE_MODE.BOTH:
+			return [Entity.TYPE_MOB, Entity.TYPE_ITEM];
+		default:
+			return [Entity.TYPE_MOB];
+	}
+}
+
+/**
+ * The cycled ground item, or null once it was picked up, expired or left
+ * the entity list.
+ */
+function getCycledItem() {
+	if (_cycledItem && (_cycledItem.remove_tick !== 0 || EntityManager.get(_cycledItem.GID) !== _cycledItem)) {
+		_cycledItem = null;
+	}
+	return _cycledItem;
+}
+
+function releaseItem() {
+	if (_cycledItem) {
+		_cycledItem.attachments.remove('lockon');
+		_cycledItem = null;
+	}
+}
+
+/**
+ * Mark a ground item as the cycle target: drop any combat lock-on and show
+ * the same lock-on arrow mobs get, so the player sees which item Y will pick.
+ */
+function focusItem(item) {
+	const focus = EntityManager.getFocusEntity();
+	if (focus) {
+		focus.onFocusEnd();
+		EntityManager.setFocusEntity(null);
+	}
+	releaseItem();
+
+	item.attachments.add({
+		uid: 'lockon',
+		spr: 'data/sprite/cursors.spr',
+		act: 'data/sprite/cursors.act',
+		frame: GameCursor.ACTION.LOCK,
+		repeat: true,
+		depth: 10.0
+	});
+	_cycledItem = item;
+}
 
 function getEntityInContext() {
 	// If the player has cycled onto a specific target with D-pad, X-button
@@ -59,6 +131,8 @@ function getEntityInContext() {
 }
 
 function focusTarget(entity) {
+	releaseItem();
+
 	let focus = EntityManager.getFocusEntity();
 	if (!focus || focus.action === focus.ACTION.DIE) {
 		focus = EntityManager.getFocusEntity();
@@ -75,10 +149,11 @@ function focusTarget(entity) {
 }
 
 /**
- * Step the focused target to the next (or previous) mob by straight-line
- * distance from the player. Wraps at both ends. If nothing is focused, or
- * the focused entity is not in the sorted list (dead, out of range, not
- * a mob), 'next' jumps to the closest and 'prev' to the farthest.
+ * Step the focused target to the next (or previous) mob and/or ground item,
+ * depending on ControlsSettings.joyCycleMode, by straight-line distance from
+ * the player. Wraps at both ends. If nothing is focused, or the focused
+ * entity is not in the sorted list (dead, picked up, out of range, wrong
+ * type for the mode), 'next' jumps to the closest and 'prev' to the farthest.
  *
  * Always distance-ordered, regardless of ControlsSettings.attackTargetMode:
  * that preference governs the X-button auto-pick, not cycling, and the two
@@ -92,21 +167,14 @@ function cycle(direction) {
 		return;
 	}
 
-	const sorted = EntityManager.getEntitiesSortedByDistance(player, player.constructor.TYPE_MOB);
+	const Entity = player.constructor;
+	const sorted = EntityManager.getEntitiesSortedByDistance(player, getCycleTypes(Entity));
 	if (sorted.length === 0) {
 		return;
 	}
 
-	const focus = EntityManager.getFocusEntity();
-	let index = -1;
-	if (focus) {
-		for (let i = 0; i < sorted.length; i++) {
-			if (sorted[i].GID === focus.GID) {
-				index = i;
-				break;
-			}
-		}
-	}
+	const current = getCycledItem() || EntityManager.getFocusEntity();
+	const index = current ? sorted.indexOf(current) : -1;
 
 	let newIndex;
 	if (index === -1) {
@@ -118,6 +186,12 @@ function cycle(direction) {
 	}
 
 	const target = sorted[newIndex];
+
+	if (target.objecttype === Entity.TYPE_ITEM) {
+		focusItem(target);
+		Cursor.moveMouseToEntity(target);
+		return;
+	}
 
 	// EntityControl.onFocus() for TYPE_MOB sends REQUEST_ACT (an attack packet)
 	// when Session.TouchTargeting and Session.autoFollow are both off. That is
@@ -142,9 +216,10 @@ function cycle(direction) {
 			gid: e.GID,
 			type: e.objecttype,
 			pos: [e.position[0], e.position[1]],
-			dsq: Math.round(
-				((e.position[0] - player.position[0]) ** 2 + (e.position[1] - player.position[1]) ** 2) * 100
-			) / 100
+			dsq:
+				Math.round(
+					((e.position[0] - player.position[0]) ** 2 + (e.position[1] - player.position[1]) ** 2) * 100
+				) / 100
 		}));
 		window.__dpadLastPlayer = [player.position[0], player.position[1]];
 		window.__dpadLastSetFocusGid = target.GID;
@@ -162,6 +237,7 @@ function clearFocus() {
 	if (typeof window !== 'undefined') {
 		window.__dpadResetCalls = (window.__dpadResetCalls || 0) + 1;
 	}
+	releaseItem();
 	const focus = EntityManager.getFocusEntity();
 	if (focus) {
 		focus.onFocusEnd();
@@ -170,9 +246,31 @@ function clearFocus() {
 	Cursor.recenter();
 }
 
+/**
+ * Advance the cycle mode (mobs -> items -> both -> mobs), save it, and tell
+ * the player in the chat box. A cycled item is released when the new mode
+ * no longer includes items.
+ */
+function nextCycleMode() {
+	ControlsSettings.joyCycleMode = ((ControlsSettings.joyCycleMode | 0) + 1) % CYCLE_MODE_NAMES.length;
+	ControlsSettings.save();
+
+	if (ControlsSettings.joyCycleMode === CYCLE_MODE.MOBS) {
+		releaseItem();
+	}
+
+	ChatBox.addText(
+		'D-pad target cycle: ' + CYCLE_MODE_NAMES[ControlsSettings.joyCycleMode],
+		ChatBox.TYPE.INFO,
+		ChatBox.FILTER.PUBLIC_LOG
+	);
+}
+
 export default {
 	getEntity: getEntityInContext,
 	focus: focusTarget,
 	cycle: cycle,
-	clear: clearFocus
+	clear: clearFocus,
+	getItem: getCycledItem,
+	nextCycleMode: nextCycleMode
 };

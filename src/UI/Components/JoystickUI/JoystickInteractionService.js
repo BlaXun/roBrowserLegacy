@@ -184,6 +184,13 @@ export default {
 		Target.clear();
 	},
 
+	/**
+	 * Switch what the D-pad cycle walks through: mobs, items, or both.
+	 */
+	nextCycleMode: function () {
+		Target.nextCycleMode();
+	},
+
 	moveCharacter: function (x, y) {
 		Character.move(x, y);
 	}

@@ -99,6 +99,12 @@ const ButtonInput = {
 			pressed = true;
 		}
 
+		// L3 (left stick click) → switch D-pad cycle mode (mobs/items/both)
+		if (btn[10] === 'pressed') {
+			Interaction.nextCycleMode();
+			pressed = true;
+		}
+
 		if (pressed) {
 			setClickLock();
 		}
@@ -165,11 +171,11 @@ const ButtonInput = {
 			Interaction.navigateDpad('down');
 			pressed = true;
 		} else if (buttons[14] !== 'unpressed') {
-			// D-pad Left: cycle to the previous nearby mob (or grid nav over a UI)
+			// D-pad Left: cycle to the previous nearby mob/item (or grid nav over a UI)
 			Interaction.cycleTarget('prev');
 			pressed = true;
 		} else if (buttons[15] !== 'unpressed') {
-			// D-pad Right: cycle to the next nearby mob (or grid nav over a UI)
+			// D-pad Right: cycle to the next nearby mob/item (or grid nav over a UI)
 			Interaction.cycleTarget('next');
 			pressed = true;
 		} else if (buttons[9] !== 'unpressed') {
