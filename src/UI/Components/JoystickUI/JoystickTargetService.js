@@ -20,17 +20,23 @@ import GameCursor from 'UI/CursorManager.js';
 const CYCLE_MODE = {
 	MOBS: 0,
 	ITEMS: 1,
-	BOTH: 2
+	BOTH: 2,
+	INTERACT: 3
 };
-const CYCLE_MODE_NAMES = ['mobs', 'items', 'mobs and items'];
+const CYCLE_MODE_NAMES = ['mobs', 'items', 'mobs and items', 'NPCs and portals'];
+
+// NPCs with these sprites are invisible script triggers (DB.getBodyPath
+// draws nothing for them); the cycle and aim skip them.
+const HIDDEN_NPC_JOBS = [111, 139, 2337];
 
 /**
- * Ground item the cycle is resting on. Items are deliberately not stored as
- * the EntityManager focus: that slot is the combat lock-on (X attacks it,
- * touch-targeting skills cast on it, onFocusEnd sends CANCEL_LOCKON), so an
- * item there would leak into those paths. Only the cycle and Y pickup read it.
+ * Non-combat selection: a ground item, NPC or warp portal the cycle or aim
+ * is resting on. It is deliberately not the EntityManager focus: that slot
+ * is the combat lock-on (X attacks it, touch-targeting skills cast on it,
+ * onFocusEnd sends CANCEL_LOCKON), so these would leak into those paths.
+ * Y picks up a marked item; A talks to a marked NPC or walks into a portal.
  */
-let _cycledItem = null;
+let _marked = null;
 
 function getCycleTypes(Entity) {
 	switch (ControlsSettings.joyCycleMode) {
@@ -38,26 +44,52 @@ function getCycleTypes(Entity) {
 			return [Entity.TYPE_ITEM];
 		case CYCLE_MODE.BOTH:
 			return [Entity.TYPE_MOB, Entity.TYPE_ITEM];
+		case CYCLE_MODE.INTERACT:
+			return [Entity.TYPE_NPC, Entity.TYPE_NPC2, Entity.TYPE_WARP];
 		default:
 			return [Entity.TYPE_MOB];
 	}
 }
 
-/**
- * The cycled ground item, or null once it was picked up, expired or left
- * the entity list.
- */
-function getCycledItem() {
-	if (_cycledItem && (_cycledItem.remove_tick !== 0 || EntityManager.get(_cycledItem.GID) !== _cycledItem)) {
-		_cycledItem = null;
-	}
-	return _cycledItem;
+function isInteractable(entity) {
+	const Entity = entity.constructor;
+	return [Entity.TYPE_NPC, Entity.TYPE_NPC2, Entity.TYPE_WARP].includes(entity.objecttype);
 }
 
-function releaseItem() {
-	if (_cycledItem) {
-		_cycledItem.attachments.remove('lockon');
-		_cycledItem = null;
+/**
+ * What the cycle and aim may select for the current mode, nearest first.
+ */
+function getCycleCandidates(player) {
+	return EntityManager.getEntitiesSortedByDistance(player, getCycleTypes(player.constructor)).filter(
+		entity => !(isInteractable(entity) && HIDDEN_NPC_JOBS.includes(entity.job))
+	);
+}
+
+/**
+ * The marked entity, or null once it was picked up, expired or left the
+ * entity list.
+ */
+function getMarked() {
+	if (_marked && (_marked.remove_tick !== 0 || EntityManager.get(_marked.GID) !== _marked)) {
+		_marked = null;
+	}
+	return _marked;
+}
+
+function getCycledItem() {
+	const marked = getMarked();
+	return marked && marked.objecttype === marked.constructor.TYPE_ITEM ? marked : null;
+}
+
+function getInteractTarget() {
+	const marked = getMarked();
+	return marked && isInteractable(marked) ? marked : null;
+}
+
+function releaseMark() {
+	if (_marked) {
+		_marked.attachments.remove('lockon');
+		_marked = null;
 	}
 }
 
@@ -80,12 +112,12 @@ function dropFocusQuietly() {
 }
 
 /**
- * Mark a ground item as the cycle target: drop any combat lock-on and show
- * the same lock-on arrow mobs get, so the player sees which item Y will pick.
+ * Mark an item, NPC or portal: drop any combat lock-on and show the same
+ * lock-on arrow mobs get, so the player sees what Y or A will act on.
  */
-function focusItem(item) {
+function markEntity(item) {
 	dropFocusQuietly();
-	releaseItem();
+	releaseMark();
 
 	item.attachments.add({
 		uid: 'lockon',
@@ -95,7 +127,7 @@ function focusItem(item) {
 		repeat: true,
 		depth: 10.0
 	});
-	_cycledItem = item;
+	_marked = item;
 }
 
 /**
@@ -191,7 +223,7 @@ function focusEntity(entity) {
 }
 
 function focusTarget(entity) {
-	releaseItem();
+	releaseMark();
 
 	const focus = EntityManager.getFocusEntity();
 	if (focus && entity.GID !== focus.GID) {
@@ -222,12 +254,12 @@ function cycle(direction) {
 	}
 
 	const Entity = player.constructor;
-	const sorted = EntityManager.getEntitiesSortedByDistance(player, getCycleTypes(Entity));
+	const sorted = getCycleCandidates(player);
 	if (sorted.length === 0) {
 		return;
 	}
 
-	const current = getCycledItem() || EntityManager.getFocusEntity();
+	const current = getMarked() || EntityManager.getFocusEntity();
 	const index = current ? sorted.indexOf(current) : -1;
 
 	let newIndex;
@@ -241,8 +273,8 @@ function cycle(direction) {
 
 	const target = sorted[newIndex];
 
-	if (target.objecttype === Entity.TYPE_ITEM) {
-		focusItem(target);
+	if (target.objecttype !== Entity.TYPE_MOB) {
+		markEntity(target);
 		Cursor.moveMouseToEntity(target);
 		return;
 	}
@@ -257,7 +289,7 @@ function cycle(direction) {
  * starts from the closest mob again.
  */
 function clearFocus() {
-	releaseItem();
+	releaseMark();
 	const focus = EntityManager.getFocusEntity();
 	if (focus) {
 		focus.onFocusEnd();
@@ -275,8 +307,10 @@ function nextCycleMode() {
 	ControlsSettings.joyCycleMode = ((ControlsSettings.joyCycleMode | 0) + 1) % CYCLE_MODE_NAMES.length;
 	ControlsSettings.save();
 
-	if (ControlsSettings.joyCycleMode === CYCLE_MODE.MOBS) {
-		releaseItem();
+	// Drop a mark the new mode cannot reach any more
+	const marked = getMarked();
+	if (marked && !getCycleTypes(marked.constructor).includes(marked.objecttype)) {
+		releaseMark();
 	}
 
 	ChatBox.addText(
@@ -294,6 +328,22 @@ export default {
 	cycle: cycle,
 	clear: clearFocus,
 	getItem: getCycledItem,
+	getMarked: getMarked,
+	getInteractTarget: getInteractTarget,
+	releaseMark: releaseMark,
+	getCycleTypes: getCycleTypes,
+	getCycleCandidates: getCycleCandidates,
+	/**
+	 * Select an entity the aim hit: an item, NPC or portal gets the mark, a
+	 * mob the focus. Never attacks and never stops a running attack.
+	 */
+	aimAt: function (entity) {
+		if (entity.objecttype !== entity.constructor.TYPE_MOB) {
+			markEntity(entity);
+		} else {
+			focusTarget(entity);
+		}
+	},
 	snapCursorToFocus: function () {
 		const focus = EntityManager.getFocusEntity();
 		if (focus) {

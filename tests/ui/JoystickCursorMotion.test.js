@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	cursor: { moveBy: vi.fn() },
-	controls: { joyReverseStick: false, joyDeadline: 0.2, joySense: 10 }
+	controls: { joyReverseStick: false, joyDeadline: 0.2, joySense: 10 },
+	aim: { isActive: vi.fn(() => false), update: vi.fn(), release: vi.fn() }
 }));
 
 vi.mock('UI/Components/JoystickUI/JoystickMouseCursorAdapter.js', () => ({ default: mocks.cursor }));
 vi.mock('Preferences/Controls.js', () => ({ default: mocks.controls }));
+vi.mock('UI/Components/JoystickUI/JoystickAimMode.js', () => ({ default: mocks.aim }));
 
 const { default: CursorMotion } = await import('UI/Components/JoystickUI/JoystickCursorMotion.js');
 
@@ -92,8 +94,10 @@ describe('JoystickCursorMotion frame loop', () => {
 		expect(queued).toBeTypeOf('function');
 
 		pads = [null];
+		mocks.aim.release.mockClear();
 		runFrame();
 		expect(queued).toBe(null);
+		expect(mocks.aim.release).toHaveBeenCalled(); // no ring left behind
 
 		pads = [{ axes: [0, 0, 0, 0] }];
 		window.dispatchEvent(new Event('gamepadconnected'));

@@ -9,6 +9,7 @@ import GUIComponent from 'UI/GUIComponent.js';
 import UIManager from 'UI/UIManager.js';
 import ShortCut from 'UI/Components/ShortCut/ShortCut.js';
 import htmlText from './JoystickSelectionUI.html?raw';
+import ButtonMap from './JoystickButtonMap.js';
 import cssText from './JoystickSelectionUI.css?raw';
 
 const JoystickSelectionUI = new GUIComponent('JoystickSelectionUI', cssText);
@@ -34,51 +35,30 @@ function isLocked() {
 	return clickLock !== null;
 }
 
-// Internal Helper: Get Combo String
+/**
+ * Button combination for a shortcut slot, worded with the current button
+ * mapping. Mirrors JoystickShortcutMapper: bar 1 is LB (slots 1-4) and LT
+ * (5-8), bar 2 RB and RT, bars 3 and 4 the same in set 2, and slot 9 of
+ * bar 1-4 is LB+RB with Y / X / B / A.
+ *
+ * @param {number} slotIndex 0-35, bar * 9 + slot
+ * @return {string}
+ */
 function getJoystickComboForSlot(slotIndex) {
-	const combos = {
-		0: 'L1+Y',
-		1: 'L1+X',
-		2: 'L1+B',
-		3: 'L1+A',
-		4: 'L2+Y',
-		5: 'L2+X',
-		6: 'L2+B',
-		7: 'L2+A',
-		8: 'L1+R1+Y',
+	const B = ButtonMap.BUTTON;
+	const n = ButtonMap.nameOf;
+	const bar = Math.floor(slotIndex / 9);
+	const slot = slotIndex % 9;
+	const faces = [n(B.Y), n(B.X), n(B.B), n(B.A)];
 
-		9: 'R1+Y',
-		10: 'R1+X',
-		11: 'R1+B',
-		12: 'R1+A',
-		13: 'R2+Y',
-		14: 'R2+X',
-		15: 'R2+B',
-		16: 'R2+A',
-		17: 'L1+R1+X',
+	if (slot === 8) {
+		return n(B.LB) + '+' + n(B.RB) + '+' + faces[bar];
+	}
 
-		18: 'L1+Y (Set2)',
-		19: 'L1+X (Set2)',
-		20: 'L1+B (Set2)',
-		21: 'L1+A (Set2)',
-		22: 'L2+Y (Set2)',
-		23: 'L2+X (Set2)',
-		24: 'L2+B (Set2)',
-		25: 'L2+A (Set2)',
-		26: 'L1+R1+B',
-
-		27: 'R1+Y (Set2)',
-		28: 'R1+X (Set2)',
-		29: 'R1+B (Set2)',
-		30: 'R1+A (Set2)',
-		31: 'R2+Y (Set2)',
-		32: 'R2+X (Set2)',
-		33: 'R2+B (Set2)',
-		34: 'R2+A (Set2)',
-		35: 'L1+R1+A'
-	};
-
-	return combos[slotIndex];
+	const left = bar === 0 || bar === 2;
+	const modifier = slot < 4 ? (left ? n(B.LB) : n(B.RB)) : left ? n(B.LT) : n(B.RT);
+	const combo = modifier + '+' + faces[slot % 4];
+	return bar >= 2 ? combo + ' (Set2)' : combo;
 }
 
 function updateGrid() {
@@ -272,6 +252,23 @@ JoystickSelectionUI.showSelection = function (data) {
 
 	updateGrid();
 	updateTabButtons();
+
+	// Footer in the current button names
+	const B = ButtonMap.BUTTON;
+	const n = ButtonMap.nameOf;
+	const footer = this.getRoot().querySelector('.footer-instructions');
+	if (footer) {
+		footer.textContent =
+			'Use ' +
+			n(B.LT) +
+			'/' +
+			n(B.RT) +
+			' to change tab, D-pad to navigate slot, ' +
+			n(B.A) +
+			' to select, ' +
+			n(B.VIEW) +
+			' to cancel';
+	}
 
 	this.focus();
 	this._host.style.display = 'block';

@@ -21,7 +21,10 @@ import Input from './JoystickInputService.js';
 import DB from 'DB/DBManager.js';
 import SkillInfo from 'DB/Skills/SkillInfo.js';
 import ShortcutMapper from './JoystickShortcutMapper.js';
-import Mouse from 'Controls/MouseEventHandler.js';
+import Aim from './JoystickAimMode.js';
+import UIManager from 'UI/UIManager.js';
+import MenuNav from './JoystickMenuNavigation.js';
+import Session from 'Engine/SessionStorage.js';
 import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTargetSelection.js';
 
 export default {
@@ -151,8 +154,43 @@ export default {
 		return false;
 	},
 
-	leftClick: function (click) {
-		Cursor.leftClick(click);
+	/**
+	 * A. With an NPC or portal selected (D-pad cycle / aim in the "NPCs and
+	 * portals" mode) and the cursor over the map, a press talks to the NPC
+	 * or walks into the portal, wherever the cursor is, and clears the
+	 * selection so the next A is an ordinary click again (NPC dialogue
+	 * buttons, for one). Otherwise A is a left click at the cursor.
+	 *
+	 * @param {boolean} holding A held rather than freshly pressed
+	 */
+	leftClick: function (holding) {
+		const target = Target.getInteractTarget();
+		if (target && !holding) {
+			const el = Cursor.elementAtCursor();
+			if (!el || el.tagName.toLowerCase() === 'canvas') {
+				Session.moveAction = null;
+				Target.releaseMark();
+				target.onMouseDown();
+				return;
+			}
+		}
+		Cursor.leftClick(holding);
+	},
+
+	/**
+	 * Open or close a window, as its keyboard shortcut does (Alt+E, ...).
+	 *
+	 * @param {string} name UIManager component name
+	 */
+	toggleWindow: function (name) {
+		try {
+			const component = UIManager.getComponent(name);
+			if (component && component.onShortCut) {
+				component.onShortCut({ cmd: 'TOGGLE' });
+			}
+		} catch {
+			// Component not available in this client version
+		}
 	},
 
 	rightClick: function (holding) {
@@ -208,6 +246,10 @@ export default {
 	},
 
 	navigateDpad: function (direction) {
+		// An open button menu (escape / death) takes the D-pad first
+		if (MenuNav.navigate(direction)) {
+			return true;
+		}
 		return Cursor.navigateDraggableItems(direction);
 	},
 
@@ -219,7 +261,10 @@ export default {
 	 * @param {string} direction 'next' or 'prev'
 	 */
 	cycleTarget: function (direction) {
-		const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+		if (MenuNav.navigate(direction === 'next' ? 'right' : 'left')) {
+			return;
+		}
+		const el = Cursor.elementAtCursor();
 		if (el && el.closest('.item, .skill')) {
 			this.navigateDpad(direction === 'next' ? 'right' : 'left');
 			return;
@@ -234,6 +279,13 @@ export default {
 	 */
 	resetFocus: function () {
 		Target.clear();
+	},
+
+	/**
+	 * Right stick: aim line <-> virtual cursor.
+	 */
+	toggleStickMode: function () {
+		Aim.toggle();
 	},
 
 	/**

@@ -25,7 +25,10 @@ vi.mock('UI/Components/JoystickUI/JoystickInputService.js', () => ({ default: {}
 vi.mock('DB/DBManager.js', () => ({ default: {} }));
 vi.mock('DB/Skills/SkillInfo.js', () => ({ default: {} }));
 vi.mock('UI/Components/JoystickUI/JoystickShortcutMapper.js', () => ({ default: {} }));
-vi.mock('Controls/MouseEventHandler.js', () => ({ default: {} }));
+vi.mock('UI/Components/JoystickUI/JoystickAimMode.js', () => ({ default: {} }));
+vi.mock('UI/UIManager.js', () => ({ default: {} }));
+vi.mock('UI/Components/JoystickUI/JoystickMenuNavigation.js', () => ({ default: {} }));
+vi.mock('Engine/SessionStorage.js', () => ({ default: {} }));
 vi.mock('UI/Components/SkillTargetSelection/SkillTargetSelection.js', () => ({ default: mocks.sts }));
 
 const { default: Interaction } = await import('UI/Components/JoystickUI/JoystickInteractionService.js');

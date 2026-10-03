@@ -187,12 +187,30 @@ function relabel() {
 	});
 }
 
+/**
+ * Show the right stick mode (aim line / cursor) next to the set indicator.
+ */
+function updateStickMode() {
+	const shadow = _getShadow();
+	if (!shadow) return;
+
+	const el = shadow.querySelector('.stick-mode');
+	if (el) {
+		// Only worth showing when aiming is switched on in the settings
+		const aim = ControlsSettings.joyAimEnabled && ControlsSettings.joyRightStickMode === 1;
+		el.style.display = ControlsSettings.joyAimEnabled ? '' : 'none';
+		el.textContent = aim ? 'Aim' : 'Cursor';
+		el.classList.toggle('aim', aim);
+	}
+}
+
 function sync() {
 	if (!ui) {
 		return;
 	}
 
 	relabel();
+	updateStickMode();
 
 	const startIdx = SetManager.getCurrentSet() === 1 ? 0 : 20;
 	for (let i = 0; i < 20; i++) {
@@ -259,6 +277,7 @@ export default {
 	updateSetIndicator,
 	updateVisuals,
 	relabel,
+	updateStickMode,
 	show,
 	hide
 };

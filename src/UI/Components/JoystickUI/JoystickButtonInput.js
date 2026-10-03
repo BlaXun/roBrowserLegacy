@@ -14,9 +14,16 @@ import Interaction from './JoystickInteractionService.js';
 import SetManager from './JoystickSetManager.js';
 import JoystickUIRenderer from './JoystickUIRenderer.js';
 import SelectionUI from './JoystickSelectionUI.js';
+import ControlsSettings from 'Preferences/Controls.js';
 
 let clickLock = false;
 const lockTimeout = 200;
+
+// RS click: a tap switches the right stick between aim and cursor, a hold
+// clears the target. Decided on release (tap) or after RS_HOLD_MS (hold).
+const RS_HOLD_MS = 400;
+let rsDownAt = 0;
+let rsHoldFired = false;
 
 function setClickLock() {
 	clickLock = true;
@@ -27,8 +34,11 @@ function setClickLock() {
 
 const ButtonInput = {
 	update: function (buttons) {
+		// Before the click lock: a release must not be missed, or a tap is lost
+		const stickButton = this._handleRightStickButton(buttons);
+
 		if (clickLock) {
-			return false;
+			return stickButton;
 		}
 
 		if (SelectionUI.active()) {
@@ -92,13 +102,6 @@ const ButtonInput = {
 			pressed = true;
 		}
 
-		// R3 (right stick click) → clear cycle focus + recenter cursor
-		// Single-fire so holding R3 does not keep re-clearing / re-centering.
-		if (btn[11] === 'pressed') {
-			Interaction.resetFocus();
-			pressed = true;
-		}
-
 		// L3 (left stick click) → switch D-pad cycle mode (mobs/items/both)
 		if (btn[10] === 'pressed') {
 			Interaction.nextCycleMode();
@@ -110,6 +113,42 @@ const ButtonInput = {
 		}
 
 		return pressed;
+	},
+
+	_handleRightStickButton: function (btn) {
+		const state = btn[11];
+
+		// Aiming switched off in the settings: RS click clears the target as
+		// soon as it is pressed, as it did before aiming existed.
+		if (!ControlsSettings.joyAimEnabled) {
+			rsDownAt = 0;
+			if (state === 'pressed') {
+				Interaction.resetFocus();
+			}
+			return state !== 'unpressed';
+		}
+
+		if (state !== 'unpressed') {
+			if (!rsDownAt) {
+				rsDownAt = Date.now();
+				rsHoldFired = false;
+			} else if (!rsHoldFired && Date.now() - rsDownAt >= RS_HOLD_MS) {
+				// Hold: clear target + recenter cursor, once per hold
+				Interaction.resetFocus();
+				rsHoldFired = true;
+			}
+			return true;
+		}
+
+		if (rsDownAt) {
+			if (!rsHoldFired && !SelectionUI.active()) {
+				// Tap: right stick aim <-> cursor
+				Interaction.toggleStickMode();
+			}
+			rsDownAt = 0;
+			return true;
+		}
+		return false;
 	},
 
 	_handleSetChange: function (btn) {
@@ -150,6 +189,19 @@ const ButtonInput = {
 			} else if (buttons[9] !== 'unpressed') {
 				// Start button
 				Interaction.escape();
+				pressed = true;
+			} else if (buttons[0] === 'pressed') {
+				// View + A/B/X/Y: windows, as Alt+E / Alt+Q / Alt+S / Alt+A
+				Interaction.toggleWindow('Inventory');
+				pressed = true;
+			} else if (buttons[1] === 'pressed') {
+				Interaction.toggleWindow('Equipment');
+				pressed = true;
+			} else if (buttons[2] === 'pressed') {
+				Interaction.toggleWindow('SkillList');
+				pressed = true;
+			} else if (buttons[3] === 'pressed') {
+				Interaction.toggleWindow('WinStats');
 				pressed = true;
 			} else {
 				pressed = Interaction.showinfo();

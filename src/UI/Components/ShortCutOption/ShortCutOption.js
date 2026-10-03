@@ -19,6 +19,7 @@ import cssText from './ShortCutOption.css?raw';
 import Controls from 'Preferences/Controls.js';
 import ButtonMap from 'UI/Components/JoystickUI/JoystickButtonMap.js';
 import JoystickUIRenderer from 'UI/Components/JoystickUI/JoystickUIRenderer.js';
+import JoystickAim from 'UI/Components/JoystickUI/JoystickAimMode.js';
 
 const ShortCutOption = new GUIComponent('ShortCutOption', cssText);
 
@@ -103,6 +104,9 @@ ShortCutOption.init = function () {
 
 	bindChange('.attackTargetMode', onUpdateTargetOption);
 	bindChange('.joyCycleMode', onUpdateCycleMode);
+	bindChange('.joyAimEnabled', onUpdateAimEnabled);
+	bindChange('.joyAimRing', onUpdateAimRing);
+	bindChange('.joyAimLine', onUpdateAimLine);
 
 	// Gamepad button mapping panel
 	const gamepadTab = root.querySelector('.content.t_gamepad');
@@ -160,6 +164,18 @@ ShortCutOption.onAppend = function () {
 	const cycleMode = this.getRoot().querySelector('.joyCycleMode');
 	if (cycleMode) {
 		cycleMode.value = String(Controls.joyCycleMode | 0);
+	}
+	const aimEnabled = this.getRoot().querySelector('.joyAimEnabled');
+	const aimRing = this.getRoot().querySelector('.joyAimRing');
+	if (aimRing) {
+		aimRing.checked = !!Controls.joyAimRing;
+	}
+	const aimLine = this.getRoot().querySelector('.joyAimLine');
+	if (aimLine) {
+		aimLine.checked = !!Controls.joyAimLine;
+	}
+	if (aimEnabled) {
+		aimEnabled.checked = !!Controls.joyAimEnabled;
 	}
 
 	this._host.style.left = _preferences.x + 'px';
@@ -481,8 +497,14 @@ const MAPPING_ROLES = [
 	[ButtonMap.BUTTON.RIGHT, 'Next target (grid right on items)'],
 	[ButtonMap.BUTTON.UP, 'Up (arrow key, item grids)'],
 	[ButtonMap.BUTTON.DOWN, 'Down (arrow key, item grids)'],
-	[ButtonMap.BUTTON.LS, 'Target cycle: mobs / items / both'],
-	[ButtonMap.BUTTON.RS, 'Clear target, recenter cursor'],
+	[ButtonMap.BUTTON.LS, 'Target cycle: mobs / items / both / NPCs'],
+	[
+		ButtonMap.BUTTON.RS,
+		() =>
+			Controls.joyAimEnabled
+				? 'Tap: right stick aim/cursor - Hold: clear target'
+				: 'Clear target, recenter cursor'
+	],
 	[ButtonMap.BUTTON.MENU, 'Enter'],
 	[ButtonMap.BUTTON.VIEW, 'Camera & menu modifier'],
 	[ButtonMap.BUTTON.LB, 'Shortcuts: skill bar 1, slots 1-4'],
@@ -510,9 +532,10 @@ function getMappingCombos() {
 		[n(B.VIEW) + ' + ' + n(B.UP) + ' / ' + n(B.DOWN), 'Camera zoom'],
 		[n(B.VIEW) + ' + ' + n(B.LEFT) + ' / ' + n(B.RIGHT), 'Camera rotate'],
 		[n(B.VIEW) + ' + ' + n(B.MENU), 'Escape'],
+		[n(B.VIEW) + ' + ' + [n(B.A), n(B.B), n(B.X), n(B.Y)].join(' / '), 'Inventory / equipment / skills / status'],
 		[n(B.VIEW) + ' (cursor on item/skill)', 'Context menu'],
 		[sticks[0], 'Move'],
-		[sticks[1], 'Cursor']
+		[sticks[1], Controls.joyAimEnabled ? 'Cursor, or aim (tap ' + n(B.RS) + ')' : 'Cursor']
 	];
 }
 
@@ -526,7 +549,8 @@ function renderMapping(root) {
 
 	const roles = root.querySelector('.joyMappingRoles tbody');
 	roles.textContent = '';
-	MAPPING_ROLES.forEach(function ([logical, label]) {
+	MAPPING_ROLES.forEach(function ([logical, roleLabel]) {
+		const label = typeof roleLabel === 'function' ? roleLabel() : roleLabel;
 		const tr = document.createElement('tr');
 		const name = document.createElement('td');
 		const button = document.createElement('td');
@@ -585,6 +609,20 @@ function startRemap(root, logical, label, remapButton) {
 		JoystickUIRenderer.relabel();
 		renderMapping(root);
 	});
+}
+
+function onUpdateAimEnabled() {
+	JoystickAim.setEnabled(this.checked);
+}
+
+function onUpdateAimRing() {
+	Controls.joyAimRing = this.checked;
+	Controls.save();
+}
+
+function onUpdateAimLine() {
+	Controls.joyAimLine = this.checked;
+	Controls.save();
 }
 
 function onUpdateCycleMode() {
