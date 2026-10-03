@@ -50,6 +50,9 @@ const RING_RADIUS = 0.6; // cells
 const RING_POINTS = 24;
 const RING_FADE_MS = 2000; // the ring fades out over this long after a new target
 const LINE_STEP = 0.5; // cells between projected line points, so it follows the ground
+const LINE_IDLE_LENGTH = 3; // cells, the line while the aim is on nothing
+const LINE_COLOR_HIT = 'rgba(255, 82, 82, 0.9)';
+const LINE_COLOR_IDLE = 'rgba(255, 215, 64, 0.85)';
 
 let _aimLastHit = null;
 let _aimOverlay = null;
@@ -221,17 +224,22 @@ function drawRing(ctx, entity, alpha) {
 }
 
 /**
- * The aim line, from the character to the target it hit, sampled along
- * the ground so it follows the terrain.
+ * The aim line along the ground from the character, sampled so it follows
+ * the terrain: to the target the aim hit, or a short stub in the aimed
+ * direction while it hits nothing.
  *
  * @param {CanvasRenderingContext2D} ctx overlay, already cleared
  * @param {Array<number>} from [x, y] map position
- * @param {Entity} to target
+ * @param {Array<number>} to [x, y] map position
+ * @param {string} color stroke colour
  */
-function drawAimLine(ctx, from, to) {
-	const dx = to.position[0] - from[0];
-	const dy = to.position[1] - from[1];
+function drawAimLine(ctx, from, to, color) {
+	const dx = to[0] - from[0];
+	const dy = to[1] - from[1];
 	const length = Math.hypot(dx, dy);
+	if (length === 0) {
+		return;
+	}
 
 	const points = [];
 	for (let t = 0; t < length; t += LINE_STEP) {
@@ -240,7 +248,7 @@ function drawAimLine(ctx, from, to) {
 			points.push(p);
 		}
 	}
-	const end = project(to.position[0], to.position[1]);
+	const end = project(to[0], to[1]);
 	if (end) {
 		points.push(end);
 	}
@@ -252,7 +260,7 @@ function drawAimLine(ctx, from, to) {
 	ctx.lineJoin = 'round';
 	[
 		['rgba(0, 0, 0, 0.45)', 5],
-		['rgba(255, 82, 82, 0.9)', 2.5]
+		[color, 2.5]
 	].forEach(([stroke, width]) => {
 		ctx.strokeStyle = stroke;
 		ctx.lineWidth = width;
@@ -303,9 +311,10 @@ function update(x, y, held) {
 
 	const origin = [player.position[0], player.position[1]];
 	let hit = null;
+	let dir = null;
 
 	if (held) {
-		const dir = stickToMapDirection(x, y, Camera.angle[1]);
+		dir = stickToMapDirection(x, y, Camera.angle[1]);
 		const candidates = Target.getCycleCandidates(player).filter(isOnScreen);
 		hit = findFirstHit(origin, dir, candidates);
 
@@ -327,7 +336,16 @@ function update(x, y, held) {
 	}
 
 	// Both indicators are off by default (Settings > Gamepad > Aim Settings)
-	const line = ControlsSettings.joyAimLine && hit && hit.entity === target ? target : null;
+	let line = null;
+	if (ControlsSettings.joyAimLine && held) {
+		line =
+			hit && hit.entity === target
+				? { to: [target.position[0], target.position[1]], color: LINE_COLOR_HIT }
+				: {
+						to: [origin[0] + dir[0] * LINE_IDLE_LENGTH, origin[1] + dir[1] * LINE_IDLE_LENGTH],
+						color: LINE_COLOR_IDLE
+					};
+	}
 	const fade = 1 - (performance.now() - _aimRingAt) / RING_FADE_MS;
 	const ring = ControlsSettings.joyAimRing && _aimRingTarget === target && target && fade > 0 ? target : null;
 
@@ -342,7 +360,7 @@ function update(x, y, held) {
 	const dpr = window.devicePixelRatio || 1;
 	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 	if (line) {
-		drawAimLine(ctx, origin, line);
+		drawAimLine(ctx, origin, line.to, line.color);
 	}
 	if (ring) {
 		drawRing(ctx, ring, fade);
