@@ -38,7 +38,7 @@ vi.mock('DB/DBManager.js', () => ({
 		getItemInfo: () => ({ identifiedResourceName: 'item' }),
 		getItemName: item => `item ${item.ITID}`,
 		getMessage: () => '',
-		getAllTitles: () => ({})
+		getTitleString: id => `title ${id}`
 	}
 }));
 vi.mock('Network/NetworkManager.js', () => ({ default: { sendPacket: vi.fn(), hookPacket: vi.fn() } }));
@@ -83,6 +83,7 @@ vi.mock('Renderer/Entity/Entity.js', () => ({ default: class {} }));
 const { default: Equipment } = await import('UI/Components/Equipment/EquipmentV4/EquipmentV4.js');
 const { default: EquipLocation } = await import('DB/Items/EquipmentLocation.js');
 const { default: ItemType } = await import('DB/Items/ItemType.js');
+const { default: Session } = await import('Engine/SessionStorage.js');
 
 function worn(index, location) {
 	const item = { index, ITID: 19500 + index, type: ItemType.ARMOR, IsIdentified: true, location };
@@ -157,5 +158,30 @@ describe('Equipment damage indicator style', () => {
 
 		Equipment.setDamageSkin(0);
 		expect(picked()).toEqual(['0']);
+	});
+});
+
+describe('Equipment titles', () => {
+	it('lists only the titles the character owns', () => {
+		Session.Achievement = { titles: [1004, 1001] };
+		Equipment.setTitle(1004);
+
+		const options = [...Equipment.getRoot().querySelectorAll('#title_list .title-option')];
+		expect(options.map(el => el.getAttribute('data-title'))).toEqual(['0', '1001', '1004']);
+		expect(options[2].classList.contains('selected')).toBe(true);
+	});
+
+	it('asks for a title once per click however often the list is rebuilt', () => {
+		Session.Achievement = { titles: [1001] };
+		Equipment.selectTitle = vi.fn();
+		Equipment.loadTitles();
+		Equipment.loadTitles();
+
+		Equipment.getRoot()
+			.querySelector('#title_list .title-option[data-title="1001"]')
+			.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+		expect(Equipment.selectTitle).toHaveBeenCalledTimes(1);
+		expect(Equipment.selectTitle).toHaveBeenCalledWith(1001);
 	});
 });

@@ -168,6 +168,13 @@ class MapEngine {
 				// Force reloading map
 				MapRenderer.currentMap = '';
 
+				// Each map-server builds the title list anew when the character
+				// enters it, and sends a fresh achievement list to go with it.
+				if (Session.Achievement) {
+					Session.Achievement.titles = [];
+					Session.Achievement.loginListPending = true;
+				}
+
 				// Fail to connect...
 				if (!success) {
 					UIManager.showErrorBox(DB.getMessage(1));
