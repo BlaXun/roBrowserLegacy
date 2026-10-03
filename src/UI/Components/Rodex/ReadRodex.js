@@ -174,6 +174,9 @@ function onClickReply(e) {
 
 ReadRodex.clearItemList = function clearItemList() {
 	const root = _root();
+	if (!root) {
+		return;
+	}
 	const itemList = root.querySelector('.item-list');
 	if (itemList) {
 		itemList.innerHTML = '';
@@ -182,6 +185,9 @@ ReadRodex.clearItemList = function clearItemList() {
 
 ReadRodex.clearZeny = function clearZeny() {
 	const root = _root();
+	if (!root) {
+		return;
+	}
 	const valueEl = root.querySelector('.value');
 	if (valueEl) {
 		valueEl.textContent = '';
