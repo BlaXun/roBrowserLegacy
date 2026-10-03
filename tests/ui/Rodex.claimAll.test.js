@@ -21,8 +21,8 @@ vi.mock('UI/GUIComponent.js', () => ({
 
 const Rodex = (await import('UI/Components/Rodex/Rodex.js')).default;
 
-function mail(MailID, type) {
-	return { MailID, type, openType: 0 };
+function mail(MailID, type, openType = 0) {
+	return { MailID, type, openType };
 }
 
 describe('Rodex mail types', () => {
@@ -30,6 +30,7 @@ describe('Rodex mail types', () => {
 		Rodex.requestItemsFromRodex = vi.fn();
 		Rodex.requestZenyFromRodex = vi.fn();
 		Rodex.requestDeleteRodex = vi.fn();
+		Rodex.openType = 0;
 	});
 
 	it('claims every attachment, including mail sent by the server', () => {
@@ -45,6 +46,18 @@ describe('Rodex mail types', () => {
 		Rodex.deleteAll();
 
 		expect(Rodex.requestDeleteRodex.mock.calls.map(c => c[1])).toEqual([1, 2]);
+	});
+
+	it('acts only on the open mailbox, which its confirmation names', () => {
+		Rodex.list = [mail(1, 4, 0), mail(2, 4, 1), mail(3, 0, 0), mail(4, 0, 1)];
+		Rodex.openType = '1'; // as the tab click sets it
+
+		Rodex.getAll();
+		Rodex.deleteAll();
+
+		expect(Rodex.requestItemsFromRodex.mock.calls).toEqual([[1, 2]]);
+		expect(Rodex.requestDeleteRodex.mock.calls).toEqual([[1, 4]]);
+		expect(Rodex.getMailboxName()).toBe('msg 3546');
 	});
 
 	it('shows the icon for what a mail holds, whoever sent it', () => {

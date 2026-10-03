@@ -247,9 +247,24 @@ Rodex.getMailByID = function getMailByID(mailID) {
 	return Rodex.list.find(mail => mail.MailID == mailID);
 };
 
+/**
+ * Name of the open mailbox, as its tab shows it
+ *
+ * @return {string}
+ */
+Rodex.getMailboxName = function getMailboxName() {
+	// Tab labels by openType: 0 General, 1 Notice, 2 Return
+	const tabText = { 0: 3547, 1: 3546, 2: 3548 }[Number(Rodex.openType)];
+	return tabText ? DB.getMessage(tabText) : '';
+};
+
+/**
+ * Claim every attachment in the open mailbox
+ */
 Rodex.getAll = function getAll() {
-	for (let i = 0; i < Rodex.list.length; i++) {
-		const mail = Rodex.list[i];
+	const mails = Rodex.getMailsByTabID(Rodex.openType);
+	for (let i = 0; i < mails.length; i++) {
+		const mail = mails[i];
 		if (mail.type & Rodex.MAIL_TYPE.ITEM) {
 			Rodex.requestItemsFromRodex(mail.openType, mail.MailID);
 		}
@@ -259,9 +274,13 @@ Rodex.getAll = function getAll() {
 	}
 };
 
+/**
+ * Delete every mail in the open mailbox that has nothing left to claim
+ */
 Rodex.deleteAll = function deleteAll() {
-	for (let i = 0; i < Rodex.list.length; i++) {
-		const mail = Rodex.list[i];
+	const mails = Rodex.getMailsByTabID(Rodex.openType);
+	for (let i = 0; i < mails.length; i++) {
+		const mail = mails[i];
 		if (!(mail.type & (Rodex.MAIL_TYPE.ZENY | Rodex.MAIL_TYPE.ITEM))) {
 			Rodex.requestDeleteRodex(mail.openType, mail.MailID);
 		} else {
@@ -327,14 +346,14 @@ function onClickWriteMail(e) {
 
 function onClickDeleteAll(e) {
 	e.stopImmediatePropagation();
-	UIManager.showPromptBox(DB.getMessage(3590), 'ok', 'cancel', () => {
+	UIManager.showPromptBox(DB.getMessage(3590).replace('%s', Rodex.getMailboxName()), 'ok', 'cancel', () => {
 		Rodex.deleteAll();
 	});
 }
 
 function onClickRetrieveAll(e) {
 	e.stopImmediatePropagation();
-	UIManager.showPromptBox(DB.getMessage(3594), 'ok', 'cancel', () => {
+	UIManager.showPromptBox(DB.getMessage(3594).replace('%s', Rodex.getMailboxName()), 'ok', 'cancel', () => {
 		Rodex.getAll();
 	});
 }
