@@ -144,3 +144,18 @@ describe('Equipment item events', () => {
 		expect(Equipment.onEquipItem).toHaveBeenCalledWith(11, EquipLocation.COSTUME_HEAD_BOTTOM);
 	});
 });
+
+describe('Equipment damage indicator style', () => {
+	it('marks only the chosen style as picked', () => {
+		const picked = () =>
+			[...Equipment.getRoot().querySelectorAll('#damageskin .skin-option.active')].map(el =>
+				el.getAttribute('data-skin')
+			);
+
+		Equipment.setDamageSkin(2);
+		expect(picked()).toEqual(['2']);
+
+		Equipment.setDamageSkin(0);
+		expect(picked()).toEqual(['0']);
+	});
+});
