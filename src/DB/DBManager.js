@@ -19,6 +19,7 @@ import WeaponJobTable from './Jobs/WeaponJobTable.js';
 import BabyTable from './Jobs/BabyTable.js';
 import HairIndexTable from './Jobs/HairIndexTable.js';
 import MonsterTable from './Monsters/MonsterTable.js';
+import BodyFallbackTable from './Monsters/BodyFallbackTable.js';
 import MonsterNameTable from './Monsters/MonsterNameTable.js';
 import PetIllustration from './Pets/PetIllustration.js';
 import PetAction from './Pets/PetAction.js';
@@ -1324,6 +1325,39 @@ class DB {
 
 		// MONSTER
 		return 'data/sprite/\xb8\xf3\xbd\xba\xc5\xcd/' + (MonsterTable[id] || MonsterTable[1001]).toLowerCase();
+	}
+
+	/**
+	 * Bodies to try, in order, when the one getBodyPath names fails to load.
+	 *
+	 * The client's data can lack a file its own tables still name (iRO 2026-09
+	 * dropped 4_m_drzonda01, the Zonda teleporters). An NPC or monster is never
+	 * left without a body: first the stand-ins BodyFallbackTable lists for that
+	 * id, then the body getBodyPath already draws for an id it does not know
+	 * (1_ETC_01 for an NPC), or for a monster the Poring a missing 3D model gets.
+	 * Players, homunculi and mercenaries get none.
+	 *
+	 * @param {number|string} id entity
+	 * @param {boolean} sex
+	 * @return {Array<string>} paths without extension, never the body's own
+	 */
+	static getBodyFallbackPaths(id, sex) {
+		const own = DB.getBodyPath(id, sex);
+		if (!own || DB.isPlayer(id) || DB.isHomunculus(id) || DB.isMercenary(id) || typeof id !== 'number') {
+			return [];
+		}
+
+		const ids = (BodyFallbackTable[id] || []).concat(DB.isNPC(id) ? 46 : 1002);
+		const paths = [];
+
+		for (const alt of ids) {
+			const path = DB.getBodyPath(alt, sex);
+			if (path && path !== own && !/\.gr2$/i.test(path) && !paths.includes(path)) {
+				paths.push(path);
+			}
+		}
+
+		return paths;
 	}
 
 	/**
