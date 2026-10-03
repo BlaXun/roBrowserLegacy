@@ -20,6 +20,7 @@ import Announce from 'UI/Components/Announce/Announce.js';
 import 'UI/Components/Achievement/Achievement.js';
 import EffectConst from 'DB/Effects/EffectConst.js';
 import EffectManager from 'Renderer/EffectManager.js';
+import Equipment from 'UI/Components/Equipment/Equipment.js';
 
 function initSessionAchievement() {
 	if (!Session.Achievement) {
@@ -31,6 +32,30 @@ function initSessionAchievement() {
 			next_rank_points: 0,
 			list: {}
 		};
+	}
+	if (!Session.Achievement.titles) {
+		Session.Achievement.titles = [];
+	}
+}
+
+/**
+ * Give the player the title an achievement rewards, if it has one.
+ * Mirrors the map-server's list (map_session_data::titles), which is what
+ * CZ_REQ_CHANGE_TITLE is checked against.
+ *
+ * @param {object} ach - achievement from the session list
+ */
+function grantTitle(ach) {
+	const titleId = ach.info && ach.info.reward ? ach.info.reward.title : 0;
+	if (titleId && !Session.Achievement.titles.includes(titleId)) {
+		Session.Achievement.titles.push(titleId);
+	}
+}
+
+function refreshEquipmentTitles() {
+	const equipment = Equipment.getUI();
+	if (equipment && typeof equipment.loadTitles === 'function') {
+		equipment.loadTitles();
 	}
 }
 
@@ -45,11 +70,25 @@ function onAllAchievementList(pkt) {
 
 	const achTable = DB.getAchievementTable();
 
+	// The map-server sends the full list once when the character enters it
+	// (rAthena intif_parse_achievements), right after it gives every completed
+	// achievement's title (achievement_get_titles). It sends the list again only
+	// after a title reward is claimed, and by then an achievement completed
+	// during play still has no title unless its reward was claimed.
+	const isLoginList = !Session.Achievement.loginListReceived;
+	Session.Achievement.loginListReceived = true;
+
 	pkt.ach_list.forEach(ach => {
 		// Attach the static information from the DB (e.g. title, summary, reward, score)
 		ach.info = achTable[ach.ach_id] || null;
 		Session.Achievement.list[ach.ach_id] = ach;
+
+		if (ach.reward || (isLoginList && ach.completed)) {
+			grantTitle(ach);
+		}
 	});
+
+	refreshEquipmentTitles();
 
 	const ui = UIManager.components.Achievement;
 	if (ui) ui.updateHeaderAndView();
@@ -74,6 +113,12 @@ function onAchievementUpdate(pkt) {
 
 		Session.Achievement.list[ach.ach_id] = ach;
 
+		// Completing an achievement during play doesn't give its title; only
+		// claiming the reward does (rAthena achievement_get_reward).
+		if (ach.reward) {
+			grantTitle(ach);
+		}
+
 		if (isNewCompletion && ach.info && ach.info.title) {
 			Announce.append();
 			Announce.set(`${DB.getMessage(2681).replace('%s', ach.info.title)}`, '#FFFFFF', {
@@ -92,6 +137,8 @@ function onAchievementUpdate(pkt) {
 		}
 	});
 
+	refreshEquipmentTitles();
+
 	const ui = UIManager.components.Achievement;
 	if (ui) ui.updateHeaderAndView();
 }
@@ -100,6 +147,8 @@ function onRequestAchievementRewardACK(pkt) {
 	// If the reward request was successful (failed === 0), mark it as claimed
 	if (pkt.failed === 0 && Session.Achievement && Session.Achievement.list[pkt.ach_id]) {
 		Session.Achievement.list[pkt.ach_id].reward = 1;
+		grantTitle(Session.Achievement.list[pkt.ach_id]);
+		refreshEquipmentTitles();
 	}
 
 	const ui = UIManager.components.Achievement;

@@ -1106,6 +1106,15 @@ function onEntityIdentity(pkt) {
 			entity.display.title_name = '';
 		}
 
+		// The server names the player again whenever their title changes, and
+		// this is the only place it says which title is worn after login.
+		if (PACKETVER.value >= 20170208 && entity === Session.Entity && pkt.TitleID !== undefined) {
+			const equipment = Equipment.getUI();
+			if (equipment && typeof equipment.setTitle === 'function') {
+				equipment.setTitle(pkt.TitleID);
+			}
+		}
+
 		entity.display.party_name = pkt.PName || '';
 		entity.display.guild_name = pkt.GName || '';
 		entity.display.guild_rank = pkt.RName || '';
@@ -1170,6 +1179,9 @@ function onTitleChangeAck(pkt) {
 		if (comp && typeof comp.setTitle === 'function') {
 			comp.setTitle(pkt.title_id);
 		}
+	} else {
+		// The map-server refuses a title the character doesn't own
+		ChatBox.addText('You cannot use that title.', ChatBox.TYPE.ERROR, ChatBox.FILTER.PUBLIC_LOG);
 	}
 }
 

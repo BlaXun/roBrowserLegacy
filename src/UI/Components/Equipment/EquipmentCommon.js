@@ -229,6 +229,8 @@ export function createEquipment({
 		}
 
 		if (titles) {
+			const titleList = root.querySelector('#title_list');
+			if (titleList) titleList.addEventListener('click', onTitleClick);
 			this.loadTitles();
 		}
 
@@ -1046,6 +1048,16 @@ export function createEquipment({
 		};
 	}
 
+	function onTitleClick(e) {
+		const option = e.target.closest('.title-option');
+		if (option) {
+			e.preventDefault();
+			e.stopPropagation();
+			const titleId = parseInt(option.getAttribute('data-title'));
+			Component.selectTitle(titleId);
+		}
+	}
+
 	if (titles) {
 		Component.loadTitles = function () {
 			const root = Component.getRoot();
@@ -1061,28 +1073,20 @@ export function createEquipment({
 			removeEl.textContent = removeTitleText;
 			titleList.appendChild(removeEl);
 
-			const allTitles = DB.getAllTitles();
-			for (const titleId in allTitles) {
-				if (allTitles.hasOwnProperty(titleId)) {
-					const titleName = allTitles[titleId];
-					const selectedClass = parseInt(titleId) === _currentTitleId ? ' selected' : '';
+			// Only the titles the character owns: the map-server refuses the rest.
+			// Engine/MapEngine/Achievement.js keeps this list.
+			const ownedTitles = (Session.Achievement && Session.Achievement.titles) || [];
+			ownedTitles
+				.slice()
+				.sort((a, b) => a - b)
+				.forEach(titleId => {
+					const selectedClass = titleId === _currentTitleId ? ' selected' : '';
 					const titleEl = document.createElement('div');
 					titleEl.className = `title-option${selectedClass}`;
 					titleEl.setAttribute('data-title', titleId);
-					titleEl.textContent = titleName;
+					titleEl.textContent = DB.getTitleString(titleId);
 					titleList.appendChild(titleEl);
-				}
-			}
-
-			titleList.addEventListener('click', e => {
-				const option = e.target.closest('.title-option');
-				if (option) {
-					e.preventDefault();
-					e.stopPropagation();
-					const titleId = parseInt(option.getAttribute('data-title'));
-					Component.selectTitle(titleId);
-				}
-			});
+				});
 		};
 
 		Component.selectTitle = function (titleId) {
