@@ -78000,7 +78000,11 @@ var init_Preferences$1 = __esmMin((() => {
 var UI_default;
 var init_UI = __esmMin((() => {
 	init_Preferences$1();
-	UI_default = Preferences.get("UI", { windowmagnet: true }, 1);
+	UI_default = Preferences.get("UI", {
+		windowmagnet: true,
+		guildMemberListSorted: true,
+		li: true
+	}, 1);
 }));
 //#endregion
 //#region src/Engine/SessionStorage.js
@@ -78023,6 +78027,28 @@ var init_SessionStorage = __esmMin((() => {
 		/** @type {Player|Entity|null} The entity currently controlled by the client */
 		Entity: null,
 		AdminList: [],
+		/**
+		* Which parts of the GM look an account on AdminList gets: the GM sprite
+		* in place of its class body, the GM name style, and GM-styled chat. All
+		* on by default, as before; a plugin can turn each off (a GM who wants to
+		* look like their class). Read through showsAdmin.
+		*/
+		AdminLook: {
+			sprite: true,
+			name: true,
+			chat: true
+		},
+		/**
+		* Whether an entity gets one part of the GM look: only an admin does, and
+		* only the parts AdminLook has not turned off.
+		*
+		* @param {{isAdmin?: boolean}} entity
+		* @param {'sprite'|'name'|'chat'} part
+		* @return {boolean}
+		*/
+		showsAdmin(entity, part) {
+			return Boolean(entity?.isAdmin) && this.AdminLook?.[part] !== false;
+		},
 		underAutoCounter: false,
 		moveAction: null,
 		/**
@@ -78040,7 +78066,7 @@ var init_SessionStorage = __esmMin((() => {
 		hasParty: false,
 		isPartyLeader: false,
 		hasGuild: false,
-		guildRight: 0,
+		guildPermission: 0,
 		guildName: "",
 		isGuildMaster: false,
 		Playing: false,
@@ -78902,6 +78928,7 @@ var init_Controls = __esmMin((() => {
 		itemsnap: false,
 		attackTargetMode: 0,
 		joyCycleMode: 0,
+		joyButtonMap: null,
 		joyQuick: 0,
 		joyDeadline: .1,
 		joyDisableVirtualMouse: false,
@@ -83210,7 +83237,7 @@ var init_Texture = __esmMin((() => {
 *
 * @return {object} webgl context
 */
-function getContext(canvas, parameters) {
+function getContext$1(canvas, parameters) {
 	let gl = null;
 	let i;
 	if (!parameters) parameters = {
@@ -83380,7 +83407,7 @@ var init_WebGL = __esmMin((() => {
 	init_Texture();
 	init_Configs();
 	WebGL_default = {
-		getContext,
+		getContext: getContext$1,
 		compileShader,
 		createShaderProgram,
 		detectBadWebGL,
@@ -83391,14 +83418,25 @@ var init_WebGL = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/PostProcess.js
-var _effects, _activeEffects, _readFbo, _writeFbo, PostProcess;
+var _effects, _activeEffects, _external, _externalAt, _gl$4, _sceneDepth, _inPasses, _readFbo, _writeFbo, PostProcess;
 var init_PostProcess = __esmMin((() => {
 	init_Graphics();
 	_effects = [];
 	_activeEffects = [];
+	_external = [];
+	_externalAt = -1;
+	_gl$4 = null;
+	_sceneDepth = null;
+	_inPasses = false;
 	_readFbo = null;
 	_writeFbo = null;
 	PostProcess = class PostProcess {
+		/**
+		* What the frame being drawn looks like, for passes that need more than
+		* the image: { modelView, projection, light, lights, tick, near, far }.
+		* Set by MapRenderer before render().
+		*/
+		static scene = null;
 		/**
 		* Register module in pass priority order and init
 		* @param {ShaderModule} module - Post Process Modular effect.
@@ -83409,8 +83447,59 @@ var init_PostProcess = __esmMin((() => {
 				console.error("[PostProcess] Incorrect modular Post-Process format registered - please Fix");
 				return;
 			}
+			_gl$4 = gl;
 			_effects.push(module);
 			module.init(gl);
+		}
+		/**
+		* Register the external passes here, in the order they were added.
+		* @param {WebGLRenderingContext} gl - The WebGL context.
+		*/
+		static registerExternal(gl) {
+			_gl$4 = gl;
+			_externalAt = _effects.length;
+			_external.forEach((module) => {
+				_effects.push(module);
+				module.init(gl);
+			});
+		}
+		/**
+		* Add a pass from outside the renderer -- a client plugin. Same module
+		* format as register(); it runs where registerExternal was called, and
+		* stays across map changes until removeExternal.
+		* @param {ShaderModule} module
+		*/
+		static addExternal(module) {
+			if (!module || !module.program || !module.isActive || !module.init || !module.render || !module.clean) {
+				console.error("[PostProcess] Incorrect modular Post-Process format added - please Fix");
+				return;
+			}
+			if (_external.includes(module)) return;
+			_external.push(module);
+			if (_gl$4 && _externalAt >= 0) {
+				_effects.splice(_externalAt + _external.length - 1, 0, module);
+				module.init(_gl$4);
+			}
+		}
+		/**
+		* Remove a pass added with addExternal.
+		* @param {ShaderModule} module
+		*/
+		static removeExternal(module) {
+			_external = _external.filter((m) => m !== module);
+			const index = _effects.indexOf(module);
+			if (index >= 0) {
+				_effects.splice(index, 1);
+				if (_gl$4) module.clean(_gl$4);
+			}
+		}
+		/**
+		* The scene's depth buffer as a texture, for a pass that needs distance
+		* (fog, depth of field). Null outside the passes, or on WebGL 1.
+		* @return {WebGLTexture|null}
+		*/
+		static sceneDepth() {
+			return _sceneDepth;
 		}
 		/**
 		* Prepare the pipeline for the scene rendering.
@@ -83430,6 +83519,10 @@ var init_PostProcess = __esmMin((() => {
 		static render(gl) {
 			if (_activeEffects.length === 0) return;
 			this.swapBuffers();
+			_sceneDepth = _readFbo ? _readFbo.depthTexture || null : null;
+			_inPasses = true;
+			const depthTest = gl.isEnabled(gl.DEPTH_TEST);
+			gl.disable(gl.DEPTH_TEST);
 			for (let i = 0; i < _activeEffects.length; i++) {
 				const effect = _activeEffects[i];
 				const isLast = i === _activeEffects.length - 1;
@@ -83437,6 +83530,9 @@ var init_PostProcess = __esmMin((() => {
 				effect.render(gl, _readFbo.texture, targetFbo);
 				if (!isLast) this.swapBuffers();
 			}
+			_inPasses = false;
+			_sceneDepth = null;
+			if (depthTest) gl.enable(gl.DEPTH_TEST);
 		}
 		/**
 		* Set up the FBO and viewport for the next render pass
@@ -83451,7 +83547,7 @@ var init_PostProcess = __esmMin((() => {
 				gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 				gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 			}
-			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+			gl.clear(_inPasses ? gl.COLOR_BUFFER_BIT : gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 		}
 		/**
 		* Cleans up bindings
@@ -83494,11 +83590,13 @@ var init_PostProcess = __esmMin((() => {
 			if (_readFbo) {
 				if (gl.isTexture(_readFbo.texture)) gl.deleteTexture(_readFbo.texture);
 				if (gl.isRenderbuffer(_readFbo.rbo)) gl.deleteRenderbuffer(_readFbo.rbo);
+				if (_readFbo.depthTexture && gl.isTexture(_readFbo.depthTexture)) gl.deleteTexture(_readFbo.depthTexture);
 				if (gl.isFramebuffer(_readFbo.framebuffer)) gl.deleteFramebuffer(_readFbo.framebuffer);
 			}
 			if (_writeFbo) {
 				if (gl.isTexture(_writeFbo.texture)) gl.deleteTexture(_writeFbo.texture);
 				if (gl.isRenderbuffer(_writeFbo.rbo)) gl.deleteRenderbuffer(_writeFbo.rbo);
+				if (_writeFbo.depthTexture && gl.isTexture(_writeFbo.depthTexture)) gl.deleteTexture(_writeFbo.depthTexture);
 				if (gl.isFramebuffer(_writeFbo.framebuffer)) gl.deleteFramebuffer(_writeFbo.framebuffer);
 			}
 			_readFbo = null;
@@ -83524,14 +83622,17 @@ var init_PostProcess = __esmMin((() => {
 			_effects.forEach((module) => module.clean(gl));
 			_effects = [];
 			_activeEffects = [];
+			_externalAt = -1;
 			if (_readFbo) {
 				if (gl.isTexture(_readFbo.texture)) gl.deleteTexture(_readFbo.texture);
 				if (gl.isRenderbuffer(_readFbo.rbo)) gl.deleteRenderbuffer(_readFbo.rbo);
+				if (_readFbo.depthTexture && gl.isTexture(_readFbo.depthTexture)) gl.deleteTexture(_readFbo.depthTexture);
 				if (gl.isFramebuffer(_readFbo.framebuffer)) gl.deleteFramebuffer(_readFbo.framebuffer);
 			}
 			if (_writeFbo) {
 				if (gl.isTexture(_writeFbo.texture)) gl.deleteTexture(_writeFbo.texture);
 				if (gl.isRenderbuffer(_writeFbo.rbo)) gl.deleteRenderbuffer(_writeFbo.rbo);
+				if (_writeFbo.depthTexture && gl.isTexture(_writeFbo.depthTexture)) gl.deleteTexture(_writeFbo.depthTexture);
 				if (gl.isFramebuffer(_writeFbo.framebuffer)) gl.deleteFramebuffer(_writeFbo.framebuffer);
 			}
 			_readFbo = null;
@@ -83571,6 +83672,7 @@ var init_PostProcess = __esmMin((() => {
 				if (oldfbo) {
 					if (gl.isTexture(oldfbo.texture)) gl.deleteTexture(oldfbo.texture);
 					if (gl.isRenderbuffer(oldfbo.rbo)) gl.deleteRenderbuffer(oldfbo.rbo);
+					if (oldfbo.depthTexture && gl.isTexture(oldfbo.depthTexture)) gl.deleteTexture(oldfbo.depthTexture);
 					if (gl.isFramebuffer(oldfbo.framebuffer)) gl.deleteFramebuffer(oldfbo.framebuffer);
 				}
 				const fbo = gl.createFramebuffer();
@@ -83583,10 +83685,23 @@ var init_PostProcess = __esmMin((() => {
 				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 				gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-				const rbo = gl.createRenderbuffer();
-				gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
-				gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
-				gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
+				let rbo = null;
+				let depthTexture = null;
+				if (typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext) {
+					depthTexture = gl.createTexture();
+					gl.bindTexture(gl.TEXTURE_2D, depthTexture);
+					gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+					gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depthTexture, 0);
+				} else {
+					rbo = gl.createRenderbuffer();
+					gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+					gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
+					gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
+				}
 				const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
 				if (status !== gl.FRAMEBUFFER_COMPLETE) throw new Error("WebGL::createFramebuffer() - Incomplete Framebuffer! Status: " + status);
 				gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -83596,6 +83711,7 @@ var init_PostProcess = __esmMin((() => {
 					framebuffer: fbo,
 					texture,
 					rbo,
+					depthTexture,
 					width,
 					height
 				};
@@ -138741,6 +138857,53 @@ var init_SkillTreeView = __esmMin((() => {
 	duplicateEntry$2(JobConst_default.SKY_EMPEROR, JobConst_default.SKY_EMPEROR2);
 }));
 //#endregion
+//#region src/DB/Skills/SkillTreeMerge.js
+/**
+* Put the tree back to the built-in layout, dropping every job and position a
+* previously loaded client file added.
+*
+* @param {object} tree - SkillTreeView, changed in place
+* @param {object} [builtIn] - the layout to restore
+*/
+function resetSkillTree(tree, builtIn = BuiltInSkillTreeView) {
+	for (const jobId of Object.keys(tree)) if (!(jobId in builtIn)) delete tree[jobId];
+	for (const [jobId, entry] of Object.entries(builtIn)) tree[jobId] = { ...entry };
+}
+/**
+* For each job a client file defined, put back the built-in position of any
+* skill the file leaves out, or the next free slot when the file has taken
+* that one. Positions the file set are never moved.
+*
+* @param {object} tree - SkillTreeView after the file was read, changed in place
+* @param {Iterable} jobIds - the jobs the file defined
+* @param {object} [builtIn] - the built-in layout
+*/
+function keepBuiltInSkills(tree, jobIds, builtIn = BuiltInSkillTreeView) {
+	for (const jobId of jobIds) {
+		const entry = tree[jobId];
+		const base = builtIn[jobId];
+		if (!entry || !base) continue;
+		const taken = new Set(Object.keys(entry).filter(isSkill).map((key) => entry[key]));
+		let next = Math.max(-1, ...taken) + 1;
+		for (const [skillId, pos] of Object.entries(base)) {
+			if (!isSkill(skillId) || skillId in entry) continue;
+			let slot = pos;
+			if (taken.has(slot)) {
+				while (taken.has(next)) next++;
+				slot = next;
+			}
+			entry[skillId] = slot;
+			taken.add(slot);
+		}
+	}
+}
+var isSkill, BuiltInSkillTreeView;
+var init_SkillTreeMerge = __esmMin((() => {
+	init_SkillTreeView();
+	isSkill = (key) => /^\d+$/.test(key);
+	BuiltInSkillTreeView = Object.freeze(Object.fromEntries(Object.entries(SkillTreeView).map(([jobId, entry]) => [jobId, Object.freeze({ ...entry })])));
+}));
+//#endregion
 //#region src/DB/Jobs/JobHitSoundTable.js
 function duplicateEntry$1(origin) {
 	const value = JobHitSoundTable[origin];
@@ -156368,6 +156531,39 @@ var init_MapTable = __esmMin((() => {
 	};
 }));
 //#endregion
+//#region src/DB/Map/SignboardMerge.js
+/**
+* DB/Map/SignboardMerge.js
+*
+* Organise SignBoardList.lub rows by map and cell, merging each table over the
+* ones loaded before it.
+*
+* This file is part of ROBrowser, (http://www.robrowser.com/).
+*/
+/**
+* Add signboard rows to a table keyed `[mapname][x][y]`.
+*
+* The base SignBoardList.lub is loaded first and each customSignBoardList
+* table after it, so a row on a cell that already has a sign replaces it and
+* every other sign is kept: a table only has to carry its own signs.
+*
+* @param {Array} signboardArray - rows as AddSignBoard builds them
+* @param {Object} [signboardDict] - signboards already loaded, changed in place
+* @return {Object} the table, with the rows added
+*/
+function mergeSignboards(signboardArray, signboardDict = {}) {
+	for (const signboard of signboardArray) {
+		if (!signboard.mapname) continue;
+		const { x, y } = signboard;
+		const mapname = signboard.mapname.toLowerCase();
+		if (!signboardDict[mapname]) signboardDict[mapname] = {};
+		if (!signboardDict[mapname][x]) signboardDict[mapname][x] = {};
+		signboardDict[mapname][x][y] = signboard;
+	}
+	return signboardDict;
+}
+var init_SignboardMerge = __esmMin((() => {}));
+//#endregion
 //#region src/Utils/BinaryWriter.js
 /**
 * BinaryWriter
@@ -159574,7 +159770,8 @@ var init_PacketStructure = __esmMin((() => {
 	};
 	PACKET.CZ.REQ_TRADE_BUYING_STORE.prototype.build = function() {
 		const ver = this.getPacketVersion();
-		const len = 12 + this.itemList.length * 6;
+		const itemSize = PacketVerManager_default.value >= 20181121 ? 8 : 6;
+		const len = 12 + this.itemList.length * itemSize;
 		const pkt = new BinaryWriter(len);
 		let i, count;
 		pkt.writeShort(ver[1]);
@@ -159583,7 +159780,8 @@ var init_PacketStructure = __esmMin((() => {
 		pkt.writeULong(this.UniqueID);
 		for (i = 0, count = this.itemList.length; i < count; ++i) {
 			pkt.writeUShort(this.itemList[i].index);
-			pkt.writeUShort(this.itemList[i].ITID);
+			if (PacketVerManager_default.value >= 20181121) pkt.writeULong(this.itemList[i].ITID);
+			else pkt.writeUShort(this.itemList[i].ITID);
 			pkt.writeShort(this.itemList[i].count);
 		}
 		return pkt;
@@ -161722,7 +161920,7 @@ var init_PacketStructure = __esmMin((() => {
 	PACKET.ZC.CHANGE_GUILD = function PACKET_ZC_CHANGE_GUILD(fp, end) {
 		this.AID = fp.readULong();
 		this.GDID = fp.readULong();
-		this.emblemVersion = fp.readShort();
+		this.emblemVersion = fp.readUShort();
 	};
 	PACKET.ZC.CHANGE_GUILD.size = 12;
 	PACKET.SC.BILLING_INFO = function PACKET_SC_BILLING_INFO(fp, end) {
@@ -167150,6 +167348,16 @@ var init_PacketStructure = __esmMin((() => {
 		pkt_buf.writeShort(2976);
 		return pkt_buf;
 	};
+	PACKET.ZC.ACK_BAN_GUILD_DELNAME = function PACKET_ZC_ACK_BAN_GUILD_DELNAME(fp, end) {
+		this.reasonDesc = fp.readString(40);
+		this.GID = fp.readULong();
+	};
+	PACKET.ZC.ACK_BAN_GUILD_DELNAME.size = 46;
+	PACKET.ZC.ACK_LEAVE_GUILD_DELNAME = function PACKET_ZC_ACK_LEAVE_GUILD_DELNAME(fp, end) {
+		this.GID = fp.readULong();
+		this.reasonDesc = fp.readString(40);
+	};
+	PACKET.ZC.ACK_LEAVE_GUILD_DELNAME.size = 46;
 	PACKET.ZC.GUILD_INFO3 = function PACKET_ZC_GUILD_INFO3(fp, end) {
 		this.GDID = fp.readLong();
 		this.level = fp.readLong();
@@ -167169,6 +167377,20 @@ var init_PacketStructure = __esmMin((() => {
 		this.masterName = this.masterAID;
 	};
 	PACKET.ZC.GUILD_INFO3.size = 94;
+	PACKET.ZC.BAN_LIST2 = function PACKET_ZC_BAN_LIST2(fp, end) {
+		this.banList = (function() {
+			const count = (end - fp.tell()) / 44 | 0;
+			const out = new Array(count);
+			for (let i = 0; i < count; ++i) {
+				out[i] = {};
+				out[i].GID = fp.readULong();
+				out[i].reason = fp.readString(40);
+				out[i].charname = "";
+			}
+			return out;
+		})();
+	};
+	PACKET.ZC.BAN_LIST2.size = -1;
 	PACKET.ZC.STORE_ASSISTANT_ENTRY = function PACKET_ZC_STORE_ASSISTANT_ENTRY(fp, end) {
 		this.GID = fp.readULong();
 		this.job = fp.readShort();
@@ -168326,6 +168548,30 @@ var init_PacketStructure = __esmMin((() => {
 		this.grade = fp.readUChar();
 	};
 	PACKET.ZC.ADD_ITEM_TO_CART4.size = 58;
+	PACKET.CZ.REQ_ADD_NEW_EMBLEM = function PACKET_CZ_REQ_ADD_NEW_EMBLEM() {
+		this.GDID = 0;
+		this.version = 0;
+	};
+	PACKET.CZ.REQ_ADD_NEW_EMBLEM.prototype.build = function() {
+		const pkt_buf = new BinaryWriter(10);
+		pkt_buf.writeShort(2886);
+		pkt_buf.writeULong(this.GDID);
+		pkt_buf.writeULong(this.version);
+		return pkt_buf;
+	};
+	PACKET.CZ.REQ_ADD_NEW_EMBLEM.size = 10;
+	PACKET.ZC.CHANGE_GUILD2 = function PACKET_ZC_CHANGE_GUILD2(fp, end) {
+		this.GDID = fp.readULong();
+		this.emblemVersion = fp.readULong();
+		if (end - fp.tell() >= 4) this.AID = fp.readULong();
+	};
+	PACKET.ZC.CHANGE_GUILD2.size = PacketVerManager_default.value >= 20190619 ? 14 : 10;
+	PACKET.ZC.CHANGE_GUILD3 = function PACKET_ZC_CHANGE_GUILD3(fp, end) {
+		this.GDID = fp.readULong();
+		this.emblemVersion = fp.readULong();
+		this.AID = fp.readULong();
+	};
+	PACKET.ZC.CHANGE_GUILD3.size = 14;
 	PACKET.ZC.NPC_MARKET_PURCHASE_RESULT2 = function PACKET_ZC_NPC_MARKET_PURCHASE_RESULT2(fp, end) {
 		this.result = fp.readUShort();
 		this.itemList = (function() {
@@ -168554,6 +168800,20 @@ var init_PacketStructure = __esmMin((() => {
 		this.masterName = fp.readString(NAME_LENGTH);
 	};
 	PACKET.ZC.GUILD_INFO4.size = 118;
+	PACKET.ZC.BAN_LIST3 = function PACKET_ZC_BAN_LIST3(fp, end) {
+		this.banList = (function() {
+			const count = (end - fp.tell()) / 68 | 0;
+			const out = new Array(count);
+			for (let i = 0; i < count; ++i) {
+				out[i] = {};
+				out[i].GID = fp.readULong();
+				out[i].reason = fp.readString(40);
+				out[i].charname = fp.readString(NAME_LENGTH);
+			}
+			return out;
+		})();
+	};
+	PACKET.ZC.BAN_LIST3.size = -1;
 	PACKET.ZC.MEMBERMGR_INFO3 = function PACKET_ZC_MEMBERMGR_INFO3(fp, end) {
 		this.memberInfo = (function() {
 			const count = (end - fp.tell()) / 58 | 0;
@@ -203042,7 +203302,10 @@ var init_PacketRegister = __esmMin((() => {
 		2670: PACKET.CZ.REQ_SEND_RODEX2,
 		2672: PACKET.CZ.RANDOM_COMBINE_ITEM_UI_CLOSE,
 		2685: PACKET.ZC.ACK_RODEX_LIST2,
+		2690: PACKET.ZC.ACK_BAN_GUILD_DELNAME,
+		2691: PACKET.ZC.ACK_LEAVE_GUILD_DELNAME,
 		2692: PACKET.ZC.GUILD_INFO3,
+		2695: PACKET.ZC.BAN_LIST2,
 		2697: PACKET.ZC.STORE_ASSISTANT_ENTRY,
 		2698: PACKET.ZC.STORE_ASSISTANT_DISAPPEAR,
 		2709: PACKET.ZC.CONFIG_NOTIFY2,
@@ -203149,7 +203412,10 @@ var init_PacketRegister = __esmMin((() => {
 		2935: PACKET.ZC.PC_PURCHASE_ITEMLIST2,
 		2936: PACKET.ZC.NPC_BARTER_MARKET_ITEMINFO,
 		2937: PACKET.ZC.NPC_EXPANDED_BARTER_MARKET_ITEMINFO,
+		2847: PACKET.ZC.CHANGE_GUILD2,
+		2887: PACKET.ZC.CHANGE_GUILD3,
 		2939: PACKET.ZC.GUILD_INFO4,
+		2940: PACKET.ZC.BAN_LIST3,
 		2941: PACKET.ZC.MEMBERMGR_INFO3,
 		2927: PACKET.HC.ACCEPT_MAKECHAR,
 		2957: PACKET.ZC.REPUTE_INFO,
@@ -206522,100 +206788,67 @@ var init_Audio = __esmMin((() => {
 }));
 //#endregion
 //#region src/Audio/SoundManager.js
-/**
-* Move sound to cache.
-* ff we have a request to play the same sound again, get it back
-* Will avoid to re-create sound object at each request (re-usable object)
-*/
-function onSoundEnded() {
-	if (_sounds[this.filename]) {
-		const pos = _sounds[this.filename].instances.indexOf(this);
-		if (pos !== -1) {
-			_sounds[this.filename].instances.splice(pos, 1);
-			if (_sounds[this.filename].instances.length === 0) delete _sounds[this.filename];
-		}
-		addSoundToCache(this);
+function getContext() {
+	if (!_context) {
+		const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+		if (!AudioContextClass) return null;
+		_context = new AudioContextClass();
+		const resume = () => {
+			if (_context.state !== "running") _context.resume().catch(() => {});
+		};
+		[
+			"pointerdown",
+			"keydown",
+			"touchend"
+		].forEach((type) => {
+			window.addEventListener(type, resume, {
+				capture: true,
+				passive: true
+			});
+		});
 	}
+	return _context;
 }
 /**
-* Clear sound from dom on error
-*/
-function onSoundError() {
-	const entry = _sounds[this.filename];
-	if (entry) {
-		const pos = entry.instances.indexOf(this);
-		if (pos !== -1) {
-			entry.instances.splice(pos, 1);
-			if (entry.instances.length === 0) delete _sounds[this.filename];
-		}
-	}
-	this.remove();
-	mediaPlayerCount--;
-}
-/**
-* Add sound to cache and set associated vars
-*
-* @param {Audio} sound element
-*/
-function addSoundToCache(sound) {
-	if (sound.filename) {
-		if (!(sound.filename in _cache$1)) {
-			_cache$1[sound.filename] = /* @__PURE__ */ new Object();
-			_cache$1[sound.filename].instances = new Array();
-		}
-		if (_cache$1[sound.filename].instances.length < balancedMax(C_MAX_CACHED_SOUND_INSTANCES)) {
-			sound.currentTime = 0;
-			sound.cleanupHandle = setTimeout(() => {
-				cleanupCache(sound);
-			}, C_CACHE_CLEANUP_TIME);
-			_cache$1[sound.filename].instances.push(sound);
-		} else {
-			sound.remove();
-			mediaPlayerCount--;
-		}
-	}
-}
-/**
-* Remove sound from cache and return it
-* Check at the same time to remove sound not used since some times.
+* Load and decode a sound (once per filename)
 *
 * @param {string} filename
-* @param {Audio} sound element
+* @returns {Promise<AudioBuffer|null>}
 */
-function getSoundFromCache(filename) {
-	let out = null;
-	if (filename in _cache$1) {
-		if (_cache$1[filename].instances.length > 0) {
-			out = _cache$1[filename].instances.pop();
-			if (out.cleanupHandle) clearTimeout(out.cleanupHandle);
-		}
+function getBuffer(filename) {
+	if (!(filename in _buffers)) {
+		const context = getContext();
+		const promise = new Promise((resolve) => {
+			Client.loadFile(`data/wav/${filename}`, (url) => {
+				fetch(url).then((response) => response.arrayBuffer()).then((data) => new Promise((ok, fail) => context.decodeAudioData(data, ok, fail))).then(resolve).catch((err) => {
+					console.warn("Failed to load sound:", filename, err);
+					resolve(null);
+				});
+			}, () => resolve(null));
+		});
+		promise.then((buffer) => {
+			if (!buffer && _buffers[filename] === promise) delete _buffers[filename];
+		});
+		_buffers[filename] = promise;
 	}
-	return out;
+	return _buffers[filename];
 }
 /**
-* Remove sound from cache if it was sitting there for too long
+* Stop and disconnect playing instances
 *
-* @param {Audio} sound element
+* @param {Array} instances
 */
-function cleanupCache(sound) {
-	if (sound.filename && sound.filename in _cache$1 && _cache$1[sound.filename].instances.length > 0) {
-		const pos = _cache$1[sound.filename].instances.indexOf(sound);
-		if (pos !== -1) {
-			_cache$1[sound.filename].instances.splice(pos, 1);
-			sound.remove();
-			mediaPlayerCount--;
-		}
+function stopInstances(instances) {
+	while (instances.length > 0) {
+		const instance = instances.shift();
+		instance.source.onended = null;
+		try {
+			instance.source.stop();
+		} catch {}
+		instance.gain.disconnect();
 	}
 }
-/**
-* Returns a balanced value for max audio instance number based on the currently existing HTML Media players in the DOM
-*
-* @param {CONST} max instance const value
-*/
-function balancedMax(maxConst) {
-	return Math.ceil(maxConst * (1 - mediaPlayerCount / C_MAX_MEDIA_PLAYERS));
-}
-var C_MAX_SOUND_INSTANCES, C_MAX_CACHED_SOUND_INSTANCES, C_MAX_MEDIA_PLAYERS, C_SAME_SOUND_DELAY, C_CACHE_CLEANUP_TIME, _sounds, _cache$1, mediaPlayerCount, _playGen, SoundManager;
+var C_MAX_SOUND_INSTANCES, C_SAME_SOUND_DELAY, _sounds, _buffers, _playGen, _fileGen, _context, SoundManager;
 var init_SoundManager = __esmMin((() => {
 	init_Client();
 	init_Audio();
@@ -206623,14 +206856,12 @@ var init_SoundManager = __esmMin((() => {
 	init_gl_matrix();
 	init_SessionStorage();
 	C_MAX_SOUND_INSTANCES = 10;
-	C_MAX_CACHED_SOUND_INSTANCES = 30;
-	C_MAX_MEDIA_PLAYERS = 800;
 	C_SAME_SOUND_DELAY = 100;
-	C_CACHE_CLEANUP_TIME = 3e4;
 	_sounds = {};
-	_cache$1 = {};
-	mediaPlayerCount = 0;
+	_buffers = {};
 	_playGen = 0;
+	_fileGen = {};
+	_context = null;
 	SoundManager = class SoundManager {
 		/**
 		* @var {float} sound volume
@@ -206644,52 +206875,45 @@ var init_SoundManager = __esmMin((() => {
 		* @param {optional|number} vol (volume)
 		*/
 		static play(filename, vol) {
-			let volume;
-			if (vol) volume = vol * this.volume;
-			else volume = this.volume;
-			if (volume <= 0 || !Audio_default.Sound.play) return;
-			if (!(filename in _sounds)) {
-				_sounds[filename] = {};
-				_sounds[filename].instances = [];
-				_sounds[filename].lastTick = 0;
-			}
-			const sound = getSoundFromCache(filename);
-			if (sound) {
-				sound.volume = Math.min(volume, 1);
-				sound._volume = volume;
-				const playPromise = sound.play();
-				if (playPromise) playPromise.catch((err) => {
-					if (err.name === "NotSupportedError" || err.name === "AbortError") {
-						const idx = _sounds[filename]?.instances.indexOf(sound);
-						if (idx !== void 0 && idx !== -1) _sounds[filename].instances.splice(idx, 1);
-						sound.remove();
-						mediaPlayerCount--;
-						SoundManager.play(filename, vol);
-						return;
-					}
-					console.warn("Failed to play sound:", err);
-				});
-				_sounds[filename].instances.push(sound);
-				_sounds[filename].lastTick = Date.now();
-				return;
-			}
+			if (typeof vol !== "number" || !isFinite(vol) || vol <= 0) vol = 1;
+			if (vol * this.volume <= 0 || !Audio_default.Sound.play) return;
+			const context = getContext();
+			if (!context) return;
 			const myGen = _playGen;
-			Client.loadFile(`data/wav/${filename}`, (url) => {
-				if (myGen !== _playGen || !(filename in _sounds)) return;
-				if (_sounds[filename].lastTick > Date.now() - C_SAME_SOUND_DELAY || _sounds[filename].instances.length > balancedMax(C_MAX_SOUND_INSTANCES)) return;
-				const audio = document.createElement("audio");
-				mediaPlayerCount++;
-				audio.filename = filename;
-				audio.src = url;
-				audio.volume = Math.min(volume, 1);
-				audio._volume = volume;
-				audio.addEventListener("error", onSoundError, false);
-				audio.addEventListener("ended", onSoundEnded, false);
-				audio.play().catch((err) => {
-					if (err.name !== "AbortError") console.warn("Failed to play sound:", err);
-				});
-				_sounds[filename].instances.push(audio);
-				_sounds[filename].lastTick = Date.now();
+			const myFileGen = _fileGen[filename] || 0;
+			getBuffer(filename).then((buffer) => {
+				if (!buffer || myGen !== _playGen || myFileGen !== (_fileGen[filename] || 0)) return;
+				if (context.state !== "running") return;
+				const volume = vol * SoundManager.volume;
+				if (volume <= 0 || !Audio_default.Sound.play) return;
+				if (!(filename in _sounds)) _sounds[filename] = {
+					instances: [],
+					lastTick: 0
+				};
+				const entry = _sounds[filename];
+				if (entry.lastTick > Date.now() - C_SAME_SOUND_DELAY || entry.instances.length >= C_MAX_SOUND_INSTANCES) return;
+				const source = context.createBufferSource();
+				const gain = context.createGain();
+				source.buffer = buffer;
+				gain.gain.value = Math.min(volume, 1);
+				source.connect(gain);
+				gain.connect(context.destination);
+				const instance = {
+					source,
+					gain,
+					vol
+				};
+				source.onended = () => {
+					gain.disconnect();
+					const current = _sounds[filename];
+					if (current) {
+						const pos = current.instances.indexOf(instance);
+						if (pos !== -1) current.instances.splice(pos, 1);
+					}
+				};
+				entry.instances.push(instance);
+				entry.lastTick = Date.now();
+				source.start();
 			});
 		}
 		/**
@@ -206710,37 +206934,23 @@ var init_SoundManager = __esmMin((() => {
 		*/
 		static stop(filename) {
 			if (filename) {
+				_fileGen[filename] = (_fileGen[filename] || 0) + 1;
 				if (filename in _sounds) {
-					while (_sounds[filename].instances.length > 0) {
-						const s = _sounds[filename].instances.shift();
-						s.pause();
-						s.remove();
-						mediaPlayerCount--;
-					}
+					stopInstances(_sounds[filename].instances);
 					delete _sounds[filename];
 				}
 				return;
 			}
 			_playGen++;
 			Object.keys(_sounds).forEach((key) => {
-				while (_sounds[key].instances.length > 0) {
-					const s = _sounds[key].instances.shift();
-					s.pause();
-					s.remove();
-					mediaPlayerCount--;
-				}
+				stopInstances(_sounds[key].instances);
 				delete _sounds[key];
 			});
-			Object.keys(_cache$1).forEach((key) => {
-				_cache$1[key].instances.forEach((s) => {
-					if (s.cleanupHandle) clearTimeout(s.cleanupHandle);
-					s.remove();
-					mediaPlayerCount--;
-				});
-				delete _cache$1[key];
+			Object.keys(_buffers).forEach((key) => {
+				delete _buffers[key];
 			});
 			MemoryManager.search(/\.wav$/).forEach((key) => {
-				MemoryManager.remove(key);
+				MemoryManager.remove(null, key);
 			});
 		}
 		/**
@@ -206753,8 +206963,8 @@ var init_SoundManager = __esmMin((() => {
 			Audio_default.Sound.volume = this.volume;
 			Audio_default.save();
 			Object.keys(_sounds).forEach((key) => {
-				_sounds[key].instances.forEach((sound) => {
-					sound.volume = Math.min(sound._volume * this.volume, 1);
+				_sounds[key].instances.forEach((instance) => {
+					instance.gain.gain.value = Math.min(instance.vol * this.volume, 1);
 				});
 			});
 		}
@@ -207045,11 +207255,13 @@ var init_Map = __esmMin((() => {
 		*/
 		lightmap: true,
 		/**
-		* Posterize lightmap ?
+		* How the map's baked light is drawn: 0 posterized into 16 steps, as the
+		* original client does (visible bands across lit floors); 1 smooth;
+		* 2 smooth with a slight gamma curve.
 		*
-		* Toggle using "/smoothlight" in the chatbox
+		* Set in Graphics Settings, or cycle with "/smoothlight" in the chatbox.
 		*/
-		smoothlight: 0,
+		smoothlight: 1,
 		/**
 		* Display effects ?
 		*
@@ -207331,6 +207543,19 @@ function getShadowFactor(x, y) {
 	for (y = -3; y < 3; ++y) for (x = -3; x < 3; ++x) factor += _shadowMap[_x + x + (_y + y) * _width * 8];
 	return factor / 36 / 255;
 }
+/**
+* Export
+*/
+/**
+* The ground's texture atlas and lightmap, for things drawn on the ground
+* that should take its colour and its light (MapHooks).
+*/
+function textures() {
+	return {
+		atlas: _textureAtlas,
+		lightmap: _lightmap
+	};
+}
 var procCanvas$2, procCtx$2, _program$26, _buffer$19, _lightmap, _tileColor, _textureAtlas, _shadowMap, _vertCount$1, _width, Ground_default;
 var init_Ground = __esmMin((() => {
 	init_WebGL();
@@ -207353,7 +207578,139 @@ var init_Ground = __esmMin((() => {
 		init: init$12,
 		free: free$7,
 		render: render$13,
-		getShadowFactor
+		getShadowFactor,
+		textures
+	};
+}));
+//#endregion
+//#region src/Renderer/MapHooks.js
+function fail$1(hook, what, error) {
+	console.error(`[MapHooks] ${hook.name || "a hook"} failed in ${what}, and is switched off:`, error);
+	remove$1(hook);
+}
+function call(hook, what, ...args) {
+	try {
+		return hook[what](...args);
+	} catch (error) {
+		fail$1(hook, what, error);
+		return;
+	}
+}
+function remove$1(hook) {
+	const index = _hooks$1.indexOf(hook);
+	if (index < 0) return;
+	_hooks$1.splice(index, 1);
+	if (_map$1 && typeof hook.free === "function") try {
+		hook.free(_gl$3);
+	} catch (error) {
+		console.error(`[MapHooks] ${hook.name || "a hook"} failed to free:`, error);
+	}
+}
+/**
+* Add a hook. If a map is up, its init runs now. Returns a function that
+* takes it out again (and frees it).
+*/
+function register$1(hook) {
+	if (!hook || typeof hook !== "object") throw new Error("MapHooks.register takes an object");
+	_hooks$1.push(hook);
+	if (_map$1 && typeof hook.init === "function") call(hook, "init", _gl$3, _map$1);
+	return () => remove$1(hook);
+}
+/** The map's ground is ready: init every hook. */
+function mapReady(gl, map) {
+	_gl$3 = gl;
+	_map$1 = map;
+	for (const hook of _hooks$1.slice()) if (typeof hook.init === "function") call(hook, "init", gl, map);
+}
+/** The map is going away: free every hook. */
+function mapFree(gl) {
+	if (!_map$1) return;
+	for (const hook of _hooks$1.slice()) if (typeof hook.free === "function") try {
+		hook.free(gl);
+	} catch (error) {
+		console.error(`[MapHooks] ${hook.name || "a hook"} failed to free:`, error);
+	}
+	_map$1 = null;
+}
+function modelKey(name) {
+	return String(name).replace(/\\/g, "/").replace(/^data\/model\//i, "").toLowerCase();
+}
+/** Every model some hook draws itself, for the map loader. */
+function modelNames() {
+	const names = /* @__PURE__ */ new Set();
+	for (const hook of _hooks$1) if (Array.isArray(hook.replacesModels)) hook.replacesModels.forEach((name) => names.add(modelKey(name)));
+	return Array.from(names);
+}
+/** The map's replaced models are loaded: each hook gets its own. */
+function modelsReady(gl, list) {
+	for (const hook of _hooks$1.slice()) {
+		if (typeof hook.models !== "function" || !Array.isArray(hook.replacesModels)) continue;
+		const mine = new Set(hook.replacesModels.map(modelKey));
+		const models = list.filter((model) => mine.has(model.name));
+		if (models.length) call(hook, "models", gl, models);
+	}
+}
+/** Run a stage. For 'water', only the hooks that replace it. */
+function stage(name, ctx) {
+	for (const hook of _hooks$1.slice()) {
+		if (typeof hook.render !== "function") continue;
+		const replacing = Array.isArray(hook.replaces) && hook.replaces.includes(name);
+		if (name === "water" ? replacing : true) call(hook, "render", name, ctx);
+	}
+}
+/** Whether some hook draws `name` in the client's place. */
+function replaces(name) {
+	return _hooks$1.some((hook) => Array.isArray(hook.replaces) && hook.replaces.includes(name));
+}
+function rgb(value) {
+	return Array.isArray(value) || ArrayBuffer.isView(value) ? value.length === 3 && Array.from(value).every((v) => Number.isFinite(v)) : false;
+}
+/**
+* The light to draw with: the map's, or the last hook's that gives one.
+* Direction and opacity always stay the map's.
+*/
+function light(mapLight) {
+	if (!mapLight) return mapLight;
+	let over = null;
+	for (const hook of _hooks$1.slice()) if (typeof hook.light === "function") {
+		const value = call(hook, "light", mapLight);
+		if (value && typeof value === "object") over = value;
+	}
+	if (!over) return mapLight;
+	const ambient = rgb(over.ambient) ? over.ambient : mapLight.ambient;
+	const diffuse = rgb(over.diffuse) ? over.diffuse : mapLight.diffuse;
+	for (let i = 0; i < 3; i++) {
+		_lit.ambient[i] = ambient[i];
+		_lit.diffuse[i] = diffuse[i];
+		_lit.env[i] = 1 - (1 - Math.min(1, diffuse[i])) * (1 - Math.min(1, ambient[i]));
+	}
+	if (_litFor !== mapLight) {
+		_litFor = mapLight;
+		_litView = Object.assign(Object.create(mapLight), _lit);
+	}
+	return _litView;
+}
+var _hooks$1, _gl$3, _map$1, _lit, _litFor, _litView, MapHooks_default;
+var init_MapHooks = __esmMin((() => {
+	_hooks$1 = [];
+	_gl$3 = null;
+	_map$1 = null;
+	_lit = {
+		ambient: /* @__PURE__ */ new Float32Array(3),
+		diffuse: /* @__PURE__ */ new Float32Array(3),
+		env: /* @__PURE__ */ new Float32Array(3)
+	};
+	_litFor = null;
+	_litView = null;
+	MapHooks_default = {
+		register: register$1,
+		mapReady,
+		mapFree,
+		stage,
+		replaces,
+		light,
+		modelNames,
+		modelsReady
 	};
 }));
 //#endregion
@@ -207416,6 +207773,69 @@ function RenderCanvas3D(isBlendModeOne) {
 	}
 	gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
+/**
+* Convert a sprite frame (RGBA or palette-indexed) into canvas ImageData,
+* applying the layer color modulation.
+*/
+function fillImageData(imageData, frame, pal, color) {
+	let x, y, r, g, b, a, inRow, outRow;
+	const width = frame.width;
+	const height = frame.height;
+	const input = frame.data;
+	const outputWidth = width;
+	const output32 = new Uint32Array(imageData.data.buffer);
+	const r_mul = color[0], g_mul = color[1], b_mul = color[2], a_mul = color[3];
+	const isColorIdentity = r_mul === 1 && g_mul === 1 && b_mul === 1 && a_mul === 1;
+	if (frame.type === 1) {
+		/**
+		* OLD LOGIC: Per-channel RGBA modulation using byte array access.
+		*            4 loads + 4 stores + multiplications per pixel.
+		* NEW LOGIC: Reads and writes pixels as a single 32-bit integer.
+		*            Uses bitwise extraction and assembly with optional color modulation.
+		*            1 load + 1 store per pixel in the fast path.
+		* Reduces memory writes and bounds checks inside the inner loop.
+		*/
+		const input32 = new Uint32Array(input.buffer);
+		for (y = 0; y < height; ++y) {
+			outRow = y * outputWidth;
+			inRow = y * width;
+			for (x = 0; x < width; ++x) {
+				const pixel = input32[inRow + x];
+				if (pixel === 0) {
+					output32[outRow + x] = 0;
+					continue;
+				}
+				if (isColorIdentity) output32[outRow + x] = pixel;
+				else {
+					r = (pixel & 255) * r_mul;
+					g = (pixel >> 8 & 255) * g_mul;
+					b = (pixel >> 16 & 255) * b_mul;
+					a = (pixel >> 24 & 255) * a_mul;
+					output32[outRow + x] = a << 24 | b << 16 | g << 8 | r;
+				}
+			}
+		}
+	} else {
+		const pal32 = /* @__PURE__ */ new Uint32Array(256);
+		for (let i = 0; i < 256; i++) {
+			if (i === 0) {
+				pal32[i] = 0;
+				continue;
+			}
+			const pIdx = i * 4;
+			r = pal[pIdx + 0] * r_mul | 0;
+			g = pal[pIdx + 1] * g_mul | 0;
+			b = pal[pIdx + 2] * b_mul | 0;
+			a = 255 * a_mul | 0;
+			pal32[i] = a << 24 | b << 16 | g << 8 | r;
+		}
+		for (y = 0; y < height; ++y) {
+			outRow = y * outputWidth;
+			inRow = y * width;
+			for (x = 0; x < width; ++x) output32[outRow + x] = pal32[input[inRow + x]];
+		}
+	}
+}
 var mat4$22, RenderCanvas2D, _program$25, _buffer$18, _ctx$5, _gl$2, _groupId, _lastGroupId, _shadow, _angle, _depth, _disableDepthCorrection, _depthMask, _depthTest, _texture$4, _usepal, _pos$8, _matrix$7, _size$7, _offset, SpriteRenderer;
 var init_SpriteRenderer = __esmMin((() => {
 	init_WebGL();
@@ -207425,17 +207845,44 @@ var init_SpriteRenderer = __esmMin((() => {
 	init_SpriteRenderer$1();
 	mat4$22 = gl_matrix_default.mat4;
 	RenderCanvas2D = (function RenderCanvas2DClosure() {
-		let imageData;
-		const canvas = document.createElement("canvas");
-		const ctx = canvas.getContext("2d");
-		canvas.width = 20;
-		canvas.height = 20;
-		imageData = ctx.createImageData(canvas.width, canvas.height);
+		const _cache = /* @__PURE__ */ new WeakMap();
+		const MAX_COLORS_PER_PALETTE = 8;
+		function getFrameCanvas(frame, pal, color) {
+			let entry = _cache.get(frame);
+			if (!entry) {
+				entry = {
+					rgba: /* @__PURE__ */ new Map(),
+					byPalette: /* @__PURE__ */ new WeakMap()
+				};
+				_cache.set(frame, entry);
+			}
+			let byColor;
+			if (frame.type === 1 || !pal) byColor = entry.rgba;
+			else {
+				byColor = entry.byPalette.get(pal);
+				if (!byColor) {
+					byColor = /* @__PURE__ */ new Map();
+					entry.byPalette.set(pal, byColor);
+				}
+			}
+			const colorKey = `${color[0]},${color[1]},${color[2]},${color[3]}`;
+			let canvas = byColor.get(colorKey);
+			if (!canvas) {
+				if (byColor.size >= MAX_COLORS_PER_PALETTE) byColor.delete(byColor.keys().next().value);
+				canvas = document.createElement("canvas");
+				canvas.width = frame.width;
+				canvas.height = frame.height;
+				const ctx = canvas.getContext("2d");
+				const imageData = ctx.createImageData(frame.width, frame.height);
+				fillImageData(imageData, frame, pal, color);
+				ctx.putImageData(imageData, 0, 0);
+				byColor.set(colorKey, canvas);
+			}
+			return canvas;
+		}
 		return function() {
 			if (this.sprite.width <= 0 || this.sprite.height <= 0) return;
 			let scale_x, scale_y;
-			let x, y;
-			let r, g, b, a, inRow, outRow;
 			scale_x = 1;
 			scale_y = 1;
 			const _x = _pos$8[0] + this.offset[0];
@@ -207453,67 +207900,7 @@ var init_SpriteRenderer = __esmMin((() => {
 				scale_y *= -1;
 				_size$7[1] *= -1;
 			}
-			if (width > canvas.width || height > canvas.height) {
-				canvas.width = width;
-				canvas.height = height;
-				imageData = ctx.createImageData(width, height);
-			}
-			const input = frame.data;
-			const color = this.color;
-			const outputWidth = canvas.width;
-			const output32 = new Uint32Array(imageData.data.buffer);
-			const r_mul = color[0], g_mul = color[1], b_mul = color[2], a_mul = color[3];
-			const isColorIdentity = r_mul === 1 && g_mul === 1 && b_mul === 1 && a_mul === 1;
-			if (this.sprite.type === 1) {
-				/**
-				* OLD LOGIC: Per-channel RGBA modulation using byte array access.
-				*            4 loads + 4 stores + multiplications per pixel.
-				* NEW LOGIC: Reads and writes pixels as a single 32-bit integer.
-				*            Uses bitwise extraction and assembly with optional color modulation.
-				*            1 load + 1 store per pixel in the fast path.
-				* Reduces memory writes and bounds checks inside the inner loop.
-				*/
-				const input32 = new Uint32Array(input.buffer);
-				for (y = 0; y < height; ++y) {
-					outRow = y * outputWidth;
-					inRow = y * width;
-					for (x = 0; x < width; ++x) {
-						const pixel = input32[inRow + x];
-						if (pixel === 0) {
-							output32[outRow + x] = 0;
-							continue;
-						}
-						if (isColorIdentity) output32[outRow + x] = pixel;
-						else {
-							r = (pixel & 255) * r_mul;
-							g = (pixel >> 8 & 255) * g_mul;
-							b = (pixel >> 16 & 255) * b_mul;
-							a = (pixel >> 24 & 255) * a_mul;
-							output32[outRow + x] = a << 24 | b << 16 | g << 8 | r;
-						}
-					}
-				}
-			} else {
-				const pal32 = /* @__PURE__ */ new Uint32Array(256);
-				for (let i = 0; i < 256; i++) {
-					if (i === 0) {
-						pal32[i] = 0;
-						continue;
-					}
-					const pIdx = i * 4;
-					r = pal[pIdx + 0] * r_mul | 0;
-					g = pal[pIdx + 1] * g_mul | 0;
-					b = pal[pIdx + 2] * b_mul | 0;
-					a = 255 * a_mul | 0;
-					pal32[i] = a << 24 | b << 16 | g << 8 | r;
-				}
-				for (y = 0; y < height; ++y) {
-					outRow = y * outputWidth;
-					inRow = y * width;
-					for (x = 0; x < width; ++x) output32[outRow + x] = pal32[input[inRow + x]];
-				}
-			}
-			ctx.putImageData(imageData, 0, 0, 0, 0, width, height);
+			const canvas = getFrameCanvas(frame, pal, this.color);
 			_ctx$5.save();
 			_ctx$5.translate(_x | 0, _y | 0);
 			_ctx$5.rotate(this.angle / 180 * Math.PI);
@@ -207866,6 +208253,28 @@ function isSubmerged(x, y) {
 function hasWater() {
 	return _vertCount > 0;
 }
+/**
+* Export
+*/
+/**
+* The water as the client has it, for a hook that draws water in its place
+* (MapHooks): the mesh (x, y, z, u, v per vertex), the 32 animation frames,
+* and the map's wave settings. Null with no water.
+*/
+function state() {
+	if (!_vertCount) return null;
+	return {
+		buffer: _buffer$17,
+		vertCount: _vertCount,
+		textures: _textures$1,
+		level: _waterLevel,
+		waveHeight: _waveHeight,
+		waveSpeed: _waveSpeed,
+		wavePitch: _wavePitch,
+		animSpeed: _animSpeed,
+		opacity: _waterOpacity
+	};
+}
 var _program$24, _buffer$17, _vertCount, _textures$1, _waveSpeed, _waveHeight, _wavePitch, _waterLevel, _animSpeed, _waterOpacity, Water_default;
 var init_Water = __esmMin((() => {
 	init_WebGL();
@@ -207888,7 +208297,8 @@ var init_Water = __esmMin((() => {
 		free: free$6,
 		render: render$12,
 		isSubmerged,
-		hasWater
+		hasWater,
+		state
 	};
 }));
 //#endregion
@@ -208260,6 +208670,24 @@ function unbind(gl) {
 * @param {object} fog structure
 * @param {object} light structure
 */
+/**
+* Draw the models with someone else's program bound -- a hook's shadow map
+* (Renderer/MapHooks.js): the same buffer and batches, position and texture
+* coordinates only.
+*/
+function renderDepth(gl, program) {
+	if (!_buffer$16 || !_objects.length) return;
+	const attribute = program.attribute;
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$16);
+	gl.enableVertexAttribArray(attribute.aPosition);
+	gl.enableVertexAttribArray(attribute.aTextureCoord);
+	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 36, 0);
+	gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 36, 24);
+	gl.activeTexture(gl.TEXTURE0);
+	drawMeshes(gl);
+	gl.disableVertexAttribArray(attribute.aPosition);
+	gl.disableVertexAttribArray(attribute.aTextureCoord);
+}
 function render$11(gl, modelView, projection, normalMat, fog, light) {
 	bind$1(gl, modelView, projection, fog, light);
 	OccluderFade.renderOpaque(gl, _program$23.uniform, () => drawMeshes(gl));
@@ -208320,6 +208748,7 @@ var init_Models = __esmMin((() => {
 		init: init$10,
 		render: render$11,
 		renderFaded: renderFaded$1,
+		renderDepth,
 		free: free$5
 	};
 }));
@@ -210171,7 +210600,7 @@ function Ot(e, t, n, r, i, a) {
 }
 function kt(e, t, n) {
 	let r = Z(e, n + 1);
-	for (let i = 0; i < n; i++) an(e, n) >= r ? (t[i] = 1, on(e, r, n - r, n)) : (t[i] = 0, on(e, 0, r, n));
+	for (let i = 0; i < n; i++) an(e, n) >= r ? (t[i] = 1, on$1(e, r, n - r, n)) : (t[i] = 0, on$1(e, 0, r, n));
 }
 function At(e, t, n, r, i, a, o) {
 	if (H(t)) {
@@ -210706,7 +211135,7 @@ function Z(e, t) {
 function an(e, t) {
 	return q ? q.bitsGet(e, t) : ct(e, t);
 }
-function on(e, t, n, r) {
+function on$1(e, t, n, r) {
 	q ? q.bitsRemove(e, t, n, r) : lt(e, t, n, r);
 }
 function sn(e, t, n, r) {
@@ -214764,7 +215193,6 @@ var init_SkillEffect = __esmMin((() => {
 	SkillEffect[SkillConst_default.ECL_SADAGUI] = {};
 	SkillEffect[SkillConst_default.ECL_SEQUOIADUST] = {};
 	SkillEffect[SkillConst_default.ECLAGE_RECALL] = {};
-	SkillEffect[SkillConst_default.GC_DARKCROW] = { effectId: 1040 };
 	SkillEffect[SkillConst_default.SHC_SHADOW_EXCEED] = { effectIdOnCaster: "ef_shc_shadow_exceed_cast" };
 	SkillEffect[SkillConst_default.SHC_DANCING_KNIFE] = { effectIdOnCaster: "ef_shc_dancing_knife_cast" };
 	SkillEffect[SkillConst_default.SHC_SAVAGE_IMPACT] = {
@@ -214787,46 +215215,8 @@ var init_SkillEffect = __esmMin((() => {
 		hitEffectId: "ef_shc_fatal_shadow_crow_hit"
 	};
 	SkillEffect[6511] = { effectId: "ef_shc_cross_slash" };
+	SkillEffect[SkillConst_default.GC_DARKCROW] = { effectId: 1040 };
 	SkillEffect[SkillConst_default.RA_UNLIMIT] = { effectId: "ef_ra_unlimit" };
-	SkillEffect[SkillConst_default.WH_WIND_SIGN] = { effectId: "ef_wh_wind_sign" };
-	SkillEffect[SkillConst_default.WH_HAWKRUSH] = { effectId: "ef_wh_hawkrush" };
-	SkillEffect[SkillConst_default.WH_CALAMITYGALE] = { effectIdOnCaster: "ef_wh_calamitygale_cast" };
-	SkillEffect[SkillConst_default.WH_HAWKBOOMERANG] = { effectId: "ef_wh_hawkboomerang" };
-	SkillEffect[SkillConst_default.WH_GALESTORM] = {
-		effectId: "ef_wh_galestorm",
-		effectIdOnCaster: "ef_wh_galestorm_cast",
-		hitEffectId: "ef_wh_galestorm_hit"
-	};
-	SkillEffect[SkillConst_default.WH_DEEPBLINDTRAP] = {
-		effectId: "ef_wh_deepblindtrap",
-		effectIdOnCaster: "ef_wh_deepblindtrap_cast",
-		hitEffectId: "ef_wh_deepblindtrap_hit"
-	};
-	SkillEffect[SkillConst_default.WH_SOLIDTRAP] = {
-		effectId: "ef_wh_solidtrap",
-		effectIdOnCaster: "ef_wh_solidtrap_cast",
-		hitEffectId: "ef_wh_solidtrap_hit"
-	};
-	SkillEffect[SkillConst_default.WH_SWIFTTRAP] = {
-		effectId: "ef_wh_swifttrap",
-		effectIdOnCaster: "ef_wh_swifttrap_cast",
-		hitEffectId: "ef_wh_swifttrap_hit"
-	};
-	SkillEffect[SkillConst_default.WH_CRESCIVE_BOLT] = {
-		effectId: "ef_wh_crescive_bolt",
-		effectIdOnCaster: "ef_wh_crescive_bolt_cast",
-		hitEffectId: "ef_wh_crescive_bolt_hit"
-	};
-	SkillEffect[SkillConst_default.WH_FLAMETRAP] = {
-		effectId: "ef_wh_flametrap",
-		effectIdOnCaster: "ef_wh_flametrap_cast",
-		hitEffectId: "ef_wh_flametrap_hit"
-	};
-	SkillEffect[6520] = {
-		effectId: "ef_wh_wild_walk",
-		effectIdOnCaster: "ef_wh_wild_walk_cast",
-		hitEffectId: "ef_wh_wild_walk_hit"
-	};
 	SkillEffect[SkillConst_default.GN_ILLUSIONDOPING] = { effectId: 1049 };
 	SkillEffect[5307] = { effectId: "ef_bo_acidified_zone_water_atk" };
 	SkillEffect[5308] = { effectId: "ef_bo_acidified_zone_ground_atk" };
@@ -214871,6 +215261,45 @@ var init_SkillEffect = __esmMin((() => {
 		hitEffectId: "ef_bo_dust_explosion_hit"
 	};
 	SkillEffect[SkillConst_default.RK_DRAGONBREATH_WATER] = { hitEffectId: "ef_dragonbreath_water" };
+	SkillEffect[SkillConst_default.WH_WIND_SIGN] = { effectId: "ef_wh_wind_sign" };
+	SkillEffect[SkillConst_default.WH_HAWKRUSH] = { effectId: "ef_wh_hawkrush" };
+	SkillEffect[SkillConst_default.WH_CALAMITYGALE] = { effectIdOnCaster: "ef_wh_calamitygale_cast" };
+	SkillEffect[SkillConst_default.WH_HAWKBOOMERANG] = { effectId: "ef_wh_hawkboomerang" };
+	SkillEffect[SkillConst_default.WH_GALESTORM] = {
+		effectId: "ef_wh_galestorm",
+		effectIdOnCaster: "ef_wh_galestorm_cast",
+		hitEffectId: "ef_wh_galestorm_hit"
+	};
+	SkillEffect[SkillConst_default.WH_DEEPBLINDTRAP] = {
+		effectId: "ef_wh_deepblindtrap",
+		effectIdOnCaster: "ef_wh_deepblindtrap_cast",
+		hitEffectId: "ef_wh_deepblindtrap_hit"
+	};
+	SkillEffect[SkillConst_default.WH_SOLIDTRAP] = {
+		effectId: "ef_wh_solidtrap",
+		effectIdOnCaster: "ef_wh_solidtrap_cast",
+		hitEffectId: "ef_wh_solidtrap_hit"
+	};
+	SkillEffect[SkillConst_default.WH_SWIFTTRAP] = {
+		effectId: "ef_wh_swifttrap",
+		effectIdOnCaster: "ef_wh_swifttrap_cast",
+		hitEffectId: "ef_wh_swifttrap_hit"
+	};
+	SkillEffect[SkillConst_default.WH_CRESCIVE_BOLT] = {
+		effectId: "ef_wh_crescive_bolt",
+		effectIdOnCaster: "ef_wh_crescive_bolt_cast",
+		hitEffectId: "ef_wh_crescive_bolt_hit"
+	};
+	SkillEffect[SkillConst_default.WH_FLAMETRAP] = {
+		effectId: "ef_wh_flametrap",
+		effectIdOnCaster: "ef_wh_flametrap_cast",
+		hitEffectId: "ef_wh_flametrap_hit"
+	};
+	SkillEffect[6520] = {
+		effectId: "ef_wh_wild_walk",
+		effectIdOnCaster: "ef_wh_wild_walk_cast",
+		hitEffectId: "ef_wh_wild_walk_hit"
+	};
 	SkillEffect[SkillConst_default.RK_LUXANIMA] = { effectId: 1044 };
 	SkillEffect[SkillConst_default.DK_SERVANTWEAPON] = {
 		effectId: "ef_dk_servantweapon",
@@ -215402,6 +215831,9 @@ var init_SkillEffect = __esmMin((() => {
 	SkillEffect[SkillConst_default.SU_SHRIMPARTY] = {};
 	SkillEffect[SkillConst_default.SU_MEOWMEOW] = {};
 	SkillEffect[SkillConst_default.SU_CHATTERING] = { effectId: "ef_su_chattering" };
+	SkillEffect[SkillConst_default.WE_CALLALLFAMILY] = {};
+	SkillEffect[SkillConst_default.WE_ONEFOREVER] = {};
+	SkillEffect[SkillConst_default.WE_CHEERUP] = {};
 	SkillEffect[SkillConst_default.SH_CHUL_HO_SONIC_CLAW] = { effectId: "ef_sh_chul_ho_sonic_claw" };
 	SkillEffect[SkillConst_default.SH_HOWLING_OF_CHUL_HO] = { effectId: "ef_sh_howling_of_chul_ho" };
 	SkillEffect[SkillConst_default.SH_HOGOGONG_STRIKE] = { effectId: "ef_sh_hogogong_strike" };
@@ -215424,9 +215856,6 @@ var init_SkillEffect = __esmMin((() => {
 		effectIdOnCaster: "ef_sh_hyun_rok_spirit_power_cast",
 		hitEffectId: "ef_sh_hyun_rok_spirit_power_hit"
 	};
-	SkillEffect[SkillConst_default.WE_CALLALLFAMILY] = {};
-	SkillEffect[SkillConst_default.WE_ONEFOREVER] = {};
-	SkillEffect[SkillConst_default.WE_CHEERUP] = {};
 	SkillEffect[SkillConst_default.HLIF_HEAL] = SkillEffect[SkillConst_default.AL_HEAL];
 	SkillEffect[SkillConst_default.HLIF_AVOID] = SkillEffect[SkillConst_default.AL_INCAGI];
 	SkillEffect[SkillConst_default.HLIF_CHANGE] = { effectId: 505 };
@@ -219810,8 +220239,30 @@ var init_ChatBoxSettings = __esmMin((() => {
 /**
 * Helper: query inside shadow root
 */
-function _root$18() {
+function _root$19() {
 	return ChatBox._shadow || ChatBox._host;
+}
+/**
+* Whether an Alt/Option keydown produces a different printable character than its key
+* (macOS Option layer, dead keys), i.e. the user is typing rather than using a hotkey.
+* @param {KeyboardEvent} event
+* @returns {boolean}
+*/
+function isComposedAltCharacter(event) {
+	if (event.ctrlKey || event.metaKey || !event.key) return false;
+	if (event.key === "Dead") return true;
+	if (event.key.length !== 1) return false;
+	const match = /^(?:Key|Digit)(.)$/.exec(event.code || "");
+	return !!match && event.key.toUpperCase() !== match[1];
+}
+/**
+* Move caret to the end of a contenteditable element.
+* Uses Selection.collapse(): WebKit ignores addRange() for ranges inside a shadow root, so the
+* removeAllRanges()+addRange() idiom left Safari with no caret and typing went nowhere.
+* @param {HTMLElement} el
+*/
+function setCaretToEnd$1(el) {
+	window.getSelection().collapse(el, el.childNodes.length);
 }
 /**
 * Extract plain chat text from the contenteditable input while preserving item links.
@@ -219832,7 +220283,7 @@ function extractChatMessage$1(inputEl) {
 */
 function flushMessageBuffer() {
 	if (_messageBuffer.length === 0) return;
-	const root = _root$18();
+	const root = _root$19();
 	const messages = _messageBuffer.slice();
 	_messageBuffer = [];
 	const messagesByTab = {};
@@ -219961,7 +220412,7 @@ function stopPropagation$12(event) {
 */
 function onPrivateMessageUserSelection(name) {
 	return function onPrivateMessageUserSelectionClosure() {
-		const nickBox = _root$18().querySelector(".input .username");
+		const nickBox = _root$19().querySelector(".input .username");
 		if (nickBox) nickBox.value = name;
 	};
 }
@@ -219970,7 +220421,7 @@ function onPrivateMessageUserSelection(name) {
 */
 function onChangeTargetMessage(type) {
 	return function onChangeTargetMessageClosure() {
-		const $input = _root$18().querySelector(".input-chatbox");
+		const $input = _root$19().querySelector(".input-chatbox");
 		if ($input) {
 			$input.classList.remove("guild", "party", "clan");
 			if (type & ChatBox.TYPE.PARTY) $input.classList.add("party");
@@ -220016,7 +220467,7 @@ function getScrollLineHeightPx(element) {
 	return 14;
 }
 function makeResizableDiv() {
-	const root = _root$18();
+	const root = _root$19();
 	const resizer = root.querySelector(".event_add_cursor");
 	if (!resizer) return;
 	let originalHeight = 0;
@@ -220159,7 +220610,7 @@ var init_ChatBox = __esmMin((() => {
 	* Initialize UI
 	*/
 	ChatBox.init = function init() {
-		const root = _root$18();
+		const root = _root$19();
 		if (!ContextMenu_default.__loaded) ContextMenu_default.prepare();
 		_heightIndex = _preferences$41.height - 1;
 		ChatBox.updateHeight();
@@ -220222,6 +220673,10 @@ var init_ChatBox = __esmMin((() => {
 		});
 		const inputChatbox = root.querySelector(".input-chatbox");
 		if (Configs.get("restoreChatFocus", false) && inputChatbox) inputChatbox.addEventListener("blur", () => {
+			if (inputChatbox.dataset.escapeBlur) {
+				delete inputChatbox.dataset.escapeBlur;
+				return;
+			}
 			Events.setTimeout(() => {
 				const active = KEYS.getDeepActiveElement();
 				const movedInsideChatbox = active && root.querySelector("#chatbox").contains(active);
@@ -220231,20 +220686,10 @@ var init_ChatBox = __esmMin((() => {
 		});
 		if (inputChatbox) {
 			inputChatbox.addEventListener("click", function() {
-				const range = document.createRange();
-				const selection = window.getSelection();
-				range.selectNodeContents(this);
-				range.collapse(false);
-				selection.removeAllRanges();
-				selection.addRange(range);
+				setCaretToEnd$1(this);
 			});
 			inputChatbox.addEventListener("focus", function() {
-				const range = document.createRange();
-				const selection = window.getSelection();
-				range.selectNodeContents(this);
-				range.collapse(false);
-				selection.removeAllRanges();
-				selection.addRange(range);
+				setCaretToEnd$1(this);
 			});
 			inputChatbox.maxLength = MAX_LENGTH;
 			inputChatbox.addEventListener("input", (event) => {
@@ -220496,7 +220941,7 @@ var init_ChatBox = __esmMin((() => {
 	* Clean up the box
 	*/
 	ChatBox.clean = function Clean() {
-		const root = _root$18();
+		const root = _root$19();
 		root.querySelectorAll(".content").forEach((content) => {
 			const matches = content.innerHTML.match(/(blob:[^"]+)/g);
 			if (matches) for (let i = 0, count = matches.length; i < count; ++i) window.URL.revokeObjectURL(matches[i]);
@@ -220510,13 +220955,13 @@ var init_ChatBox = __esmMin((() => {
 		_historyNickName.clear();
 	};
 	ChatBox.toggleChatBattleOption = function toggleChatBattleOption() {
-		const onInput = _root$18().querySelector(".header tr td div.on input");
+		const onInput = _root$19().querySelector(".header tr td div.on input");
 		const tabName = onInput ? onInput.value : "";
 		ChatBoxSettings_default.toggle();
 		ChatBoxSettings_default.updateTab(this.activeTab, tabName);
 	};
 	ChatBox.removeTab = function removeTab() {
-		const root = _root$18();
+		const root = _root$19();
 		const tabEl = root.querySelector(`table.header tr td.tab[data-tab="${this.activeTab}"]`);
 		if (tabEl) tabEl.remove();
 		const contentEl = root.querySelector(`.body .content[data-content="${this.activeTab}"]`);
@@ -220532,7 +220977,7 @@ var init_ChatBox = __esmMin((() => {
 		ChatBoxSettings_default.updateTab(this.activeTab, tabName);
 	};
 	ChatBox.addNewTab = function addNewTab(name, settings) {
-		const root = _root$18();
+		const root = _root$19();
 		if (!name) name = "New Tab";
 		if (!settings) settings = [
 			ChatBox.FILTER.PUBLIC_LOG,
@@ -220589,7 +221034,7 @@ var init_ChatBox = __esmMin((() => {
 		return tabID;
 	};
 	ChatBox.switchTab = function switchTab(tabID) {
-		const root = _root$18();
+		const root = _root$19();
 		root.querySelectorAll("table.header tr td.tab div").forEach((el) => el.classList.remove("on"));
 		root.querySelectorAll(".body .content").forEach((el) => el.classList.remove("active"));
 		this.activeTab = tabID;
@@ -220608,7 +221053,7 @@ var init_ChatBox = __esmMin((() => {
 	* Once append to HTML
 	*/
 	ChatBox.onAppend = function OnAppend() {
-		const root = _root$18();
+		const root = _root$19();
 		const inputEl = root.querySelector(".input");
 		if (inputEl) inputEl.style.display = "none";
 		const bmEl = root.querySelector(".battlemode");
@@ -220639,7 +221084,7 @@ var init_ChatBox = __esmMin((() => {
 	* @return {boolean} found a shortcut ?
 	*/
 	ChatBox.processBattleMode = function processBattleMode(keyId) {
-		const bmEl = _root$18().querySelector(".battlemode");
+		const bmEl = _root$19().querySelector(".battlemode");
 		if (bmEl && bmEl.style.display !== "none" || KEYS.ALT || KEYS.SHIFT || KEYS.CTRL || keyId >= KEYS.F1 && keyId <= KEYS.F24 || KEYS.INSERT) return BattleMode.process(keyId);
 		return false;
 	};
@@ -220647,7 +221092,7 @@ var init_ChatBox = __esmMin((() => {
 	* Key Event Handler
 	*/
 	ChatBox.onKeyDown = function OnKeyDown(event) {
-		const root = _root$18();
+		const root = _root$19();
 		const messageBox = root.querySelector(".input-chatbox");
 		const nickBox = root.querySelector(".input .username");
 		const onInput = root.querySelector(".header tr td div.on input");
@@ -220692,6 +221137,10 @@ var init_ChatBox = __esmMin((() => {
 						return true;
 					}
 					if (event.altKey || KEYS.ALT) {
+						if (isComposedAltCharacter(event)) {
+							event.stopImmediatePropagation();
+							return true;
+						}
 						if (!(event.which === KEYS.LEFT || event.which === KEYS.RIGHT || event.which === KEYS.UP || event.which === KEYS.DOWN || event.which === KEYS.BACKSPACE || event.which === KEYS.DELETE || event.which === KEYS.HOME || event.which === KEYS.END)) {
 							if (ChatBox.processBattleMode(event.which)) {
 								event.preventDefault();
@@ -220704,7 +221153,12 @@ var init_ChatBox = __esmMin((() => {
 						event.stopImmediatePropagation();
 						return true;
 					}
-					if (event.which === KEYS.ESCAPE || event.key === "Escape") return true;
+					if (event.which === KEYS.ESCAPE || event.key === "Escape") {
+						activeElement.dataset.escapeBlur = "1";
+						activeElement.blur();
+						event.stopImmediatePropagation();
+						return false;
+					}
 					event.stopImmediatePropagation();
 					return true;
 				}
@@ -220757,6 +221211,7 @@ var init_ChatBox = __esmMin((() => {
 				}
 				break;
 			case KEYS.ENTER: {
+				if (activeElement && activeElement.tagName === "BUTTON" && !root.contains(activeElement)) return true;
 				if (document.activeElement.className === "message input-chatbox" && document.activeElement !== messageBox) return true;
 				if (document.querySelector("#NpcMenu, #NpcBox")) return true;
 				if (activeElement === messageBox) {
@@ -220771,12 +221226,7 @@ var init_ChatBox = __esmMin((() => {
 					if (bmEl) bmEl.style.display = "none";
 				}
 				messageBox.focus();
-				const range = document.createRange();
-				const sel = window.getSelection();
-				range.selectNodeContents(messageBox);
-				range.collapse(false);
-				sel.removeAllRanges();
-				sel.addRange(range);
+				setCaretToEnd$1(messageBox);
 				event.stopImmediatePropagation();
 				return false;
 			}
@@ -220785,7 +221235,7 @@ var init_ChatBox = __esmMin((() => {
 		return false;
 	};
 	ChatBox.toggleChat = function toggleChat() {
-		const messageBox = _root$18().querySelector(".input-chatbox");
+		const messageBox = _root$19().querySelector(".input-chatbox");
 		const activeElement = KEYS.getDeepActiveElement();
 		if (activeElement.tagName === "INPUT" && activeElement !== messageBox) return true;
 		if (document.querySelector("#NpcMenu, #NpcBox")) return true;
@@ -220796,7 +221246,7 @@ var init_ChatBox = __esmMin((() => {
 	* Process ChatBox message
 	*/
 	ChatBox.submit = function Submit() {
-		const root = _root$18();
+		const root = _root$19();
 		const inputEl = root.querySelector(".input");
 		const $user = root.querySelector(".input .username");
 		const $text = root.querySelector(".input-chatbox");
@@ -220862,7 +221312,7 @@ var init_ChatBox = __esmMin((() => {
 	* Change chatbox's height
 	*/
 	ChatBox.updateHeight = function changeHeight(AlwaysVisible) {
-		const root = _root$18();
+		const root = _root$19();
 		const HeightList = [
 			0,
 			0,
@@ -220918,7 +221368,7 @@ var init_ChatBox = __esmMin((() => {
 	* Save chat from current tab into a file.
 	*/
 	ChatBox.saveCurrentTabChat = function saveCurrentTabChat() {
-		const root = _root$18();
+		const root = _root$19();
 		let data;
 		const tzoffset = (/* @__PURE__ */ new Date()).getTimezoneOffset() * 6e4;
 		let localISOTime = new Date(Date.now() - tzoffset).toISOString().slice(0, -1);
@@ -220933,7 +221383,7 @@ var init_ChatBox = __esmMin((() => {
 		ChatBox.addText(`Chat History [${ChatBox.tabs[ChatBox.activeTab].name}] ${date} can be saved by <a style="color:#F88" download="ChatHistory [${ChatBox.tabs[ChatBox.activeTab].name}] (${date.replace("/", "-")}).html" href="${url}" target="_blank">clicking here</a>.`, ChatBox.TYPE.PUBLIC, ChatBox.FILTER.PUBLIC_LOG, null, true);
 	};
 	ChatBox.applyFontScale = function applyFontScale() {
-		const root = _root$18();
+		const root = _root$19();
 		const scale = clampChatFontScale(_preferences$41.fontScale || 1);
 		const baseFont = 12;
 		const baseLineHeight = 14;
@@ -220954,7 +221404,7 @@ var init_ChatBox = __esmMin((() => {
 		if (message) message.style.lineHeight = `${inputLineHeight}px`;
 	};
 	ChatBox._setupItemLinkHandler = function _setupItemLinkHandler() {
-		const root = _root$18();
+		const root = _root$19();
 		if (!root) return;
 		root.addEventListener("click", (event) => {
 			const link = event.target.closest(".item-link");
@@ -220985,7 +221435,7 @@ var init_ChatBox = __esmMin((() => {
 		ItemInfo.setItem(item);
 	});
 	ChatBox.insertText = function(text) {
-		const input = _root$18().querySelector(".input-chatbox");
+		const input = _root$19().querySelector(".input-chatbox");
 		if (!input) return;
 		input.appendChild(document.createTextNode(text));
 		input.focus();
@@ -225111,12 +225561,7 @@ var init_Friends = __esmMin((() => {
 * @param {HTMLElement} el
 */
 function setCaretToEnd(el) {
-	const range = document.createRange();
-	const sel = window.getSelection();
-	range.selectNodeContents(el);
-	range.collapse(false);
-	sel.removeAllRanges();
-	sel.addRange(range);
+	window.getSelection().collapse(el, el.childNodes.length);
 }
 /**
 * Extract plain chat text from input while preserving item links
@@ -225407,14 +225852,14 @@ var init_WhisperBox = __esmMin((() => {
 /**
 * Helper: query inside shadow root
 */
-function _root$17() {
+function _root$18() {
 	return PartyHelper._shadow || PartyHelper._host;
 }
 /**
 * Validate and process form data
 */
 function onValidate$1() {
-	const root = _root$17();
+	const root = _root$18();
 	const PartyFriends = UIManager.getComponent("PartyFriends");
 	switch (_type$6) {
 		case PartyHelper.Type.CREATE: {
@@ -225477,7 +225922,7 @@ var init_PartyHelper = __esmMin((() => {
 	* Initialize component event listeners
 	*/
 	PartyHelper.init = function init() {
-		const root = _root$17();
+		const root = _root$18();
 		const baseBtn = root.querySelector(".base");
 		if (baseBtn) baseBtn.addEventListener("mousedown", (e) => {
 			e.stopImmediatePropagation();
@@ -225513,7 +225958,7 @@ var init_PartyHelper = __esmMin((() => {
 				off.classList.remove("off");
 				off.classList.add("on");
 				const prefs = WhisperBox.preferences;
-				const rootEl = _root$17();
+				const rootEl = _root$18();
 				const strangerOn = rootEl.querySelector(".open1to1Stranger .on");
 				const friendOn = rootEl.querySelector(".open1to1Friend .on");
 				const alarmOn = rootEl.querySelector(".alarm1to1 .on");
@@ -225576,7 +226021,7 @@ var init_PartyHelper = __esmMin((() => {
 	*/
 	PartyHelper.onAppend = function onAppend() {
 		const base = UIManager.getComponent("PartyFriends");
-		const root = _root$17();
+		const root = _root$18();
 		const partyContent = root.querySelector(".party-content");
 		const friendContent = root.querySelector(".friend-content");
 		if (partyContent) partyContent.style.display = "none";
@@ -225593,7 +226038,7 @@ var init_PartyHelper = __esmMin((() => {
 	* Cleanup on window removal
 	*/
 	PartyHelper.onRemove = function onRemove() {
-		const root = _root$17();
+		const root = _root$18();
 		const partyContent = root.querySelector(".party-content");
 		const friendContent = root.querySelector(".friend-content");
 		if (partyContent) partyContent.style.display = "none";
@@ -225607,7 +226052,7 @@ var init_PartyHelper = __esmMin((() => {
 	* @param {number} type
 	*/
 	PartyHelper.setType = function setType(type) {
-		const root = _root$17();
+		const root = _root$18();
 		root.querySelectorAll(".content").forEach((el) => el.classList.remove("disabled"));
 		const footer = root.querySelector(".footer");
 		if (footer) footer.style.display = "block";
@@ -225692,7 +226137,7 @@ var init_PartyHelper = __esmMin((() => {
 	* @param {boolean} editable
 	*/
 	PartyHelper.setOptions = function setOptions(options, editable) {
-		const root = _root$17();
+		const root = _root$18();
 		function swap(off) {
 			const on = off.parentNode.querySelector(".on");
 			const tmp = on.style.backgroundImage;
@@ -225723,7 +226168,7 @@ var init_PartyHelper = __esmMin((() => {
 	* @param {object} options
 	*/
 	PartyHelper.setFriendOptions = function setFriendOptions(options) {
-		const root = _root$17();
+		const root = _root$18();
 		function swap(off) {
 			const on = off.parentNode.querySelector(".on");
 			on.className = "off";
@@ -226108,7 +226553,7 @@ var init_Rodex$2 = __esmMin((() => {
 /**
 * Helper: query inside shadow root
 */
-function _root$16() {
+function _root$17() {
 	return Rodex._shadow || Rodex._host;
 }
 function onClickClose$2(e) {
@@ -226158,7 +226603,7 @@ function onClickTab(e) {
 	Rodex.page = 0;
 	const element = e.currentTarget;
 	const id = element.id.replace("tab_", "");
-	const root = _root$16();
+	const root = _root$17();
 	root.querySelectorAll(".nav-item.active").forEach((el) => el.classList.remove("active"));
 	element.classList.add("active");
 	if (id >= 0 && id <= 2) {
@@ -226169,7 +226614,7 @@ function onClickTab(e) {
 function onClickSearchTitle(e) {
 	e.stopImmediatePropagation();
 	Rodex.searchType = 1;
-	const root = _root$16();
+	const root = _root$17();
 	Client.loadFile(DB.INTERFACE_PATH + "basic_interface/rodexsystem/renewal/checkbox_search_off.bmp", (data) => {
 		const el = root.querySelector(".search-sender");
 		if (el) el.style.backgroundImage = `url(${data})`;
@@ -226182,7 +226627,7 @@ function onClickSearchTitle(e) {
 function onClickSearchSender(e) {
 	e.stopImmediatePropagation();
 	Rodex.searchType = 2;
-	const root = _root$16();
+	const root = _root$17();
 	Client.loadFile(DB.INTERFACE_PATH + "basic_interface/rodexsystem/renewal/checkbox_search_on.bmp", (data) => {
 		const el = root.querySelector(".search-sender");
 		if (el) el.style.backgroundImage = `url(${data})`;
@@ -226194,7 +226639,7 @@ function onClickSearchSender(e) {
 }
 function onClickSearchButton(e) {
 	e.stopImmediatePropagation();
-	const root = _root$16();
+	const root = _root$17();
 	const search = root.querySelector(".search").value;
 	root.querySelectorAll(".nav-item.active").forEach((el) => el.classList.remove("active"));
 	root.querySelector("#tab_3").classList.add("active");
@@ -226270,7 +226715,7 @@ var init_Rodex$1 = __esmMin((() => {
 	* Apply preferences once append to body
 	*/
 	Rodex.onAppend = function OnAppend() {
-		const root = _root$16();
+		const root = _root$17();
 		this._host.style.top = `${Math.min(Math.max(0, _preferences$37.y), Renderer.height - this._host.offsetHeight)}px`;
 		this._host.style.left = `${Math.min(Math.max(0, _preferences$37.x), Renderer.width - this._host.offsetWidth)}px`;
 		this.draggable(root.querySelector(".titlebar"));
@@ -226317,7 +226762,7 @@ var init_Rodex$1 = __esmMin((() => {
 		this.focus();
 	};
 	Rodex.createRodexList = function createRodexList(tabID = 0, search = false, term = "") {
-		const root = _root$16();
+		const root = _root$17();
 		const content = root.querySelector(".mail-list");
 		content.innerHTML = "";
 		let mail_list = [];
@@ -226387,7 +226832,7 @@ var init_Rodex$1 = __esmMin((() => {
 		}
 	};
 	Rodex.updateDeletedMailContent = function updateDeletedMailContent(openType, MailID) {
-		const root = _root$16();
+		const root = _root$17();
 		const mailEl = root.querySelector(`#mail_${MailID}`);
 		if (mailEl) {
 			mailEl.textContent = DB.getMessage(2907);
@@ -226420,7 +226865,7 @@ var init_Rodex$1 = __esmMin((() => {
 /**
 * Helper: query inside shadow root
 */
-function _root$15(comp) {
+function _root$16(comp) {
 	return comp._shadow || comp._host;
 }
 /**
@@ -226511,7 +226956,7 @@ var init_PartyMemberExternal = __esmMin((() => {
 	*/
 	PartyMemberExternal.init = function init() {
 		const self = this;
-		const root = _root$15(this);
+		const root = _root$16(this);
 		root.addEventListener("mousedown", (event) => {
 			self._lastPos = {
 				top: self._host.offsetTop,
@@ -226604,7 +227049,7 @@ var init_PartyMemberExternal = __esmMin((() => {
 	* @param {object} player
 	*/
 	PartyMemberExternal.update = function update(player) {
-		const root = _root$15(this);
+		const root = _root$16(this);
 		if (!root) return;
 		const level = player.baseLevel || player.level || player.Level || 0;
 		const jobID = player.class_ || player.job || player.Job || 0;
@@ -226656,7 +227101,7 @@ var init_PartyMemberExternal = __esmMin((() => {
 	* @param {number} maxhp
 	*/
 	PartyMemberExternal.updateMemberLife = function updateMemberLife(hp, maxhp) {
-		const root = _root$15(this);
+		const root = _root$16(this);
 		if (root) updateCanvasLife(root, hp, maxhp);
 	};
 	PartyMemberExternal_default = UIManager.addComponent(PartyMemberExternal);
@@ -226678,11 +227123,11 @@ var init_Mail$2 = __esmMin((() => {
 /**
 * Helper: query inside shadow root
 */
-function _root$14() {
+function _root$15() {
 	return Mail._shadow || Mail._host;
 }
 function updatePageMailItems() {
-	const root = _root$14();
+	const root = _root$15();
 	const nextBtn = root.querySelector(".next");
 	if (nextBtn) nextBtn.addEventListener("click", (e) => {
 		e.stopImmediatePropagation();
@@ -226707,7 +227152,7 @@ function updatePageMailItems() {
 * Create messages window size
 */
 function onWindowMailbox() {
-	const root = _root$14();
+	const root = _root$15();
 	Mail.parseMailrefreshinbox();
 	const sendBtn = root.querySelector("#create_mail_send");
 	if (sendBtn) sendBtn.disabled = false;
@@ -226735,7 +227180,7 @@ function onWindowMailbox() {
 	if (title) title.textContent = DB.getMessage(1025);
 }
 function createMailList() {
-	const root = _root$14();
+	const root = _root$15();
 	const content = root.querySelector(".list_item_mail");
 	root.querySelectorAll(".item_mail").forEach((el) => el.remove());
 	if (Mail.list.length == 0) return;
@@ -226790,7 +227235,7 @@ function createMailList() {
 	adjustButtons();
 }
 function adjustButtons() {
-	const root = _root$14();
+	const root = _root$15();
 	if (Mail.list.length == 0) return;
 	const mailLength = Mail.list.mailList.length;
 	if (!(Mail.page > mailLength / Mail.pageSize - 1)) addEventNextAndPrevAdd("next");
@@ -226803,7 +227248,7 @@ function adjustButtons() {
 	if (prevSpan) prevSpan.disabled = mailLength <= Mail.pageSize || Mail.page == 0;
 }
 function addEventNextAndPrevAdd(eventName) {
-	const root = _root$14();
+	const root = _root$15();
 	const overlay = root.querySelector(`.prev_next .overlay_${eventName}`);
 	const text = root.querySelector(`.prev_next .${eventName} span`);
 	if (text) text.classList.add("event_add_cursor");
@@ -226819,7 +227264,7 @@ function addEventNextAndPrevAdd(eventName) {
 	}
 }
 function addEventNextAndPrevRemove(eventName) {
-	const root = _root$14();
+	const root = _root$15();
 	const overlay = root.querySelector(`.prev_next .overlay_${eventName}`);
 	const text = root.querySelector(`.prev_next .${eventName} span`);
 	if (overlay) overlay.style.display = "none";
@@ -226831,7 +227276,7 @@ function offCreateMessagesOnWindowMailbox(event) {
 	removeCreateAllItem();
 }
 function sendCreateMessagesMail(event) {
-	const root = _root$14();
+	const root = _root$15();
 	event.stopImmediatePropagation();
 	const zenyOk = root.querySelector("#zeny_ok");
 	if (zenyOk && window.getComputedStyle(zenyOk).display !== "none") {
@@ -226866,7 +227311,7 @@ function openWindowCreateMessages(event) {
 * Open Create messages window size
 */
 function onWindowCreateMessages() {
-	const root = _root$14();
+	const root = _root$15();
 	removeCreateAllItem();
 	offWindowListMail();
 	Client.loadFile(DB.INTERFACE_PATH + "basic_interface/maillist2_bg.bmp", (url) => {
@@ -226877,7 +227322,7 @@ function onWindowCreateMessages() {
 	if (title) title.textContent = DB.getMessage(1026);
 }
 function offWindowListMail() {
-	const root = _root$14();
+	const root = _root$15();
 	const prevNext = root.querySelector(".prev_next");
 	if (prevNext) prevNext.style.display = "none";
 	const blockMail = root.querySelector(".block_mail");
@@ -226888,7 +227333,7 @@ function offWindowListMail() {
 	if (textarea) textarea.focus();
 }
 function onAddZenyInput(event) {
-	const root = _root$14();
+	const root = _root$15();
 	event.stopImmediatePropagation();
 	const zenyAmt = root.querySelector("#zeny_amt");
 	if (zenyAmt) zenyAmt.style.display = "none";
@@ -226903,7 +227348,7 @@ function onAddZenyInput(event) {
 	Mail.parseMailWinopen(2);
 }
 function onValidZenyInput(event) {
-	const root = _root$14();
+	const root = _root$15();
 	event.stopImmediatePropagation();
 	const zenyAmt = root.querySelector("#zeny_amt");
 	if (zenyAmt) zenyAmt.style.display = "inline-block";
@@ -226965,7 +227410,7 @@ function onDrop$11(event) {
 * Show item name when mouse is over
 */
 function onItemOver$13() {
-	const root = _root$14();
+	const root = _root$15();
 	const idx = parseInt(this.getAttribute("data-index"), 10);
 	const item = Mail.getItemByIndex(idx);
 	if (!item) return;
@@ -226981,7 +227426,7 @@ function onItemOver$13() {
 * Hide the item name
 */
 function onItemOut$14() {
-	const overlay = _root$14().querySelector(".container_item .overlay");
+	const overlay = _root$15().querySelector(".container_item .overlay");
 	if (overlay) overlay.style.display = "none";
 }
 /**
@@ -227127,7 +227572,7 @@ var init_Mail$1 = __esmMin((() => {
 	* Apply preferences once append to body
 	*/
 	Mail.onAppend = function OnAppend() {
-		const root = _root$14();
+		const root = _root$15();
 		const closeBtn = root.querySelector(".close");
 		if (closeBtn) closeBtn.addEventListener("click", this.onClosePressed.bind(this));
 		const inboxBtn = root.querySelector("#inbox");
@@ -227188,7 +227633,7 @@ var init_Mail$1 = __esmMin((() => {
 	* Add item to inventory
 	*/
 	Mail.addItemSub = function AddItemSub(Index) {
-		const root = _root$14();
+		const root = _root$15();
 		const item = _preferences$36.item_add_email;
 		if (item.index !== Index) return false;
 		if (item.WearState && item.type !== ItemType_default.AMMO && item.type !== ItemType_default.CARD) return false;
@@ -227209,14 +227654,14 @@ var init_Mail$1 = __esmMin((() => {
 	* Send from mail to inventory - Remove item
 	*/
 	Mail.removeItem = function removeItem() {
-		const item = _root$14().querySelector(".item");
+		const item = _root$15().querySelector(".item");
 		if (item) item.remove();
 	};
 	/**
 	* Send from mail to inventory - Remove zenys
 	*/
 	Mail.removeZeny = function removeZeny() {
-		const input = _root$14().querySelector(".input_zeny_amt");
+		const input = _root$15().querySelector(".input_zeny_amt");
 		if (input) input.value = "0";
 	};
 	/**
@@ -227238,7 +227683,7 @@ var init_Mail$1 = __esmMin((() => {
 	* Extend Mail window size
 	*/
 	Mail.resize = function Resize(width, height) {
-		const root = _root$14();
+		const root = _root$15();
 		width = Math.min(Math.max(width, 6), 9);
 		height = Math.min(Math.max(height, 2), 6);
 		const mailEl = root.querySelector("#Mail");
@@ -227290,7 +227735,7 @@ var init_Mail$1 = __esmMin((() => {
 	* Responder to a mail.
 	*/
 	Mail.replyNewMail = function replyNewMail(fromName) {
-		const root = _root$14();
+		const root = _root$15();
 		onWindowCreateMessages();
 		const textTo = root.querySelector(".text_to");
 		if (textTo) textTo.value = fromName.replace(/^(\$|\%)/, "").replace(/\t/g, "");
@@ -227299,7 +227744,7 @@ var init_Mail$1 = __esmMin((() => {
 	* Responder to a mail from friends.
 	*/
 	Mail.replyNewMailFriends = async function replyNewMailFriends(fromName) {
-		const root = _root$14();
+		const root = _root$15();
 		Mail.append();
 		sleep(1).then(() => {
 			onWindowCreateMessages();
@@ -227324,7 +227769,7 @@ var init_Mail$1 = __esmMin((() => {
 		});
 	};
 	Mail.clearFieldsItemZeny = function clearFieldsItemZeny() {
-		const root = _root$14();
+		const root = _root$15();
 		const item = root.querySelector(".item");
 		if (item) item.remove();
 		const zenyInput = root.querySelector(".input_zeny_amt");
@@ -227688,10 +228133,10 @@ function createPartyFriends(config) {
 		_friends[index].State = state;
 		if (state) {
 			if (node) node.style.backgroundImage = "";
-			ChatBox_default.addText(DB.getMessage(1042).replace("%s", _friends[index].Name), ChatBox_default.TYPE.BLUE, ChatBox_default.FILTER.PUBLIC_LOG);
+			if (UI_default.li) ChatBox_default.addText(DB.getMessage(1042, "%s has logged out.").replace("%s", _friends[index].Name), ChatBox_default.TYPE.BLUE, ChatBox_default.FILTER.PUBLIC_LOG);
 			return;
 		}
-		ChatBox_default.addText(DB.getMessage(1041).replace("%s", _friends[index].Name), ChatBox_default.TYPE.BLUE, ChatBox_default.FILTER.PUBLIC_LOG);
+		if (UI_default.li) ChatBox_default.addText(DB.getMessage(1041, "%s has logged in.").replace("%s", _friends[index].Name), ChatBox_default.TYPE.BLUE, ChatBox_default.FILTER.PUBLIC_LOG);
 		Client.loadFile(DB.INTERFACE_PATH + "basic_interface/grp_online.bmp", function(url) {
 			if (node) node.style.backgroundImage = `url(${url})`;
 		});
@@ -228787,6 +229232,7 @@ var init_PartyFriendsCommon = __esmMin((() => {
 	init_Camera();
 	init_MiniMap();
 	init_Preferences$1();
+	init_UI();
 	init_MonsterTable();
 	init_Client();
 	init_Renderer();
@@ -228872,36 +229318,40 @@ var init_PartyFriends = __esmMin((() => {
 //#region src/UI/Components/GuildCompanion/GuildCompanion.html?raw
 var GuildCompanion_default$2;
 var init_GuildCompanion$2 = __esmMin((() => {
-	GuildCompanion_default$2 = "<div id=\"GuildCompanion\">\r\n	<div class=\"win companion\">\r\n		<div class=\"titlebar\">\r\n			<ui-image src=\"basic_interface/titlebar_mid.bmp\"></ui-image>\r\n			<span class=\"title\">Guild Companion</span>\r\n			<div class=\"right\">\r\n				<ui-button\r\n					class=\"base btn_x\"\r\n					bg=\"basic_interface/sys_close_off.bmp\"\r\n					hover=\"basic_interface/sys_close_on.bmp\"\r\n				></ui-button>\r\n			</div>\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n		<div class=\"body\">\r\n			<div class=\"msg\">Join a guild or start your own!</div>\r\n			<div class=\"btns\">\r\n				<button class=\"btn btn_create\" type=\"button\">create guild</button>\r\n				<button class=\"btn btn_close\" type=\"button\">OK</button>\r\n			</div>\r\n		</div>\r\n	</div>\r\n	<div class=\"win namebox\">\r\n		<div class=\"titlebar\">\r\n			<ui-image src=\"basic_interface/titlebar_mid.bmp\"></ui-image>\r\n			<span class=\"title name_title\">Create Guild</span>\r\n			<div class=\"right\">\r\n				<ui-button\r\n					class=\"base btn_x2\"\r\n					bg=\"basic_interface/sys_close_off.bmp\"\r\n					hover=\"basic_interface/sys_close_on.bmp\"\r\n				></ui-button>\r\n			</div>\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n		<div class=\"body\">\r\n			<div class=\"label name_label\">Guild Name</div>\r\n			<input type=\"text\" class=\"guildname\" maxlength=\"23\" />\r\n			<div class=\"btns\">\r\n				<button class=\"btn btn_ok\" type=\"button\">OK</button>\r\n				<button class=\"btn btn_cancel\" type=\"button\">cancel</button>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
+	GuildCompanion_default$2 = "<div id=\"GuildCompanion\">\r\n	<!-- The \"you have no guild yet\" pane. Its client counterpart, UIGuildTipWnd,\r\n	     is a scrollable tip list fed from client data rather than a two-button\r\n	     prompt, so this pane is a web affordance. It takes the client's caption\r\n	     for that window and the button bitmaps the client ships for it, under\r\n	     유저인터페이스\\guild_helper. -->\r\n	<div class=\"win companion\">\r\n		<div class=\"titlebar\">\r\n			<ui-image src=\"basic_interface/titlebar_mid.bmp\"></ui-image>\r\n			<span class=\"title\"><ui-text msg=\"2078\">Guild System</ui-text></span>\r\n			<div class=\"right\">\r\n				<ui-button\r\n					class=\"base btn_x\"\r\n					bg=\"basic_interface/sys_close_off.bmp\"\r\n					hover=\"basic_interface/sys_close_on.bmp\"\r\n				></ui-button>\r\n			</div>\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n		<div class=\"body\">\r\n			<!-- No table id says this, so it is kept as a literal on purpose\r\n			     rather than forced onto an id that means something else. -->\r\n			<div class=\"msg\">Join a guild or start your own!</div>\r\n			<div class=\"btns\">\r\n				<ui-button\r\n					class=\"btn btn_create\"\r\n					bg=\"guild_helper/create_guild.bmp\"\r\n					hover=\"guild_helper/create_guild_a.bmp\"\r\n					down=\"guild_helper/create_guild_b.bmp\"\r\n				></ui-button>\r\n				<ui-button\r\n					class=\"btn btn_close\"\r\n					bg=\"guild_helper/btn_ok.bmp\"\r\n					hover=\"guild_helper/btn_ok_a.bmp\"\r\n					down=\"guild_helper/btn_ok_b.bmp\"\r\n				></ui-button>\r\n			</div>\r\n		</div>\r\n	</div>\r\n\r\n	<!-- One window for both create and disband, which is what the client does.\r\n	     The caption and the label are the only difference, so open() fills them\r\n	     and the markup carries neither.\r\n	     See docs/reference/guild/create-disband-dialogs.md -->\r\n	<div class=\"win namebox\">\r\n		<div class=\"titlebar\">\r\n			<ui-image src=\"basic_interface/titlebar_mid.bmp\"></ui-image>\r\n			<span class=\"title name_title\"></span>\r\n			<div class=\"right\">\r\n				<ui-button\r\n					class=\"base btn_x2\"\r\n					bg=\"basic_interface/sys_close_off.bmp\"\r\n					hover=\"basic_interface/sys_close_on.bmp\"\r\n				></ui-button>\r\n			</div>\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n		<div class=\"body\">\r\n			<div class=\"label name_label\"></div>\r\n			<input type=\"text\" class=\"guildname\" maxlength=\"23\" />\r\n			<div class=\"btns\">\r\n				<ui-button class=\"btn btn_ok\" bg=\"btn_ok.bmp\" hover=\"btn_ok_a.bmp\" down=\"btn_ok_b.bmp\"></ui-button>\r\n				<ui-button\r\n					class=\"btn btn_cancel\"\r\n					bg=\"btn_cancel.bmp\"\r\n					hover=\"btn_cancel_a.bmp\"\r\n					down=\"btn_cancel_b.bmp\"\r\n				></ui-button>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/GuildCompanion/GuildCompanion.css?raw
 var GuildCompanion_default$1;
 var init_GuildCompanion$1 = __esmMin((() => {
-	GuildCompanion_default$1 = ":host {\r\n	top: 160px;\r\n	left: 260px;\r\n	z-index: 100;\r\n}\r\n\r\n#GuildCompanion {\r\n	position: relative;\r\n	font-family: Arial, sans-serif;\r\n	font-size: 12px;\r\n	white-space: nowrap;\r\n}\r\n\r\n#GuildCompanion .win {\r\n	display: inline-block;\r\n	vertical-align: top;\r\n	background-color: white;\r\n	border: 1px solid #a5a5a5;\r\n	border-radius: 3px;\r\n	margin-right: 6px;\r\n}\r\n\r\n#GuildCompanion .win.namebox {\r\n	display: none;\r\n}\r\n#GuildCompanion .win.namebox.visible {\r\n	display: inline-block;\r\n}\r\n\r\n#GuildCompanion .win.companion.hidden {\r\n	display: none;\r\n}\r\n\r\n#GuildCompanion .titlebar {\r\n	height: 17px;\r\n	line-height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0 0;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n	padding-left: 6px;\r\n}\r\n#GuildCompanion .titlebar .title {\r\n	vertical-align: middle;\r\n}\r\n#GuildCompanion .titlebar .base {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n#GuildCompanion .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n}\r\n#GuildCompanion .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n#GuildCompanion .body {\r\n	padding: 10px 12px 8px 12px;\r\n}\r\n\r\n#GuildCompanion .companion .msg {\r\n	margin-bottom: 12px;\r\n}\r\n\r\n#GuildCompanion .namebox .label {\r\n	margin-bottom: 4px;\r\n}\r\n#GuildCompanion .namebox input {\r\n	border: 1px solid #c1c6c2;\r\n	background-color: #efefef;\r\n	width: 150px;\r\n	height: 16px;\r\n	margin-bottom: 12px;\r\n}\r\n\r\n#GuildCompanion .btns {\r\n	text-align: center;\r\n}\r\n#GuildCompanion .namebox .btns {\r\n	text-align: right;\r\n}\r\n\r\n#GuildCompanion .btn {\r\n	font-family: Arial, sans-serif;\r\n	font-size: 11px;\r\n	padding: 2px 10px;\r\n	margin: 0 3px;\r\n	cursor: pointer;\r\n}\r\n";
+	GuildCompanion_default$1 = ":host {\r\n	z-index: 100;\r\n}\r\n\r\n#GuildCompanion {\r\n	position: relative;\r\n	font-size: 12px;\r\n	white-space: nowrap;\r\n}\r\n\r\n/* The two panes are never shown together - open() hides one and shows the\r\n * other - so they stack rather than sit side by side. The 1px frame edge is an\r\n * inset shadow instead of a border: a shadow takes part in no layout, which is\r\n * what lets the namebox below carry the client's own coordinates unshifted. */\r\n#GuildCompanion .win {\r\n	display: block;\r\n	position: relative;\r\n	background-color: white;\r\n	box-shadow: inset 0 0 0 1px #a5a5a5;\r\n	border-radius: 3px;\r\n}\r\n\r\n#GuildCompanion .win.namebox {\r\n	display: none;\r\n}\r\n#GuildCompanion .win.namebox.visible {\r\n	display: block;\r\n}\r\n\r\n#GuildCompanion .win.companion.hidden {\r\n	display: none;\r\n}\r\n\r\n#GuildCompanion .titlebar {\r\n	height: 17px;\r\n	line-height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0 0;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n	padding-left: 6px;\r\n}\r\n#GuildCompanion .titlebar .title {\r\n	vertical-align: middle;\r\n}\r\n#GuildCompanion .titlebar .base {\r\n	display: inline-block;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n	cursor: pointer;\r\n}\r\n#GuildCompanion .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n}\r\n#GuildCompanion .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n#GuildCompanion .btn {\r\n	display: inline-block;\r\n	height: 20px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	cursor: pointer;\r\n}\r\n\r\n/* ---- The \"no guild yet\" pane -------------------------------------------\r\n * No decoded geometry: the client's counterpart is a tip list, not this. Only\r\n * the bitmaps and the caption come from the client. */\r\n\r\n#GuildCompanion .companion .body {\r\n	padding: 10px 12px 8px 12px;\r\n}\r\n#GuildCompanion .companion .msg {\r\n	margin-bottom: 12px;\r\n}\r\n#GuildCompanion .companion .btns {\r\n	text-align: center;\r\n}\r\n#GuildCompanion .companion .btn_create {\r\n	width: 71px;\r\n	margin-right: 6px;\r\n}\r\n#GuildCompanion .companion .btn_close {\r\n	width: 42px;\r\n}\r\n\r\n/* ---- Create / disband, on the client's box -----------------------------\r\n * One window for both modes, at the client's own geometry: 150x100, edit\r\n * 124x20 at (13, 42), OK and Cancel at (58, 76) and (104, 76). Children are\r\n * absolute so each number appears once.\r\n * See docs/reference/guild/create-disband-dialogs.md */\r\n#GuildCompanion .namebox {\r\n	width: 150px;\r\n	height: 100px;\r\n	/* The client's label has no box and is clipped by the window DC. An\r\n	 * absolute box has no such edge, and a localised label overran the frame. */\r\n	overflow: hidden;\r\n}\r\n/* An anchor, not a box - there is nothing to centre the label in, so left/top\r\n * with no width and no text-align.\r\n *\r\n * 13 rather than the client's 16, deliberately: flush with the field's left\r\n * edge rather than with the text inside it, which reads as an indent.\r\n * See docs/reference/guild/create-disband-dialogs.md */\r\n#GuildCompanion .namebox .label {\r\n	position: absolute;\r\n	left: 13px;\r\n	top: 23px;\r\n}\r\n#GuildCompanion .namebox input {\r\n	position: absolute;\r\n	left: 13px;\r\n	top: 42px;\r\n	width: 124px;\r\n	height: 20px;\r\n	box-sizing: border-box;\r\n	padding: 0 2px;\r\n	border: 1px solid #c1c6c2;\r\n	/* The client's own near-white on this edit widget. */\r\n	background-color: #e6e6e6;\r\n	/* The UA's `font` shorthand on form controls drops the inherited family and\r\n	 * resets font-size-adjust, so an input opts out of the x-height\r\n	 * normalisation the rest of the window runs under. */\r\n	font-family: inherit;\r\n	font-size: 12px;\r\n	font-size-adjust: inherit;\r\n	/* The 18px content band, stated rather than left to the UA: without it the\r\n	 * value sits wherever the engine's default input line-height puts it, which\r\n	 * is not the same on every browser. */\r\n	line-height: 18px;\r\n}\r\n#GuildCompanion .namebox .btn {\r\n	position: absolute;\r\n	top: 76px;\r\n	width: 42px;\r\n}\r\n#GuildCompanion .namebox .btn_ok {\r\n	left: 58px;\r\n}\r\n#GuildCompanion .namebox .btn_cancel {\r\n	left: 104px;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/GuildCompanion/GuildCompanion.js
+/**
+* Helper: query inside shadow root
+*/
+function _root$14() {
+	return GuildCompanion.getRoot();
+}
 function open(mode) {
 	_mode = mode;
 	if (!GuildCompanion.__active) GuildCompanion.append();
-	const root = GuildCompanion._shadow;
+	const root = _root$14();
 	const companion = root.querySelector(".win.companion");
 	const nameWin = root.querySelector(".win.namebox");
 	const input = root.querySelector(".guildname");
+	const strings = MODE_STRINGS[mode] || MODE_STRINGS.create;
+	root.querySelector(".name_title").textContent = DB.getMessage(strings.title[0], strings.title[1]);
+	root.querySelector(".name_label").textContent = DB.getMessage(strings.label[0], strings.label[1]);
+	input.value = "";
 	if (mode === "disband") {
 		companion.classList.add("hidden");
 		nameWin.classList.add("visible");
-		root.querySelector(".name_title").textContent = "Disband the Guild";
-		root.querySelector(".name_label").textContent = "Enter Guild Name";
-		input.value = "";
 		input.focus();
 	} else {
 		companion.classList.remove("hidden");
 		nameWin.classList.remove("visible");
-		root.querySelector(".name_title").textContent = "Create Guild";
-		root.querySelector(".name_label").textContent = "Guild Name";
-		input.value = "";
 	}
 	center();
 }
@@ -228914,7 +229364,7 @@ function center() {
 	host.style.left = `${Math.max(0, Math.round((w - rect.width) / 2))}px`;
 	host.style.top = `${Math.max(0, Math.round((h - rect.height) / 2))}px`;
 }
-var GuildCompanion, _mode, GuildCompanion_default;
+var GuildCompanion, _mode, MODE_STRINGS, GuildCompanion_default;
 var init_GuildCompanion = __esmMin((() => {
 	init_Renderer();
 	init_SessionStorage();
@@ -228930,11 +229380,22 @@ var init_GuildCompanion = __esmMin((() => {
 	_mode = "create";
 	GuildCompanion.onRequestCreateGuild = function onRequestCreateGuild() {};
 	GuildCompanion.onRequestBreakGuild = function onRequestBreakGuild() {};
+	MODE_STRINGS = {
+		create: {
+			title: [2076, "Create Guild"],
+			label: [2077, "Guild Name"]
+		},
+		disband: {
+			title: [2088, "Disband the Guild"],
+			label: [2089, "Enter Guild Name"]
+		}
+	};
 	GuildCompanion.init = function init() {
-		const root = this._shadow;
-		this.draggable(root.querySelector(".companion .titlebar"));
+		const root = _root$14();
 		const nameWin = root.querySelector(".win.namebox");
 		const input = root.querySelector(".guildname");
+		this.draggable(root.querySelector(".companion .titlebar"));
+		this.draggable(root.querySelector(".namebox .titlebar"));
 		const closeAll = () => {
 			GuildCompanion.remove();
 		};
@@ -228949,7 +229410,9 @@ var init_GuildCompanion = __esmMin((() => {
 		const submit = () => {
 			const name = input.value.trim();
 			if (!name.length) {
-				input.focus();
+				UIManager.showMessageBox(DB.getMessage(2080, "You must enter the name of your guild."), "ok", () => {
+					input.focus();
+				});
 				return;
 			}
 			if (_mode === "disband") {
@@ -229105,13 +229568,13 @@ var init_SkillDescription = __esmMin((() => {
 //#region src/UI/Components/Guild/Guild.html?raw
 var Guild_default$2;
 var init_Guild$3 = __esmMin((() => {
-	Guild_default$2 = "<div id=\"Guild\">\r\n	<div class=\"titlebar\">\r\n		<ui-image src=\"basic_interface/titlebar_mid.bmp\"></ui-image>\r\n		<div class=\"right\">\r\n			<ui-button\r\n				class=\"base close\"\r\n				bg=\"basic_interface/sys_close_off.bmp\"\r\n				hover=\"basic_interface/sys_close_on.bmp\"\r\n			></ui-button>\r\n		</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"tabs\">\r\n		<!--\r\n		--><button data-flag=\"0\" class=\"info\"><ui-text msg=\"340\">Guild Info</ui-text></button><!--\r\n		--><button data-flag=\"1\" class=\"members\"><ui-text msg=\"341\">Guildsmen Info</ui-text></button><!--\r\n		--><button data-flag=\"2\" class=\"positions\"><ui-text msg=\"342\">Position</ui-text></button><!--\r\n		--><button data-flag=\"3\" class=\"skills\"><ui-text msg=\"343\">Guild Skill</ui-text></button><!--\r\n		--><button data-flag=\"4\" class=\"history\"><ui-text msg=\"344\">Expel History</ui-text></button><!--\r\n		--><button data-flag=\"6\" class=\"notice\"><ui-text msg=\"345\">Guild Notice</ui-text></button>\r\n	</div>\r\n\r\n	<div class=\"panel\">\r\n		<!-- INFO TAB -->\r\n		<div class=\"content info\">\r\n			<div class=\"name\"><ui-text msg=\"328\">Guild Name</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"level\"><ui-text msg=\"329\">Guild lvl</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"master\"><ui-text msg=\"330\">Guild Master</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"members\">\r\n				<ui-text msg=\"331\">Guildsmen</ui-text> : <span class=\"numMember\">0</span> /\r\n				<span class=\"maxMember\">0</span> <ui-button bg=\"basic_interface/grp_online.bmp\"></ui-button>\r\n				<span class=\"online\"></span>\r\n			</div>\r\n			<div class=\"avglevel\"><ui-text msg=\"332\">Avg.lvl of Guildsmen</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"territory\"><ui-text msg=\"333\">Territory</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"tendency\">\r\n				<div class=\"title\"><ui-text msg=\"334\">Tendency</ui-text> : <span class=\"value\"></span></div>\r\n				<div class=\"righteous\">R</div>\r\n				<div class=\"wiked\">W</div>\r\n				<div class=\"vulgar\">V</div>\r\n				<div class=\"famed\">F</div>\r\n				<canvas width=\"90\" height=\"90\"></canvas>\r\n			</div>\r\n			<div class=\"exp\"><ui-text msg=\"335\">EXP</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"emblem\"><ui-text msg=\"336\">Emblem</ui-text></div>\r\n			<div class=\"emblem_container\"></div>\r\n			<ui-button class=\"emblem_edit\" bg=\"btn_edit.bmp\" hover=\"btn_edit_a.bmp\" down=\"btn_edit_b.bmp\">\r\n				<input type=\"file\" />\r\n			</ui-button>\r\n\r\n			<div class=\"tax\"><ui-text msg=\"337\">Tax Point</ui-text> : <span class=\"value\">0</span></div>\r\n			<div class=\"ally\"><ui-text msg=\"338\">Alliance</ui-text></div>\r\n			<div class=\"ally_list\"></div>\r\n			<div class=\"hostile\"><ui-text msg=\"339\">Antagonist</ui-text></div>\r\n			<div class=\"hostile_list\"></div>\r\n		</div>\r\n\r\n		<!-- MEMBERS TAB -->\r\n		<div class=\"content members\">\r\n			<table>\r\n				<thead>\r\n					<tr>\r\n						<th class=\"name\"><ui-text msg=\"407\">Name</ui-text></th>\r\n						<th class=\"position\"><ui-text msg=\"503\">Position</ui-text></th>\r\n						<th class=\"job\"><ui-text msg=\"504\">Job</ui-text></th>\r\n						<th class=\"level\"><ui-text msg=\"408\">Level</ui-text></th>\r\n						<th class=\"note\"><ui-text msg=\"505\">Note</ui-text></th>\r\n						<th class=\"devotion\"><ui-text msg=\"506\">Devotion</ui-text></th>\r\n						<th class=\"tax\"><ui-text msg=\"507\">Tax Point</ui-text></th>\r\n					</tr>\r\n				</thead>\r\n				<tbody>\r\n					<tr class=\"MemberView\">\r\n						<td class=\"name\">\r\n							<canvas width=\"30\" height=\"30\"></canvas>\r\n							<span class=\"value\"></span>\r\n						</td>\r\n						<td class=\"position\"></td>\r\n						<td class=\"job\"></td>\r\n						<td class=\"level\"></td>\r\n						<td class=\"note\"></td>\r\n						<td class=\"devotion\"></td>\r\n						<td class=\"tax\"></td>\r\n					</tr>\r\n				</tbody>\r\n			</table>\r\n		</div>\r\n\r\n		<!-- POSITIONS TAB -->\r\n		<div class=\"content positions\">\r\n			<table>\r\n				<thead>\r\n					<tr>\r\n						<th class=\"id\"><ui-text msg=\"510\">Rank</ui-text></th>\r\n						<th class=\"title\"><ui-text msg=\"511\">Position Title</ui-text></th>\r\n						<th class=\"invite\"><ui-text msg=\"512\">Invitation</ui-text></th>\r\n						<th class=\"punish\"><ui-text msg=\"513\">Punish</ui-text></th>\r\n						<th class=\"tax\"><ui-text msg=\"514\">Tax</ui-text></th>\r\n					</tr>\r\n				</thead>\r\n				<tbody>\r\n					<tr class=\"PositionView\">\r\n						<td class=\"id\"></td>\r\n						<td class=\"title\">\r\n							<input type=\"text\" value=\"\" />\r\n						</td>\r\n						<td class=\"invite\">\r\n							<button class=\"checkbox off\"></button>\r\n						</td>\r\n						<td class=\"punish\">\r\n							<button class=\"checkbox off\"></button>\r\n						</td>\r\n						<td class=\"tax\"><input type=\"text\" value=\"0\" /> %</td>\r\n					</tr>\r\n				</tbody>\r\n			</table>\r\n		</div>\r\n\r\n		<!-- SKILLS TAB -->\r\n		<div class=\"content skills\">\r\n			<div class=\"skill_list\">\r\n				<table>\r\n					<!-- Just to get reference, will be removed -->\r\n					<ui-button\r\n						class=\"btn levelup\"\r\n						bg=\"basic_interface/skill_up_a.bmp\"\r\n						hover=\"basic_interface/skill_up_b.bmp\"\r\n						down=\"basic_interface/skill_up_c.bmp\"\r\n					></ui-button>\r\n				</table>\r\n			</div>\r\n\r\n			<div class=\"footer\">\r\n				<ui-image src=\"basic_interface/btnbar_mid2.bmp\"></ui-image>\r\n				<div class=\"text\">Skill Points: <span class=\"skpoints_count\">0</span></div>\r\n				<ui-button\r\n					class=\"btn apply\"\r\n					bg=\"btn_apply.bmp\"\r\n					hover=\"btn_apply_a.bmp\"\r\n					down=\"btn_apply_b.bmp\"\r\n				></ui-button>\r\n				<ui-button\r\n					class=\"btn reset\"\r\n					bg=\"btn_reset.bmp\"\r\n					hover=\"btn_reset_a.bmp\"\r\n					down=\"btn_reset_b.bmp\"\r\n				></ui-button>\r\n			</div>\r\n		</div>\r\n\r\n		<!-- HISTORY BAN TAB -->\r\n		<div class=\"content history\">\r\n			<table>\r\n				<thead>\r\n					<tr>\r\n						<th class=\"name\"><ui-text msg=\"407\">Name</ui-text></th>\r\n						<th class=\"reason\"><ui-text msg=\"462\">The Reason of Expulsion</ui-text></th>\r\n					</tr>\r\n				</thead>\r\n				<tbody>\r\n					<tr class=\"ExpelView\">\r\n						<td class=\"name\"></td>\r\n						<td class=\"reason\"></td>\r\n					</tr>\r\n				</tbody>\r\n			</table>\r\n		</div>\r\n\r\n		<!-- NOTICE TAB -->\r\n		<div class=\"content notice\">\r\n			<div class=\"subjectTitle\"><ui-text msg=\"515\">Title</ui-text></div>\r\n			<input type=\"text\" class=\"subject\" />\r\n\r\n			<div class=\"noticeTitle\"><ui-text msg=\"516\">Contents</ui-text></div>\r\n			<textarea class=\"notice\"></textarea>\r\n		</div>\r\n	</div>\r\n\r\n	<div class=\"footer\">\r\n		<ui-image src=\"basic_interface/btnbar_mid2.bmp\"></ui-image>\r\n		<button class=\"btn_disband\" type=\"button\">Disband</button>\r\n		<ui-button class=\"btn_ok\" bg=\"btn_ok.bmp\" hover=\"btn_ok_a.bmp\" down=\"btn_ok_b.bmp\"></ui-button>\r\n	</div>\r\n</div>\r\n";
+	Guild_default$2 = "<div id=\"Guild\">\r\n	<div class=\"titlebar\">\r\n		<ui-image src=\"basic_interface/titlebar_mid.bmp\"></ui-image>\r\n		<div class=\"right\">\r\n			<ui-button\r\n				class=\"base close\"\r\n				bg=\"basic_interface/sys_close_off.bmp\"\r\n				hover=\"basic_interface/sys_close_on.bmp\"\r\n			></ui-button>\r\n		</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"tabs\">\r\n		<!--\r\n		--><button data-flag=\"0\" class=\"info\"><ui-text msg=\"340\">Guild Info</ui-text></button><!--\r\n		--><button data-flag=\"1\" class=\"members\"><ui-text msg=\"341\">Guildsmen Info</ui-text></button><!--\r\n		--><button data-flag=\"2\" class=\"positions\"><ui-text msg=\"342\">Position</ui-text></button><!--\r\n		--><button data-flag=\"3\" class=\"skills\"><ui-text msg=\"343\">Guild Skill</ui-text></button><!--\r\n		--><button data-flag=\"4\" class=\"history\"><ui-text msg=\"344\">Expel History</ui-text></button><!--\r\n		--><button data-flag=\"6\" class=\"notice\"><ui-text msg=\"345\">Guild Notice</ui-text></button>\r\n	</div>\r\n\r\n	<div class=\"panel\">\r\n		<!-- INFO TAB -->\r\n		<div class=\"content info\">\r\n			<div class=\"name\"><ui-text msg=\"328\">Guild Name</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"level\"><ui-text msg=\"329\">Guild lvl</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"master\"><ui-text msg=\"330\">Guild Master</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"members\">\r\n				<ui-text msg=\"331\">Guildsmen</ui-text> : <span class=\"numMember\">0</span> /\r\n				<span class=\"maxMember\">0</span>\r\n				<span class=\"online-icon\" data-background=\"basic_interface/grp_online.bmp\"></span>\r\n				<span class=\"online\"></span>\r\n			</div>\r\n			<div class=\"avglevel\"><ui-text msg=\"332\">Avg.lvl of Guildsmen</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"territory\"><ui-text msg=\"333\">Territory</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"tendency\">\r\n				<!-- Label only, with no value and no separator. The chart is the\r\n				     value. See docs/reference/guild/info-tab-legacy.md -->\r\n				<div class=\"title\"><ui-text msg=\"334\">Tendency</ui-text></div>\r\n				<div class=\"righteous\">R</div>\r\n				<div class=\"wiked\">W</div>\r\n				<div class=\"vulgar\">V</div>\r\n				<div class=\"famed\">F</div>\r\n				<canvas width=\"90\" height=\"90\"></canvas>\r\n			</div>\r\n			<div class=\"exp\"><ui-text msg=\"335\">EXP</ui-text> : <span class=\"value\"></span></div>\r\n			<div class=\"emblem\"><ui-text msg=\"336\">Emblem</ui-text></div>\r\n			<!-- The emblem is the picker: one file input, opened by clicking the\r\n			     emblem, by the Edit button or by a drop.\r\n			     See docs/reference/guild/emblem-picker.md -->\r\n			<div class=\"emblem_container\">\r\n				<label class=\"emblem_pick\"><input type=\"file\" accept=\".bmp,.gif,image/bmp,image/gif\" /></label>\r\n			</div>\r\n			<ui-button class=\"emblem_edit\" bg=\"btn_edit.bmp\" hover=\"btn_edit_a.bmp\" down=\"btn_edit_b.bmp\"></ui-button>\r\n\r\n			<div class=\"tax\"><ui-text msg=\"337\">Tax Point</ui-text> : <span class=\"value\">0</span></div>\r\n			<div class=\"ally\"><ui-text msg=\"338\">Alliance</ui-text></div>\r\n			<div class=\"ally_list\"></div>\r\n			<div class=\"hostile\"><ui-text msg=\"339\">Antagonist</ui-text></div>\r\n			<div class=\"hostile_list\"></div>\r\n		</div>\r\n\r\n		<!-- MEMBERS TAB -->\r\n		<div class=\"content members\">\r\n			<table>\r\n				<thead>\r\n					<tr>\r\n						<th class=\"name\"><ui-text msg=\"407\">Name</ui-text></th>\r\n						<th class=\"position\"><ui-text msg=\"503\">Position</ui-text></th>\r\n						<th class=\"job\"><ui-text msg=\"504\">Job</ui-text></th>\r\n						<th class=\"level\"><ui-text msg=\"408\">Level</ui-text></th>\r\n						<th class=\"note\"><ui-text msg=\"505\">Note</ui-text></th>\r\n						<th class=\"devotion\"><ui-text msg=\"506\">Tax</ui-text></th>\r\n						<th class=\"tax\"><ui-text msg=\"507\">Contribution</ui-text></th>\r\n					</tr>\r\n				</thead>\r\n				<tbody>\r\n					<tr class=\"MemberView\">\r\n						<td class=\"name\">\r\n							<canvas width=\"30\" height=\"30\"></canvas>\r\n							<span class=\"value\"></span>\r\n							<span class=\"lastlogin\"></span>\r\n						</td>\r\n						<td class=\"position\"></td>\r\n						<td class=\"job\"></td>\r\n						<td class=\"level\"></td>\r\n						<td class=\"note\"></td>\r\n						<td class=\"devotion\"></td>\r\n						<td class=\"tax\"></td>\r\n					</tr>\r\n				</tbody>\r\n			</table>\r\n		</div>\r\n\r\n		<!-- POSITIONS TAB -->\r\n		<div class=\"content positions\">\r\n			<table>\r\n				<thead>\r\n					<tr>\r\n						<th class=\"id\"><ui-text msg=\"510\">Rank</ui-text></th>\r\n						<th class=\"title\"><ui-text msg=\"511\">Position Title</ui-text></th>\r\n						<th class=\"invite\"><ui-text msg=\"512\">Invitation</ui-text></th>\r\n						<th class=\"punish\"><ui-text msg=\"513\">Punish</ui-text></th>\r\n						<th class=\"storage\"><ui-text msg=\"2499\">Storage</ui-text></th>\r\n						<th class=\"tax\"><ui-text msg=\"514\">Tax</ui-text></th>\r\n					</tr>\r\n				</thead>\r\n				<tbody>\r\n					<tr class=\"PositionView\">\r\n						<td class=\"id\"></td>\r\n						<td class=\"title\">\r\n							<input type=\"text\" value=\"\" />\r\n						</td>\r\n						<td class=\"invite\">\r\n							<div class=\"checkbox off\"></div>\r\n						</td>\r\n						<td class=\"punish\">\r\n							<div class=\"checkbox off\"></div>\r\n						</td>\r\n						<td class=\"storage\">\r\n							<div class=\"checkbox off\"></div>\r\n						</td>\r\n						<td class=\"tax\"><input type=\"text\" value=\"0\" maxlength=\"2\" /> %</td>\r\n					</tr>\r\n				</tbody>\r\n			</table>\r\n		</div>\r\n\r\n		<!-- SKILLS TAB -->\r\n		<div class=\"content skills\">\r\n			<div class=\"skill_list\">\r\n				<!-- Just to get reference, will be removed -->\r\n				<ui-button\r\n					class=\"btn levelup\"\r\n					bg=\"basic_interface/skill_up_a.bmp\"\r\n					hover=\"basic_interface/skill_up_b.bmp\"\r\n					down=\"basic_interface/skill_up_c.bmp\"\r\n				></ui-button>\r\n			</div>\r\n		</div>\r\n\r\n		<!-- HISTORY BAN TAB -->\r\n		<div class=\"content history\">\r\n			<table>\r\n				<thead>\r\n					<tr>\r\n						<th class=\"name\"><ui-text msg=\"407\">Name</ui-text></th>\r\n						<th class=\"reason\"><ui-text msg=\"462\">The Reason of Expulsion</ui-text></th>\r\n					</tr>\r\n				</thead>\r\n				<tbody>\r\n					<tr class=\"ExpelView\">\r\n						<td class=\"name\"></td>\r\n						<td class=\"reason\"></td>\r\n					</tr>\r\n				</tbody>\r\n			</table>\r\n		</div>\r\n\r\n		<!-- NOTICE TAB -->\r\n		<div class=\"content notice\">\r\n			<div class=\"subjectTitle\"><ui-text msg=\"515\">Title</ui-text></div>\r\n			<input type=\"text\" class=\"subject\" />\r\n\r\n			<div class=\"noticeTitle\"><ui-text msg=\"516\">Contents</ui-text></div>\r\n			<textarea class=\"notice\"></textarea>\r\n		</div>\r\n	</div>\r\n\r\n	<div class=\"footer\">\r\n		<ui-image src=\"basic_interface/btnbar_mid2.bmp\"></ui-image>\r\n		<ui-button\r\n			class=\"btn_disband\"\r\n			bg=\"btn_disband.bmp\"\r\n			hover=\"btn_disband_a.bmp\"\r\n			down=\"btn_disband_b.bmp\"\r\n		></ui-button>\r\n		<ui-button class=\"btn_ok\" bg=\"btn_ok.bmp\" hover=\"btn_ok_a.bmp\" down=\"btn_ok_b.bmp\"></ui-button>\r\n		<div class=\"text skpoints\">Skill Points: <span class=\"skpoints_count\">0</span></div>\r\n		<div class=\"sortlogin\">\r\n			<ui-button bg=\"checkbox_1.bmp\"></ui-button><ui-text msg=\"2864\">Show guild member login status</ui-text>\r\n		</div>\r\n		<!-- The client draws btn_close beside this one at x=92. It is left out on\r\n		     purpose, not missing: it carries the same command id as the titlebar's\r\n		     close button, so it is a duplicate. See Guild.js. -->\r\n		<ui-button class=\"btn btn_use\" bg=\"btn_use.bmp\" hover=\"btn_use_a.bmp\" down=\"btn_use_b.bmp\"></ui-button>\r\n	</div>\r\n\r\n	<!-- The whole window becomes the drop target while a file is dragged over\r\n	     it, the emblem alone being a 24x24 target.\r\n	     See docs/reference/guild/emblem-picker.md -->\r\n	<div class=\"emblem_drop\"><ui-text msg=\"336\">Emblem</ui-text></div>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/Guild/Guild.css?raw
 var Guild_default$1;
 var init_Guild$2 = __esmMin((() => {
-	Guild_default$1 = ":host {\r\n	top: 100px;\r\n	left: 100px;\r\n	width: 400px;\r\n	height: 317px;\r\n}\r\n\r\n#Guild {\r\n	position: absolute;\r\n}\r\n\r\n#Guild .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#Guild .titlebar .base {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n#Guild .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n}\r\n#Guild .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n#Guild .panel {\r\n	background-color: white;\r\n	padding-right: 2px;\r\n}\r\n#Guild .content {\r\n	position: relative;\r\n	box-sizing: border-box;\r\n	overflow-y: auto;\r\n	padding: 2px;\r\n	border-top: 1px solid #c6c6c6;\r\n	height: 250px;\r\n}\r\n\r\n#Guild .tabs {\r\n	height: 23px;\r\n	background-color: #b5b6b5;\r\n	white-space: nowrap;\r\n}\r\n#Guild .tabs button.active {\r\n	background-color: #fff;\r\n}\r\n#Guild .tabs button {\r\n	width: 64px;\r\n	height: 23px;\r\n	margin-left: 1px;\r\n	margin-right: 1px;\r\n	margin-top: 1px;\r\n	padding: 0;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	white-space: nowrap;\r\n	background-color: #cecece;\r\n	border: 0px;\r\n	padding: 3px;\r\n}\r\n#Guild .footer {\r\n	width: 100%;\r\n	height: 27px;\r\n	background-repeat: repeat-x;\r\n	background-color: transparent;\r\n	position: relative;\r\n	border-radius: 0px 0px 3px 3px;\r\n}\r\n#Guild .footer .btn_ok {\r\n	display: none;\r\n	position: absolute;\r\n	bottom: 4px;\r\n	right: 4px;\r\n	width: 42px;\r\n	height: 20px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n}\r\n\r\n#Guild .content.members,\r\n#Guild .content.positions,\r\n#Guild .content.skills,\r\n#Guild .content.history,\r\n#Guild .content.notice {\r\n	display: none;\r\n}\r\n\r\n/*\r\n * Guild Info CSS\r\n */\r\n#Guild .content.info .exp,\r\n#Guild .content.info .emblem,\r\n#Guild .content.info .tax,\r\n#Guild .content.info .ally,\r\n#Guild .content.info .ally_list,\r\n#Guild .content.info .hostile,\r\n#Guild .content.info .hostile_list {\r\n	position: absolute;\r\n	left: 201px;\r\n}\r\n\r\n#Guild .content.info .name {\r\n	position: absolute;\r\n	left: 9px;\r\n	top: 13px;\r\n}\r\n#Guild .content.info .level {\r\n	position: absolute;\r\n	left: 9px;\r\n	top: 28px;\r\n}\r\n#Guild .content.info .master {\r\n	position: absolute;\r\n	left: 9px;\r\n	top: 45px;\r\n}\r\n#Guild .content.info .members {\r\n	position: absolute;\r\n	left: 9px;\r\n	top: 61px;\r\n}\r\n#Guild .content.info .avglevel {\r\n	position: absolute;\r\n	left: 9px;\r\n	top: 77px;\r\n}\r\n#Guild .content.info .territory {\r\n	position: absolute;\r\n	left: 9px;\r\n	top: 93px;\r\n}\r\n#Guild .content.info .tendency {\r\n	position: absolute;\r\n	left: 9px;\r\n	top: 114px;\r\n}\r\n#Guild .content.info .tendency .title {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n#Guild .content.info .tendency .righteous {\r\n	position: absolute;\r\n	left: 50px;\r\n	top: 16px;\r\n	text-align: center;\r\n}\r\n#Guild .content.info .tendency .wiked {\r\n	position: absolute;\r\n	left: 50px;\r\n	top: 120px;\r\n	text-align: center;\r\n}\r\n#Guild .content.info .tendency .vulgar {\r\n	position: absolute;\r\n	left: 0px;\r\n	top: 68px;\r\n}\r\n#Guild .content.info .tendency .famed {\r\n	position: absolute;\r\n	left: 102px;\r\n	top: 68px;\r\n}\r\n#Guild .content.info .tendency canvas {\r\n	position: absolute;\r\n	top: 30px;\r\n	left: 10px;\r\n}\r\n\r\n#Guild .content.info .members ui-button {\r\n	margin-left: 5px;\r\n	vertical-align: -4px;\r\n	border: none;\r\n	width: 15px;\r\n	height: 15px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#Guild .content.info .exp {\r\n	position: absolute;\r\n	left: 201px;\r\n	top: 13px;\r\n}\r\n#Guild .content.info .emblem {\r\n	position: absolute;\r\n	left: 201px;\r\n	top: 37px;\r\n}\r\n#Guild .content.info .tax {\r\n	position: absolute;\r\n	left: 201px;\r\n	top: 61px;\r\n}\r\n#Guild .content.info .ally {\r\n	position: absolute;\r\n	left: 201px;\r\n	top: 103px;\r\n}\r\n#Guild .content.info .ally_list {\r\n	position: absolute;\r\n	left: 201px;\r\n	top: 118px;\r\n	white-space: pre;\r\n	width: 168px;\r\n	height: 48px;\r\n	background: #cecece;\r\n}\r\n#Guild .content.info .hostile {\r\n	position: absolute;\r\n	left: 201px;\r\n	top: 177px;\r\n}\r\n#Guild .content.info .hostile_list {\r\n	position: absolute;\r\n	left: 201px;\r\n	top: 193px;\r\n	white-space: pre;\r\n	width: 168px;\r\n	height: 48px;\r\n	background: #cecece;\r\n}\r\n\r\n#Guild .content.info .ally_list div,\r\n#Guild .content.info .hostile_list div {\r\n	padding: 2px;\r\n}\r\n#Guild .content.info .ally_list div.active,\r\n#Guild .content.info .hostile_list div.active {\r\n	background-color: #739eef;\r\n	padding: 2px;\r\n}\r\n\r\n#Guild .content.info .emblem_container {\r\n	width: 24px;\r\n	height: 24px;\r\n	position: absolute;\r\n	top: 29px;\r\n	left: 300px;\r\n	background-color: #709ce7;\r\n	background-repeat: no-repeat;\r\n}\r\n#Guild .content.info .emblem_edit {\r\n	position: absolute;\r\n	top: 30px;\r\n	left: 330px;\r\n	width: 42px;\r\n	height: 20px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	overflow: hidden;\r\n}\r\n#Guild .content.info .emblem_edit input {\r\n	opacity: 0;\r\n}\r\n\r\n/*\r\n * Guild Members\r\n */\r\n#Guild .content.members table {\r\n	border-spacing: 0;\r\n	border-collapse: collapse;\r\n}\r\n#Guild .content.members tbody tr {\r\n	border-left: 1px solid #c2c2c2;\r\n	border-right: 1px solid #c2c2c2;\r\n}\r\n#Guild .content.members td {\r\n	border-bottom: 1px solid #c2c2c2;\r\n}\r\n#Guild .content.members tr.active td {\r\n	background-color: #739eef !important;\r\n}\r\n#Guild .content.members th {\r\n	border: 1px solid #c2c2c2;\r\n}\r\n#Guild .content.members td,\r\n#Guild .content.members th {\r\n	text-align: left;\r\n	font-weight: normal;\r\n	padding-left: 2px;\r\n	height: 35px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	white-space: nowrap;\r\n}\r\n#Guild .content.members tr.online td {\r\n	background-color: #efe;\r\n}\r\n#Guild .content.members tr canvas {\r\n	display: inline;\r\n}\r\n#Guild .content.members .name {\r\n	width: 85px;\r\n	max-width: 85px;\r\n	text-overflow: ellipsis;\r\n	overflow: hidden;\r\n}\r\n#Guild .content.members .name canvas {\r\n	vertical-align: -11px;\r\n}\r\n#Guild .content.members .position {\r\n	width: 70px;\r\n	max-width: 70px;\r\n	text-overflow: ellipsis;\r\n	overflow: hidden;\r\n}\r\n#Guild .content.members .position select {\r\n	width: 65px;\r\n	max-width: 65px;\r\n	text-overflow: ellipsis;\r\n	overflow: hidden;\r\n}\r\n#Guild .content.members .job {\r\n	width: 43px;\r\n	max-width: 43px;\r\n	text-overflow: ellipsis;\r\n	overflow: hidden;\r\n}\r\n#Guild .content.members .level {\r\n	width: 30px;\r\n}\r\n#Guild .content.members .note {\r\n	width: 41px;\r\n}\r\n#Guild .content.members .devotion {\r\n	width: 42px;\r\n}\r\n#Guild .content.members .tax {\r\n	width: 63px;\r\n	max-width: 63px;\r\n	text-overflow: ellipsis;\r\n	overflow: hidden;\r\n}\r\n\r\n/*\r\n * Guild Positions\r\n */\r\n#Guild .content.positions table {\r\n	border-spacing: 0;\r\n	border-collapse: collapse;\r\n}\r\n#Guild .content.positions tr.active {\r\n	border: none;\r\n}\r\n#Guild .content.positions tr.active td {\r\n	background-color: #739eef;\r\n}\r\n#Guild .content.positions th,\r\n#Guild .content.positions td {\r\n	height: 20px;\r\n	font-weight: normal;\r\n	text-align: left;\r\n	padding: 2px 2px 0px 3px;\r\n	border: 1px solid #c2c2c2;\r\n}\r\n#Guild .content.positions .id {\r\n	width: 57px;\r\n}\r\n#Guild .content.positions .title {\r\n	width: 158px;\r\n	padding: 0px;\r\n}\r\n#Guild .content.positions .invite {\r\n	width: 68px;\r\n}\r\n#Guild .content.positions .punish {\r\n	width: 68px;\r\n}\r\n#Guild .content.positions .tax {\r\n	width: 68px;\r\n	padding: 0;\r\n}\r\n#Guild .content.positions input {\r\n	border: none;\r\n	background-color: white;\r\n	padding: 0;\r\n	height: 18px;\r\n}\r\n#Guild .content.positions .title input {\r\n	padding-left: 2px;\r\n	width: 140px;\r\n	margin-left: 4px;\r\n}\r\n#Guild .content.positions .tax input {\r\n	width: 28px;\r\n	padding-left: 2px;\r\n	margin-left: 3px;\r\n}\r\n/* A plain button, not a ui-button: that one re-applies its `bg` bitmap on every\r\n * mouseout, which wiped the tick Guild.js draws as soon as the pointer left. */\r\n#Guild .content.positions .checkbox {\r\n	border: none;\r\n	padding: 0;\r\n	width: 10px;\r\n	height: 10px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n/*\r\n * Guild Skills\r\n */\r\n#Guild .content.skills {\r\n	overflow-y: hidden;\r\n}\r\n#Guild .content.skills .skill_list {\r\n	overflow-y: auto;\r\n	padding: 5px;\r\n	border-top: 1px solid #c6c6c6;\r\n	width: 394px;\r\n	height: 215px;\r\n}\r\n#Guild .content.skills .skill_list table {\r\n	border: none;\r\n	border-spacing: 0px;\r\n	padding-top: 5px;\r\n	width: 100%;\r\n}\r\n#Guild .content.skills .skill_list td,\r\n#Guild .content.skills .skill_list .name {\r\n	padding: 0px;\r\n}\r\n\r\n#Guild .content.skills .levelup {\r\n	border: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	padding: 0;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n#Guild .content.skills td.type {\r\n	vertical-align: bottom;\r\n}\r\n\r\n#Guild .content.skills .skill_list .icon {\r\n	padding-left: 15px;\r\n}\r\n#Guild .content.skills .skill_list .levelupcontainer {\r\n	padding-left: 5px;\r\n	padding-right: 5px;\r\n	width: 24px;\r\n}\r\n#Guild .content.skills .skill_list div.name {\r\n	line-height: 12px;\r\n	white-space: nowrap;\r\n	padding-left: 5px;\r\n	white-space: nowrap;\r\n	width: 120px;\r\n	padding-top: 4px;\r\n	height: 28px;\r\n}\r\n#Guild .content.skills .disabled .icon,\r\n#Guild .content.skills .disabled .name {\r\n	opacity: 0.5;\r\n}\r\n#Guild .content.skills .disabled .consume,\r\n#Guild .content.skills .disabled .level {\r\n	display: none;\r\n}\r\n#Guild .content.skills .currentDown,\r\n#Guild .content.skills .currentUp {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n\r\n#Guild .content.skills .selected.disabled .selectable {\r\n	background-color: #b5b5b5;\r\n}\r\n#Guild .content.skills .selected.passive .selectable {\r\n	background-color: #73d5ee;\r\n}\r\n#Guild .content.skills .selected.active .selectable {\r\n	background-color: #739cee;\r\n}\r\n\r\n#Guild .content.skills .footer {\r\n	width: 100%;\r\n	height: 27px;\r\n	background-repeat: repeat-x;\r\n	background-color: transparent;\r\n	position: relative;\r\n}\r\n#Guild .content.skills .footer .text {\r\n	padding-top: 7px;\r\n	margin-left: 10px;\r\n}\r\n\r\n#Guild .footer .btn_disband {\r\n	display: none;\r\n	position: absolute;\r\n	bottom: 4px;\r\n	right: 4px;\r\n	padding: 2px 10px;\r\n	font-family: Arial, sans-serif;\r\n	font-size: 11px;\r\n	cursor: pointer;\r\n}\r\n\r\n#Guild .content.skills .footer .btn {\r\n	position: absolute;\r\n	top: 5px;\r\n	border: 0;\r\n	width: 42px;\r\n	height: 20px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	display: none;\r\n}\r\n#Guild .content.skills .footer .apply {\r\n	right: 70px;\r\n}\r\n#Guild .content.skills .footer .reset {\r\n	right: 20px;\r\n}\r\n\r\n/*\r\n * Guild History\r\n */\r\n#Guild .content.history table {\r\n	border-spacing: 0;\r\n	border-collapse: collapse;\r\n}\r\n#Guild .content.history th,\r\n#Guild .content.history td {\r\n	font-weight: normal;\r\n	text-align: left;\r\n	padding: 5px 5px 0px 5px;\r\n	border: 1px solid #c2c2c2;\r\n}\r\n#Guild .content.history .name {\r\n	width: 90px;\r\n}\r\n#Guild .content.history .reason {\r\n	width: 275px;\r\n}\r\n\r\n/*\r\n * Guild Notice\r\n */\r\n#Guild .notice .subjectTitle {\r\n	position: absolute;\r\n	top: 13px;\r\n	left: 9px;\r\n}\r\n#Guild .notice .subject {\r\n	position: absolute;\r\n	top: 11px;\r\n	left: 50px;\r\n	padding-left: 5px;\r\n	height: 14px;\r\n	border: none;\r\n	width: 333px;\r\n	background-color: #eee;\r\n}\r\n#Guild .notice .noticeTitle {\r\n	position: absolute;\r\n	top: 36px;\r\n	left: 9px;\r\n}\r\n#Guild .notice .notice {\r\n	position: absolute;\r\n	top: 52px;\r\n	left: 9px;\r\n	padding-left: 5px;\r\n	margin: 0px;\r\n	width: 372px;\r\n	height: 168px;\r\n	background-color: #eee;\r\n	border: none;\r\n	resize: none;\r\n}\r\n";
+	Guild_default$1 = ":host {\r\n	top: 100px;\r\n	left: 100px;\r\n	width: 400px;\r\n	height: 317px;\r\n}\r\n\r\n/* The size the client gives this window: UIWindow::SetSize(400, 317), from a\r\n * pair of read-only globals shared by all six tabs. Without a width here the\r\n * frame is shrink-to-fit, so anything that widens a pane - a scrollbar's\r\n * gutter, a longer list, a different tab - moves the frame and drags the\r\n * floated close button with it. */\r\n#Guild {\r\n	position: absolute;\r\n	width: 400px;\r\n	height: 317px;\r\n}\r\n\r\n/* Dropping a file to change the emblem is a web addition, so there is no client\r\n * state to copy. Hidden until a file is actually dragged over the window, and\r\n * only for the guild master on the tab the emblem lives on.\r\n * See docs/reference/guild/emblem-picker.md */\r\n#Guild .emblem_drop {\r\n	display: none;\r\n	position: absolute;\r\n	top: 0;\r\n	left: 0;\r\n	width: 100%;\r\n	height: 100%;\r\n	z-index: 10;\r\n	align-items: center;\r\n	justify-content: center;\r\n	border: 2px dashed #707070;\r\n	border-radius: 3px;\r\n	background-color: rgba(255, 255, 255, 0.75);\r\n	box-sizing: border-box;\r\n	font-size: 12px;\r\n	font-weight: bold;\r\n}\r\n#Guild .emblem_drop.dragover {\r\n	display: flex;\r\n}\r\n\r\n#Guild .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#Guild .titlebar .base {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	/* Top, not middle: the client puts this at a literal y, and a baseline\r\n	 * alignment lands it on a fraction of a pixel instead. */\r\n	vertical-align: top;\r\n}\r\n/* SetPos(W - 14, 3) with sys_close_off.bmp at 11x11 - so (386, 3). The 3px\r\n * right margin puts the 11px button's left edge on 386 in a 400 frame. */\r\n#Guild .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n	margin-top: 3px;\r\n	line-height: 0;\r\n}\r\n#Guild .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n/* The client's content pane is (1, 41, 398, 276) painted over (0, 41, 400, 276),\r\n * so the only edges it leaves are the 1px verticals at x=0 and x=399 - there is\r\n * no horizontal rule under the tabs. The bottom 29 of that 276 are overpainted\r\n * by the button bar, which is a sibling of this box, so the strips this panel\r\n * has to draw are exactly its own height.\r\n *\r\n * A shadow rather than a border on purpose: every band in this window is a\r\n * border-box width that already includes its own separator, and the totals are\r\n * pinned (members 370 in a 375 band, positions a hard 376, skills a hard 398).\r\n * A border would not grow this box, it would take those 2px out of .content and\r\n * walk every measured separator inward. An inset shadow paints in the same\r\n * place and takes part in no layout at all. */\r\n#Guild .panel {\r\n	background-color: white;\r\n	padding-right: 2px;\r\n	box-shadow:\r\n		inset 1px 0 #c8c8c8,\r\n		inset -1px 0 #c8c8c8;\r\n}\r\n#Guild .content {\r\n	position: relative;\r\n	box-sizing: border-box;\r\n	overflow-y: auto;\r\n	padding: 2px;\r\n	height: 247px;\r\n}\r\n\r\n/* The client's tab band is 24px, y 17..41, with the 23px cells sitting 1px\r\n * inside it. At 23 the cells overhang the band and the panel's white shows\r\n * through the 2px gutters between them. */\r\n#Guild .tabs {\r\n	height: 24px;\r\n	background-color: #b4b4b4;\r\n	white-space: nowrap;\r\n}\r\n#Guild .tabs button.active {\r\n	background-color: #fff;\r\n}\r\n/* A tab this member's access mask refuses - a declared deviation. `not-allowed`\r\n * covers only the custom cursor being off; the game cursor is set in\r\n * GUIComponent. See docs/reference/guild/member-view.md */\r\n#Guild .tabs button.denied {\r\n	color: #8c8c8c;\r\n	cursor: not-allowed;\r\n}\r\n/* The client paints a 64x23 cell at x = 1 + 66k and puts a 62x15 label box\r\n * inside it at (3 + 66k, 22) - so the label is inset 2px left and 4px top, and\r\n * is 62 wide, not 58. The margins below already reproduce the 66px pitch; the\r\n * asymmetric padding is what lands the text box on the client's own rect.\r\n *\r\n * Font size 12 is the client's too. A label that does not fit gets ellipsised\r\n * rather than widened, which is also what the client does - it measures the\r\n * string and appends a literal \"...\" while it exceeds 62px - so the clipped\r\n * \"Guild Notice\" is faithful behaviour, not a layout bug. Widening the button\r\n * would be the bug: it feeds straight back into the frame's width. */\r\n#Guild .tabs button {\r\n	width: 64px;\r\n	height: 23px;\r\n	margin-left: 1px;\r\n	margin-right: 1px;\r\n	margin-top: 1px;\r\n	padding: 4px 0 0 2px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	white-space: nowrap;\r\n	background-color: #c8c8c8;\r\n	border: 0px;\r\n	font-family: inherit;\r\n	font-size: 12px;\r\n	/* The UA's `font` shorthand on form controls resets font-size-adjust, so a\r\n	 * button opts out of the x-height normalisation every other element in the\r\n	 * window runs under and its labels end up a different apparent size. */\r\n	font-size-adjust: inherit;\r\n	/* The client draws the label at the top-left of the box with no alignment\r\n	 * flag. A button centres by default, which makes each label start at a\r\n	 * different x depending on how long it is. */\r\n	text-align: left;\r\n}\r\n/* btnbar_mid2.bmp is 29 tall, so the client's bar covers y 288..317. */\r\n#Guild .footer {\r\n	width: 100%;\r\n	height: 29px;\r\n	background-repeat: repeat-x;\r\n	background-color: transparent;\r\n	position: relative;\r\n	border-radius: 0px 0px 3px 3px;\r\n}\r\n/* SetPos(W - 61, H - 23) = (339, 294), inside a bar that starts at 288.\r\n *\r\n * Deliberately 1px above the client. The bar is 29 tall and the button 20, so\r\n * dead centre is 4.5 and the client's own 6 leaves 6 above against 3 below. The\r\n * client is not self-consistent here either - it puts btn_disBand at 292 and\r\n * btn_use at 293 in the same bar - so 5 both centres this button as closely as\r\n * an integer allows and lands it on the same line as `.footer .btn`. */\r\n#Guild .footer .btn_ok {\r\n	display: none;\r\n	position: absolute;\r\n	top: 5px;\r\n	left: 339px;\r\n	width: 42px;\r\n	height: 20px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n}\r\n\r\n#Guild .content.members,\r\n#Guild .content.positions,\r\n#Guild .content.skills,\r\n#Guild .content.history,\r\n#Guild .content.notice {\r\n	display: none;\r\n}\r\n\r\n/*\r\n * Guild Info CSS\r\n */\r\n/* The client's Info tab is a fixed layout drawn at literal coordinates and it\r\n * never scrolls - the modern clients' lowest element is the antagonist box at\r\n * 229..277, well clear of the bar at 288, and ver12's tendency label at 281 is\r\n * simply painted past it onto the same surface. So the pane is not a scroll\r\n * container at all: `visible` rather than the `hidden` this used to carry,\r\n * which would clip that label instead of letting it through. */\r\n#Guild .content.info {\r\n	overflow-y: visible;\r\n}\r\n#Guild .content.info .exp,\r\n#Guild .content.info .emblem,\r\n#Guild .content.info .tax,\r\n#Guild .content.info .ally,\r\n#Guild .content.info .ally_list,\r\n#Guild .content.info .hostile,\r\n#Guild .content.info .hostile_list {\r\n	position: absolute;\r\n	/* The client's right column is at x=200, not 201. */\r\n	left: 200px;\r\n}\r\n\r\n#Guild .content.info .name {\r\n	position: absolute;\r\n	left: 8px;\r\n	top: 8px;\r\n}\r\n#Guild .content.info .level {\r\n	position: absolute;\r\n	left: 8px;\r\n	top: 24px;\r\n}\r\n#Guild .content.info .master {\r\n	position: absolute;\r\n	left: 8px;\r\n	top: 40px;\r\n}\r\n#Guild .content.info .members {\r\n	position: absolute;\r\n	left: 8px;\r\n	top: 56px;\r\n}\r\n#Guild .content.info .avglevel {\r\n	position: absolute;\r\n	left: 8px;\r\n	top: 72px;\r\n}\r\n#Guild .content.info .territory {\r\n	position: absolute;\r\n	left: 8px;\r\n	top: 88px;\r\n}\r\n/* Both legacy, drawn by ver12 only, so off unless the deployment asks through\r\n * guild.showTendency and guild.showTaxPoint.\r\n * See docs/reference/guild/info-tab-legacy.md */\r\n#Guild .content.info .tendency,\r\n#Guild .content.info .tax {\r\n	display: none;\r\n}\r\n#Guild .content.info.shows_tendency .tendency,\r\n#Guild .content.info.shows_taxpoint .tax {\r\n	display: block;\r\n}\r\n/* The client puts the label at (8, 161) and hangs the chart off it, the last\r\n * of its bottom labels landing at y=281. That is past this pane's 288 once the\r\n * glyph box is counted, but the client has no pane edge there - it fills one\r\n * surface from y=41 to the window's full 317 and paints the chart over it. So\r\n * the block keeps the client's coordinates and is allowed out of the pane\r\n * instead of being nudged up to fit. `visible` on both axes, so this is not a\r\n * scroll container and cannot raise a bar for the overflow. */\r\n#Guild .content.info .tendency {\r\n	position: absolute;\r\n	left: 8px;\r\n	top: 120px;\r\n	/* Over the button bar, which follows in the DOM and would otherwise cover\r\n	 * the bottom label. The client draws its chrome first and every label\r\n	 * after, so this is the client's own order. */\r\n	z-index: 1;\r\n}\r\n/* The .tendency box is absolutely positioned with no width and only absolutely\r\n * positioned children, so it shrink-to-fits to zero and the label wraps after\r\n * the first word. */\r\n#Guild .content.info .tendency .title {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	white-space: nowrap;\r\n}\r\n/* Four labels, not three: the client draws R at (63, 176), V at (11, 227),\r\n * W at (64, 281) and F at (116, 227) - a full compass. Horizontal is honor,\r\n * V at -100 and F at +100; vertical is virtue, R at +100 and W at -100. */\r\n#Guild .content.info .tendency .righteous {\r\n	position: absolute;\r\n	left: 55px;\r\n	top: 15px;\r\n}\r\n#Guild .content.info .tendency .wiked {\r\n	position: absolute;\r\n	left: 56px;\r\n	top: 120px;\r\n}\r\n#Guild .content.info .tendency .vulgar {\r\n	position: absolute;\r\n	left: 3px;\r\n	top: 66px;\r\n}\r\n#Guild .content.info .tendency .famed {\r\n	position: absolute;\r\n	left: 108px;\r\n	top: 66px;\r\n}\r\n/* Frame at (23, 188), 90x90. */\r\n#Guild .content.info .tendency canvas {\r\n	position: absolute;\r\n	top: 27px;\r\n	left: 15px;\r\n}\r\n\r\n/* The client blits grp_online.bmp at (128, 95) - it is an image, not a widget,\r\n * with no hover and nothing to click. A ui-button here loaded the right bitmap\r\n * but also put the game cursor into its \"click\" state over a decoration. */\r\n#Guild .content.info .members .online-icon {\r\n	display: inline-block;\r\n	margin-left: 5px;\r\n	vertical-align: -4px;\r\n	width: 15px;\r\n	height: 15px;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#Guild .content.info .exp {\r\n	position: absolute;\r\n	left: 200px;\r\n	top: 8px;\r\n}\r\n/* At max guild level 2022 and mars26 paint this line red. Label and value are\r\n * one string in a single draw call there, so the colour takes the whole line\r\n * and not just the figure. ver12 blanks the figure instead and stays black. */\r\n#Guild .content.info .exp.maxlevel {\r\n	color: #ff0000;\r\n}\r\n#Guild .content.info .emblem {\r\n	position: absolute;\r\n	left: 200px;\r\n	top: 32px;\r\n}\r\n/* (200, 97) - the one right-column slot only ver12 fills, between Emblem at 73\r\n * and Alliance at 139. It had been sitting 5px low at 102, which nothing caught\r\n * because the modern clients draw nothing here to compare against. */\r\n#Guild .content.info .tax {\r\n	position: absolute;\r\n	left: 200px;\r\n	top: 56px;\r\n}\r\n#Guild .content.info .ally {\r\n	position: absolute;\r\n	left: 200px;\r\n	top: 98px;\r\n}\r\n/* 168x48 holds exactly three of the client's 16px rows, which is also where\r\n * its draw loop hard-stops. Clipped rather than scrolled - no guild tab in any\r\n * client puts a bar here. */\r\n#Guild .content.info .ally_list {\r\n	position: absolute;\r\n	left: 200px;\r\n	top: 114px;\r\n	white-space: pre;\r\n	width: 168px;\r\n	height: 48px;\r\n	overflow: hidden;\r\n	background: #c8c8c8;\r\n}\r\n#Guild .content.info .hostile {\r\n	position: absolute;\r\n	left: 200px;\r\n	top: 172px;\r\n}\r\n#Guild .content.info .hostile_list {\r\n	position: absolute;\r\n	left: 200px;\r\n	top: 188px;\r\n	white-space: pre;\r\n	width: 168px;\r\n	height: 48px;\r\n	overflow: hidden;\r\n	background: #c8c8c8;\r\n}\r\n\r\n/* The client's rows are a 16px pitch starting 2px inside the box, with their\r\n * text at x=204 - four past the box's own 200 - and a selection band only 80\r\n * wide, which is the width of its hit test rather than of the box. Ours were\r\n * a 2px padding on a 12px/1.2 line, so an 18.4px pitch at x=202 with the\r\n * highlight running the full 168. */\r\n#Guild .content.info .ally_list div,\r\n#Guild .content.info .hostile_list div {\r\n	height: 16px;\r\n	line-height: 16px;\r\n	padding: 0 0 0 4px;\r\n	box-sizing: border-box;\r\n}\r\n#Guild .content.info .ally_list div.active,\r\n#Guild .content.info .hostile_list div.active {\r\n	background-color: #709fed;\r\n	width: 80px;\r\n}\r\n\r\n/* The client draws the emblem at (300, 65) in a 26x26 frame at (299, 64), and\r\n * puts the edit button at (W - w - 8, 69) = (350, 69) - w being btn_edit.bmp's\r\n * own 42x20. The pane's padding box starts at y=41, so a faithful top is the\r\n * client's y minus 41: 24 here and 28 on the button.\r\n *\r\n * The two tops below are deliberately 3px and 1px past that, and this is the one\r\n * place in this window where the port lays out better than the binary instead of\r\n * reproducing it. The client aligns nothing in this row - the \"Emblem\" label,\r\n * the 24px icon and the 20px button land on three different vertical centres,\r\n * 80.2 / 77 / 79, which reads as a row sagging to the right. Moving the icon and\r\n * the button puts all three on 80. The label itself does not move: it belongs to\r\n * the left column's rhythm (.emblem 32, .tax 56, .ally 98) and shifting it would\r\n * break that. */\r\n#Guild .content.info .emblem_container {\r\n	width: 24px;\r\n	height: 24px;\r\n	position: absolute;\r\n	top: 27px;\r\n	left: 300px;\r\n	background-color: #709fed;\r\n	background-repeat: no-repeat;\r\n	/* The client fills a 26x26 frame at (299, 64) before blitting the 24x24\r\n	 * emblem at (300, 65), so the fill shows as a 1px ring. A shadow rather than\r\n	 * a border, to leave the box at the emblem's own size. */\r\n	box-shadow: 0 0 0 1px #709fed;\r\n}\r\n/* The emblem doubles as the picker's label, so clicking it opens the file\r\n * dialog and the cursor reads it as clickable. Hidden for anyone but the guild\r\n * master. See docs/reference/guild/emblem-picker.md */\r\n#Guild .content.info .emblem_pick {\r\n	display: block;\r\n	height: 100%;\r\n}\r\n#Guild .content.info .emblem_pick input {\r\n	display: none;\r\n}\r\n/* 29 rather than the client's 28 - see the emblem_container note above. */\r\n#Guild .content.info .emblem_edit {\r\n	position: absolute;\r\n	top: 29px;\r\n	left: 350px;\r\n	width: 42px;\r\n	height: 20px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	overflow: hidden;\r\n}\r\n\r\n/*\r\n * Guild Members\r\n */\r\n/* Alone among the tabs, this one insets its bar a further pixel - SetPos(W-16)\r\n * against the W-15 that Positions, Skills and Expel History all use. Offsetting\r\n * the bar rather than narrowing the pane keeps the column separators where they\r\n * were measured. !important because Scrollbar.js writes right: 0px inline when\r\n * it attaches, which no selector outranks. */\r\n#Guild .content.members > .ro-custom-scrollbar {\r\n	right: 1px !important;\r\n}\r\n/* The client's list frame starts at x=5 and its row band at x=6; the pane's own\r\n * 2px padding puts us at 2, so 3px of margin makes up the difference. */\r\n#Guild .content.members table {\r\n	border-spacing: 0;\r\n	border-collapse: collapse;\r\n	margin-left: 3px;\r\n}\r\n/* #c8c8c8 is the client's own separator colour - palette (14, 6) of\r\n * colorchip.bmp, the same entry its pane fills and list frames read. Every grid\r\n * line in this window uses it. */\r\n#Guild .content.members tbody tr {\r\n	border-left: 1px solid #c8c8c8;\r\n	border-right: 1px solid #c8c8c8;\r\n}\r\n#Guild .content.members td {\r\n	border-bottom: 1px solid #c8c8c8;\r\n}\r\n#Guild .content.members tr.active td {\r\n	background-color: #709fed !important;\r\n}\r\n#Guild .content.members th {\r\n	border: 1px solid #c8c8c8;\r\n}\r\n#Guild .content.members td,\r\n#Guild .content.members th {\r\n	/* The widths below are the client's own column widths, so they have to\r\n	 * cover the padding too rather than sit on top of it - and, since each\r\n	 * carries its own separator, the 1px border as well. The client draws five\r\n	 * 1px lines down the full height of the list at x = 104/170/224/264/304,\r\n	 * which is what makes its 375px band hold six columns summing to 370. */\r\n	box-sizing: border-box;\r\n	border-right: 1px solid #c8c8c8;\r\n	text-align: left;\r\n	font-weight: normal;\r\n	padding-left: 2px;\r\n	height: 35px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	white-space: nowrap;\r\n}\r\n#Guild .content.members tr.online td {\r\n	background-color: #e4ffe2;\r\n}\r\n/* A grade picked but not yet sent. Declared deviation: the client has no mark\r\n * for it, and without one the row reads as if the server had agreed.\r\n * See docs/reference/guild/grade-change.md */\r\n#Guild .content.members tr.pending td {\r\n	background-color: #fff4d6;\r\n}\r\n#Guild .content.members tr.pending .name .value::before {\r\n	content: '*';\r\n	margin-right: 2px;\r\n	color: #b06a00;\r\n}\r\n\r\n/*\r\n * The note column belongs to the 0x0154 era: that list carries an intro, the\r\n * later ones do not, and the official client dropped the column along with the\r\n * field. Hidden by default, restored when the wire feeds it, and the remaining\r\n * columns take the width back.\r\n */\r\n#Guild .content.members .note {\r\n	display: none;\r\n}\r\n#Guild .content.members.has-memo .note {\r\n	display: table-cell;\r\n}\r\n/* The last login is a second line of the row rather than a cell - the client\r\n * draws it across the row, under everything. It is taken out of the flow so\r\n * the name column keeps its width while the line gets the whole row. */\r\n#Guild .content.members .name .lastlogin {\r\n	position: absolute;\r\n	left: 4px;\r\n	bottom: 1px;\r\n	width: 340px;\r\n	font-size: 11px;\r\n	line-height: 12px;\r\n	color: #404040;\r\n}\r\n#Guild .content.members.has-memo .name .lastlogin {\r\n	display: none;\r\n}\r\n#Guild .content.members tr canvas {\r\n	display: inline;\r\n}\r\n/* The name has to clip on its own, because the cell cannot: it is the\r\n * positioning context for the line above, which has to overflow it. */\r\n#Guild .content.members .name {\r\n	position: relative;\r\n	width: 99px;\r\n	max-width: 99px;\r\n	overflow: visible;\r\n}\r\n#Guild .content.members .name .value {\r\n	display: inline-block;\r\n	max-width: 63px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	white-space: nowrap;\r\n	vertical-align: middle;\r\n}\r\n#Guild .content.members .name canvas {\r\n	vertical-align: -11px;\r\n}\r\n#Guild .content.members .position {\r\n	width: 66px;\r\n	max-width: 66px;\r\n	text-overflow: ellipsis;\r\n	overflow: hidden;\r\n}\r\n#Guild .content.members .position select {\r\n	width: 61px;\r\n	max-width: 61px;\r\n	text-overflow: ellipsis;\r\n	overflow: hidden;\r\n}\r\n#Guild .content.members .job {\r\n	width: 54px;\r\n	max-width: 54px;\r\n	text-overflow: ellipsis;\r\n	overflow: hidden;\r\n}\r\n#Guild .content.members .level {\r\n	width: 40px;\r\n}\r\n#Guild .content.members .note {\r\n	width: 41px;\r\n}\r\n#Guild .content.members .devotion {\r\n	width: 40px;\r\n}\r\n/* The client's own 76, plus 1px for the list frame's right border - the last\r\n * column has no separator of its own, it closes against the frame at x=381.\r\n * This column used to carry 8 extra pixels to make up for a band that started\r\n * at x=2; the band starts at 6 now, so the compensation is gone. */\r\n#Guild .content.members .tax {\r\n	width: 77px;\r\n	max-width: 77px;\r\n	text-overflow: ellipsis;\r\n	overflow: hidden;\r\n}\r\n\r\n/* Showing the note means fitting seven columns in the same row, so the columns\r\n * widened above go back to what they were. */\r\n#Guild .content.members.has-memo .name {\r\n	width: 85px;\r\n	max-width: 85px;\r\n}\r\n#Guild .content.members.has-memo .name .value {\r\n	max-width: 50px;\r\n}\r\n#Guild .content.members.has-memo .position {\r\n	width: 68px;\r\n	max-width: 68px;\r\n}\r\n#Guild .content.members.has-memo .position select {\r\n	width: 63px;\r\n	max-width: 63px;\r\n}\r\n#Guild .content.members.has-memo .job {\r\n	width: 43px;\r\n	max-width: 43px;\r\n}\r\n#Guild .content.members.has-memo .level {\r\n	width: 30px;\r\n}\r\n#Guild .content.members.has-memo .devotion {\r\n	width: 42px;\r\n}\r\n#Guild .content.members.has-memo .tax {\r\n	width: 62px;\r\n	max-width: 62px;\r\n}\r\n\r\n/* Three row pitches, one per client, and the heights below are pitches: the\r\n * separator is inside the cell rather than a gap between rows.\r\n *\r\n *   ver12   34 + 1 = 35   one line, no access date\r\n *   mars26  35 + 1 = 36   one line, no access date\r\n *   2022    43 + 1 = 44   two lines - it is the only client that draws an\r\n *                         access date, and it pays 8px of row height for it\r\n *\r\n * mars26 is the baseline as the newest. The memo-era packet carries a note and\r\n * no date at all, which is the ver12 generation, so it selects ver12's pitch. */\r\n#Guild .content.members tbody td {\r\n	height: 36px;\r\n	vertical-align: middle;\r\n	padding-top: 0;\r\n}\r\n#Guild .content.members.has-memo tbody td {\r\n	height: 35px;\r\n}\r\n#Guild .content.members.has-lastlogin tbody td {\r\n	height: 44px;\r\n	vertical-align: top;\r\n	padding-top: 3px;\r\n}\r\n\r\n/*\r\n * Guild Positions\r\n */\r\n/* Same band as the member list: the client's list frame starts at x=5, and the\r\n * pane's own 2px padding puts us at 2. */\r\n#Guild .content.positions table {\r\n	border-spacing: 0;\r\n	border-collapse: collapse;\r\n	margin-left: 3px;\r\n	/* Fixed plus an explicit width, so the column widths below are the ones that\r\n	 * get used. `table-layout: fixed` on its own does nothing here - with\r\n	 * `width: auto` the fixed algorithm has no width to distribute and browsers\r\n	 * fall back to the auto one, which let the title input's intrinsic width\r\n	 * push every column wider and run the band past the client's right edge. */\r\n	table-layout: fixed;\r\n	width: 376px;\r\n}\r\n#Guild .content.positions tr.active {\r\n	border: none;\r\n}\r\n#Guild .content.positions tr.active td {\r\n	background-color: #709fed;\r\n}\r\n#Guild .content.positions th,\r\n#Guild .content.positions td {\r\n	box-sizing: border-box;\r\n	height: 20px;\r\n	font-weight: normal;\r\n	text-align: left;\r\n	padding: 2px 2px 0px 3px;\r\n	border: 1px solid #c8c8c8;\r\n}\r\n/* ver12's five-column layout - 50/142/60/60/60, a band of x 5..381. 2022 and\r\n * mars26 add Storage and cut Title from 142 to 100, and their band then runs to\r\n * x=400, under the scrollbar that starts at 385 - the client paints its own Tax\r\n * cell beneath its own bar. We take the sixth column but not that regression:\r\n * Title gives up the width instead, so the band still closes at 381 whichever\r\n * layout is up. Each width carries +1px for its own separator; the last closes\r\n * against the frame. */\r\n#Guild .content.positions .id {\r\n	width: 50px;\r\n}\r\n#Guild .content.positions .title {\r\n	width: 143px;\r\n}\r\n#Guild .content.positions .invite {\r\n	width: 61px;\r\n}\r\n#Guild .content.positions .punish {\r\n	width: 61px;\r\n}\r\n#Guild .content.positions .tax {\r\n	width: 61px;\r\n}\r\n/* These two place their own contents, so they give up the shared padding - on\r\n * the cell only, or it takes the heading's indent with it.\r\n * See docs/reference/guild/member-view.md */\r\n#Guild .content.positions td.title,\r\n#Guild .content.positions td.tax {\r\n	padding: 0;\r\n}\r\n/* The guild storage right only exists from PACKETVER 20140205, and ver12 has no\r\n * column for it. Off, the five widths above sum to the band's 376; on, Title\r\n * pays for the sixth so the sum does not move. */\r\n#Guild .content.positions .storage {\r\n	display: none;\r\n	width: 61px;\r\n}\r\n#Guild .content.positions.has-storage .storage {\r\n	display: table-cell;\r\n}\r\n#Guild .content.positions.has-storage .title {\r\n	width: 82px;\r\n}\r\n#Guild .content.positions.has-storage .title input {\r\n	width: 75px;\r\n}\r\n#Guild .content.positions input {\r\n	border: none;\r\n	background-color: white;\r\n	padding: 0;\r\n	height: 18px;\r\n}\r\n#Guild .content.positions .title input {\r\n	padding-left: 2px;\r\n	width: 136px;\r\n	margin-left: 4px;\r\n}\r\n#Guild .content.positions .tax input {\r\n	width: 28px;\r\n	padding-left: 2px;\r\n	margin-left: 3px;\r\n}\r\n/* A plain element rather than a ui-button: that one reloads its `bg` on every\r\n * hover and press, which paints the unticked image back over a ticked box. The\r\n * client's checkbox is 12x12 at x 160 / 221, y 66 + 19r.\r\n *\r\n * The bitmap is smaller than the cell - checkbox_0/1.bmp are 10x10 - and the\r\n * client does not stretch it: the blit takes its extent from the surface, never\r\n * from the widget, so the 12x12 size never reaches it. It goes out at x = 0 and\r\n * y = (cellH - bmpH) / 2, i.e. flush left and vertically centred. `left center`\r\n * rather than a hard `0 1px` because that division is the rule, and a skin\r\n * shipping a different checkbox size has to keep working. */\r\n/* The tick is 12x12 in a 61x20 cell, so a click at the cell's centre used to\r\n * land on nothing. Filling the cell makes the whole of it the target and, since\r\n * the cursor list matches the element under the pointer, makes it read as one\r\n * too. `.tick` is the same box without the class, a member's mark being an image\r\n * and nothing else. See docs/reference/guild/member-view.md */\r\n#Guild .content.positions .checkbox,\r\n#Guild .content.positions .tick {\r\n	display: block;\r\n	border: none;\r\n	width: 100%;\r\n	height: 16px;\r\n	background-repeat: no-repeat;\r\n	background-position: left top;\r\n	background-color: transparent;\r\n}\r\n\r\n/* The inset the field carried, on the text that replaces it. Only the name can\r\n * outrun its cell. See docs/reference/guild/member-view.md */\r\n#Guild .content.positions .title .value,\r\n#Guild .content.positions .tax .value {\r\n	display: block;\r\n	padding: 2px 0 0 6px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	white-space: nowrap;\r\n}\r\n/* The tax field insets by 5, not 6. */\r\n#Guild .content.positions .tax .value {\r\n	padding-left: 5px;\r\n}\r\n\r\n/*\r\n * Guild Skills\r\n */\r\n/* The scrolling element on this tab is .skill_list, not the pane, so the bar\r\n * lands on .skill_list's right edge. Dropping the pane's right padding and\r\n * widening the list to 396 puts that edge at 398, which is where the bar has to\r\n * start from to sit at the client's x=385. */\r\n/* No padding, so .skill_list can be the pane: the client's skill area runs from\r\n * y=41 down to the bar at 288 with nothing between them, and its scrollbar is\r\n * SetPos(385, 41) by 247 tall - which is that same span. */\r\n#Guild .content.skills {\r\n	overflow-y: hidden;\r\n	padding: 0;\r\n}\r\n/* border-box, so the 5px padding stays inside the 394. Without it this box is\r\n * 404 wide and overflows the pane, which is what pushed the Skills tab to the\r\n * frame's 400px ceiling before the frame was pinned. The custom scrollbar\r\n * happens to set box-sizing itself when it attaches, so the overflow only\r\n * showed between first paint and that attach. */\r\n#Guild .content.skills .skill_list {\r\n	box-sizing: border-box;\r\n	overflow-y: auto;\r\n	padding: 0;\r\n	width: 398px;\r\n	height: 247px;\r\n}\r\n\r\n/* The client has no grid here - it paints each row straight onto the window at\r\n * fixed offsets, so every x below is a gap or a box size rather than a\r\n * coordinate, and the row itself stays in flow. Reading the row left to right:\r\n * icon at 44, level-up + at 78, and the selection highlight at 104 by 164x28\r\n * with the name, Lv and Sp all drawn inside it. */\r\n#Guild .content.skills .skill {\r\n	display: flex;\r\n	box-sizing: border-box;\r\n	/* Row pitch 34 on 2022 and mars26 (ver12 uses 32). The 2px is the\r\n	 * highlight's own y: the client draws it at 34i+43 and the pane starts at\r\n	 * 41, so it sits two below the row's top. */\r\n	height: 34px;\r\n	padding: 2px 0 0 44px;\r\n}\r\n#Guild .content.skills .skill .icon,\r\n#Guild .content.skills .skill .levelupcontainer {\r\n	flex: none;\r\n	width: 24px;\r\n	height: 24px;\r\n	/* the icon and the + are at 34i+45, two below the highlight */\r\n	margin-top: 2px;\r\n}\r\n/* 44 + 24 + 10 = 78 */\r\n#Guild .content.skills .skill .levelupcontainer {\r\n	margin-left: 10px;\r\n}\r\n#Guild .content.skills .levelup {\r\n	border: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	padding: 0;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n/* The highlight rect itself, so the .selected rules below can just colour it.\r\n * 78 + 24 + 2 = 104, and the 8px inset puts the name on the client's 112. */\r\n#Guild .content.skills .skill .selectable {\r\n	flex: none;\r\n	box-sizing: border-box;\r\n	width: 164px;\r\n	height: 28px;\r\n	margin-left: 2px;\r\n	padding: 3px 0 0 8px;\r\n}\r\n#Guild .content.skills .skill .name,\r\n#Guild .content.skills .skill .level,\r\n#Guild .content.skills .skill .consume {\r\n	height: 12px;\r\n	line-height: 12px;\r\n	white-space: nowrap;\r\n}\r\n/* The second line, which the client draws 12 below the name at 34i+58 */\r\n#Guild .content.skills .skill .levelline {\r\n	display: flex;\r\n}\r\n#Guild .content.skills .skill .level {\r\n	box-sizing: border-box;\r\n	/* 112 + 100 = 212, where Sp starts */\r\n	width: 100px;\r\n	/* Lv is drawn at 113, one right of the name's 112 */\r\n	padding-left: 1px;\r\n}\r\n/* The client greys the name at level 0 and leaves the icon alone; it also skips\r\n * the Lv and Sp lines entirely rather than drawing them empty. */\r\n#Guild .content.skills .disabled .name {\r\n	color: #787878;\r\n}\r\n#Guild .content.skills .disabled .consume,\r\n#Guild .content.skills .disabled .level {\r\n	display: none;\r\n}\r\n\r\n#Guild .content.skills .selected.disabled .selectable {\r\n	background-color: #b5b5b5;\r\n}\r\n#Guild .content.skills .selected.passive .selectable {\r\n	background-color: #73d5ee;\r\n}\r\n#Guild .content.skills .selected.active .selectable {\r\n	background-color: #739cee;\r\n}\r\n\r\n/* The client has no inner footer on this tab - it paints the skill list straight\r\n * onto the window and puts these three at window coordinates that land on the\r\n * bottom bar: the two buttons at (46, 293) and (92, 293), the readout at\r\n * (W - 100, H - 20) = (300, 297). They live in the frame's footer for that\r\n * reason, and are shown only while the Skills tab is up. */\r\n/* 240x12 at (12, 299). 2022 only, so whether this shows at all is the\r\n * `guild.memberListSort` deployment setting.\r\n * See docs/reference/guild/member-list-sort.md */\r\n#Guild .footer .sortlogin {\r\n	display: none;\r\n	position: absolute;\r\n	top: 11px;\r\n	left: 12px;\r\n	width: 240px;\r\n	height: 12px;\r\n	font-size: 11px;\r\n	line-height: 12px;\r\n}\r\n#Guild .footer .sortlogin ui-button {\r\n	width: 12px;\r\n	height: 12px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: top;\r\n	margin-right: 4px;\r\n}\r\n#Guild .footer .skpoints {\r\n	display: none;\r\n	position: absolute;\r\n	top: 9px;\r\n	left: 300px;\r\n	white-space: nowrap;\r\n}\r\n\r\n/* SetPos(W - w - 15, H - h - 5) with btn_disBand.bmp at 64x20, so (321, 292).\r\n *\r\n * Deliberately 1px below the client, for the same reason btn_ok sits 1px above\r\n * it: the client scatters this bar's three buttons over 292 / 293 / 294, and\r\n * `top: 5` puts all three on one line at 293 - the closest an integer gets to\r\n * centring a 20px button in a 29px bar. */\r\n#Guild .footer .btn_disband {\r\n	display: none;\r\n	position: absolute;\r\n	width: 64px;\r\n	height: 20px;\r\n	top: 5px;\r\n	right: 15px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	cursor: pointer;\r\n}\r\n\r\n#Guild .footer .btn {\r\n	position: absolute;\r\n	top: 5px;\r\n	border: 0;\r\n	width: 42px;\r\n	height: 20px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	display: none;\r\n}\r\n/* The client puts two controls here, at y = H - 24 = 293: btn_use at 46, which\r\n * casts the selected skill, and btn_close at 92, which dismisses the window.\r\n * btn_close is in the client and is not ported, on purpose - it is assigned the\r\n * same command id as the titlebar's close button, so it is a duplicate of a\r\n * control this window already draws. See the note in Guild.js. */\r\n#Guild .footer .btn_use {\r\n	left: 46px;\r\n}\r\n\r\n/*\r\n * Guild History\r\n */\r\n#Guild .content.history table {\r\n	border-spacing: 0;\r\n	border-collapse: collapse;\r\n}\r\n#Guild .content.history th,\r\n#Guild .content.history td {\r\n	font-weight: normal;\r\n	text-align: left;\r\n	padding: 5px 5px 0px 5px;\r\n	border: 1px solid #c8c8c8;\r\n}\r\n#Guild .content.history .name {\r\n	width: 90px;\r\n}\r\n#Guild .content.history .reason {\r\n	width: 275px;\r\n}\r\n\r\n/*\r\n * Guild Notice\r\n */\r\n#Guild .notice .subjectTitle {\r\n	position: absolute;\r\n	top: 13px;\r\n	left: 9px;\r\n}\r\n/* border-box and 331 so the field closes on x=381, the same right edge as the\r\n * textarea below it and as the member list's band. Content-box at 333 plus the\r\n * 5px padding put it at 390 - nine pixels past the textarea, and past the band\r\n * into the gutter the scrollbar reserves. */\r\n#Guild .notice .subject {\r\n	position: absolute;\r\n	top: 11px;\r\n	left: 50px;\r\n	padding-left: 5px;\r\n	height: 14px;\r\n	border: none;\r\n	box-sizing: border-box;\r\n	width: 331px;\r\n	background-color: #eee;\r\n}\r\n#Guild .notice .noticeTitle {\r\n	position: absolute;\r\n	top: 36px;\r\n	left: 9px;\r\n}\r\n#Guild .notice .notice {\r\n	position: absolute;\r\n	top: 52px;\r\n	left: 9px;\r\n	padding-left: 5px;\r\n	margin: 0px;\r\n	width: 372px;\r\n	height: 168px;\r\n	background-color: #eee;\r\n	border: none;\r\n	resize: none;\r\n}\r\n/* A member gets the notice as text, carrying the field's own class so neither\r\n * box moves on the swap. See docs/reference/guild/member-view.md */\r\n#Guild .notice .value {\r\n	box-sizing: border-box;\r\n	overflow: hidden;\r\n	white-space: nowrap;\r\n}\r\n#Guild .notice .notice.value {\r\n	overflow-y: auto;\r\n	white-space: pre-wrap;\r\n	word-break: break-word;\r\n}\r\n\r\n/* Text selection, re-enabled where the browser gave it to us for free.\r\n *\r\n * Common.css suppresses selection globally - `* { -moz-user-select: none }`\r\n * (:9-11) and `body { user-select: none }` (:64-65), which is inherited across\r\n * the shadow boundary. That is deliberate: it stops a drag fighting the game\r\n * canvas. But it lands on the form controls too, so the guild master cannot\r\n * double-click a word in the Notice they are typing, and nobody can copy a\r\n * member's name to paste into a whisper.\r\n *\r\n * Scoped here rather than carved out of Common.css, which ~30 components share.\r\n * All four typed fields are listed, not just the two that were reported: a\r\n * field you type into has to be selectable, and the notice subject and the tax\r\n * cell are the same kind of control as the two beside them. The values a member\r\n * gets in place of those fields are listed too - copying a grade name is the\r\n * whole of what is left to them there, and the notice pair already matches by\r\n * carrying its field's class.\r\n *\r\n * No `cursor: text` to go with it. The member name is not in GUIComponent's\r\n * clickable-cursor list, and giving it a text caret would fight the row's own\r\n * context-menu affordance. */\r\n#Guild .content.members .name .value,\r\n#Guild .content.positions .title input,\r\n#Guild .content.positions .tax input,\r\n#Guild .content.positions .title .value,\r\n#Guild .content.positions .tax .value,\r\n#Guild .notice .subject,\r\n#Guild .notice .notice {\r\n	-webkit-user-select: text;\r\n	user-select: text;\r\n}\r\n\r\n/* Keyboard focus, made visible again.\r\n *\r\n * Common.css:2 kills the outline on every :focus so the client's chrome is not\r\n * ringed by the browser. Correct for a mouse, but it also means a keyboard user\r\n * tabbing through this window has no idea where they are.\r\n *\r\n * `:focus-visible` throughout, not `:focus`, so all of this is keyboard-only:\r\n * clicking a control paints nothing and the window looks exactly as the client\r\n * does under a mouse, which is why Common.css suppressed the outline to begin\r\n * with.\r\n *\r\n * The tab strip gets weight rather than a ring. The six cells already use\r\n * background to mean *active* (#fff against the inactive #c8c8c8), so focus\r\n * needs a different channel or the two states blur together. Measured before\r\n * choosing it: five of the six labels are unaffected, and the sixth\r\n * (\"Announcement\") is already ellipsised by 19px at normal weight - the client\r\n * truncates its own labels the same way - so bold costs 6px more of a label\r\n * that is clipped either way, and introduces no new clipping. */\r\n#Guild .tabs button:focus-visible {\r\n	font-weight: bold;\r\n}\r\n\r\n/* The editable fields shift to one shared colour when focused, and their resting\r\n * colours are left exactly as they ship - #eee on the Notice pair, white on the\r\n * Positions inputs. #f7f7f7 sits between the two, so the focused field reads as\r\n * different from its neighbours either way: a shade up from the Notice grey, a\r\n * shade down from the Positions white. Nine tones in both directions.\r\n *\r\n * No outline. A ring is the conventional answer and it was tried, but it is the\r\n * most browser-looking mark available in a window that is otherwise the client's\r\n * pixels, and a fill change is enough once the resting colours are left alone. */\r\n#Guild .content input:focus-visible,\r\n#Guild .content select:focus-visible,\r\n#Guild .content textarea:focus-visible {\r\n	background-color: #f7f7f7;\r\n}\r\n\r\n/* The permission checkboxes are bare <div>s - they were a <ui-button> until that\r\n * element's own repaint started fighting the checked/unchecked bitmap - so they\r\n * are the one control in this window that never told the pointer it was\r\n * actionable. GUIComponent's CLICKABLE_SELECTOR now lists `.checkbox`, which is\r\n * what drives the in-game cursor; this rule covers the case where the custom\r\n * cursor is off and the real CSS one is showing. */\r\n#Guild .checkbox {\r\n	cursor: pointer;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/WinStats/WinStats/WinStats.html?raw
@@ -229526,11 +229989,244 @@ var init_WinStats = __esmMin((() => {
 }));
 //#endregion
 //#region src/UI/Components/Guild/Guild.js
+function _hasStorageColumn() {
+	return parseInt(PacketVerManager_default.value, 10) >= 20140205;
+}
+/**
+* Helper: does the Info tab draw the tendency chart
+*
+* @return {boolean}
+*/
+function _showsTendency() {
+	return _config().showTendency === true;
+}
+/**
+* Helper: does the Info tab draw the Tax Point line
+*
+* @return {boolean}
+*/
+function _showsTaxPoint() {
+	return _config().showTaxPoint === true;
+}
 /**
 * Helper: query inside shadow root
 */
 function _root$13(comp) {
 	return comp.getRoot();
+}
+/**
+* Helper: forget the queued grade changes, and the marks that showed them
+*
+* Leaves the rows on the grades they display, so this is only ever right where
+* those grades have just been sent. Every other drop goes through
+* _clearPendingPositions, which puts them back first.
+* @see docs/reference/guild/grade-change.md
+*/
+function _dropPendingPositions() {
+	_pendingPositions = {};
+	const root = _root$13(Guild);
+	if (!root) return;
+	for (const row of root.querySelectorAll(".content.members .MemberView.pending")) row.classList.remove("pending");
+}
+/**
+* Helper: is a grade change waiting to be sent
+*
+* @return {boolean} true while the members tab holds an unsent edit
+*/
+function _hasPendingPositions() {
+	for (const _GID in _pendingPositions) return true;
+	return false;
+}
+/**
+* Helper: drop the queued grades, putting their rows back on the server's
+*
+* Forgetting the queue is not enough: the row was moved to the picked grade when
+* it was queued, so dropping the queue alone would leave that grade on show as
+* though the server had agreed to it - and the grade guard would then refuse to
+* queue it a second time, the row already reading as the value asked for. Every
+* drop restores, so no call site has to work out whether it is the one that has
+* to; Apply is the exception and says so.
+* @see docs/reference/guild/grade-change.md
+*/
+function _clearPendingPositions() {
+	const root = _root$13(Guild);
+	if (root) for (const GID in _pendingPositions) {
+		const pending = _pendingPositions[GID];
+		for (let i = 0, count = _members.length; i < count; ++i) {
+			const member = _members[i];
+			if (member.AID === pending.AID && member.GID === pending.GID) {
+				member.GPositionID = pending.previousID;
+				Guild.setMember(member);
+				break;
+			}
+		}
+	}
+	_dropPendingPositions();
+	if (root) _refreshApplyButton(getActiveTab(root));
+}
+/**
+* Helper: put the Positions tab back to what the server last sent
+*
+* Both the queued edits and the flag that keeps them are dropped together:
+* keeping one without the other either applies edits the rows no longer show,
+* or refuses every refresh for edits that are gone.
+* @see docs/reference/guild/grade-change.md
+*/
+function _resetPositionsTab() {
+	_clearPendingPositions();
+	_positionsDirty = false;
+	_positionsSelected = 0;
+	if (_root$13(Guild)) {
+		_hideApplyButton();
+		Guild.updatePositionView();
+	}
+}
+/**
+* Helper: put the Info tab back to the values its markup ships
+*
+* The counters return to zero and the rest to blank, which is the state the
+* window is built in.
+* @see docs/reference/guild/member-view.md
+*
+* @param {HTMLElement} root - the window's shadow root
+*/
+function _clearInfoTab(root) {
+	const general = root.querySelector(".content.info");
+	if (!general) return;
+	for (const selector of INFO_BLANK_CELLS) {
+		const cell = general.querySelector(selector);
+		if (cell) cell.textContent = "";
+	}
+	for (const selector of INFO_ZERO_CELLS) {
+		const cell = general.querySelector(selector);
+		if (cell) cell.textContent = "0";
+	}
+	const exp = general.querySelector(".exp");
+	if (exp) exp.classList.remove("maxlevel");
+	const emblemContainer = general.querySelector(".emblem_container");
+	if (emblemContainer) emblemContainer.style.backgroundImage = "";
+	Guild.setRelations([]);
+	renderTendency(0, 0);
+}
+/**
+* Helper: reveal the Apply button, the affordance for a pending change
+*/
+function _showApplyButton() {
+	const btnOk = _root$13(Guild).querySelector(".footer .btn_ok");
+	if (btnOk) btnOk.style.display = "block";
+}
+/**
+* Helper: take the Apply button back, there being nothing left to send
+*/
+function _hideApplyButton() {
+	const btnOk = _root$13(Guild).querySelector(".footer .btn_ok");
+	if (btnOk) btnOk.style.display = "none";
+}
+/**
+* Helper: offer Apply only while the tab on show has an edit to apply
+*
+* The positions tab holds its edits in its rows and the members tab in the
+* queue, so which one is up decides whether there is anything left to send.
+*
+* @param {string} tab - class of the tab on show
+*/
+function _refreshApplyButton(tab) {
+	if (tab === "positions" && _positionsDirty || tab === "members" && _hasPendingPositions()) {
+		_showApplyButton();
+		return;
+	}
+	_hideApplyButton();
+}
+/**
+* Helper: put a value where the guild master gets a control
+* @see docs/reference/guild/member-view.md
+*
+* @param {HTMLElement} cell - the cell to fill
+* @param {string} text - the value to show
+* @param {boolean} [clips] - the cell ellipsises, so offer the value on hover
+*/
+function _asValue(cell, text, clips) {
+	if (!cell) return;
+	const value = document.createElement("span");
+	value.className = "value";
+	value.textContent = text;
+	if (clips) value.title = text;
+	cell.innerHTML = "";
+	cell.appendChild(value);
+}
+/**
+* Helper: the last login date, built from the client's own format string
+*
+* Only the fields the shipped formats use are substituted, not all of strftime.
+*
+* @param {number} timestamp - seconds since epoch, as the member list sends it
+* @return {string} the date, localtime, like the client shows it
+*/
+function _formatLastLogin(timestamp) {
+	const date = /* @__PURE__ */ new Date(timestamp * 1e3);
+	const pad = (value) => `${value}`.padStart(2, "0");
+	return DB.getMessage(3011, "%Y.%m.%d").replace("%Y", date.getFullYear()).replace("%y", pad(date.getFullYear() % 100)).replace("%m", pad(date.getMonth() + 1)).replace("%d", pad(date.getDate()));
+}
+/**
+* Helper: this window's settings, with the defaults above filled in
+*
+* Configs.get does not merge, so a server naming `guild` at all would
+* otherwise drop every key it does not itself set.
+*
+* @return {object}
+*/
+function _config() {
+	return {
+		...GUILD_CONFIG,
+		...Configs.get("guild", {})
+	};
+}
+/**
+* Helper: does the member list get ordered by login status right now
+*
+* 'never' | 'checkbox' | 'always', one per client generation.
+* @see docs/reference/guild/member-list-sort.md
+*
+* @return {boolean}
+*/
+function _sortsByLogin() {
+	const mode = _config().memberListSort;
+	if (mode === "always") return true;
+	if (mode === "never") return false;
+	return !!UI_default.guildMemberListSorted;
+}
+/**
+* Helper: lay the rows out in a given order without rebuilding any of them
+*
+* Rows are moved, so each keeps its listeners, its canvas and its data-index.
+* `_members` stays in the order the server sent - only the table is sorted.
+* @see docs/reference/guild/member-list-sort.md
+*
+* @param {ShadowRoot|Element} root
+* @param {Array} ordered - the members in the order the rows should appear
+*/
+function reorderMemberRows(root, ordered) {
+	const list = root.querySelector(".content.members tbody");
+	if (!list) return;
+	const rowAt = {};
+	for (const row of list.querySelectorAll(".MemberView")) rowAt[row.getAttribute("data-index")] = row;
+	const indexOf = {};
+	for (let i = 0, count = _members.length; i < count; ++i) indexOf[`${_members[i].AID}_${_members[i].GID}`] = i;
+	for (let i = 0, count = ordered.length; i < count; ++i) {
+		const row = rowAt[indexOf[`${ordered[i].AID}_${ordered[i].GID}`]];
+		if (row) list.appendChild(row);
+	}
+}
+/**
+* Helper: the roster, online first
+*
+* Stable, so members sharing a status keep the order the server sent them in.
+*
+* @param {Array} members
+* @return {Array} a sorted copy
+*/
+function _orderByLogin(members) {
+	return members.slice().sort((a, b) => (b.CurrentState ? 1 : 0) - (a.CurrentState ? 1 : 0));
 }
 /**
 * Helper: escape HTML
@@ -229540,12 +230236,109 @@ function _escapeHTML$3(text) {
 	div.textContent = text;
 	return div.innerHTML;
 }
+/**
+* Reflect the two legacy switches onto the tab
+*
+* Called on open and on every tab change, not only when a guild-info packet
+* lands: they decide whether those elements are drawn at all, so waiting for a
+* packet would draw them and take them away.
+* @see docs/reference/guild/info-tab-legacy.md
+*/
+function updateInfoOptions(root) {
+	const infoContent = root.querySelector(".content.info");
+	if (infoContent) {
+		infoContent.classList.toggle("shows_tendency", _showsTendency());
+		infoContent.classList.toggle("shows_taxpoint", _showsTaxPoint());
+	}
+}
+/**
+* Is this drag something the emblem would take, from someone allowed to set it
+* @see docs/reference/guild/emblem-picker.md
+*/
+function _acceptsEmblemDrop(root, transfer) {
+	return transfer && Array.prototype.indexOf.call(transfer.types, "Files") !== -1 && SessionStorage_default.isGuildMaster && getActiveTab(root) === "info";
+}
+/**
+* A BMP or GIF of exactly 24x24, small enough for the server to store
+* @see docs/reference/guild/emblem-picker.md
+*/
+function isEmblem(data) {
+	const view = new DataView(data.buffer);
+	if (data[0] === 66 && data[1] === 77 && data.length >= 26 && data.length <= 1783) return view.getInt32(18, true) === EMBLEM_SIDE && Math.abs(view.getInt32(22, true)) === EMBLEM_SIDE;
+	if (data[0] === 71 && data[1] === 73 && data[2] === 70 && data.length >= 10 && data.length <= 5e4) return view.getUint16(6, true) === EMBLEM_SIDE && view.getUint16(8, true) === EMBLEM_SIDE;
+	return false;
+}
+/**
+* Send a picked emblem, or refuse it with the client's own message - the one
+* path behind all three ways of picking one
+* @see docs/reference/guild/emblem-picker.md
+*/
+function submitEmblem(file) {
+	if (!file || !SessionStorage_default.isGuildMaster) return;
+	const reader = new FileReader();
+	reader.onload = (e) => {
+		const data = new Uint8Array(e.target.result);
+		if (isEmblem(data)) Guild.onSendEmblem(data);
+		else UIManager.showMessageBox(DB.getMessage(3587, "This file cannot be registered."), "ok");
+	};
+	reader.readAsArrayBuffer(file);
+}
+/**
+* The entity behind a member row's 30x30 cell - a head, deliberately
+*
+* `sex` and `job` go to the private fields on purpose: their setters each start
+* an asynchronous body load that cannot be taken back afterwards.
+* @see docs/reference/guild/member-portrait.md
+*
+* @param {object} [entity] - the member's existing entity, if they have one
+* @param {{sex: number, job: number, head: number, headPalette: number}} look
+* @return {object} the entity to store back on the member
+*/
+function memberPortrait(entity, look) {
+	if (!entity) {
+		entity = new Entity();
+		entity.objecttype = Entity.TYPE_PC;
+		entity.files.shadow.spr = null;
+	}
+	entity._sex = look.sex;
+	entity._job = look.job;
+	entity._effectiveJob = look.job;
+	entity.head = look.head;
+	entity.headpalette = look.headPalette;
+	entity.direction = 4;
+	entity.headDir = 0;
+	entity.action = entity.ACTION.IDLE;
+	entity.animation = {
+		tick: 0,
+		frame: 0,
+		repeat: true,
+		play: true,
+		next: false,
+		delay: 0,
+		save: false
+	};
+	return entity;
+}
+/**
+* Show the level-up arrow on each skill the player may actually raise
+*
+* @see docs/reference/guild/member-view.md
+*/
+function updateSkillArrows(root) {
+	if (!root) return;
+	const count = _skills.length;
+	for (let i = 0; i < count; ++i) {
+		const levelupEl = root.querySelector(`.skill.id${_skills[i].SKID} .levelup`);
+		if (levelupEl) levelupEl.style.display = _skills[i].upgradable && _skpoints && SessionStorage_default.isGuildMaster ? "" : "none";
+	}
+}
 function getSkillById(id) {
 	const count = _skills.length;
 	for (let i = 0; i < count; ++i) if (_skills[i].SKID === id) return _skills[i];
 	return null;
 }
 function onRequestSkillUp() {
+	if (!SessionStorage_default.isGuildMaster) return;
 	const index = this.parentNode.parentNode.getAttribute("data-index");
 	Guild.onIncreaseSkill(parseInt(index, 10));
 }
@@ -229566,11 +230359,9 @@ function onRequestSkillInfo() {
 	SkillDescription_default.setSkill(skill.SKID);
 }
 function onSkillFocus() {
-	let main = this.parentElement;
-	if (!main.classList.contains("skill")) main = main.parentElement;
 	const root = _root$13(Guild);
 	for (const el of root.querySelectorAll(".skill")) el.classList.remove("selected");
-	main.classList.add("selected");
+	this.classList.add("selected");
 }
 function onSkillDragStart(event) {
 	const skill = getSkillById(parseInt(this.getAttribute("data-index"), 10));
@@ -229591,59 +230382,129 @@ function onSkillDragStart(event) {
 function onSkillDragEnd() {
 	delete window._OBJ_DRAG_;
 }
-function skillLevelSelectUp(skill) {
-	const level = skill.selectedLevel ? skill.selectedLevel : skill.level;
-	if (level < skill.level) {
-		skill.selectedLevel = level + 1;
-		const element = _root$13(Guild).querySelector(`.skill.id${skill.SKID}`);
-		if (element) {
-			const current = element.querySelector(".level .current");
-			if (current) current.textContent = skill.selectedLevel;
-		}
+/**
+* Helper: put the stored notice into whichever pair the pane is holding
+*/
+function _writeNotice(content) {
+	const subject = content?.querySelector(".subject");
+	const body = content?.querySelector(".notice");
+	if (!subject || !body) return;
+	if (SessionStorage_default.isGuildMaster) {
+		subject.value = _notice.subject;
+		body.value = _notice.body;
+		return;
 	}
+	subject.textContent = _notice.subject;
+	body.textContent = _notice.body;
 }
-function skillLevelSelectDown(skill) {
-	const level = skill.selectedLevel ? skill.selectedLevel : skill.level;
-	if (level > 1) {
-		skill.selectedLevel = level - 1;
-		const element = _root$13(Guild).querySelector(`.skill.id${skill.SKID}`);
-		if (element) {
-			const current = element.querySelector(".level .current");
-			if (current) current.textContent = skill.selectedLevel;
-		}
+/**
+* Helper: a tab's label in full, which its 64px cell ellipsises
+*
+* Read through the message id rather than off the element: the label is only
+* the markup's English fallback until `ui-text` upgrades.
+*/
+function _tabLabel(btn) {
+	const text = btn.querySelector("ui-text");
+	if (!text) return btn.textContent.trim();
+	return DB.getMessage(parseInt(text.getAttribute("msg"), 10), text.textContent.trim());
+}
+/**
+* Mark the tabs this member's access mask refuses
+* @see docs/reference/guild/member-view.md
+*/
+function updateTabAccess(root) {
+	if (!root) return;
+	for (const btn of root.querySelectorAll(".tabs button")) {
+		const tab = parseInt(btn.getAttribute("data-flag"), 10);
+		const denied = !!tab && !(_guildAccess & AccessTypeBit[tab]);
+		btn.classList.toggle("denied", denied);
+		btn.setAttribute("aria-disabled", denied ? "true" : "false");
+		btn.tabIndex = denied ? -1 : 0;
+		btn.title = _tabLabel(btn);
 	}
+	if (root.querySelector(".tabs button.active.denied")) onChangeTab.call(root.querySelector(".tabs button"));
 }
 function onChangeTab(event) {
 	const tab = parseInt(this.getAttribute("data-flag"), 10);
 	const root = _root$13(Guild);
 	if (this.classList.contains("active") || tab && !(_guildAccess & AccessTypeBit[tab])) return false;
-	Guild.onGuildInfoRequest(tab);
+	if (tab !== TAB_MEMBERS && tab !== TAB_POSITIONS || !_hasPendingPositions()) Guild.onGuildInfoRequest(tab);
 	for (const btn of root.querySelectorAll(".tabs button")) btn.classList.remove("active");
 	for (const content of root.querySelectorAll(".content")) content.style.display = "none";
 	const targetClass = this.className.replace(/\s*active\s*/g, "").trim();
 	const targetContent = root.querySelector(`.content.${targetClass}`);
 	if (targetContent) targetContent.style.display = "block";
-	const btnOk = root.querySelector(".footer .btn_ok");
-	if (btnOk) btnOk.style.display = "none";
+	_refreshApplyButton(targetClass);
 	updateDisbandButton(root, targetClass);
+	updateSkillFooter(root, targetClass);
+	updateMemberSort(root, targetClass);
+	updateInfoOptions(root);
 	if (targetClass === "members") Renderer.render(renderMemberFaces);
 	else Renderer.stop(renderMemberFaces);
 	this.classList.add("active");
 	return false;
 }
+/**
+* Where the tendency marker sits, in canvas-local pixels
+*
+* Truncates rather than rounds, which is a real one-pixel difference here.
+* @see docs/reference/guild/info-tab-legacy.md
+*
+* @param {number} honor - ZC_GUILD_INFO honor, [-100, 100]
+* @param {number} virtue - ZC_GUILD_INFO virtue, [-100, 100]
+* @return {{x: number, y: number}} top-left of the 2x2 marker
+*/
+function tendencyMarker(honor, virtue) {
+	return {
+		x: 44 + Math.trunc((honor || 0) * .42),
+		y: 44 - Math.trunc((virtue || 0) * .42)
+	};
+}
+/**
+* The ver12 chart, at the client's own rects translated into the canvas
+*
+* The four colours are the same ones the rest of this window uses.
+* @see docs/reference/guild/info-tab-legacy.md
+*/
 function renderTendency(honor, virtue) {
 	const canvas = _root$13(Guild).querySelector(".content.info .tendency canvas");
 	if (!canvas) return;
 	const ctx = canvas.getContext("2d");
-	ctx.fillStyle = "#cecfce";
-	ctx.fillRect(0, 0, canvas.width, canvas.height);
-	ctx.fillStyle = "#739eef";
-	ctx.fillRect(1, 1, canvas.width - 2, canvas.height - 2);
-	ctx.fillStyle = "#4261a5";
-	ctx.fillRect(canvas.width / 2 - 1, 1, 2, canvas.height - 2);
-	ctx.fillRect(1, canvas.height / 2 - 1, canvas.width - 2, 2);
+	ctx.fillStyle = "#c8c8c8";
+	ctx.fillRect(0, 0, 90, 90);
+	ctx.fillStyle = "#709fed";
+	ctx.fillRect(1, 1, 88, 88);
+	ctx.fillStyle = "#4262a5";
+	ctx.fillRect(44, 1, 2, 88);
+	ctx.fillRect(1, 44, 88, 2);
+	const marker = tendencyMarker(honor, virtue);
 	ctx.fillStyle = "#ffffff";
-	ctx.fillRect(canvas.width / 2 - 1, canvas.height / 2 - 1, 2, 2);
+	ctx.fillRect(marker.x, marker.y, 2, 2);
+}
+/**
+* Bounds of everything non-transparent, or null if nothing was drawn.
+*
+* @param {CanvasRenderingContext2D} ctx
+* @param {number} side
+*/
+function opaqueBounds(ctx, side) {
+	const data = ctx.getImageData(0, 0, side, side).data;
+	let top = -1, bottom = -1, left = side, right = -1;
+	for (let y = 0; y < side; ++y) {
+		const row = y * side;
+		for (let x = 0; x < side; ++x) if (data[(row + x) * 4 + 3] > 8) {
+			if (top < 0) top = y;
+			bottom = y;
+			if (x < left) left = x;
+			if (x > right) right = x;
+		}
+	}
+	return top < 0 ? null : {
+		top,
+		bottom,
+		left,
+		right
+	};
 }
 function onValidate() {
 	const root = _root$13(Guild);
@@ -229656,56 +230517,84 @@ function onValidate() {
 		activeTab = cls;
 		break;
 	}
+	if (!SessionStorage_default.isGuildMaster) {
+		_hideApplyButton();
+		return;
+	}
 	switch (activeTab) {
 		case "members": {
 			const list = [];
-			_members.forEach((member) => {
+			for (const GID in _pendingPositions) {
+				const pending = _pendingPositions[GID];
 				list.push({
-					AID: member.AID,
-					GID: member.GID,
-					positionID: member.GPositionID
+					AID: pending.AID,
+					GID: pending.GID,
+					positionID: pending.positionID
 				});
-			});
+			}
+			if (!list.length) return;
 			Guild.onChangeMemberPosRequest(list);
+			_dropPendingPositions();
 			break;
 		}
 		case "positions": {
 			const positionList = [];
 			const positions = root.querySelectorAll(".PositionView");
-			for (let i = 0, count = _positions.length; i < count; ++i) {
-				const position = positions[i];
-				if (!position) continue;
+			for (const position of positions) {
+				const rank = _positions[parseInt(position.dataset.positionId, 10)];
+				if (!rank || rank.right === void 0) continue;
 				const posName = position.querySelector(".title input")?.value || "";
-				const payRate = parseInt(position.querySelector(".tax input")?.value || "0", 10);
-				let right = 0;
-				const inviteBtn = position.querySelector(".invite .checkbox");
-				if (inviteBtn && inviteBtn.classList.contains("on")) right |= 1;
-				const punishBtn = position.querySelector(".punish .checkbox");
-				if (punishBtn && punishBtn.classList.contains("on")) right |= 16;
-				if (_positions[i].right !== right || _positions[i].posName !== posName || _positions[i].payRate !== payRate) positionList.push({
-					positionID: _positions[i].positionID,
-					ranking: _positions[i].ranking,
+				const typed = parseInt(position.querySelector(".tax input")?.value, 10) || 0;
+				const payRate = Math.min(99, Math.max(0, typed));
+				const owned = _hasStorageColumn() ? 273 : 17;
+				let right = rank.right & ~owned;
+				const inviteBox = position.querySelector(".invite .checkbox");
+				if (inviteBox && inviteBox.classList.contains("on")) right |= 1;
+				const punishBox = position.querySelector(".punish .checkbox");
+				if (punishBox && punishBox.classList.contains("on")) right |= 16;
+				const storageBox = position.querySelector(".storage .checkbox");
+				if (_hasStorageColumn() && storageBox && storageBox.classList.contains("on")) right |= GUILD_PERM_STORAGE;
+				if (rank.right !== right || rank.posName !== posName || rank.payRate !== payRate) positionList.push({
+					positionID: rank.positionID,
+					ranking: rank.ranking,
 					right,
 					posName,
 					payRate
 				});
 			}
-			Guild.onPositionUpdateRequest(positionList);
+			if (positionList.length) {
+				_sentPayRates = {};
+				for (const entry of positionList) _sentPayRates[entry.positionID] = entry.payRate;
+				Guild.onPositionUpdateRequest(positionList);
+			}
+			_positionsDirty = false;
 			break;
 		}
 		case "notice": {
-			const subject = root.querySelector(".content.notice input")?.value || "";
-			const content = root.querySelector(".content.notice textarea")?.value || "";
+			const subject = root.querySelector(".content.notice .subject")?.value || "";
+			const content = root.querySelector(".content.notice textarea.notice")?.value || "";
 			Guild.onNoticeUpdateRequest(subject, content);
 			break;
 		}
 	}
-	const btnOk = root.querySelector(".footer .btn_ok");
-	if (btnOk) btnOk.style.display = "none";
+	_hideApplyButton();
 }
 function getActiveTab(root) {
 	const btn = root ? root.querySelector(".tabs button.active") : null;
 	return btn ? btn.className.replace(/\s*active\s*/g, "").trim() : "";
+}
+/**
+* Show or hide the two ways into the emblem picker
+* @see docs/reference/guild/emblem-picker.md
+*/
+function updateEmblemControls(root) {
+	const general = root ? root.querySelector(".content.info") : null;
+	if (!general) return;
+	const emblemDisplay = SessionStorage_default.isGuildMaster ? "" : "none";
+	const emblemEdit = general.querySelector(".emblem_edit");
+	if (emblemEdit) emblemEdit.style.display = emblemDisplay;
+	const emblemPick = general.querySelector(".emblem_pick");
+	if (emblemPick) emblemPick.style.display = emblemDisplay;
 }
 function updateDisbandButton(root, activeTab) {
 	if (!root) return;
@@ -229719,7 +230608,32 @@ function updateDisbandButton(root, activeTab) {
 		});
 	}
 }
-var AccessTypeBit, Guild, _memberViewTemplate, _positionViewTemplate, _expelViewTemplate, _positions, _members, _skills, _btnIncSkillTemplate, _skpoints, _btnLevelUp, lArrow, rArrow, _totalExp, _guildAccess, _checkbox_off, _checkbox_on, renderMemberFaces, Guild_default;
+function updateSkillFooter(root, activeTab) {
+	if (!root) return;
+	const onSkills = activeTab === "skills";
+	for (const el of root.querySelectorAll(".footer .btn_use")) el.style.display = onSkills ? "block" : "none";
+	for (const el of root.querySelectorAll(".footer .skpoints")) el.style.display = onSkills && SessionStorage_default.isGuildMaster ? "block" : "none";
+}
+function updateMemberSort(root, activeTab) {
+	if (!root) return;
+	const box = root.querySelector(".footer .sortlogin");
+	if (!box) return;
+	const offered = _config().memberListSort === "checkbox";
+	box.style.display = offered && activeTab === "members" ? "block" : "none";
+	const btn = box.querySelector("ui-button");
+	const uri = UI_default.guildMemberListSorted ? _checkbox_on : _checkbox_off;
+	if (btn && uri) btn.style.backgroundImage = `url(${uri})`;
+	if (!box.dataset.bound) {
+		box.dataset.bound = "1";
+		box.addEventListener("click", () => {
+			UI_default.guildMemberListSorted = !UI_default.guildMemberListSorted;
+			UI_default.save();
+			reorderMemberRows(root, _sortsByLogin() ? _orderByLogin(_members) : _members);
+			updateMemberSort(root, "members");
+		});
+	}
+}
+var ACCESS_UNKNOWN, TAB_MEMBERS, TAB_POSITIONS, INFO_BLANK_CELLS, INFO_ZERO_CELLS, AccessTypeBit, Guild, _memberViewTemplate, _positionViewTemplate, _expelViewTemplate, _noticeSubjectTemplate, _noticeBodyTemplate, _notice, _positions, _members, _skills, _pendingPositions, _positionsDirty, _positionsSelected, _sentPayRates, GUILD_PERM_STORAGE, PERMISSION_COLUMNS, GUILD_LEVEL_MAX, EMBLEM_SIDE, _btnIncSkillTemplate, _skpoints, _btnLevelUp, _totalExp, _guildAccess, _accessRequested, _checkbox_off, _checkbox_on, _hasMemo, GUILD_CONFIG, PORTRAIT_BOX, renderMemberFaces, Guild_default;
 var init_Guild$1 = __esmMin((() => {
 	init_DBManager();
 	init_SkillInfo();
@@ -229731,6 +230645,7 @@ var init_Guild$1 = __esmMin((() => {
 	init_Camera();
 	init_Renderer();
 	init_Client();
+	init_PacketVerManager();
 	init_UIManager();
 	init_GUIComponent();
 	init_Elements();
@@ -229743,6 +230658,25 @@ var init_Guild$1 = __esmMin((() => {
 	init_Guild$3();
 	init_Guild$2();
 	init_WinStats();
+	init_Configs();
+	init_UI();
+	ACCESS_UNKNOWN = -1;
+	TAB_MEMBERS = 1;
+	TAB_POSITIONS = 2;
+	INFO_BLANK_CELLS = [
+		".name .value",
+		".level .value",
+		".master .value",
+		".avglevel .value",
+		".territory .value",
+		".exp .value",
+		".members .online"
+	];
+	INFO_ZERO_CELLS = [
+		".members .numMember",
+		".members .maxMember",
+		".tax .value"
+	];
 	AccessTypeBit = {
 		0: 0,
 		1: 1,
@@ -229754,12 +230688,36 @@ var init_Guild$1 = __esmMin((() => {
 	};
 	Guild = new GUIComponent("Guild", Guild_default$1);
 	Guild.render = () => Guild_default$2;
+	_notice = {
+		subject: "",
+		body: ""
+	};
 	_positions = [];
 	_members = [];
 	_skills = [];
+	_pendingPositions = {};
+	_positionsDirty = false;
+	_positionsSelected = 0;
+	_sentPayRates = {};
+	GUILD_PERM_STORAGE = 256;
+	PERMISSION_COLUMNS = {
+		invite: 1,
+		punish: 16,
+		storage: GUILD_PERM_STORAGE
+	};
+	GUILD_LEVEL_MAX = 50;
+	EMBLEM_SIDE = 24;
 	_skpoints = 0;
 	_totalExp = 0;
-	_guildAccess = 0;
+	_guildAccess = ACCESS_UNKNOWN;
+	_accessRequested = false;
+	_hasMemo = false;
+	GUILD_CONFIG = {
+		memberListSort: "always",
+		showLastLogin: false,
+		showTendency: false,
+		showTaxPoint: false
+	};
 	/**
 	* Initialize component
 	*/
@@ -229777,10 +230735,13 @@ var init_Guild$1 = __esmMin((() => {
 			closeBtn.addEventListener("click", () => Guild.toggle());
 		}
 		const tabsContainer = root.querySelector(".tabs");
-		if (tabsContainer) tabsContainer.addEventListener("click", (e) => {
-			const btn = e.target.closest("button");
-			if (btn) onChangeTab.call(btn, e);
-		});
+		if (tabsContainer) {
+			tabsContainer.addEventListener("click", (e) => {
+				const btn = e.target.closest("button");
+				if (btn) onChangeTab.call(btn, e);
+			});
+			for (const btn of tabsContainer.querySelectorAll("button")) btn.title = _tabLabel(btn);
+		}
 		Client.loadFiles([`${DB.INTERFACE_PATH}checkbox_0.bmp`, `${DB.INTERFACE_PATH}checkbox_1.bmp`], (off, on) => {
 			_checkbox_off = off;
 			_checkbox_on = on;
@@ -229788,29 +230749,30 @@ var init_Guild$1 = __esmMin((() => {
 		const posBody = root.querySelector(".content.positions tbody");
 		if (posBody) {
 			posBody.addEventListener("mousedown", (e) => {
-				if (e.target.closest("input") && !SessionStorage_default.isGuildMaster) e.preventDefault();
 				const tr = e.target.closest("tr");
 				if (tr) {
-					for (const row of posBody.querySelectorAll("tr")) row.classList.remove("active");
+					const rows = [...posBody.querySelectorAll("tr")];
+					for (const row of rows) row.classList.remove("active");
 					tr.classList.add("active");
+					_positionsSelected = rows.indexOf(tr);
 				}
 			});
 			posBody.addEventListener("focus", (e) => {
 				if (e.target.matches("input")) {
-					const btnOk = root.querySelector(".footer .btn_ok");
-					if (btnOk) btnOk.style.display = "block";
+					_positionsDirty = true;
+					_showApplyButton();
 					e.target.select();
 				}
 			}, true);
 			posBody.addEventListener("click", (e) => {
-				const btn = e.target.closest(".checkbox");
-				if (btn && SessionStorage_default.isGuildMaster) {
-					const isOn = !btn.classList.contains("on");
-					btn.className = btn.className.replace(/\b(on|off)\b/g, "").trim();
-					btn.classList.add(isOn ? "on" : "off");
-					btn.style.backgroundImage = `url(${isOn ? _checkbox_on : _checkbox_off})`;
-					const btnOk = root.querySelector(".footer .btn_ok");
-					if (btnOk) btnOk.style.display = "block";
+				const box = e.target.closest(".checkbox");
+				if (box && SessionStorage_default.isGuildMaster) {
+					const isOn = !box.classList.contains("on");
+					box.className = box.className.replace(/\b(on|off)\b/g, "").trim();
+					box.classList.add(isOn ? "on" : "off");
+					box.style.backgroundImage = `url(${isOn ? _checkbox_on : _checkbox_off})`;
+					_positionsDirty = true;
+					_showApplyButton();
 				}
 			});
 		}
@@ -229833,18 +230795,19 @@ var init_Guild$1 = __esmMin((() => {
 		}
 		const membersBody = root.querySelector(".content.members tbody");
 		if (membersBody) {
+			const selectRow = (tr) => {
+				for (const row of membersBody.querySelectorAll("tr")) row.classList.remove("active");
+				tr.classList.add("active");
+			};
 			membersBody.addEventListener("mousedown", (e) => {
 				const tr = e.target.closest("tr");
-				if (tr) {
-					for (const row of membersBody.querySelectorAll("tr")) row.classList.remove("active");
-					tr.classList.add("active");
-				}
+				if (tr) selectRow(tr);
 			});
 			membersBody.addEventListener("contextmenu", (e) => {
-				const td = e.target.closest("td.name");
-				if (!td) return;
-				const index = td.parentNode.getAttribute("data-index");
-				const member = _members[index];
+				const tr = e.target.closest("tr");
+				const member = tr && _members[tr.getAttribute("data-index")];
+				if (!member) return;
+				selectRow(tr);
 				const isSelf = member.AID === SessionStorage_default.AID && member.GID === SessionStorage_default.GID;
 				ContextMenu_default.remove();
 				ContextMenu_default.append();
@@ -229862,7 +230825,18 @@ var init_Guild$1 = __esmMin((() => {
 						Guild.onRequestLeave(member.AID, member.GID, reason);
 					};
 				});
-				if (SessionStorage_default.guildRight & 16 && !isSelf) ContextMenu_default.addElement(DB.getMessage(509), () => {
+				if (SessionStorage_default.isGuildMaster && !isSelf) ContextMenu_default.addElement(DB.getMessage(2923, "Assign Guild Leader"), () => {
+					const grade = _positions[member.GPositionID];
+					const text = DB.getMessage(2924, "Are you sure you want to assign %s as guild leader? After assigning your position will become %s").replace("%s", member.CharName || DB.getMessage(581, "Nameless")).replace("%s", grade && grade.posName ? grade.posName : "");
+					UIManager.showPromptBox(text, "ok", "cancel", () => {
+						Guild.onChangeMemberPosRequest([{
+							AID: member.AID,
+							GID: member.GID,
+							positionID: 0
+						}]);
+					});
+				});
+				if (SessionStorage_default.guildPermission & 16 && !isSelf) ContextMenu_default.addElement(DB.getMessage(509), () => {
 					InputBox_default.append();
 					InputBox_default.setType("text");
 					const textEl = (_root$13(InputBox_default) || InputBox_default.ui?.[0])?.querySelector?.(".text");
@@ -229903,7 +230877,7 @@ var init_Guild$1 = __esmMin((() => {
 			if (target) onRequestSkillInfo.call(target);
 		});
 		container.addEventListener("mousedown", (e) => {
-			const target = e.target.closest(".selectable");
+			const target = e.target.closest(".skill");
 			if (target && target.closest(".content.skills")) onSkillFocus.call(target);
 		});
 		container.addEventListener("dragstart", (e) => {
@@ -229915,36 +230889,45 @@ var init_Guild$1 = __esmMin((() => {
 			if (target && target.closest(".content.skills")) onSkillDragEnd.call(target);
 		});
 		const noticeContent = root.querySelector(".content.notice");
-		if (noticeContent) noticeContent.addEventListener("focus", (e) => {
-			if (e.target.matches("textarea, input")) {
-				const btnOk = root.querySelector(".footer .btn_ok");
-				if (btnOk) btnOk.style.display = "block";
-			}
-		}, true);
-		const emblemInput = root.querySelector(".content.info .emblem_edit input");
+		if (noticeContent) {
+			_noticeSubjectTemplate = noticeContent.querySelector(".subject")?.cloneNode(true);
+			_noticeBodyTemplate = noticeContent.querySelector("textarea.notice")?.cloneNode(true);
+			Guild.updateNoticeView();
+			noticeContent.addEventListener("focus", (e) => {
+				if (SessionStorage_default.isGuildMaster && e.target.matches("textarea, input")) _showApplyButton();
+			}, true);
+		}
+		const emblemInput = root.querySelector(".content.info .emblem_pick input");
 		if (emblemInput) emblemInput.addEventListener("change", function() {
-			const file = this.files[0];
-			if (!file) return;
-			const isBmp = /^image\/(bmp|x-bmp|x-ms-bmp|x-windows-bmp)$/.test(file.type) || /\.bmp$/i.test(file.name);
-			const isGif = file.type === "image/gif" || /\.gif$/i.test(file.name);
-			if (isBmp && file.size <= 1783 || isGif && file.size <= 5e4) {
-				const reader = new FileReader();
-				reader.onload = (e) => {
-					Guild.onSendEmblem(new Uint8Array(e.target.result));
-				};
-				reader.readAsArrayBuffer(this.files[0]);
-			} else console.warn("[Warning] Incorrect emblem file type. Only BMP, 24bit or lower is accepted or GIFs max size 50Kb or lower.");
+			submitEmblem(this.files[0]);
+			this.value = "";
 		});
+		const emblemEdit = root.querySelector(".content.info .emblem_edit");
+		if (emblemEdit && emblemInput) emblemEdit.addEventListener("click", () => emblemInput.click());
+		const emblemDrop = root.querySelector(".emblem_drop");
+		const guildWindow = root.querySelector("#Guild");
+		if (emblemDrop && guildWindow) {
+			guildWindow.addEventListener("dragenter", (e) => {
+				e.preventDefault();
+				if (_acceptsEmblemDrop(root, e.dataTransfer)) emblemDrop.classList.add("dragover");
+			});
+			guildWindow.addEventListener("dragover", (e) => e.preventDefault());
+			guildWindow.addEventListener("drop", (e) => e.preventDefault());
+			emblemDrop.addEventListener("dragleave", () => emblemDrop.classList.remove("dragover"));
+			emblemDrop.addEventListener("drop", (e) => {
+				emblemDrop.classList.remove("dragover");
+				submitEmblem(e.dataTransfer.files[0]);
+			});
+		}
 		const footerOk = root.querySelector(".footer .btn_ok");
 		if (footerOk) footerOk.addEventListener("click", () => onValidate());
+		const footerUse = root.querySelector(".footer .btn_use");
+		if (footerUse) footerUse.addEventListener("click", () => {
+			const selected = root.querySelector(".content.skills .skill.selected");
+			if (selected) Guild.useSkillID(parseInt(selected.getAttribute("data-index"), 10));
+		});
 		this.draggable(".titlebar");
 		this.ui.hide();
-		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/arw_right.bmp`, (data) => {
-			rArrow = `url(${data})`;
-		});
-		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/arw_left.bmp`, (data) => {
-			lArrow = `url(${data})`;
-		});
 		renderTendency(0, 0);
 	};
 	/**
@@ -229952,6 +230935,41 @@ var init_Guild$1 = __esmMin((() => {
 	*/
 	Guild.onRemove = function onRemove() {
 		Renderer.stop(renderMemberFaces);
+		_resetPositionsTab();
+	};
+	/**
+	* Empty the window of the character who was here before
+	*
+	* The component is a singleton and outlives a character change.
+	* @see docs/reference/guild/member-view.md
+	*/
+	Guild.reset = function reset() {
+		const root = _root$13(this);
+		if (!root) return;
+		_members.length = 0;
+		_positions.length = 0;
+		_skills.length = 0;
+		_skpoints = 0;
+		_guildAccess = ACCESS_UNKNOWN;
+		_accessRequested = false;
+		_hasMemo = false;
+		_sentPayRates = {};
+		_resetPositionsTab();
+		for (const selector of [
+			".content.members tbody",
+			".content.positions tbody",
+			".content.history tbody"
+		]) {
+			const container = root.querySelector(selector);
+			if (container) container.innerHTML = "";
+		}
+		const skillList = root.querySelector(".content.skills .skill_list");
+		if (skillList) skillList.innerHTML = "";
+		_clearInfoTab(root);
+		Guild.setNotice("", "");
+		for (const btn of root.querySelectorAll(".tabs button")) btn.classList.remove("active");
+		updateTabAccess(root);
+		for (const content of root.querySelectorAll(".content")) content.style.display = "none";
 	};
 	Guild.onShortCut = function onShortCut(key) {
 		if (key.cmd === "TOGGLE") this.toggle();
@@ -229974,17 +230992,19 @@ var init_Guild$1 = __esmMin((() => {
 		if (this.ui.is(":visible")) return;
 		this.ui.show();
 		const root = _root$13(this);
+		updateInfoOptions(root);
 		if (!root.querySelector(".tabs .active")) {
 			const infoBtn = root.querySelector(".tabs .info");
 			if (infoBtn) infoBtn.click();
-			Guild.onRequestAccess();
 		}
+		Guild.requestAccessIfUnknown();
 		const membersContent = root.querySelector(".content.members");
 		if (membersContent && membersContent.style.display !== "none") Renderer.render(renderMemberFaces);
 	};
 	Guild.hide = function hide() {
 		this.ui.hide();
 		Renderer.stop(renderMemberFaces);
+		_resetPositionsTab();
 	};
 	Guild.setGuildInformations = function setGuildInformations(info) {
 		const root = _root$13(this);
@@ -229997,18 +231017,23 @@ var init_Guild$1 = __esmMin((() => {
 		general.querySelector(".members .maxMember").textContent = info.maxUserNum;
 		general.querySelector(".avglevel .value").textContent = info.userAverageLevel;
 		general.querySelector(".territory .value").textContent = info.manageLand;
-		general.querySelector(".exp .value").textContent = info.exp;
 		general.querySelector(".tax .value").textContent = info.point;
+		const atMaxLevel = info.level >= GUILD_LEVEL_MAX;
+		general.querySelector(".exp .value").textContent = atMaxLevel ? 0 : info.exp;
+		general.querySelector(".exp").classList.toggle("maxlevel", atMaxLevel);
 		Guild.updateSession(info);
 		Guild.onRequestGuildEmblem(info.GDID, info.emblemVersion, Guild.setEmblem.bind(this));
-		const emblemEdit = general.querySelector(".emblem_edit");
-		if (emblemEdit) emblemEdit.style.display = SessionStorage_default.isGuildMaster ? "" : "none";
+		updateEmblemControls(root);
 		updateDisbandButton(root, getActiveTab(root));
+		updateSkillFooter(root, getActiveTab(root));
+		updateMemberSort(root, getActiveTab(root));
 		WinStatsController.getUI().update("guildname", info.guildname);
-		renderTendency(info.honor, info.virtue);
+		updateInfoOptions(root);
+		if (_showsTendency()) renderTendency(info.honor, info.virtue);
 	};
 	Guild.setEmblem = function setEmblem(image) {
-		const el = _root$13(this).querySelector(".content.info .emblem_container");
+		const root = _root$13(this);
+		const el = root ? root.querySelector(".content.info .emblem_container") : null;
 		if (el) el.style.backgroundImage = `url(${image.src})`;
 	};
 	Guild.setRelations = function setRelations(guilds) {
@@ -230033,12 +231058,20 @@ var init_Guild$1 = __esmMin((() => {
 		const el = list.querySelector(`div[data-guild-id="${guildId}"]`);
 		if (el) el.remove();
 	};
-	Guild.setMembers = function setMembers(members) {
+	Guild.setMembers = function setMembers(members, hasMemo) {
 		let online = 0;
 		const count = members.length;
 		_members.length = 0;
 		_totalExp = 0;
+		if (_hasPendingPositions()) ChatBox_default.addText("The guild member list changed. The grade waiting to be applied was dropped.", ChatBox_default.TYPE.ERROR, ChatBox_default.FILTER.GUILD);
+		_clearPendingPositions();
 		const root = _root$13(this);
+		_hasMemo = !!hasMemo;
+		const membersContent = root.querySelector(".content.members");
+		if (membersContent) {
+			membersContent.classList.toggle("has-memo", _hasMemo);
+			membersContent.classList.toggle("has-lastlogin", !_hasMemo && _config().showLastLogin);
+		}
 		const tbody = root.querySelector(".content.members tbody");
 		if (tbody) tbody.innerHTML = "";
 		for (let i = 0; i < count; ++i) {
@@ -230049,7 +231082,9 @@ var init_Guild$1 = __esmMin((() => {
 		if (numMember) numMember.textContent = count;
 		const onlineEl = root.querySelector(".content.info .members .online");
 		if (onlineEl) onlineEl.textContent = online;
+		const ordered = _sortsByLogin() ? _orderByLogin(members) : members;
 		for (let i = 0; i < count; ++i) this.setMember(members[i]);
+		reorderMemberRows(root, ordered);
 		renderMemberFaces(Renderer.tick + 1e3);
 	};
 	Guild.setMember = function setMember(member) {
@@ -230057,8 +231092,10 @@ var init_Guild$1 = __esmMin((() => {
 		const root = _root$13(this);
 		for (i = 0, count = _members.length; i < count; ++i) if (_members[i].AID === member.AID && _members[i].GID === member.GID) break;
 		let view;
-		if (i < count) view = root.querySelector(`.MemberView[data-index="${i}"]`);
-		else {
+		if (i < count) {
+			view = root.querySelector(`.MemberView[data-index="${i}"]`);
+			_members[i] = member;
+		} else {
 			view = _memberViewTemplate.cloneNode(true);
 			const tbody = root.querySelector(".content.members tbody");
 			if (tbody) tbody.appendChild(view);
@@ -230066,24 +231103,42 @@ var init_Guild$1 = __esmMin((() => {
 		}
 		if (member.CurrentState) view.classList.add("online");
 		view.setAttribute("data-index", i);
+		view.classList.toggle("pending", member.GID in _pendingPositions);
+		const displayName = member.CharName || DB.getMessage(581, "Nameless");
 		const nameValue = view.querySelector(".name .value");
 		if (nameValue) {
-			nameValue.textContent = member.CharName;
-			nameValue.title = member.CharName;
+			nameValue.textContent = displayName;
+			nameValue.title = displayName;
 		}
+		const lastLogin = view.querySelector(".name .lastlogin");
+		if (lastLogin) lastLogin.textContent = member.LastLogin && _config().showLastLogin ? DB.getMessage(3012, "Last login: %s").replace("%s", _formatLastLogin(member.LastLogin)) : "";
 		if (_positions[member.GPositionID]) {
 			const positionCell = view.querySelector(".position");
 			if (SessionStorage_default.isGuildMaster) {
-				let selectHTML = `<select class="changePosition member_${member.AID}_${member.GID}">`;
+				const own = !member.GPositionID ? " disabled" : "";
+				let selectHTML = `<select class="changePosition member_${member.AID}_${member.GID}"${own}>`;
 				_positions.forEach((position, key) => {
 					selectHTML += `<option value="${position.positionID}" ${key === member.GPositionID ? "selected" : ""}>${_escapeHTML$3(position.posName)}</option>`;
 				});
 				selectHTML += "</select>";
 				positionCell.innerHTML = selectHTML;
 				const selectEl = positionCell.querySelector(`.member_${member.AID}_${member.GID}`);
-				if (selectEl) selectEl.addEventListener("change", (evt) => {
-					Guild.updateMemberPosition(member.AID, member.GID, parseInt(evt.target.value, 10), true);
-				});
+				if (selectEl) {
+					selectEl.addEventListener("change", (evt) => {
+						const positionID = parseInt(evt.target.value, 10);
+						if (!Guild.updateMemberPosition(member.AID, member.GID, positionID, true)) {
+							evt.target.value = member.GPositionID;
+							return;
+						}
+						view.classList.add("pending");
+						_showApplyButton();
+					});
+					const showFullGrade = () => {
+						selectEl.title = selectEl.options[selectEl.selectedIndex].textContent;
+					};
+					showFullGrade();
+					selectEl.addEventListener("change", showFullGrade);
+				}
 			} else {
 				positionCell.textContent = _positions[member.GPositionID].posName;
 				positionCell.title = _positions[member.GPositionID].posName;
@@ -230105,19 +231160,32 @@ var init_Guild$1 = __esmMin((() => {
 			taxCell.textContent = member.MemberExp;
 			taxCell.title = member.MemberExp;
 		}
-		if (!member.entity) {
-			member.entity = new Entity();
-			member.entity.direction = 4;
-			member.entity.objecttype = Entity.TYPE_PC;
-			member.entity.files.shadow.spr = null;
-		}
-		member.entity.sex = member.Sex;
-		member.entity._job = member.Job;
-		member.entity._effectiveJob = member.Job;
-		member.entity.head = member.HeadType;
-		member.entity.headpalette = member.HeadPalette;
+		member.entity = memberPortrait(member.entity, {
+			sex: member.Sex,
+			job: member.Job,
+			head: member.HeadType,
+			headPalette: member.HeadPalette
+		});
 		const numMember = root.querySelector(".content.info .members .numMember");
 		if (numMember) numMember.textContent = _members.length;
+	};
+	/**
+	* The name the roster holds for a character id
+	*
+	* The departure packets of the id-only era carry no name, and the roster is
+	* where the client reads it back from.
+	* @see docs/reference/guild/member-view.md
+	*
+	* @param {number} GID - character id
+	* @return {string} the member's name, or the placeholder the list itself uses
+	*/
+	Guild.getMemberName = function getMemberName(GID) {
+		let name = "";
+		for (let i = 0, count = _members.length; i < count; ++i) if (_members[i].GID === GID) {
+			name = _members[i].CharName;
+			break;
+		}
+		return name || DB.getMessage(581, "Nameless");
 	};
 	Guild.updateMemberStatus = function updateMemberStatus(member) {
 		let i, count;
@@ -230131,22 +231199,77 @@ var init_Guild$1 = __esmMin((() => {
 			if (_members[i].CurrentState) view.classList.add("online");
 			else view.classList.remove("online");
 		}
-		if ("sex" in member) _members[i].entity.sex = member.sex;
-		if ("head" in member) _members[i].entity.head = member.head;
-		if ("headPalette" in member) _members[i].entity.headpalette = member.headPalette;
+		const current = _members[i];
+		if (member.status) {
+			if ("sex" in member) current.Sex = member.sex;
+			if ("head" in member) current.HeadType = member.head;
+			if ("headPalette" in member) current.HeadPalette = member.headPalette;
+		}
+		current.entity = memberPortrait(current.entity, {
+			sex: current.Sex,
+			job: current.Job,
+			head: current.HeadType,
+			headPalette: current.HeadPalette
+		});
 		for (i = 0, count = _members.length; i < count; ++i) online += _members[i].CurrentState ? 1 : 0;
 		const onlineEl = root.querySelector(".content.info .members .online");
 		if (onlineEl) onlineEl.textContent = online;
-		const nameValue = view?.querySelector(".name .value");
-		ChatBox_default.addText(DB.getMessage(485 + (member.status ? 0 : 1)).replace("%s", nameValue ? nameValue.textContent : ""), ChatBox_default.TYPE.BLUE, ChatBox_default.FILTER.GUILD);
+		if (_sortsByLogin()) {
+			reorderMemberRows(root, _orderByLogin(_members));
+			renderMemberFaces(Renderer.tick + 1e3);
+		}
+		if (!UI_default.li) return;
+		ChatBox_default.addText(DB.getMessage(member.status ? 485 : 486, member.status ? "Guild Member %s has connected." : "Guild Member %s has disconnected.").replace("%s", current.CharName || DB.getMessage(581, "Nameless")), ChatBox_default.TYPE.BLUE, ChatBox_default.FILTER.GUILD);
 	};
+	/**
+	* Move a member to another grade
+	*
+	* From the dropdown the change is only queued, never sent on selection.
+	* @see docs/reference/guild/grade-change.md
+	*
+	* @param {number} AID - account id
+	* @param {number} GID - character id
+	* @param {number} positionID - grade to move the member to
+	* @param {boolean} fromDropdown - true when the grade dropdown is the source
+	* @return {boolean} false when the member is unknown or the selection refused
+	*/
 	Guild.updateMemberPosition = function updateMemberPosition(AID, GID, positionID, fromDropdown) {
 		for (let i = 0, count = _members.length; i < count; ++i) if (_members[i].AID === AID && _members[i].GID === GID) {
+			const currentID = _members[i].GPositionID;
+			if (fromDropdown && (!positionID || !currentID || positionID === currentID)) return false;
 			_members[i].GPositionID = positionID;
-			if (!fromDropdown) Guild.setMember(_members[i]);
-			break;
+			if (fromDropdown) {
+				const queued = _pendingPositions[GID];
+				_pendingPositions[GID] = {
+					AID,
+					GID,
+					positionID,
+					previousID: queued ? queued.previousID : currentID
+				};
+			} else Guild.setMember(_members[i]);
+			return true;
 		}
-		if (fromDropdown) onValidate();
+		return false;
+	};
+	/**
+	* Apply the grades the server acknowledged
+	*
+	* The ack is server truth, so it also drops whatever was still queued. Every row
+	* goes back to the server's grade first and the acknowledged ones are then moved
+	* again: an ack can carry fewer entries than were sent, and the rest have to end
+	* on what the server holds rather than on what it never answered.
+	* @see docs/reference/guild/grade-change.md
+	*
+	* @param {Array} memberInfo - PACKET.ZC.ACK_REQ_CHANGE_MEMBERS entries
+	*/
+	Guild.setMemberPositions = function setMemberPositions(memberInfo) {
+		_clearPendingPositions();
+		if (!memberInfo) return;
+		for (let i = 0, count = memberInfo.length; i < count; ++i) {
+			const entry = memberInfo[i];
+			if (!entry.positionID) continue;
+			Guild.updateMemberPosition(entry.AID, entry.GID, entry.positionID, false);
+		}
 	};
 	Guild.setPositions = function setPositions(positions, erase) {
 		let rank;
@@ -230159,14 +231282,19 @@ var init_Guild$1 = __esmMin((() => {
 			_positions[rank.positionID].ranking = rank.ranking;
 			_positions[rank.positionID].payRate = rank.payRate;
 			if (rank.posName) _positions[rank.positionID].posName = rank.posName;
+			const sent = _sentPayRates[rank.positionID];
+			if (sent !== void 0 && rank.payRate !== void 0 && sent !== rank.payRate) ChatBox_default.addText(DB.getMessage(3486, "You can't enter value more than 50%.").replace(/%[ds]|\d+/, rank.payRate), ChatBox_default.TYPE.ERROR, ChatBox_default.FILTER.GUILD);
+			delete _sentPayRates[rank.positionID];
 		}
 		Guild.updatePositionView();
 	};
 	Guild.setPositionsName = function setPositionsName(positions) {
 		let rank;
+		_clearPendingPositions();
 		for (let i = 0, count = positions.length; i < count; ++i) {
 			rank = positions[i];
 			if (!(rank.positionID in _positions)) _positions[rank.positionID] = {};
+			_positions[rank.positionID].positionID = rank.positionID;
 			_positions[rank.positionID].posName = rank.posName;
 		}
 		Guild.updatePositionView();
@@ -230174,29 +231302,40 @@ var init_Guild$1 = __esmMin((() => {
 	Guild.updatePositionView = function updatePositionView() {
 		const container = _root$13(this).querySelector(".content.positions tbody");
 		if (!container) return;
+		const isMaster = SessionStorage_default.isGuildMaster;
+		if (_positionsDirty) {
+			if (isMaster) return;
+			_positionsDirty = false;
+			_hideApplyButton();
+		}
+		container.closest(".content.positions")?.classList.toggle("has-storage", _hasStorageColumn());
 		container.innerHTML = "";
 		const count = _positions.length;
+		let rendered = 0;
 		for (let i = 0; i < count; ++i) {
-			const view = _positionViewTemplate.cloneNode(true);
 			const rank = _positions[i];
-			if (i === 0) view.classList.add("active");
+			if (!rank) continue;
+			const view = _positionViewTemplate.cloneNode(true);
+			view.dataset.positionId = rank.positionID;
+			if (rendered === _positionsSelected) view.classList.add("active");
+			++rendered;
 			const idCell = view.querySelector(".id");
 			if (idCell) idCell.textContent = rank.positionID;
-			const titleInput = view.querySelector(".title input");
-			if (titleInput) titleInput.value = rank.posName;
-			const taxInput = view.querySelector(".tax input");
-			if (taxInput) taxInput.value = rank.payRate;
-			const inviteBtn = view.querySelector(".invite .checkbox");
-			if (inviteBtn) {
-				inviteBtn.style.backgroundImage = `url(${rank.right & 1 ? _checkbox_on : _checkbox_off})`;
-				inviteBtn.className = inviteBtn.className.replace(/\b(on|off)\b/g, "").trim();
-				inviteBtn.classList.add(rank.right & 1 ? "on" : "off");
+			if (isMaster) {
+				const titleInput = view.querySelector(".title input");
+				if (titleInput) titleInput.value = rank.posName;
+				const taxInput = view.querySelector(".tax input");
+				if (taxInput) taxInput.value = rank.payRate;
+			} else {
+				_asValue(view.querySelector(".title"), rank.posName, true);
+				_asValue(view.querySelector(".tax"), `${rank.payRate} %`);
 			}
-			const punishBtn = view.querySelector(".punish .checkbox");
-			if (punishBtn) {
-				punishBtn.style.backgroundImage = `url(${rank.right & 16 ? _checkbox_on : _checkbox_off})`;
-				punishBtn.className = punishBtn.className.replace(/\b(on|off)\b/g, "").trim();
-				punishBtn.classList.add(rank.right & 16 ? "on" : "off");
+			for (const column in PERMISSION_COLUMNS) {
+				const box = view.querySelector(`.${column} .checkbox`);
+				if (!box) continue;
+				const on = rank.right & PERMISSION_COLUMNS[column];
+				box.style.backgroundImage = `url(${on ? _checkbox_on : _checkbox_off})`;
+				box.className = `${isMaster ? "checkbox" : "tick"} ${on ? "on" : "off"}`;
 			}
 			container.appendChild(view);
 		}
@@ -230205,8 +231344,8 @@ var init_Guild$1 = __esmMin((() => {
 		const root = _root$13(this);
 		for (let i = 0, count = _skills.length; i < count; ++i) this.onUpdateSkill(_skills[i].SKID, 0);
 		_skills.length = 0;
-		const table = root.querySelector(".content.skills .skill_list table");
-		if (table) table.innerHTML = "";
+		const list = root.querySelector(".content.skills .skill_list");
+		if (list) list.innerHTML = "";
 		for (let i = 0, count = skills.length; i < count; ++i) this.addSkill(skills[i]);
 	};
 	Guild.addSkill = function addSkill(skill) {
@@ -230222,29 +231361,15 @@ var init_Guild$1 = __esmMin((() => {
 			onRequestSkillUp.call(this);
 		});
 		const className = !skill.level ? "disabled" : skill.type ? "active" : "passive";
-		const tr = document.createElement("tr");
+		const tr = document.createElement("div");
 		tr.className = `skill id${skill.SKID} ${className}`;
 		tr.setAttribute("data-index", skill.SKID);
 		tr.setAttribute("draggable", "true");
-		tr.innerHTML = `<td class="icon"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" width="24" height="24" /></td><td class="levelupcontainer"></td><td class=selectable><div class="name">${_escapeHTML$3(sk.SkillName)}<br/><span class="level">` + (sk.bSeperateLv ? `<button class="currentDown"></button>Lv : <span class="current">${skill.level}</span> / <span class="max">${skill.level}</span><button class="currentUp"></button>` : `Lv : <span class="current">${skill.level}</span>`) + `</span></div></td><td class="selectable type"><div class="consume">${skill.type ? `Sp : <span class="spcost">${skill.spcost}</span>` : "Passive"}</div></td>`;
-		if (!skill.upgradable || !_skpoints) levelup.style.display = "none";
+		tr.innerHTML = `<div class="icon"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" width="24" height="24" /></div><div class="levelupcontainer"></div><div class="selectable"><div class="name">${_escapeHTML$3(sk.SkillName)}</div><div class="levelline"><div class="level">Lv : <span class="current">${skill.level}</span></div><div class="consume">${skill.type ? `Sp : <span class="spcost">${skill.spcost}</span>` : "Passive"}</div></div></div>`;
+		if (!skill.upgradable || !_skpoints || !SessionStorage_default.isGuildMaster) levelup.style.display = "none";
 		tr.querySelector(".levelupcontainer").appendChild(levelup);
-		const currentUp = tr.querySelector(".level .currentUp");
-		if (currentUp) {
-			if (rArrow) currentUp.style.backgroundImage = rArrow;
-			currentUp.addEventListener("click", () => {
-				skillLevelSelectUp(skill);
-			});
-		}
-		const currentDown = tr.querySelector(".level .currentDown");
-		if (currentDown) {
-			if (lArrow) currentDown.style.backgroundImage = lArrow;
-			currentDown.addEventListener("click", () => {
-				skillLevelSelectDown(skill);
-			});
-		}
-		const table = root.querySelector(".content.skills .skill_list table");
-		if (table) table.appendChild(tr);
+		const list = root.querySelector(".content.skills .skill_list");
+		if (list) list.appendChild(tr);
 		this.parseHTML.call(levelup);
 		Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, (data) => {
 			const img = tr.querySelector(".icon img");
@@ -230264,23 +231389,19 @@ var init_Guild$1 = __esmMin((() => {
 		if (Number.isInteger(skill.type)) target.type = skill.type;
 		const element = _root$13(this).querySelector(`.skill.id${skill.SKID}`);
 		if (!element) return;
-		for (const el of element.querySelectorAll(".level .current, .level .max")) el.textContent = skill.level;
-		if (skill.selectedLevel) {
-			const current = element.querySelector(".level .current");
-			if (current) current.textContent = skill.selectedLevel;
-		}
+		for (const el of element.querySelectorAll(".level .current")) el.textContent = skill.level;
 		const spcost = element.querySelector(".spcost");
 		if (spcost) spcost.textContent = skill.spcost;
 		element.classList.remove("active", "passive", "disabled");
 		element.classList.add(!skill.level ? "disabled" : skill.type ? "active" : "passive");
 		const levelupEl = element.querySelector(".levelup");
-		if (levelupEl) levelupEl.style.display = skill.upgradable && _skpoints ? "" : "none";
+		if (levelupEl) levelupEl.style.display = skill.upgradable && _skpoints && SessionStorage_default.isGuildMaster ? "" : "none";
 		this.onUpdateSkill(skill.SKID, skill.level);
 	};
 	Guild.useSkillID = function useSkillID(id, level) {
 		const skill = getSkillById(id);
 		if (!skill || !skill.level || !skill.type) return;
-		Guild.useSkill(skill, level ? level : skill.selectedLevel);
+		Guild.useSkill(skill, level ? level : skill.level);
 	};
 	Guild.useSkill = function useSkill(skill, level) {
 		if (skill.type & SkillTargetSelection_default.TYPE.SELF) this.onUseSkill(skill.SKID, level ? level : skill.level);
@@ -230299,21 +231420,64 @@ var init_Guild$1 = __esmMin((() => {
 			return;
 		}
 		_skpoints = amount;
-		const count = _skills.length;
-		for (let i = 0; i < count; ++i) {
-			const levelupEl = root.querySelector(`.skill.id${_skills[i].SKID} .levelup`);
-			if (levelupEl) levelupEl.style.display = _skills[i].upgradable && amount ? "" : "none";
-		}
+		updateSkillArrows(root);
 	};
 	Guild.onLevelUp = function onLevelUp() {
 		if (_btnLevelUp) document.body.appendChild(_btnLevelUp);
 	};
 	Guild.setNotice = function setNotice(subject, notice) {
+		_notice.subject = subject;
+		_notice.body = notice;
+		Guild.updateNoticeView();
+		_writeNotice(_root$13(this)?.querySelector(".content.notice"));
+	};
+	/**
+	* Draw the Notice tab for whoever is looking at it
+	*
+	* A member gets the text and no field.
+	* @see docs/reference/guild/member-view.md
+	*/
+	Guild.updateNoticeView = function updateNoticeView() {
 		const root = _root$13(this);
-		const subjectInput = root.querySelector(".content.notice .subject");
-		if (subjectInput) subjectInput.value = subject;
-		const noticeTextarea = root.querySelector(".content.notice textarea.notice");
-		if (noticeTextarea) noticeTextarea.value = notice;
+		if (!root) return;
+		const content = root.querySelector(".content.notice");
+		if (!content || !_noticeSubjectTemplate || !_noticeBodyTemplate) return;
+		const subjectSlot = content.querySelector(".subject");
+		const bodySlot = content.querySelector(".notice");
+		if (!subjectSlot || !bodySlot) return;
+		const isMaster = SessionStorage_default.isGuildMaster;
+		if (isMaster === (subjectSlot.tagName === "INPUT")) return;
+		const fill = (slot, template) => {
+			let next;
+			if (isMaster) next = template.cloneNode(true);
+			else {
+				next = document.createElement("div");
+				next.className = `${template.className} value`;
+			}
+			slot.replaceWith(next);
+		};
+		fill(subjectSlot, _noticeSubjectTemplate);
+		fill(bodySlot, _noticeBodyTemplate);
+		_writeNotice(content);
+		if (!isMaster) _hideApplyButton();
+	};
+	/**
+	* Redraw everything the guild-master flag decides
+	*
+	* Reached from the flag's own packet, which can arrive before the window exists.
+	* @see docs/reference/guild/member-view.md
+	*/
+	Guild.updateMasterView = function updateMasterView() {
+		const root = _root$13(this);
+		if (!root) return;
+		Guild.updatePositionView();
+		Guild.updateNoticeView();
+		updateSkillFooter(root, getActiveTab(root));
+		updateSkillArrows(root);
+		updateEmblemControls(root);
+		updateDisbandButton(root, getActiveTab(root));
+		_clearPendingPositions();
+		if (_members.length) Guild.setMembers([..._members], _hasMemo);
 	};
 	Guild.setExpelList = function setExpelList(list) {
 		const container = _root$13(this).querySelector(".content.history tbody");
@@ -230322,7 +231486,7 @@ var init_Guild$1 = __esmMin((() => {
 		for (let i = 0, count = list.length; i < count; ++i) {
 			const element = _expelViewTemplate.cloneNode(true);
 			const nameCell = element.querySelector(".name");
-			if (nameCell) nameCell.textContent = list[i].charname;
+			if (nameCell) nameCell.textContent = list[i].charname || DB.getMessage(581, "Nameless");
 			const reasonCell = element.querySelector(".reason");
 			if (reasonCell) reasonCell.textContent = list[i].reason;
 			container.appendChild(element);
@@ -230330,21 +231494,63 @@ var init_Guild$1 = __esmMin((() => {
 	};
 	Guild.setAccess = function setAccess(access) {
 		_guildAccess = access;
+		_accessRequested = false;
+		updateTabAccess(_root$13(this));
 	};
+	/**
+	* Ask which tabs this character may open, once
+	*
+	* The mask changes with who the player is, not with what the guild does.
+	* @see docs/reference/guild/member-view.md
+	*/
+	Guild.requestAccessIfUnknown = function requestAccessIfUnknown() {
+		if (_guildAccess !== ACCESS_UNKNOWN || _accessRequested || !SessionStorage_default.hasGuild) return;
+		_accessRequested = true;
+		Guild.onRequestAccess();
+	};
+	/**
+	* Forget the mask, the role having changed under it
+	*
+	* Through setAccess, so the marks cannot outlive the mask that earned them.
+	* @see docs/reference/guild/member-view.md
+	*/
+	Guild.invalidateAccess = function invalidateAccess() {
+		Guild.setAccess(ACCESS_UNKNOWN);
+	};
+	PORTRAIT_BOX = 96;
 	renderMemberFaces = (function renderMemberFacesClosure() {
 		let lastTick = 0;
+		let scratch = null;
+		let scratchCtx = null;
 		return function renderMemberFace(tick) {
 			if (tick < lastTick + 1e3) return;
 			lastTick = tick;
-			const canvases = _root$13(Guild).querySelectorAll(".content.members canvas");
+			const root = _root$13(Guild);
+			if (!scratch) {
+				scratch = document.createElement("canvas");
+				scratch.width = scratch.height = PORTRAIT_BOX;
+				scratchCtx = scratch.getContext("2d");
+			}
+			const canvasFor = {};
+			for (const row of root.querySelectorAll(".content.members .MemberView")) canvasFor[row.getAttribute("data-index")] = row.querySelector("canvas");
 			Camera.direction = 4;
 			for (let i = 0, count = _members.length; i < count; ++i) {
-				if (!canvases[i]) continue;
-				const ctx = canvases[i].getContext("2d");
-				ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+				const canvas = canvasFor[i];
+				if (!canvas) continue;
+				const ctx = canvas.getContext("2d");
+				const cellW = canvas.width;
+				const cellH = canvas.height;
+				ctx.clearRect(0, 0, cellW, cellH);
 				if (!_members[i].CurrentState) continue;
-				SpriteRenderer.bind2DContext(ctx, 15, 45);
+				scratchCtx.clearRect(0, 0, PORTRAIT_BOX, PORTRAIT_BOX);
+				SpriteRenderer.bind2DContext(scratchCtx, PORTRAIT_BOX / 2, 65.5);
 				_members[i].entity.renderEntity();
+				const box = opaqueBounds(scratchCtx, PORTRAIT_BOX);
+				if (!box) continue;
+				const boxH = box.bottom - box.top + 1;
+				const sx = box.left + (box.right - box.left + 1 - cellW) / 2;
+				const sy = boxH > cellH ? box.top : box.top + (boxH - cellH) / 2;
+				ctx.drawImage(scratch, Math.min(Math.max(Math.round(sx), 0), PORTRAIT_BOX - cellW), Math.min(Math.max(Math.round(sy), 0), PORTRAIT_BOX - cellH), cellW, cellH, 0, 0, cellW, cellH);
 			}
 		};
 	})();
@@ -230353,7 +231559,8 @@ var init_Guild$1 = __esmMin((() => {
 	};
 	Guild.promptDisbandGuild = function promptDisbandGuild() {
 		if (!SessionStorage_default.isGuildMaster) return;
-		UIManager.showMessageBox("If you are using a guild storage, all items inside it will disappear.", "ok", () => {
+		const warning = DB.getMessage(2564, "If you are using a guild storage, all items inside it will disappear.");
+		UIManager.showMessageBox(warning, "ok", () => {
 			GuildCompanion_default.openDisband();
 		});
 	};
@@ -230368,12 +231575,20 @@ var init_Guild$1 = __esmMin((() => {
 	Guild.onRequestMemberExpel = function() {};
 	Guild.onRequestDeleteRelation = function() {};
 	Guild.onRequestAccess = function() {};
+	/**
+	* Take from the guild's basic information what belongs to the session
+	*
+	* The guild-master flag is deliberately not set here. It is carried explicitly
+	* by the belonging packet, which the server sends after this one on a handover,
+	* and a second writer would leave that handler comparing a value already moved
+	* under it.
+	* @see docs/reference/guild/member-view.md
+	*/
 	Guild.updateSession = function(info) {
 		SessionStorage_default.hasGuild = true;
 		SessionStorage_default.guildName = info.guildname || "";
 		SessionStorage_default.Entity.GUID = info.GDID;
 		SessionStorage_default.Entity.GEmblemVer = info.emblemVersion;
-		if (SessionStorage_default.Entity.display.name === info.masterName) SessionStorage_default.isGuildMaster = true;
 	};
 	Guild.onRequestGuildEmblem = function() {};
 	Guild.onSendEmblem = function() {};
@@ -230694,6 +231909,44 @@ var init_Bank$1 = __esmMin((() => {
 	Bank_default = UIManager.addComponent(Bank);
 }));
 //#endregion
+//#region src/UI/ExitHooks.js
+/**
+* Be told when the player asks to leave. Returns a function that stops it.
+*/
+function on(listener) {
+	if (typeof listener !== "function") throw new Error("ExitHooks.on takes a function");
+	_listeners.push(listener);
+	return () => {
+		const index = _listeners.indexOf(listener);
+		if (index > -1) _listeners.splice(index, 1);
+	};
+}
+/**
+* The player chose to leave. Called by the window that owns the button,
+* before it acts. A listener that throws is reported and the rest still run.
+*/
+function emit(to, from) {
+	const event = Object.freeze({
+		to,
+		from
+	});
+	_listeners.slice().forEach((listener) => {
+		try {
+			listener(event);
+		} catch (error) {
+			console.error("[ExitHooks] a listener failed:", error);
+		}
+	});
+}
+var _listeners, ExitHooks_default;
+var init_ExitHooks = __esmMin((() => {
+	_listeners = [];
+	ExitHooks_default = {
+		on,
+		emit
+	};
+}));
+//#endregion
 //#region src/UI/Components/SoundOption/SoundOption.html?raw
 var SoundOption_default$2;
 var init_SoundOption$2 = __esmMin((() => {
@@ -230983,7 +232236,7 @@ var init_Context = __esmMin((() => {
 //#region src/UI/Components/GraphicsOption/GraphicsOption.html?raw
 var GraphicsOption_default$2;
 var init_GraphicsOption$2 = __esmMin((() => {
-	GraphicsOption_default$2 = "<div id=\"GraphicsOption\">\r\n	<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n		<div class=\"left\">\r\n			<button\r\n				class=\"base\"\r\n				data-background=\"basic_interface/sys_base_off.bmp\"\r\n				data-hover=\"basic_interface/sys_base_on.bmp\"\r\n			></button>\r\n			<span class=\"text\" data-text=\"1484\">Graphics Settings</span>\r\n		</div>\r\n		<div class=\"right\">\r\n			<button\r\n				class=\"base close\"\r\n				data-background=\"basic_interface/sys_close_off.bmp\"\r\n				data-hover=\"basic_interface/sys_close_on.bmp\"\r\n			></button>\r\n		</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"tabs-container\">\r\n		<div class=\"tabs\">\r\n			<button class=\"tab-button selected\" data-tab=\"basic\">Basic</button>\r\n			<button class=\"tab-button\" data-tab=\"advanced\">Advanced</button>\r\n		</div>\r\n	</div>\r\n\r\n	<div class=\"panel\">\r\n		<div class=\"tab-content selected\" id=\"basic\">\r\n			<table>\r\n				<tr>\r\n					<td>Details</td>\r\n					<td style=\"display: inline-block; width: 260px\">\r\n						<input\r\n							class=\"details\"\r\n							type=\"range\"\r\n							value=\"100\"\r\n							max=\"100\"\r\n							min=\"25\"\r\n							step=\"5\"\r\n							style=\"width: 90%\"\r\n						/>\r\n					</td>\r\n				</tr>\r\n				<tr class=\"resolution\">\r\n					<td>Resolution</td>\r\n					<td>\r\n						<select class=\"screensize\">\r\n							<option value=\"650x480\">640 x 480</option>\r\n							<option value=\"800x600\">800 x 600</option>\r\n							<option value=\"1024x768\">1024 x 768</option>\r\n							<option value=\"1280x800\">1280 x 800</option>\r\n							<option value=\"1400x900\">1400 x 900</option>\r\n							<option value=\"1680x1050\">1680 x 1050</option>\r\n							<option value=\"full\">Full Screen</option>\r\n						</select>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>Cursor</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"cursor-option\" type=\"checkbox\" />\r\n							Show official cursor\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>FPS Limit</td>\r\n					<td>\r\n						<select class=\"fpslimit\">\r\n							<option value=\"-1\">Unlimited</option>\r\n							<option value=\"30\">30</option>\r\n							<option value=\"60\">60</option>\r\n							<option value=\"90\">90</option>\r\n							<option value=\"120\">120</option>\r\n						</select>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>FPS Display</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"fps\" type=\"checkbox\" />\r\n						</label>\r\n					</td>\r\n				</tr>\r\n			</table>\r\n		</div>\r\n\r\n		<div class=\"tab-content\" id=\"advanced\">\r\n			<table>\r\n				<tr>\r\n					<td title=\"Force nearest neighbor filtering for pixel-perfect sprite rendering\">\r\n						Pixel Perfect Sprites\r\n					</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"pixel-perfect\" type=\"checkbox\" />\r\n							Force nearest neighbor filtering\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Add a glowing bloom effect to bright areas\">Bloom</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"bloom\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Intensity:\r\n							<input\r\n								class=\"bloom-intensity\"\r\n								type=\"range\"\r\n								value=\"0.5\"\r\n								min=\"0.1\"\r\n								max=\"3.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Apply a blur effect to the screen\">Blur</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"blur\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Intensity:\r\n							<input\r\n								class=\"blur-intensity\"\r\n								type=\"range\"\r\n								value=\"3.0\"\r\n								min=\"2.0\"\r\n								max=\"10.0\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Area:\r\n							<input\r\n								class=\"blur-area\"\r\n								type=\"range\"\r\n								value=\"14.0\"\r\n								min=\"3.0\"\r\n								max=\"20.0\"\r\n								step=\"1.0\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Contrast Adaptive Sharpening for enhanced details\">Contr. Adapt. Sharp. (CAS)</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"casEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Contrast:\r\n							<input\r\n								class=\"casContrast\"\r\n								type=\"range\"\r\n								value=\"0.0\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Sharpening:\r\n							<input\r\n								class=\"casSharpening\"\r\n								type=\"range\"\r\n								value=\"1.0\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Fast Approximate Anti-Aliasing for smoother edges\">FXAA</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"fxaaEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Subpix:\r\n							<input\r\n								class=\"fxaaSubpix\"\r\n								type=\"range\"\r\n								value=\"0.25\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Edge Threshold:\r\n							<input\r\n								class=\"fxaaEdgeThreshold\"\r\n								type=\"range\"\r\n								value=\"0.125\"\r\n								min=\"0.063\"\r\n								max=\"0.333\"\r\n								step=\"0.03\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Cartoon rendering effect for stylized visuals\">Cartoon</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"cartoonEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Power:\r\n							<input\r\n								class=\"cartoonPower\"\r\n								type=\"range\"\r\n								value=\"1.5\"\r\n								min=\"0.1\"\r\n								max=\"9.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Edge Slope:\r\n							<input\r\n								class=\"cartoonEdgeSlope\"\r\n								type=\"range\"\r\n								value=\"1.5\"\r\n								min=\"1.5\"\r\n								max=\"5.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Increase color intensity and saturation\">Vibrance</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"vibranceEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Intensity:\r\n							<input\r\n								class=\"vibrance\"\r\n								type=\"range\"\r\n								value=\"0.15\"\r\n								min=\"-0.9\"\r\n								max=\"0.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td\r\n						title=\"Hide objects outside the viewing area, enable downsampling rendering and others to improve performance\"\r\n					>\r\n						Performance Mode\r\n					</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"performanceMode\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Culling Area:\r\n							<input\r\n								class=\"view-area\"\r\n								type=\"range\"\r\n								value=\"14.0\"\r\n								min=\"4.0\"\r\n								max=\"20.0\"\r\n								step=\"1.0\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td\r\n						title=\"Make buildings and trees blocking the view of your character see-through (not in first person). Dither is cheaper, Alpha looks smoother.\"\r\n					>\r\n						See-through Occluders\r\n					</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<select class=\"occluderFade\">\r\n								<option value=\"off\">Off</option>\r\n								<option value=\"dither\">Dither (fast)</option>\r\n								<option value=\"alpha\">Alpha (smooth)</option>\r\n							</select>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 120px\">\r\n							Opacity:\r\n							<input\r\n								class=\"occluderFadeOpacity\"\r\n								type=\"range\"\r\n								value=\"0.25\"\r\n								min=\"0.0\"\r\n								max=\"0.8\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 120px\">\r\n							Area:\r\n							<input\r\n								class=\"occluderFadeRadius\"\r\n								type=\"range\"\r\n								value=\"5.0\"\r\n								min=\"1.5\"\r\n								max=\"12.5\"\r\n								step=\"0.5\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n			</table>\r\n\r\n			<div class=\"reset-section\">\r\n				<button class=\"reset-button\">Reset to Default Values</button>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
+	GraphicsOption_default$2 = "<div id=\"GraphicsOption\">\r\n	<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n		<div class=\"left\">\r\n			<button\r\n				class=\"base\"\r\n				data-background=\"basic_interface/sys_base_off.bmp\"\r\n				data-hover=\"basic_interface/sys_base_on.bmp\"\r\n			></button>\r\n			<span class=\"text\" data-text=\"1484\">Graphics Settings</span>\r\n		</div>\r\n		<div class=\"right\">\r\n			<button\r\n				class=\"base close\"\r\n				data-background=\"basic_interface/sys_close_off.bmp\"\r\n				data-hover=\"basic_interface/sys_close_on.bmp\"\r\n			></button>\r\n		</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"tabs-container\">\r\n		<div class=\"tabs\">\r\n			<button class=\"tab-button selected\" data-tab=\"basic\">Basic</button>\r\n			<button class=\"tab-button\" data-tab=\"advanced\">Advanced</button>\r\n		</div>\r\n	</div>\r\n\r\n	<div class=\"panel\">\r\n		<div class=\"tab-content selected\" id=\"basic\">\r\n			<table>\r\n				<tr>\r\n					<td>Details</td>\r\n					<td style=\"display: inline-block; width: 260px\">\r\n						<input\r\n							class=\"details\"\r\n							type=\"range\"\r\n							value=\"100\"\r\n							max=\"100\"\r\n							min=\"25\"\r\n							step=\"5\"\r\n							style=\"width: 90%\"\r\n						/>\r\n					</td>\r\n				</tr>\r\n				<tr class=\"resolution\">\r\n					<td>Resolution</td>\r\n					<td>\r\n						<select class=\"screensize\">\r\n							<option value=\"650x480\">640 x 480</option>\r\n							<option value=\"800x600\">800 x 600</option>\r\n							<option value=\"1024x768\">1024 x 768</option>\r\n							<option value=\"1280x800\">1280 x 800</option>\r\n							<option value=\"1400x900\">1400 x 900</option>\r\n							<option value=\"1680x1050\">1680 x 1050</option>\r\n							<option value=\"full\">Full Screen</option>\r\n						</select>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>Cursor</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"cursor-option\" type=\"checkbox\" />\r\n							Show official cursor\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>FPS Limit</td>\r\n					<td>\r\n						<select class=\"fpslimit\">\r\n							<option value=\"-1\">Unlimited</option>\r\n							<option value=\"30\">30</option>\r\n							<option value=\"60\">60</option>\r\n							<option value=\"90\">90</option>\r\n							<option value=\"120\">120</option>\r\n						</select>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>FPS Display</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"fps\" type=\"checkbox\" />\r\n						</label>\r\n					</td>\r\n				</tr>\r\n			</table>\r\n		</div>\r\n\r\n		<div class=\"tab-content\" id=\"advanced\">\r\n			<table>\r\n				<tr>\r\n					<td title=\"Force nearest neighbor filtering for pixel-perfect sprite rendering\">\r\n						Pixel Perfect Sprites\r\n					</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"pixel-perfect\" type=\"checkbox\" />\r\n							Force nearest neighbor filtering\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Add a glowing bloom effect to bright areas\">Bloom</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"bloom\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Intensity:\r\n							<input\r\n								class=\"bloom-intensity\"\r\n								type=\"range\"\r\n								value=\"0.5\"\r\n								min=\"0.1\"\r\n								max=\"3.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"How the map's baked light is drawn. Original keeps the classic client's 16 visible steps.\">Lighting</td>\r\n					<td>\r\n						<select class=\"smoothlight\">\r\n							<option value=\"1\">Smooth</option>\r\n							<option value=\"2\">Smooth (gamma)</option>\r\n							<option value=\"0\">Original (banded)</option>\r\n						</select>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Apply a blur effect to the screen\">Blur</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"blur\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Intensity:\r\n							<input\r\n								class=\"blur-intensity\"\r\n								type=\"range\"\r\n								value=\"3.0\"\r\n								min=\"2.0\"\r\n								max=\"10.0\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Area:\r\n							<input\r\n								class=\"blur-area\"\r\n								type=\"range\"\r\n								value=\"14.0\"\r\n								min=\"3.0\"\r\n								max=\"20.0\"\r\n								step=\"1.0\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Contrast Adaptive Sharpening for enhanced details\">Contr. Adapt. Sharp. (CAS)</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"casEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Contrast:\r\n							<input\r\n								class=\"casContrast\"\r\n								type=\"range\"\r\n								value=\"0.0\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Sharpening:\r\n							<input\r\n								class=\"casSharpening\"\r\n								type=\"range\"\r\n								value=\"1.0\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Fast Approximate Anti-Aliasing for smoother edges\">FXAA</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"fxaaEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Subpix:\r\n							<input\r\n								class=\"fxaaSubpix\"\r\n								type=\"range\"\r\n								value=\"0.25\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Edge Threshold:\r\n							<input\r\n								class=\"fxaaEdgeThreshold\"\r\n								type=\"range\"\r\n								value=\"0.125\"\r\n								min=\"0.063\"\r\n								max=\"0.333\"\r\n								step=\"0.03\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Cartoon rendering effect for stylized visuals\">Cartoon</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"cartoonEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Power:\r\n							<input\r\n								class=\"cartoonPower\"\r\n								type=\"range\"\r\n								value=\"1.5\"\r\n								min=\"0.1\"\r\n								max=\"9.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Edge Slope:\r\n							<input\r\n								class=\"cartoonEdgeSlope\"\r\n								type=\"range\"\r\n								value=\"1.5\"\r\n								min=\"1.5\"\r\n								max=\"5.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Increase color intensity and saturation\">Vibrance</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"vibranceEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Intensity:\r\n							<input\r\n								class=\"vibrance\"\r\n								type=\"range\"\r\n								value=\"0.15\"\r\n								min=\"-0.9\"\r\n								max=\"0.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td\r\n						title=\"Hide objects outside the viewing area, enable downsampling rendering and others to improve performance\"\r\n					>\r\n						Performance Mode\r\n					</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"performanceMode\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Culling Area:\r\n							<input\r\n								class=\"view-area\"\r\n								type=\"range\"\r\n								value=\"14.0\"\r\n								min=\"4.0\"\r\n								max=\"20.0\"\r\n								step=\"1.0\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td\r\n						title=\"Make buildings and trees blocking the view of your character see-through (not in first person). Dither is cheaper, Alpha looks smoother.\"\r\n					>\r\n						See-through Occluders\r\n					</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<select class=\"occluderFade\">\r\n								<option value=\"off\">Off</option>\r\n								<option value=\"dither\">Dither (fast)</option>\r\n								<option value=\"alpha\">Alpha (smooth)</option>\r\n							</select>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 120px\">\r\n							Opacity:\r\n							<input\r\n								class=\"occluderFadeOpacity\"\r\n								type=\"range\"\r\n								value=\"0.25\"\r\n								min=\"0.0\"\r\n								max=\"0.8\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 120px\">\r\n							Area:\r\n							<input\r\n								class=\"occluderFadeRadius\"\r\n								type=\"range\"\r\n								value=\"5.0\"\r\n								min=\"1.5\"\r\n								max=\"12.5\"\r\n								step=\"0.5\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n			</table>\r\n\r\n			<div class=\"reset-section\">\r\n				<button class=\"reset-button\">Reset to Default Values</button>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/GraphicsOption/GraphicsOption.css?raw
@@ -231050,6 +232303,14 @@ function onToggleBloom() {
 function onUpdateBloomIntensity() {
 	GraphicsSettings.bloomIntensity = parseFloat(this.value);
 	GraphicsSettings.save();
+}
+/**
+* Lighting: the same setting /smoothlight cycles. The ground shader reads it
+* every frame, so it applies at once.
+*/
+function onUpdateSmoothLight() {
+	Map_default.smoothlight = parseInt(this.value, 10) || 0;
+	Map_default.save();
 }
 function onToggleBlur() {
 	GraphicsSettings.blur = !!this.checked;
@@ -231188,6 +232449,7 @@ var init_GraphicsOption = __esmMin((() => {
 	init_Context();
 	init_Preferences$1();
 	init_Graphics();
+	init_Map();
 	init_Renderer();
 	init_UIManager();
 	init_GUIComponent();
@@ -231240,6 +232502,7 @@ var init_GraphicsOption = __esmMin((() => {
 		bindChange(".pixel-perfect", onTogglePixelPerfect);
 		bindChange(".bloom", onToggleBloom);
 		bindChange(".bloom-intensity", onUpdateBloomIntensity);
+		bindChange(".smoothlight", onUpdateSmoothLight);
 		bindChange(".blur", onToggleBlur);
 		bindChange(".blur-intensity", onUpdateBlurIntensity);
 		bindChange(".blur-area", onUpdateBlurArea);
@@ -231276,6 +232539,7 @@ var init_GraphicsOption = __esmMin((() => {
 		root.querySelector(".pixel-perfect").checked = GraphicsSettings.pixelPerfectSprites;
 		root.querySelector(".bloom").checked = GraphicsSettings.bloom;
 		root.querySelector(".bloom-intensity").value = GraphicsSettings.bloomIntensity;
+		root.querySelector(".smoothlight").value = String(Map_default.smoothlight);
 		root.querySelector(".blur").checked = GraphicsSettings.blur;
 		root.querySelector(".blur-area").value = GraphicsSettings.blurArea;
 		root.querySelector(".blur-intensity").value = GraphicsSettings.blurIntensity;
@@ -231312,729 +232576,166 @@ var init_GraphicsOption = __esmMin((() => {
 //#region src/UI/Components/ShortCutOption/ShortCutOption.html?raw
 var ShortCutOption_default$2;
 var init_ShortCutOption$2 = __esmMin((() => {
-	ShortCutOption_default$2 = "<div id=\"ShortCutOption\" class=\"pt-page-fadeIn1\">\r\n	<div class=\"border\">\r\n		<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n			<div class=\"left\"><span class=\"text\">Shortcut key setting window</span></div>\r\n\r\n			<div class=\"right\">\r\n				<button\r\n					class=\"base close\"\r\n					data-background=\"basic_interface/sys_close_off.bmp\"\r\n					data-hover=\"basic_interface/sys_close_on.bmp\"\r\n				></button>\r\n			</div>\r\n\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n\r\n		<div class=\"tabs\">\r\n			<button class=\"t_skillbar selectedtab\" data-index=\"t_skillbar\">Skill Bar</button\r\n			><button class=\"t_ui\" data-index=\"t_ui\">Interface</button\r\n			><button class=\"t_macro\" data-index=\"t_macro\">Macros</button\r\n			><button class=\"t_gamepad\" data-index=\"t_gamepad\">Gamepad</button>\r\n		</div>\r\n		<div class=\"panel\">\r\n			<div class=\"content t_skillbar selectedtab\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Skill bar 1-1</td>\r\n							<td data-button=\"F1_1\" class=\"customize\"></td>\r\n							<td>Skill bar 2-1</td>\r\n							<td data-button=\"F2_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-2</td>\r\n							<td data-button=\"F1_2\" class=\"customize\"></td>\r\n							<td>Skill bar 2-2</td>\r\n							<td data-button=\"F2_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-3</td>\r\n							<td data-button=\"F1_3\" class=\"customize\"></td>\r\n							<td>Skill bar 2-3</td>\r\n							<td data-button=\"F2_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-4</td>\r\n							<td data-button=\"F1_4\" class=\"customize\"></td>\r\n							<td>Skill bar 2-4</td>\r\n							<td data-button=\"F2_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-5</td>\r\n							<td data-button=\"F1_5\" class=\"customize\"></td>\r\n							<td>Skill bar 2-5</td>\r\n							<td data-button=\"F2_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-6</td>\r\n							<td data-button=\"F1_6\" class=\"customize\"></td>\r\n							<td>Skill bar 2-6</td>\r\n							<td data-button=\"F2_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-7</td>\r\n							<td data-button=\"F1_7\" class=\"customize\"></td>\r\n							<td>Skill bar 2-7</td>\r\n							<td data-button=\"F2_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-8</td>\r\n							<td data-button=\"F1_8\" class=\"customize\"></td>\r\n							<td>Skill bar 2-8</td>\r\n							<td data-button=\"F2_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-9</td>\r\n							<td data-button=\"F1_9\" class=\"customize\"></td>\r\n							<td>Skill bar 2-9</td>\r\n							<td data-button=\"F2_9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-1</td>\r\n							<td data-button=\"F3_1\" class=\"customize\"></td>\r\n							<td>Skill bar 4-1</td>\r\n							<td data-button=\"F4_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-2</td>\r\n							<td data-button=\"F3_2\" class=\"customize\"></td>\r\n							<td>Skill bar 4-2</td>\r\n							<td data-button=\"F4_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-3</td>\r\n							<td data-button=\"F3_3\" class=\"customize\"></td>\r\n							<td>Skill bar 4-3</td>\r\n							<td data-button=\"F4_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-4</td>\r\n							<td data-button=\"F3_4\" class=\"customize\"></td>\r\n							<td>Skill bar 4-4</td>\r\n							<td data-button=\"F4_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-5</td>\r\n							<td data-button=\"F3_5\" class=\"customize\"></td>\r\n							<td>Skill bar 4-5</td>\r\n							<td data-button=\"F4_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-6</td>\r\n							<td data-button=\"F3_6\" class=\"customize\"></td>\r\n							<td>Skill bar 4-6</td>\r\n							<td data-button=\"F4_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-7</td>\r\n							<td data-button=\"F3_7\" class=\"customize\"></td>\r\n							<td>Skill bar 4-7</td>\r\n							<td data-button=\"F4_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-8</td>\r\n							<td data-button=\"F3_8\" class=\"customize\"></td>\r\n							<td>Skill bar 4-8</td>\r\n							<td data-button=\"F4_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-9</td>\r\n							<td data-button=\"F3_9\" class=\"customize\"></td>\r\n							<td>Skill bar 4-9</td>\r\n							<td data-button=\"F4_9\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_ui\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Basic Info</td>\r\n							<td data-button=\"BasicInfo\" class=\"customize\"></td>\r\n							<td>Character Info</td>\r\n							<td data-button=\"Equipment\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill List</td>\r\n							<td data-button=\"SkillList\" class=\"customize\"></td>\r\n							<td>Emotion List</td>\r\n							<td data-button=\"Emotions\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Friends List</td>\r\n							<td data-button=\"Friends\" class=\"customize\"></td>\r\n							<td>Party Window</td>\r\n							<td data-button=\"Party\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Pet Info</td>\r\n							<td data-button=\"PetInfo\" class=\"customize\"></td>\r\n							<td>Chat Room</td>\r\n							<td data-button=\"ChatRoom\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Cart Window</td>\r\n							<td data-button=\"PushCart\" class=\"customize\"></td>\r\n							<td>Item Window</td>\r\n							<td data-button=\"Inventory\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>World Map</td>\r\n							<td data-button=\"WorldMap\" class=\"customize\"></td>\r\n							<td>Guild Info</td>\r\n							<td data-button=\"Guild\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus Info</td>\r\n							<td data-button=\"HomunInfo\" class=\"customize\"></td>\r\n							<td>Mercenary Info</td>\r\n							<td data-button=\"MercInfo\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus State</td>\r\n							<td data-button=\"HomunState\" class=\"customize\"></td>\r\n							<td>Mercenary State</td>\r\n							<td data-button=\"MercState\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Sit/Stand</td>\r\n							<td data-button=\"Sit\" class=\"customize\"></td>\r\n							<td>Short Cuts</td>\r\n							<td data-button=\"ShortCuts\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Chat Bar Size</td>\r\n							<td data-button=\"ChatSize\" class=\"customize\"></td>\r\n							<td>Skill Bar Size</td>\r\n							<td data-button=\"SkillBarSize\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Quest</td>\r\n							<td data-button=\"Quest\" class=\"customize\"></td>\r\n							<td>Bank</td>\r\n							<td data-button=\"Bank\" class=\"customize\"></td>\r\n						</tr>\r\n						<!--<tr>\r\n                     <td>MobileUI</td>\r\n                     <td data-button=\"M_UI\" class=\"customize\"></td>\r\n                     <td>MUi-Toggle</td>\r\n                     <td data-button=\"M_Toggle\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-TG</td>\r\n                     <td data-button=\"M_Targeting\" class=\"customize\"></td>\r\n                     <td>MUi-AT</td>\r\n                     <td data-button=\"M_AutoTarget\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-ATK</td>\r\n                     <td data-button=\"M_Attack\" class=\"customize\"></td>\r\n                  </tr>-->\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_macro\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Macro 1</td>\r\n							<td data-button=\"Macro1\" class=\"customize\"></td>\r\n							<td>Flag 1</td>\r\n							<td data-button=\"Flag1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 2</td>\r\n							<td data-button=\"Macro2\" class=\"customize\"></td>\r\n							<td>Flag 2</td>\r\n							<td data-button=\"Flag2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 3</td>\r\n							<td data-button=\"Macro3\" class=\"customize\"></td>\r\n							<td>Flag 3</td>\r\n							<td data-button=\"Flag3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 4</td>\r\n							<td data-button=\"Macro4\" class=\"customize\"></td>\r\n							<td>Flag 4</td>\r\n							<td data-button=\"Flag4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 5</td>\r\n							<td data-button=\"Macro5\" class=\"customize\"></td>\r\n							<td>Flag 5</td>\r\n							<td data-button=\"Flag5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 6</td>\r\n							<td data-button=\"Macro6\" class=\"customize\"></td>\r\n							<td>Flag 6</td>\r\n							<td data-button=\"Flag6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 7</td>\r\n							<td data-button=\"Macro7\" class=\"customize\"></td>\r\n							<td>Flag 7</td>\r\n							<td data-button=\"Flag7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 8</td>\r\n							<td data-button=\"Macro8\" class=\"customize\"></td>\r\n							<td>Flag 8</td>\r\n							<td data-button=\"Flag8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 9</td>\r\n							<td data-button=\"Macro9\" class=\"customize\"></td>\r\n							<td>Flag 9</td>\r\n							<td data-button=\"Flag9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 10</td>\r\n							<td data-button=\"Macro10\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_gamepad\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr title=\"Define how targets are selected in combat\">\r\n							<td>Attack Target Mode</td>\r\n							<td>\r\n								<select class=\"attackTargetMode\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Lowest HP</option>\r\n									<option value=\"2\">Closest</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"What the D-pad left/right cycles through (L3 switches in game)\">\r\n							<td>D-pad Cycle Targets</td>\r\n							<td>\r\n								<select class=\"joyCycleMode\">\r\n									<option value=\"0\">Mobs</option>\r\n									<option value=\"1\">Items</option>\r\n									<option value=\"2\">Both</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Choose how skills are cast with gamepad\">\r\n							<td>Quick-Cast Mode</td>\r\n							<td>\r\n								<select class=\"joyQuick\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Release Mode</option>\r\n									<option value=\"2\">Instant Mode</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Adjust mouse movement sensitivity for R3 stick\">\r\n							<td>Mouse Move</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Sensitivity:\r\n									<input\r\n										class=\"joySense\"\r\n										type=\"range\"\r\n										value=\"25.0\"\r\n										min=\"1.0\"\r\n										max=\"100.0\"\r\n										step=\"1.0\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Disable mouse input from gamepad for UI interaction\">\r\n							<td>Disable Virtual Mouse</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyDisableVirtualMouse\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Swap L3 and R3 stick functions\">\r\n							<td>Swap L3-R3 Sticks</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyReverseStick\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Automatically hide UI during gameplay mouse movement\">\r\n							<td>Auto Hide UI</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyAutoHide\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Set deadzone threshold for analog sticks\">\r\n							<td>Axis Threshold</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Deadline:\r\n									<input\r\n										class=\"joyDeadline\"\r\n										type=\"range\"\r\n										value=\"0.10\"\r\n										min=\"0.0\"\r\n										max=\"1.0\"\r\n										step=\"0.1\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<button\r\n				class=\"button reset left\"\r\n				data-background=\"btn_reset.bmp\"\r\n				data-hover=\"btn_reset_a.bmp\"\r\n				data-down=\"btn_reset_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button ok right\"\r\n				data-background=\"btn_ok.bmp\"\r\n				data-hover=\"btn_ok_a.bmp\"\r\n				data-down=\"btn_ok_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button cancel right\"\r\n				data-background=\"btn_cancel.bmp\"\r\n				data-hover=\"btn_cancel_a.bmp\"\r\n				data-down=\"btn_cancel_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button close right\"\r\n				data-background=\"btn_close.bmp\"\r\n				data-hover=\"btn_close_a.bmp\"\r\n				data-down=\"btn_close_b.bmp\"\r\n			></button>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
+	ShortCutOption_default$2 = "<div id=\"ShortCutOption\" class=\"pt-page-fadeIn1\">\r\n	<div class=\"border\">\r\n		<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n			<div class=\"left\"><span class=\"text\">Shortcut key setting window</span></div>\r\n\r\n			<div class=\"right\">\r\n				<button\r\n					class=\"base close\"\r\n					data-background=\"basic_interface/sys_close_off.bmp\"\r\n					data-hover=\"basic_interface/sys_close_on.bmp\"\r\n				></button>\r\n			</div>\r\n\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n\r\n		<div class=\"tabs\">\r\n			<button class=\"t_skillbar selectedtab\" data-index=\"t_skillbar\">Skill Bar</button\r\n			><button class=\"t_ui\" data-index=\"t_ui\">Interface</button\r\n			><button class=\"t_macro\" data-index=\"t_macro\">Macros</button\r\n			><button class=\"t_gamepad\" data-index=\"t_gamepad\">Gamepad</button>\r\n		</div>\r\n		<div class=\"panel\">\r\n			<div class=\"content t_skillbar selectedtab\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Skill bar 1-1</td>\r\n							<td data-button=\"F1_1\" class=\"customize\"></td>\r\n							<td>Skill bar 2-1</td>\r\n							<td data-button=\"F2_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-2</td>\r\n							<td data-button=\"F1_2\" class=\"customize\"></td>\r\n							<td>Skill bar 2-2</td>\r\n							<td data-button=\"F2_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-3</td>\r\n							<td data-button=\"F1_3\" class=\"customize\"></td>\r\n							<td>Skill bar 2-3</td>\r\n							<td data-button=\"F2_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-4</td>\r\n							<td data-button=\"F1_4\" class=\"customize\"></td>\r\n							<td>Skill bar 2-4</td>\r\n							<td data-button=\"F2_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-5</td>\r\n							<td data-button=\"F1_5\" class=\"customize\"></td>\r\n							<td>Skill bar 2-5</td>\r\n							<td data-button=\"F2_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-6</td>\r\n							<td data-button=\"F1_6\" class=\"customize\"></td>\r\n							<td>Skill bar 2-6</td>\r\n							<td data-button=\"F2_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-7</td>\r\n							<td data-button=\"F1_7\" class=\"customize\"></td>\r\n							<td>Skill bar 2-7</td>\r\n							<td data-button=\"F2_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-8</td>\r\n							<td data-button=\"F1_8\" class=\"customize\"></td>\r\n							<td>Skill bar 2-8</td>\r\n							<td data-button=\"F2_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-9</td>\r\n							<td data-button=\"F1_9\" class=\"customize\"></td>\r\n							<td>Skill bar 2-9</td>\r\n							<td data-button=\"F2_9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-1</td>\r\n							<td data-button=\"F3_1\" class=\"customize\"></td>\r\n							<td>Skill bar 4-1</td>\r\n							<td data-button=\"F4_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-2</td>\r\n							<td data-button=\"F3_2\" class=\"customize\"></td>\r\n							<td>Skill bar 4-2</td>\r\n							<td data-button=\"F4_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-3</td>\r\n							<td data-button=\"F3_3\" class=\"customize\"></td>\r\n							<td>Skill bar 4-3</td>\r\n							<td data-button=\"F4_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-4</td>\r\n							<td data-button=\"F3_4\" class=\"customize\"></td>\r\n							<td>Skill bar 4-4</td>\r\n							<td data-button=\"F4_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-5</td>\r\n							<td data-button=\"F3_5\" class=\"customize\"></td>\r\n							<td>Skill bar 4-5</td>\r\n							<td data-button=\"F4_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-6</td>\r\n							<td data-button=\"F3_6\" class=\"customize\"></td>\r\n							<td>Skill bar 4-6</td>\r\n							<td data-button=\"F4_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-7</td>\r\n							<td data-button=\"F3_7\" class=\"customize\"></td>\r\n							<td>Skill bar 4-7</td>\r\n							<td data-button=\"F4_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-8</td>\r\n							<td data-button=\"F3_8\" class=\"customize\"></td>\r\n							<td>Skill bar 4-8</td>\r\n							<td data-button=\"F4_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-9</td>\r\n							<td data-button=\"F3_9\" class=\"customize\"></td>\r\n							<td>Skill bar 4-9</td>\r\n							<td data-button=\"F4_9\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_ui\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Basic Info</td>\r\n							<td data-button=\"BasicInfo\" class=\"customize\"></td>\r\n							<td>Character Info</td>\r\n							<td data-button=\"Equipment\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill List</td>\r\n							<td data-button=\"SkillList\" class=\"customize\"></td>\r\n							<td>Emotion List</td>\r\n							<td data-button=\"Emotions\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Friends List</td>\r\n							<td data-button=\"Friends\" class=\"customize\"></td>\r\n							<td>Party Window</td>\r\n							<td data-button=\"Party\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Pet Info</td>\r\n							<td data-button=\"PetInfo\" class=\"customize\"></td>\r\n							<td>Chat Room</td>\r\n							<td data-button=\"ChatRoom\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Cart Window</td>\r\n							<td data-button=\"PushCart\" class=\"customize\"></td>\r\n							<td>Item Window</td>\r\n							<td data-button=\"Inventory\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>World Map</td>\r\n							<td data-button=\"WorldMap\" class=\"customize\"></td>\r\n							<td>Guild Info</td>\r\n							<td data-button=\"Guild\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus Info</td>\r\n							<td data-button=\"HomunInfo\" class=\"customize\"></td>\r\n							<td>Mercenary Info</td>\r\n							<td data-button=\"MercInfo\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus State</td>\r\n							<td data-button=\"HomunState\" class=\"customize\"></td>\r\n							<td>Mercenary State</td>\r\n							<td data-button=\"MercState\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Sit/Stand</td>\r\n							<td data-button=\"Sit\" class=\"customize\"></td>\r\n							<td>Short Cuts</td>\r\n							<td data-button=\"ShortCuts\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Chat Bar Size</td>\r\n							<td data-button=\"ChatSize\" class=\"customize\"></td>\r\n							<td>Skill Bar Size</td>\r\n							<td data-button=\"SkillBarSize\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Quest</td>\r\n							<td data-button=\"Quest\" class=\"customize\"></td>\r\n							<td>Bank</td>\r\n							<td data-button=\"Bank\" class=\"customize\"></td>\r\n						</tr>\r\n						<!--<tr>\r\n                     <td>MobileUI</td>\r\n                     <td data-button=\"M_UI\" class=\"customize\"></td>\r\n                     <td>MUi-Toggle</td>\r\n                     <td data-button=\"M_Toggle\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-TG</td>\r\n                     <td data-button=\"M_Targeting\" class=\"customize\"></td>\r\n                     <td>MUi-AT</td>\r\n                     <td data-button=\"M_AutoTarget\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-ATK</td>\r\n                     <td data-button=\"M_Attack\" class=\"customize\"></td>\r\n                  </tr>-->\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_macro\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Macro 1</td>\r\n							<td data-button=\"Macro1\" class=\"customize\"></td>\r\n							<td>Flag 1</td>\r\n							<td data-button=\"Flag1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 2</td>\r\n							<td data-button=\"Macro2\" class=\"customize\"></td>\r\n							<td>Flag 2</td>\r\n							<td data-button=\"Flag2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 3</td>\r\n							<td data-button=\"Macro3\" class=\"customize\"></td>\r\n							<td>Flag 3</td>\r\n							<td data-button=\"Flag3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 4</td>\r\n							<td data-button=\"Macro4\" class=\"customize\"></td>\r\n							<td>Flag 4</td>\r\n							<td data-button=\"Flag4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 5</td>\r\n							<td data-button=\"Macro5\" class=\"customize\"></td>\r\n							<td>Flag 5</td>\r\n							<td data-button=\"Flag5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 6</td>\r\n							<td data-button=\"Macro6\" class=\"customize\"></td>\r\n							<td>Flag 6</td>\r\n							<td data-button=\"Flag6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 7</td>\r\n							<td data-button=\"Macro7\" class=\"customize\"></td>\r\n							<td>Flag 7</td>\r\n							<td data-button=\"Flag7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 8</td>\r\n							<td data-button=\"Macro8\" class=\"customize\"></td>\r\n							<td>Flag 8</td>\r\n							<td data-button=\"Flag8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 9</td>\r\n							<td data-button=\"Macro9\" class=\"customize\"></td>\r\n							<td>Flag 9</td>\r\n							<td data-button=\"Flag9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 10</td>\r\n							<td data-button=\"Macro10\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_gamepad\">\r\n				<table class=\"joySettings\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr title=\"Show which button does what, and remap them\">\r\n							<td>Button Mapping</td>\r\n							<td>\r\n								<button type=\"button\" class=\"joyBtn joyMappingOpen\">Mapping</button>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Define how targets are selected in combat\">\r\n							<td>Attack Target Mode</td>\r\n							<td>\r\n								<select class=\"attackTargetMode\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Lowest HP</option>\r\n									<option value=\"2\">Closest</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"What the D-pad left/right cycles through (L3 switches in game)\">\r\n							<td>D-pad Cycle Targets</td>\r\n							<td>\r\n								<select class=\"joyCycleMode\">\r\n									<option value=\"0\">Mobs</option>\r\n									<option value=\"1\">Items</option>\r\n									<option value=\"2\">Both</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Choose how skills are cast with gamepad\">\r\n							<td>Quick-Cast Mode</td>\r\n							<td>\r\n								<select class=\"joyQuick\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Release Mode</option>\r\n									<option value=\"2\">Instant Mode</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Adjust mouse movement sensitivity for R3 stick\">\r\n							<td>Mouse Move</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Sensitivity:\r\n									<input\r\n										class=\"joySense\"\r\n										type=\"range\"\r\n										value=\"25.0\"\r\n										min=\"1.0\"\r\n										max=\"100.0\"\r\n										step=\"1.0\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Disable mouse input from gamepad for UI interaction\">\r\n							<td>Disable Virtual Mouse</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyDisableVirtualMouse\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Swap L3 and R3 stick functions\">\r\n							<td>Swap L3-R3 Sticks</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyReverseStick\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Automatically hide UI during gameplay mouse movement\">\r\n							<td>Auto Hide UI</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyAutoHide\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Set deadzone threshold for analog sticks\">\r\n							<td>Axis Threshold</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Deadline:\r\n									<input\r\n										class=\"joyDeadline\"\r\n										type=\"range\"\r\n										value=\"0.10\"\r\n										min=\"0.0\"\r\n										max=\"1.0\"\r\n										step=\"0.1\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n				<div class=\"joyMapping\">\r\n					<div class=\"joyMappingHeader\">\r\n						<button type=\"button\" class=\"joyBtn joyMappingBack\">&#9664; Back</button>\r\n						<span class=\"joyMappingTitle\">Button mapping</span>\r\n						<button type=\"button\" class=\"joyBtn joyMappingReset\">Reset to defaults</button>\r\n					</div>\r\n					<div class=\"joyMappingStatus\">Remap: press Remap, then a button on the gamepad. The two buttons trade places.</div>\r\n					<div class=\"joyMappingScroll\">\r\n						<table class=\"joyMappingRoles\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n							<tbody></tbody>\r\n						</table>\r\n						<div class=\"joyMappingSub\">Combinations (follow the buttons above)</div>\r\n						<table class=\"joyMappingCombos\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n							<tbody></tbody>\r\n						</table>\r\n					</div>\r\n				</div>\r\n			</div>\r\n			<button\r\n				class=\"button reset left\"\r\n				data-background=\"btn_reset.bmp\"\r\n				data-hover=\"btn_reset_a.bmp\"\r\n				data-down=\"btn_reset_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button ok right\"\r\n				data-background=\"btn_ok.bmp\"\r\n				data-hover=\"btn_ok_a.bmp\"\r\n				data-down=\"btn_ok_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button cancel right\"\r\n				data-background=\"btn_cancel.bmp\"\r\n				data-hover=\"btn_cancel_a.bmp\"\r\n				data-down=\"btn_cancel_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button close right\"\r\n				data-background=\"btn_close.bmp\"\r\n				data-hover=\"btn_close_a.bmp\"\r\n				data-down=\"btn_close_b.bmp\"\r\n			></button>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/ShortCutOption/ShortCutOption.css?raw
 var ShortCutOption_default$1;
 var init_ShortCutOption$1 = __esmMin((() => {
-	ShortCutOption_default$1 = ":host {\r\n	width: 430px;\r\n	height: 465px;\r\n	top: 300px;\r\n	left: 300px;\r\n}\r\n\r\n#ShortCutOption {\r\n	position: absolute;\r\n	width: 430px;\r\n	height: 465px;\r\n	background: white;\r\n	border-radius: 3px;\r\n	border: solid 1px #aaa;\r\n	border-top: none;\r\n}\r\n#ShortCutOption .border {\r\n}\r\n#ShortCutOption .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	border-bottom: solid 1px #eee;\r\n}\r\n#ShortCutOption .titlebar .base {\r\n	width: 20px;\r\n	height: 100%;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n	background-position: 8px 2px;\r\n}\r\n#ShortCutOption .titlebar .base.close {\r\n	color: #ccc;\r\n}\r\n#ShortCutOption .titlebar .text {\r\n	white-space: nowrap;\r\n	display: inline-block;\r\n	line-height: 17px;\r\n	margin-left: 5px;\r\n}\r\n#ShortCutOption .titlebar .left {\r\n	float: left;\r\n}\r\n#ShortCutOption .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n	height: 100%;\r\n}\r\n#ShortCutOption .titlebar .clear {\r\n	clear: both;\r\n}\r\n#ShortCutOption .tabs {\r\n	position: relative;\r\n	top: 1px;\r\n	border-right: solid 1px #ccc;\r\n}\r\n#ShortCutOption .tabs button.selectedtab {\r\n	border-bottom: solid 1px transparent;\r\n}\r\n#ShortCutOption .tabs button {\r\n	width: 57px;\r\n	height: 18px;\r\n	padding: 0;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	white-space: nowrap;\r\n	background-color: #fff;\r\n	border: solid 1px #bbb;\r\n	border-top-right-radius: 3px;\r\n	border-top-left-radius: 3px;\r\n}\r\n#ShortCutOption .tabs button:nth-child(1) {\r\n	border-right: none;\r\n}\r\n#ShortCutOption .panel {\r\n	padding: 5px;\r\n	border-top: solid 1px #ccc;\r\n}\r\n#ShortCutOption .panel .content {\r\n	display: none;\r\n}\r\n#ShortCutOption .content.selectedtab {\r\n	display: block;\r\n}\r\n#ShortCutOption .content table {\r\n	width: 100%;\r\n	border-collapse: collapse;\r\n	color: #222;\r\n}\r\n#ShortCutOption .content table tr {\r\n	height: 22px;\r\n}\r\n#ShortCutOption .content table td {\r\n	text-align: center;\r\n}\r\n#ShortCutOption .content table td:nth-child(1),\r\n#ShortCutOption .content table td:nth-child(3) {\r\n	width: 30%;\r\n}\r\n#ShortCutOption .content table td:nth-child(2),\r\n#ShortCutOption .content table td:nth-child(4) {\r\n	width: 20%;\r\n	background-color: #eee;\r\n}\r\n#ShortCutOption .content table td.customize {\r\n	background-color: #ffffe0;\r\n}\r\n#ShortCutOption .content table td.changed {\r\n	background-color: #ffe4e1;\r\n}\r\n#ShortCutOption .content table td.selected {\r\n	background-color: #ffb6c1;\r\n}\r\n#ShortCutOption .resolution {\r\n	display: none;\r\n}\r\n#ShortCutOption .panel .button {\r\n	position: absolute;\r\n	bottom: 3px;\r\n	width: 42px;\r\n	height: 20px;\r\n	margin-top: 3px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#ShortCutOption .panel .button.reset {\r\n	left: 3px;\r\n}\r\n#ShortCutOption .panel .button.ok {\r\n	right: 93px;\r\n}\r\n#ShortCutOption .panel .button.cancel {\r\n	right: 48px;\r\n}\r\n#ShortCutOption .panel .button.close {\r\n	right: 3px;\r\n}\r\n";
+	ShortCutOption_default$1 = ":host {\r\n	width: 430px;\r\n	height: 465px;\r\n	top: 300px;\r\n	left: 300px;\r\n}\r\n\r\n#ShortCutOption {\r\n	position: absolute;\r\n	width: 430px;\r\n	height: 465px;\r\n	background: white;\r\n	border-radius: 3px;\r\n	border: solid 1px #aaa;\r\n	border-top: none;\r\n}\r\n#ShortCutOption .border {\r\n}\r\n#ShortCutOption .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	border-bottom: solid 1px #eee;\r\n}\r\n#ShortCutOption .titlebar .base {\r\n	width: 20px;\r\n	height: 100%;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n	background-position: 8px 2px;\r\n}\r\n#ShortCutOption .titlebar .base.close {\r\n	color: #ccc;\r\n}\r\n#ShortCutOption .titlebar .text {\r\n	white-space: nowrap;\r\n	display: inline-block;\r\n	line-height: 17px;\r\n	margin-left: 5px;\r\n}\r\n#ShortCutOption .titlebar .left {\r\n	float: left;\r\n}\r\n#ShortCutOption .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n	height: 100%;\r\n}\r\n#ShortCutOption .titlebar .clear {\r\n	clear: both;\r\n}\r\n#ShortCutOption .tabs {\r\n	position: relative;\r\n	top: 1px;\r\n	border-right: solid 1px #ccc;\r\n}\r\n#ShortCutOption .tabs button.selectedtab {\r\n	border-bottom: solid 1px transparent;\r\n}\r\n#ShortCutOption .tabs button {\r\n	width: 57px;\r\n	height: 18px;\r\n	padding: 0;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	white-space: nowrap;\r\n	background-color: #fff;\r\n	border: solid 1px #bbb;\r\n	border-top-right-radius: 3px;\r\n	border-top-left-radius: 3px;\r\n}\r\n#ShortCutOption .tabs button:nth-child(1) {\r\n	border-right: none;\r\n}\r\n#ShortCutOption .panel {\r\n	padding: 5px;\r\n	border-top: solid 1px #ccc;\r\n}\r\n#ShortCutOption .panel .content {\r\n	display: none;\r\n}\r\n#ShortCutOption .content.selectedtab {\r\n	display: block;\r\n}\r\n#ShortCutOption .content table {\r\n	width: 100%;\r\n	border-collapse: collapse;\r\n	color: #222;\r\n}\r\n#ShortCutOption .content table tr {\r\n	height: 22px;\r\n}\r\n#ShortCutOption .content table td {\r\n	text-align: center;\r\n}\r\n#ShortCutOption .content table td:nth-child(1),\r\n#ShortCutOption .content table td:nth-child(3) {\r\n	width: 30%;\r\n}\r\n#ShortCutOption .content table td:nth-child(2),\r\n#ShortCutOption .content table td:nth-child(4) {\r\n	width: 20%;\r\n	background-color: #eee;\r\n}\r\n#ShortCutOption .content table td.customize {\r\n	background-color: #ffffe0;\r\n}\r\n#ShortCutOption .content table td.changed {\r\n	background-color: #ffe4e1;\r\n}\r\n#ShortCutOption .content table td.selected {\r\n	background-color: #ffb6c1;\r\n}\r\n#ShortCutOption .joyBtn {\r\n	padding: 0 6px;\r\n	height: 18px;\r\n	border: solid 1px #aaa;\r\n	border-radius: 3px;\r\n	background-color: #f4f4f4;\r\n	cursor: pointer;\r\n	font-size: 11px;\r\n}\r\n#ShortCutOption .joyBtn:hover {\r\n	background-color: #e4e4e4;\r\n}\r\n#ShortCutOption .joyBtn.capturing {\r\n	background-color: #ffb6c1;\r\n}\r\n#ShortCutOption .joyMapping {\r\n	display: none;\r\n}\r\n#ShortCutOption .t_gamepad.mapping-open .joySettings {\r\n	display: none;\r\n}\r\n#ShortCutOption .t_gamepad.mapping-open .joyMapping {\r\n	display: block;\r\n}\r\n#ShortCutOption .joyMappingHeader {\r\n	display: flex;\r\n	align-items: center;\r\n	justify-content: space-between;\r\n	margin-bottom: 4px;\r\n}\r\n#ShortCutOption .joyMappingTitle {\r\n	font-weight: bold;\r\n}\r\n#ShortCutOption .joyMappingStatus {\r\n	min-height: 28px;\r\n	margin-bottom: 4px;\r\n	color: #555;\r\n}\r\n#ShortCutOption .joyMappingStatus.capturing {\r\n	color: #b00020;\r\n	font-weight: bold;\r\n}\r\n#ShortCutOption .joyMappingScroll {\r\n	max-height: 320px;\r\n	overflow-y: auto;\r\n}\r\n#ShortCutOption .joyMappingSub {\r\n	margin: 6px 0 3px;\r\n	font-weight: bold;\r\n}\r\n#ShortCutOption .content .joyMapping table td:nth-child(1) {\r\n	width: 58%;\r\n	text-align: left;\r\n	padding-left: 4px;\r\n}\r\n#ShortCutOption .content .joyMapping table td:nth-child(2) {\r\n	width: 26%;\r\n}\r\n#ShortCutOption .content .joyMapping table td:nth-child(3) {\r\n	width: 16%;\r\n}\r\n#ShortCutOption .content .joyMappingCombos td:nth-child(1) {\r\n	width: 45%;\r\n	text-align: center;\r\n	padding-left: 0;\r\n	background-color: #eee;\r\n}\r\n#ShortCutOption .content .joyMappingCombos td:nth-child(2) {\r\n	width: 55%;\r\n	text-align: left;\r\n	padding-left: 4px;\r\n	background-color: transparent;\r\n}\r\n#ShortCutOption .resolution {\r\n	display: none;\r\n}\r\n#ShortCutOption .panel .button {\r\n	position: absolute;\r\n	bottom: 3px;\r\n	width: 42px;\r\n	height: 20px;\r\n	margin-top: 3px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#ShortCutOption .panel .button.reset {\r\n	left: 3px;\r\n}\r\n#ShortCutOption .panel .button.ok {\r\n	right: 93px;\r\n}\r\n#ShortCutOption .panel .button.cancel {\r\n	right: 48px;\r\n}\r\n#ShortCutOption .panel .button.close {\r\n	right: 3px;\r\n}\r\n";
 }));
 //#endregion
-//#region src/UI/Components/ShortCutOption/ShortCutOption.js
-/**
-* Checks if there is a match in the temporary settings
-* Returns the name of the conflicting shortcut, or false if no conflict
-*/
-function tempMatch(key) {
-	const TempState = {};
-	let matchSC = false;
-	Object.keys(ShortCuts$1).forEach(function(SC) {
-		if (ShortCuts$1[SC].cust) {
-			TempState[SC] = {};
-			TempState[SC].key = ShortCuts$1[SC].cust.key;
-			TempState[SC].alt = ShortCuts$1[SC].cust.alt;
-			TempState[SC].ctrl = ShortCuts$1[SC].cust.ctrl;
-			TempState[SC].shift = ShortCuts$1[SC].cust.shift;
-		} else {
-			TempState[SC] = {};
-			TempState[SC].key = ShortCuts$1[SC].init.key;
-			TempState[SC].alt = ShortCuts$1[SC].init.alt;
-			TempState[SC].ctrl = ShortCuts$1[SC].init.ctrl;
-			TempState[SC].shift = ShortCuts$1[SC].init.shift;
-		}
-	});
-	Object.keys(ShortCutsTemp).forEach(function(SC) {
-		if (ShortCutsTemp[SC].cust) {
-			TempState[SC] = {};
-			TempState[SC].key = ShortCutsTemp[SC].cust.key;
-			TempState[SC].alt = ShortCutsTemp[SC].cust.alt;
-			TempState[SC].ctrl = ShortCutsTemp[SC].cust.ctrl;
-			TempState[SC].shift = ShortCutsTemp[SC].cust.shift;
-		} else {
-			TempState[SC] = {};
-			TempState[SC].key = ShortCuts$1[SC].init.key;
-			TempState[SC].alt = ShortCuts$1[SC].init.alt;
-			TempState[SC].ctrl = ShortCuts$1[SC].init.ctrl;
-			TempState[SC].shift = ShortCuts$1[SC].init.shift;
-		}
-	});
-	Object.keys(TempState).every(function(SC) {
-		if (TempState[SC]) {
-			if (TempState[SC].key == key && TempState[SC].alt == KEYS.ALT && TempState[SC].ctrl == KEYS.CTRL && TempState[SC].shift == KEYS.SHIFT) {
-				matchSC = SC;
-				return false;
-			} else return true;
-		}
-	});
-	return matchSC;
+//#region src/UI/Components/JoystickUI/JoystickButtonMap.js
+function identity() {
+	const map = [];
+	for (let i = 0; i < BUTTON_COUNT; i++) map.push(i);
+	return map;
 }
 /**
-* Updates the key list on the UI
+* The stored map if it is a complete permutation of 0-15, else the default.
 */
-function updateKeyList() {
-	const cells = ShortCutOption.getRoot().querySelectorAll("td[data-button]");
-	for (let i = 0; i < cells.length; i++) {
-		const btnName = cells[i].dataset.button;
-		if (getKey(btnName)) cells[i].textContent = (getAlt(btnName) ? "ALT + " : "") + (getCtrl(btnName) ? "CTRL + " : "") + (getShift(btnName) ? "SHIFT + " : "") + KEYS.toReadableKey(parseInt(getKey(btnName), 10));
-		else cells[i].textContent = "N/A";
+function getMap() {
+	const map = Controls_default.joyButtonMap;
+	if (!Array.isArray(map) || map.length !== BUTTON_COUNT) return identity();
+	const seen = /* @__PURE__ */ new Set();
+	for (let i = 0; i < BUTTON_COUNT; i++) {
+		const b = map[i];
+		if (!Number.isInteger(b) || b < 0 || b >= BUTTON_COUNT || seen.has(b)) return identity();
+		seen.add(b);
 	}
+	return map.slice();
+}
+function save$2(map) {
+	const isDefault = map.every((physical, logical) => physical === logical);
+	Controls_default.joyButtonMap = isDefault ? null : map;
+	Controls_default.save();
 }
 /**
-* Resets key bindings to initial
+* Translate physical button states into logical ones.
+*
+* @param {Array<string>} physical states by physical index
+* @return {Array<string>} states by logical index
 */
-function resetKeysToDefault() {
-	const root = ShortCutOption.getRoot();
-	Object.keys(ShortCuts$1).forEach(function(SC) {
-		ShortCutsTemp[SC] = {};
-		ShortCutsTemp[SC].cust = false;
-		const cell = root.querySelector("td[data-button='" + SC + "']");
-		if (cell) {
-			if (ShortCuts$1[SC].cust != ShortCutsTemp[SC].cust) cell.classList.add("changed");
-			else cell.classList.remove("changed");
+function toLogical(physical) {
+	const map = getMap();
+	const logical = physical.slice();
+	for (let i = 0; i < BUTTON_COUNT; i++) logical[i] = physical[map[i]] || "unpressed";
+	return logical;
+}
+/**
+* Name of the physical button currently playing a role.
+*/
+function nameOf(logical) {
+	return BUTTON_NAMES[getMap()[logical]] || "?";
+}
+/**
+* Give a role to a physical button; the button's previous role moves to
+* the button the role had before.
+*/
+function assign(logical, physical) {
+	const map = getMap();
+	const other = map.indexOf(physical);
+	if (other === -1 || other === logical) return;
+	map[other] = map[logical];
+	map[logical] = physical;
+	save$2(map);
+}
+function reset() {
+	save$2(identity());
+}
+/**
+* Wait for the next gamepad button press and hand its physical index to
+* the callback instead of to the game.
+*/
+function startCapture(callback) {
+	_capture = callback;
+}
+function cancelCapture() {
+	_capture = null;
+}
+function isCapturing() {
+	return _capture !== null;
+}
+/**
+* Called by JoystickInputService with the raw states of each poll. While a
+* capture runs, and afterwards until every button is released, the game
+* gets no button input: the button just bound must not also act.
+*
+* @return {boolean} true when this poll's buttons were consumed
+*/
+function consume(physical) {
+	if (_capture) {
+		for (let i = 0; i < BUTTON_COUNT; i++) if (physical[i] === "pressed") {
+			const callback = _capture;
+			_capture = null;
+			_waitForRelease = true;
+			callback(i);
+			break;
 		}
-	});
-	updateKeyList();
+		return true;
+	}
+	if (_waitForRelease) {
+		if (physical.some((state) => state && state !== "unpressed")) return true;
+		_waitForRelease = false;
+	}
+	return false;
 }
-/**
-* Applies the key bindings
-*/
-function applySettings() {
-	Object.keys(ShortCutsTemp).forEach(function(SC) {
-		if (ShortCutsTemp[SC].cust) {
-			ShortCuts$1[SC].cust = {};
-			ShortCuts$1[SC].cust.key = ShortCutsTemp[SC].cust.key;
-			ShortCuts$1[SC].cust.alt = ShortCutsTemp[SC].cust.alt;
-			ShortCuts$1[SC].cust.ctrl = ShortCutsTemp[SC].cust.ctrl;
-			ShortCuts$1[SC].cust.shift = ShortCutsTemp[SC].cust.shift;
-		} else ShortCuts$1[SC].cust = false;
-	});
-	ShortCutControls_default.save();
-	BattleMode.reload();
-	ShortCutsTemp = {};
-	updateKeyList();
-	ShortCutOption.getRoot().querySelectorAll("td.changed").forEach(function(el) {
-		el.classList.remove("changed");
-	});
-	const ShortCut = UIManager.getComponent("ShortCut");
-	if (ShortCut && ShortCut.updateAllTooltips) ShortCut.updateAllTooltips();
-}
-/**
-* Cancels the key bindings
-*/
-function cancelSettings() {
-	ShortCutsTemp = {};
-	updateKeyList();
-	ShortCutOption.getRoot().querySelectorAll("td.changed").forEach(function(el) {
-		el.classList.remove("changed");
-	});
-}
-/**
-* Get shortcut key setting
-*/
-function getKey(sc) {
-	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.key : ShortCuts$1[sc].init.key;
-	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.key : ShortCuts$1[sc].init.key;
-	else return false;
-}
-/**
-* Get shortcut alt setting
-*/
-function getAlt(sc) {
-	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.alt : ShortCuts$1[sc].init.alt;
-	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.alt : ShortCuts$1[sc].init.alt;
-	else return false;
-}
-/**
-* Get shortcut ctrl setting
-*/
-function getCtrl(sc) {
-	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.ctrl : ShortCuts$1[sc].init.ctrl;
-	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.ctrl : ShortCuts$1[sc].init.ctrl;
-	else return false;
-}
-/**
-* Get shortcut shift setting
-*/
-function getShift(sc) {
-	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.shift : ShortCuts$1[sc].init.shift;
-	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.shift : ShortCuts$1[sc].init.shift;
-	else return false;
-}
-function onUpdateTargetOption() {
-	Controls_default.attackTargetMode = parseInt(this.value, 10);
-	Controls_default.save();
-}
-function onUpdateCycleMode() {
-	Controls_default.joyCycleMode = parseInt(this.value, 10);
-	Controls_default.save();
-}
-function onUpdateSense() {
-	Controls_default.joySense = parseFloat(this.value, 10);
-	Controls_default.save();
-}
-function onUpdateJoyQuick() {
-	Controls_default.joyQuick = parseInt(this.value, 10);
-	Controls_default.save();
-}
-function onUpdateJoyDeadline() {
-	Controls_default.joyDeadline = parseInt(this.value, 10);
-	Controls_default.save();
-}
-function onUpdateAutoHide() {
-	Controls_default.joyAutoHide = !!this.checked;
-	Controls_default.save();
-}
-function onUpdateReverseStick() {
-	Controls_default.joyReverseStick = !!this.checked;
-	Controls_default.save();
-}
-function onUpdateDisableVirtualMouse() {
-	Controls_default.joyDisableVirtualMouse = !!this.checked;
-	Controls_default.save();
-}
-var ShortCutOption, ShortCuts$1, ShortCutsTemp, _preferences$31, ShortCutOption_default;
-var init_ShortCutOption = __esmMin((() => {
-	init_KeyEventHandler();
-	init_Preferences$1();
-	init_UIManager();
-	init_GUIComponent();
-	init_Elements();
-	init_ShortCutControls();
-	init_BattleMode();
-	init_ShortCutOption$2();
-	init_ShortCutOption$1();
+var BUTTON_COUNT, BUTTON_NAMES, BUTTON, _capture, _waitForRelease, JoystickButtonMap_default;
+var init_JoystickButtonMap = __esmMin((() => {
 	init_Controls();
-	ShortCutOption = new GUIComponent("ShortCutOption", ShortCutOption_default$1);
-	ShortCuts$1 = ShortCutControls_default.ShortCuts;
-	ShortCutsTemp = {};
-	ShortCutOption.isCapturing = false;
-	_preferences$31 = Preferences.get("ShortCutOption", {
-		x: 300,
-		y: 300
-	}, 1);
-	/**
-	* Render HTML
-	*/
-	ShortCutOption.render = () => ShortCutOption_default$2;
-	/**
-	* Initialize UI
-	*/
-	ShortCutOption.init = function() {
-		const root = this.getRoot();
-		let close = root.querySelector(".close");
-		function closebtn(btn) {
-			if (btn) {
-				btn.addEventListener("mousedown", (e) => {
-					e.stopImmediatePropagation();
-					ShortCutOption.remove();
-				});
-				btn.addEventListener("click", (e) => {
-					e.stopImmediatePropagation();
-					ShortCutOption.remove();
-				});
-			}
-		}
-		closebtn(close);
-		close = root.querySelector(".button.close");
-		closebtn(close);
-		root.querySelectorAll(".tabs button").forEach(function(btn) {
-			btn.addEventListener("click", function() {
-				root.querySelectorAll(".selectedtab").forEach(function(el) {
-					el.classList.remove("selectedtab");
-				});
-				const tab = this.dataset.index;
-				root.querySelectorAll("." + tab).forEach(function(el) {
-					el.classList.add("selectedtab");
-				});
-			});
-		});
-		root.querySelectorAll("td").forEach(function(td) {
-			td.addEventListener("click", function() {
-				if (this.classList.contains("customize")) {
-					ShortCutOption.isCapturing = true;
-					root.querySelectorAll("td.selected").forEach(function(el) {
-						el.classList.remove("selected");
-					});
-					this.classList.add("selected");
-				} else {
-					ShortCutOption.isCapturing = false;
-					root.querySelectorAll("td.selected").forEach(function(el) {
-						el.classList.remove("selected");
-					});
-				}
-			});
-		});
-		const bindChange = function(selector, handler) {
-			const el = root.querySelector(selector);
-			if (el) el.addEventListener("change", handler);
-		};
-		bindChange(".attackTargetMode", onUpdateTargetOption);
-		bindChange(".joyCycleMode", onUpdateCycleMode);
-		bindChange(".joySense", onUpdateSense);
-		bindChange(".joyQuick", onUpdateJoyQuick);
-		bindChange(".joyDeadline", onUpdateJoyDeadline);
-		bindChange(".joyReverseStick", onUpdateReverseStick);
-		bindChange(".joyAutoHide", onUpdateAutoHide);
-		bindChange(".joyDisableVirtualMouse", onUpdateDisableVirtualMouse);
-		const resetBtn = root.querySelector(".button.reset");
-		if (resetBtn) resetBtn.addEventListener("click", function() {
-			resetKeysToDefault();
-		});
-		const okBtn = root.querySelector(".button.ok");
-		if (okBtn) okBtn.addEventListener("click", function() {
-			applySettings();
-		});
-		const cancelBtn = root.querySelector(".button.cancel");
-		if (cancelBtn) cancelBtn.addEventListener("click", function() {
-			cancelSettings();
-		});
-		updateKeyList();
-		this.draggable(".titlebar");
+	BUTTON_COUNT = 16;
+	BUTTON_NAMES = [
+		"A",
+		"B",
+		"X",
+		"Y",
+		"LB",
+		"RB",
+		"LT",
+		"RT",
+		"View",
+		"Menu",
+		"LS click",
+		"RS click",
+		"D-pad ▲",
+		"D-pad ▼",
+		"D-pad ◀",
+		"D-pad ▶"
+	];
+	BUTTON = {
+		A: 0,
+		B: 1,
+		X: 2,
+		Y: 3,
+		LB: 4,
+		RB: 5,
+		LT: 6,
+		RT: 7,
+		VIEW: 8,
+		MENU: 9,
+		LS: 10,
+		RS: 11,
+		UP: 12,
+		DOWN: 13,
+		LEFT: 14,
+		RIGHT: 15
 	};
-	/**
-	* Apply preferences once append to body
-	*/
-	ShortCutOption.onAppend = function() {
-		const cycleMode = this.getRoot().querySelector(".joyCycleMode");
-		if (cycleMode) cycleMode.value = String(Controls_default.joyCycleMode | 0);
-		this._host.style.left = _preferences$31.x + "px";
-		this._host.style.top = _preferences$31.y + "px";
-		this._host.style.zIndex = 100;
+	_capture = null;
+	_waitForRelease = false;
+	JoystickButtonMap_default = {
+		BUTTON,
+		BUTTON_COUNT,
+		BUTTON_NAMES,
+		getMap,
+		toLogical,
+		nameOf,
+		assign,
+		reset,
+		startCapture,
+		cancelCapture,
+		isCapturing,
+		consume
 	};
-	/**
-	* Remove from window (and so clean up)
-	*/
-	ShortCutOption.onRemove = function() {
-		_preferences$31.x = parseInt(this._host.style.left, 10);
-		_preferences$31.y = parseInt(this._host.style.top, 10);
-		_preferences$31.save();
-	};
-	/**
-	* Process key
-	*
-	* @param {object} key
-	*/
-	ShortCutOption.onKeyDown = function(event) {
-		if (ShortCutOption.isCapturing) {
-			if (16 != event.which && 17 != event.which && 18 != event.which) {
-				const root = ShortCutOption.getRoot();
-				const box = root.querySelector("td.selected");
-				const currentSC = box ? box.dataset.button : null;
-				if (!box || !currentSC || !ShortCuts$1[currentSC]) {
-					if (box) console.warn("Shortcut \"" + currentSC + "\" is not defined in ShortCutControls");
-					root.querySelectorAll("td.selected").forEach(function(el) {
-						el.classList.remove("selected");
-					});
-					ShortCutOption.isCapturing = false;
-					event.preventDefault();
-					event.stopImmediatePropagation();
-					return false;
-				}
-				if (event.which == 27) {
-					ShortCutsTemp[currentSC] = {};
-					ShortCutsTemp[currentSC].cust = {};
-					ShortCutsTemp[currentSC].cust.key = "";
-					ShortCutsTemp[currentSC].cust.alt = false;
-					ShortCutsTemp[currentSC].cust.ctrl = false;
-					ShortCutsTemp[currentSC].cust.shift = false;
-				} else {
-					const conflictSC = tempMatch(event.which);
-					if (conflictSC && conflictSC !== currentSC) {
-						const oldKey = getKey(currentSC);
-						const oldAlt = getAlt(currentSC);
-						const oldCtrl = getCtrl(currentSC);
-						const oldShift = getShift(currentSC);
-						ShortCutsTemp[conflictSC] = {};
-						ShortCutsTemp[conflictSC].cust = {};
-						ShortCutsTemp[conflictSC].cust.key = oldKey;
-						ShortCutsTemp[conflictSC].cust.alt = oldAlt;
-						ShortCutsTemp[conflictSC].cust.ctrl = oldCtrl;
-						ShortCutsTemp[conflictSC].cust.shift = oldShift;
-						const conflictCell = root.querySelector("td[data-button='" + conflictSC + "']");
-						if (conflictCell) {
-							conflictCell.classList.add("changed");
-							conflictCell.textContent = (oldAlt ? "ALT + " : "") + (oldCtrl ? "CTRL + " : "") + (oldShift ? "SHIFT + " : "") + (oldKey ? KEYS.toReadableKey(parseInt(oldKey, 10)) : "N/A");
-						}
-					}
-					ShortCutsTemp[currentSC] = {};
-					ShortCutsTemp[currentSC].cust = {};
-					ShortCutsTemp[currentSC].cust.key = event.which;
-					ShortCutsTemp[currentSC].cust.alt = KEYS.ALT;
-					ShortCutsTemp[currentSC].cust.ctrl = KEYS.CTRL;
-					ShortCutsTemp[currentSC].cust.shift = KEYS.SHIFT;
-				}
-				box.textContent = (getAlt(currentSC) ? "ALT + " : "") + (getCtrl(currentSC) ? "CTRL + " : "") + (getShift(currentSC) ? "SHIFT + " : "") + KEYS.toReadableKey(getKey(currentSC), 10);
-				root.querySelectorAll("td.selected").forEach(function(el) {
-					el.classList.add("changed");
-					el.classList.remove("selected");
-				});
-				ShortCutOption.isCapturing = false;
-				event.preventDefault();
-				event.stopImmediatePropagation();
-				return false;
-			}
-		}
-	};
-	ShortCutOption.mouseMode = GUIComponent.MouseMode.STOP;
-	ShortCutOption.needFocus = true;
-	ShortCutOption_default = UIManager.addComponent(ShortCutOption);
-}));
-//#endregion
-//#region src/UI/Components/Escape/Escape.html?raw
-var Escape_default$2;
-var init_Escape$2 = __esmMin((() => {
-	Escape_default$2 = "<div id=\"Escape\" data-background=\"basic_interface/titlebar_fix.bmp\">\r\n	<div class=\"top\">\r\n		<button\r\n			class=\"node\"\r\n			data-background=\"basic_interface/sys_base_off.bmp\"\r\n			data-hover=\"basic_interface/sys_base_on.bmp\"\r\n		></button>\r\n		<div class=\"title\" data-text=\"1483\">Select Option</div>\r\n	</div>\r\n\r\n	<div class=\"container\">\r\n		<button\r\n			class=\"resurection\"\r\n			data-background=\"esc_05a.bmp\"\r\n			data-hover=\"esc_05b.bmp\"\r\n			data-down=\"esc_05c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"savepoint\"\r\n			data-background=\"esc_04a.bmp\"\r\n			data-hover=\"esc_04b.bmp\"\r\n			data-down=\"esc_04c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"charselect\"\r\n			data-background=\"esc_01a.bmp\"\r\n			data-hover=\"esc_01b.bmp\"\r\n			data-down=\"esc_01c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"graphics\"\r\n			data-background=\"esc_06a.bmp\"\r\n			data-hover=\"esc_06b.bmp\"\r\n			data-down=\"esc_06c.bmp\"\r\n		></button>\r\n		<button class=\"sound\" data-background=\"esc_07a.bmp\" data-hover=\"esc_07b.bmp\" data-down=\"esc_07c.bmp\"></button>\r\n		<button class=\"hotkey\" data-background=\"esc_08a.bmp\" data-hover=\"esc_08b.bmp\" data-down=\"esc_08c.bmp\"></button>\r\n		<button class=\"exit\" data-background=\"esc_03a.bmp\" data-hover=\"esc_03b.bmp\" data-down=\"esc_03c.bmp\"></button>\r\n		<button class=\"cancel\" data-background=\"esc_02a.bmp\" data-hover=\"esc_02b.bmp\" data-down=\"esc_02c.bmp\"></button>\r\n	</div>\r\n</div>\r\n";
-}));
-//#endregion
-//#region src/UI/Components/Escape/Escape.css?raw
-var Escape_default$1;
-var init_Escape$1 = __esmMin((() => {
-	Escape_default$1 = ":host {\r\n	width: 280px;\r\n	height: auto;\r\n	top: 200px;\r\n	left: 200px;\r\n}\r\n\r\n#Escape {\r\n	width: 280px;\r\n	height: auto;\r\n	border-radius: 5px;\r\n	background-color: white;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#Escape .top .node {\r\n	width: 11px;\r\n	height: 11px;\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#Escape .top .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n\r\n#Escape .container {\r\n	width: 220px;\r\n	height: auto;\r\n	padding: 20px 30px 6px 30px;\r\n}\r\n\r\n#Escape .container button {\r\n	width: 221px;\r\n	height: 20px;\r\n	margin-top: 3px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n";
-}));
-//#endregion
-//#region src/UI/Components/Escape/Escape.js
-/**
-* Click on Sound button, toggle the UI
-*/
-function onToggleSoundUI() {
-	if (!SoundOption_default._host || !SoundOption_default._host.parentNode) SoundOption_default.append();
-	else SoundOption_default.remove();
-}
-/**
-* Click on Graphic button, toggle the UI
-*/
-function onToggleGraphicUI() {
-	if (!GraphicsOption_default._host || !GraphicsOption_default._host.parentNode) GraphicsOption_default.append();
-	else GraphicsOption_default.remove();
-}
-/**
-* Click on Shortcut button, toggle the UI
-*/
-function onToggleShortcutUI() {
-	if (!ShortCutOption_default._host || !ShortCutOption_default._host.parentNode) ShortCutOption_default.append();
-	else ShortCutOption_default.remove();
-}
-var Escape, Escape_default;
-var init_Escape = __esmMin((() => {
-	init_KeyEventHandler();
-	init_Renderer();
-	init_UIManager();
-	init_GUIComponent();
-	init_SoundOption();
-	init_GraphicsOption();
-	init_ShortCutOption();
-	init_Escape$2();
-	init_Escape$1();
-	Escape = new GUIComponent("Escape", Escape_default$1);
-	/**
-	* Render HTML
-	*/
-	Escape.render = () => Escape_default$2;
-	/**
-	* Initialize UI
-	*/
-	Escape.init = function init() {
-		const root = this.getRoot();
-		const rect = this._host.getBoundingClientRect();
-		this._host.style.top = (Renderer.height - rect.height) * .75 + "px";
-		this._host.style.left = (Renderer.width - rect.width) * .5 + "px";
-		this.draggable();
-		const nodeBtn = root.querySelector(".node");
-		if (nodeBtn) nodeBtn.addEventListener("mousedown", function(event) {
-			event.stopImmediatePropagation();
-			return false;
-		});
-		root.querySelectorAll("button").forEach(function(el) {
-			el.style.display = "";
-		});
-		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
-			el.style.display = "none";
-		});
-		root.querySelector(".sound").addEventListener("click", onToggleSoundUI);
-		root.querySelector(".graphics").addEventListener("click", onToggleGraphicUI);
-		root.querySelector(".resurection").addEventListener("click", function() {
-			Escape.onResurectionRequest();
-		});
-		root.querySelector(".savepoint").addEventListener("click", function() {
-			Escape.onReturnSavePointRequest();
-		});
-		root.querySelector(".charselect").addEventListener("click", function() {
-			Escape.onCharSelectionRequest();
-		});
-		root.querySelector(".hotkey").addEventListener("click", onToggleShortcutUI);
-		root.querySelector(".exit").addEventListener("click", function() {
-			Escape.onExitRequest();
-		});
-		root.querySelector(".cancel").addEventListener("click", function() {
-			Escape._host.style.display = "none";
-		});
-		this._host.style.display = "none";
-	};
-	/**
-	* Window must not be visible once append
-	* but need to be here to manage key event
-	*/
-	Escape.onAppend = function onAppend() {
-		this._host.style.display = "none";
-	};
-	/**
-	* Reset buttons once UI is removed
-	*/
-	Escape.onRemove = function onRemove() {
-		this._host.style.display = "none";
-		const root = this.getRoot();
-		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
-			el.style.display = "none";
-		});
-		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
-			el.style.display = "";
-		});
-	};
-	/**
-	* Key Listener
-	*
-	* @param {object} event
-	* @return {boolean}
-	*/
-	Escape.onKeyDown = function onKeyDown(event) {
-		if (event.which === KEYS.ESCAPE || event.key === "Escape") {
-			if (this._host.style.display === "none") {
-				this._host.style.display = "";
-				this.focus();
-			} else this._host.style.display = "none";
-		}
-	};
-	/**
-	* Show death menu (called when player dies)
-	*/
-	Escape.showDeathMenu = function showDeathMenu(hasSiegfried) {
-		const root = this.getRoot();
-		this._host.style.display = "";
-		root.querySelector(".savepoint").style.display = "";
-		if (hasSiegfried) root.querySelector(".resurection").style.display = "";
-		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
-			el.style.display = "none";
-		});
-	};
-	/**
-	* Reset to normal menu (called when player resurrects)
-	*/
-	Escape.resetMenu = function resetMenu() {
-		this._host.style.display = "none";
-		const root = this.getRoot();
-		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
-			el.style.display = "none";
-		});
-		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
-			el.style.display = "";
-		});
-	};
-	/**
-	* @var {function} callback when player want to resurect using Token of Siegfried
-	*/
-	Escape.onResurectionRequest = function onResurectionRequest() {};
-	/**
-	* @var {function} callback to define to disconnect from game
-	*/
-	Escape.onExitRequest = function onExitRequest() {};
-	/**
-	* @var {function} callback when player want to resurect using Token of Siegfried
-	*/
-	Escape.onReturnSavePointRequest = function onReturnSavePointRequest() {};
-	/**
-	* @var {function} callback when player want to return to char selection
-	*/
-	Escape.onCharSelectionRequest = function onCharSelectionRequest() {};
-	Escape.mouseMode = GUIComponent.MouseMode.STOP;
-	Escape.needFocus = true;
-	Escape_default = UIManager.addComponent(Escape);
-}));
-//#endregion
-//#region src/UI/Components/CheckAttendance/CheckAttendance.html?raw
-var CheckAttendance_default$2;
-var init_CheckAttendance$2 = __esmMin((() => {
-	CheckAttendance_default$2 = "<div id=\"CheckAttendance\">\r\n	<div class=\"titlebar\" data-background=\"check_attendance/attendance_bg.bmp\">\r\n		<div class=\"top-panel\">\r\n			<div class=\"top-panel-reward\">\r\n				<div class=\"text\">Check Reward</div>\r\n			</div>\r\n			<div class=\"top-panel-period\"></div>\r\n		</div>\r\n		<div class=\"left-panel\">\r\n			<ul class=\"days-list\"></ul>\r\n		</div>\r\n		<div class=\"right-panel\">\r\n			<div class=\"total-days\"></div>\r\n			<div class=\"npc\"></div>\r\n			<div class=\"remaining-days\">\r\n				<div class=\"remaining-day\">\r\n					<div class=\"remaining-day-text\"></div>\r\n				</div>\r\n				<div class=\"remaining-text\">\r\n					<div class=\"remaining-text-div\">Day</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n		<div class=\"bottom-panel\">\r\n			<div class=\"close-container\">\r\n				<ui-button\r\n					class=\"close-container-btn\"\r\n					bg=\"check_attendance/bt_ok_normal.bmp\"\r\n					down=\"check_attendance/bt_ok_press.bmp\"\r\n					>Close</ui-button\r\n				>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
-}));
-//#endregion
-//#region src/UI/Components/CheckAttendance/CheckAttendance.css?raw
-var CheckAttendance_default$1;
-var init_CheckAttendance$1 = __esmMin((() => {
-	CheckAttendance_default$1 = ":host {\r\n	width: 488px;\r\n	height: 413px;\r\n}\r\n\r\n#CheckAttendance {\r\n	position: absolute;\r\n	width: 488px;\r\n	height: 413px;\r\n}\r\n\r\n#CheckAttendance .titlebar {\r\n	width: 100%;\r\n	height: 100%;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel {\r\n	width: 100%;\r\n	height: 85px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-reward {\r\n	width: 100%;\r\n	height: 70px;\r\n	position: relative;\r\n	display: flex;\r\n	justify-content: center;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-reward .text {\r\n	font-weight: bolder;\r\n	color: #633921;\r\n	display: table;\r\n	position: absolute;\r\n	top: 55%;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-period {\r\n	width: 100%;\r\n	height: 15px;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #a55239;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel {\r\n	width: 335px;\r\n	height: 270px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list {\r\n	list-style: none;\r\n	padding-left: 25px;\r\n	margin-top: 8px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item {\r\n	float: left;\r\n	width: 58px;\r\n	height: 60px;\r\n	margin: 2px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item {\r\n	width: 100%;\r\n	height: 40px;\r\n	position: relative;\r\n	background-position: center;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .item-quantity {\r\n	position: absolute;\r\n	bottom: 2px;\r\n	right: 15px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .name {\r\n	position: relative;\r\n	display: none;\r\n	z-index: 1;\r\n	top: -10px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item:hover .name {\r\n	display: table;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .name {\r\n	display: none;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .day {\r\n	width: 100%;\r\n	height: 20px;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #394aa5;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked,\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked-hidden,\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .completed {\r\n	position: absolute;\r\n	width: 58px;\r\n	height: 60px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked-hidden {\r\n	display: none;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel {\r\n	width: 152px;\r\n	height: 270px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .total-days {\r\n	width: 80%;\r\n	height: 85px;\r\n	text-align: center;\r\n	display: flex;\r\n	align-items: center;\r\n	font-weight: bold;\r\n	color: #a53963;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .npc {\r\n	width: 100%;\r\n	height: 105px;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days {\r\n	width: 100%;\r\n	height: 80px;\r\n	font-weight: bold;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-day {\r\n	height: 100%;\r\n	width: 85px;\r\n	float: left;\r\n	position: relative;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-day .remaining-day-text {\r\n	position: absolute;\r\n	right: 10px;\r\n	bottom: 20px;\r\n	font-weight: bolder;\r\n	font-size: 20px;\r\n	color: white;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-text {\r\n	height: 100%;\r\n	width: 35px;\r\n	float: left;\r\n	position: relative;\r\n	font-weight: bolder;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-text .remaining-text-div {\r\n	position: absolute;\r\n	left: 3px;\r\n	bottom: 20px;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel {\r\n	width: 100%;\r\n	height: 58px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel .close-container {\r\n	width: 100%;\r\n	height: 100%;\r\n	position: relative;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel .close-container .close-container-btn {\r\n	width: 146px;\r\n	height: 30px;\r\n	border: 0;\r\n	font-weight: bold;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	position: absolute;\r\n	top: 35%;\r\n	left: 35%;\r\n	display: inline-block;\r\n	text-align: center;\r\n	line-height: 30px;\r\n}\r\n";
-}));
-//#endregion
-//#region src/UI/Components/CheckAttendance/CheckAttendance.js
-/**
-* Request Attendance Item
-*/
-function onClickAttendance(e) {
-	const root = CheckAttendance.getRoot();
-	const el = e.currentTarget;
-	const id = el.id;
-	const checkedHidden = root.querySelector(`#${id} .checked-hidden`);
-	if (checkedHidden) checkedHidden.className = "checked";
-	const completedDiv = document.createElement("div");
-	completedDiv.className = "completed";
-	completedDiv.dataset.background = "check_attendance/bt_slot_complete.tga";
-	el.appendChild(completedDiv);
-	GUIComponent.processDataAttrs(completedDiv);
-	const total_days_string = `${parseInt(_checkAttendanceData / 10) + 1} Day attendance success`;
-	const totalDaysEl = root.querySelector(".total-days");
-	if (totalDaysEl) totalDaysEl.innerHTML = total_days_string;
-	const _pkt = new PACKET.CZ.REQ_CHECK_ATTENDANCE();
-	Network.sendPacket(_pkt);
-}
-var CheckAttendance, _checkAttendanceData, _CheckAttendanceInfo, _preferences$30, CheckAttendance_default;
-var init_CheckAttendance = __esmMin((() => {
-	init_DBManager();
-	init_Preferences$1();
-	init_Renderer();
-	init_UIManager();
-	init_GUIComponent();
-	init_NetworkManager();
-	init_PacketStructure();
-	init_CheckAttendance$2();
-	init_CheckAttendance$1();
-	init_ChatBox();
-	init_Elements();
-	CheckAttendance = new GUIComponent("CheckAttendance", CheckAttendance_default$1);
-	CheckAttendance.render = () => CheckAttendance_default$2;
-	_preferences$30 = Preferences.get("CheckAttendance", {
-		x: 200,
-		y: 200
-	}, 1);
-	/**
-	* Initialize the component (event listener, etc.)
-	*/
-	CheckAttendance.init = function init() {
-		_CheckAttendanceInfo = DB.getCheckAttendanceInfo();
-		const root = this.getRoot();
-		const baseEl = root.querySelector(".base");
-		if (baseEl) baseEl.addEventListener("mousedown", (event) => {
-			event.stopImmediatePropagation();
-			event.preventDefault();
-		});
-		root.querySelector(".close-container-btn").addEventListener("click", () => {
-			CheckAttendance._host.style.display = "none";
-		});
-		this.draggable(root.querySelector(".titlebar"));
-	};
-	/**
-	* Once append to the DOM, start to position the UI
-	*/
-	CheckAttendance.onAppend = function onAppend() {
-		Object.assign(this._host.style, {
-			top: `${Math.min(Math.max(0, _preferences$30.y), Renderer.height - this._host.getBoundingClientRect().height)}px`,
-			left: `${Math.min(Math.max(0, _preferences$30.x), Renderer.width - this._host.getBoundingClientRect().width)}px`
-		});
-		if (!_preferences$30.show) this._host.style.display = "none";
-		if (_checkAttendanceData >= 0 && _CheckAttendanceInfo.Config) {
-			CheckAttendance.updateUI();
-			this.focus();
-		} else ChatBox_default.addText("Currently there is no attendance check event.", ChatBox_default.TYPE.ERROR | ChatBox_default.TYPE.SELF);
-	};
-	/**
-	* Window Shortcuts
-	*/
-	CheckAttendance.onShortCut = function onShortCut(key) {
-		switch (key.cmd) {
-			case "TOGGLE": if (this._host.style.display === "none") {
-				this._host.style.display = "";
-				this.focus();
-			} else this._host.style.display = "none";
-		}
-	};
-	/**
-	* Show/Hide UI
-	*/
-	CheckAttendance.toggle = function toggle() {
-		if (this._host.style.display !== "none") this._host.style.display = "none";
-		else {
-			const _pkt = new PACKET.CZ.UI_OPEN();
-			_pkt.UIType = 5;
-			Network.sendPacket(_pkt);
-		}
-	};
-	/**
-	* Set Data to Attendance
-	*/
-	CheckAttendance.setData = function setData(data) {
-		_checkAttendanceData = data;
-	};
-	/**
-	* Update CheckAttendance UI
-	*/
-	CheckAttendance.updateUI = function updateUI() {
-		const root = this.getRoot();
-		let already_requested = 0;
-		let attendance_count = 0;
-		let current_day = 1;
-		if (_CheckAttendanceInfo.Config) {
-			const regex = /(\d{4})(\d{2})(\d{2})/;
-			const start = regex.exec(_CheckAttendanceInfo.Config.StartDate);
-			const end = regex.exec(_CheckAttendanceInfo.Config.EndDate);
-			const period_string = `Event Period: From ${start[2]}/${start[3]} ~ Until ${end[2]}/${end[3]} (Month/Day) 24:00`;
-			const periodEl = root.querySelector(".top-panel-period");
-			if (periodEl) periodEl.innerHTML = period_string;
-			if (_checkAttendanceData >= 0) {
-				already_requested = _checkAttendanceData % 10;
-				attendance_count = parseInt(_checkAttendanceData / 10);
-				current_day = attendance_count + 1;
-				const total_days_string = attendance_count >= 20 || already_requested ? `${attendance_count} Day attendance success` : `Click the item to claim day ${current_day} reward`;
-				const end_date = /* @__PURE__ */ new Date(`${end[1]}-${end[2]}-${end[3]}`);
-				const now_date = /* @__PURE__ */ new Date();
-				const remaining_days = Math.round(Math.abs((end_date.getTime() - now_date.getTime()) / 864e5));
-				const totalDaysEl = root.querySelector(".total-days");
-				if (totalDaysEl) totalDaysEl.innerHTML = total_days_string;
-				const remainingEl = root.querySelector(".remaining-day-text");
-				if (remainingEl) remainingEl.textContent = remaining_days;
-			}
-		}
-		if (_CheckAttendanceInfo.Rewards) {
-			const daysList = root.querySelector(".days-list");
-			for (let i = 0; i < 20; i++) {
-				const item = DB.getItemInfo(_CheckAttendanceInfo.Rewards[i].item_id);
-				const day = i + 1;
-				const background = !already_requested && day == current_day ? `data-background="check_attendance/bt_slot_a.bmp" data-down="check_attendance/bt_slot_press.bmp"` : "";
-				const checked = day <= attendance_count ? "checked" : "checked-hidden";
-				const slot_complete_string = day > (already_requested ? attendance_count - 1 : attendance_count) ? "bt_slot_complete" : "bt_slot_off";
-				const item_slot = `<li id="attendance_day_${i}" class="attendance-item" ${background}><div class="item" data-background="${DB.INTERFACE_PATH}item/${item.identifiedResourceName}.bmp"><span class="item-quantity">${_CheckAttendanceInfo.Rewards[i].quantity}</span><span class="name">${item.identifiedDisplayName}</span><div class="${checked}" data-background="check_attendance/${slot_complete_string}.tga"></div></div><div class="day">${day} Day</div></li>`;
-				if (daysList) daysList.insertAdjacentHTML("beforeend", item_slot);
-				if (!already_requested && day == current_day) {
-					const dayEl = root.querySelector(`#attendance_day_${i}`);
-					if (dayEl) {
-						dayEl.addEventListener("click", onClickAttendance);
-						dayEl.classList.add("event_add_cursor");
-					}
-				}
-			}
-			const dataAttrSelector = "[data-background],[data-hover],[data-down],[data-active],[data-text],[data-preload]";
-			if (daysList) daysList.querySelectorAll(dataAttrSelector).forEach((node) => {
-				GUIComponent.processDataAttrs(node);
-			});
-		}
-	};
-	/**
-	* Clean CheckAttendance UI
-	*/
-	CheckAttendance.cleanUI = function cleanUI() {
-		const root = CheckAttendance.getRoot();
-		const periodEl = root.querySelector(".top-panel-period");
-		if (periodEl) periodEl.innerHTML = "";
-		const daysListEl = root.querySelector(".days-list");
-		if (daysListEl) daysListEl.innerHTML = "";
-		const totalDaysEl = root.querySelector(".total-days");
-		if (totalDaysEl) totalDaysEl.innerHTML = "";
-		const remainingEl = root.querySelector(".remaining-day-text");
-		if (remainingEl) remainingEl.innerHTML = "";
-	};
-	/**
-	* Close the window
-	*/
-	CheckAttendance.onClose = function onClose() {
-		CheckAttendance._host.style.display = "none";
-	};
-	CheckAttendance_default = UIManager.addComponent(CheckAttendance);
 }));
 //#endregion
 //#region src/UI/TouchDrag.js
@@ -232352,6 +233053,34 @@ function _escapeHTML$2(text) {
 }
 function _isNumeric(val) {
 	return !isNaN(parseFloat(val)) && isFinite(val);
+}
+/**
+* The skill-constant names for an id, built once on the first miss: a skill
+* tree refresh loads every row's icon, and almost all of them hit on Name.
+*/
+function skillConstNames(skillId) {
+	if (!_skillConstNames) {
+		_skillConstNames = /* @__PURE__ */ new Map();
+		for (const [name, id] of Object.entries(SkillConst_default)) {
+			if (!_skillConstNames.has(id)) _skillConstNames.set(id, []);
+			_skillConstNames.get(id).push(name);
+		}
+	}
+	return _skillConstNames.get(Number(skillId)) || [];
+}
+function loadSkillIcon(skill, skillId, onload) {
+	const primary = skill?.Name;
+	let names = null;
+	const load = (index) => {
+		if (index >= names.length) return;
+		Client.loadFile(`${DB.INTERFACE_PATH}item/${names[index]}.bmp`, onload, () => load(index + 1));
+	};
+	const fallback = () => {
+		names = skillConstNames(skillId).filter((name) => name !== primary);
+		load(0);
+	};
+	if (primary) Client.loadFile(`${DB.INTERFACE_PATH}item/${primary}.bmp`, onload, fallback);
+	else fallback();
 }
 function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnMiniHover = false, guardMissingJob = false, readdSkillOnUpdate = false, listOnly = false, dragFrom = null, titlebarText = null, containerSelector = null, preferenceDefaults = {
 	x: 100,
@@ -232778,7 +233507,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 								miniTr.setAttribute("data-index", key);
 								miniTr.innerHTML = `<td class="icon"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" width="24" height="24" /></td><td class="levelupcontainer"></td><td class="selectable"><div class="name">${_escapeHTML$2(sk.SkillName)}<br/><span class="level">Lv : <span class="current">0</span></span></div></td><td class="selectable type"><div class="consume">Passive</div></td>`;
 								miniBox.appendChild(miniTr);
-								Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, (data) => {
+								loadSkillIcon(sk, key, (data) => {
 									const img = miniTr.querySelector(".icon img");
 									if (img) img.src = data;
 								});
@@ -232786,7 +233515,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 						}
 					}
 				}
-				Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, (data) => {
+				loadSkillIcon(sk, key, (data) => {
 					const img = element.querySelector(".icon img");
 					if (img) img.src = data;
 				});
@@ -232866,7 +233595,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 				}
 			}
 		}
-		Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, (data) => {
+		loadSkillIcon(sk, skill.SKID, (data) => {
 			const img = element.querySelector(".icon img");
 			if (img) img.src = data;
 		});
@@ -232913,7 +233642,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 			if (table) table.appendChild(tr);
 		}
 		this.parseHTML.call(levelup);
-		Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, (data) => {
+		loadSkillIcon(sk, skill.SKID, (data) => {
 			const img = tr.querySelector(".icon img");
 			if (img) img.src = data;
 		});
@@ -233168,6 +233897,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 	Component.getSkillById = getSkillById;
 	return UIManager.addComponent(Component);
 }
+var _skillConstNames;
 var init_SkillListCommon = __esmMin((() => {
 	init_Elements();
 	init_Client();
@@ -233179,11 +233909,13 @@ var init_SkillListCommon = __esmMin((() => {
 	init_SessionStorage();
 	init_SkillDescription();
 	init_SkillInfo();
+	init_SkillConst();
 	init_SkillTargetSelection();
 	init_SkillTreeView();
 	init_TouchDrag();
 	init_SkillRequirements();
 	init_UIManager();
+	_skillConstNames = null;
 }));
 //#endregion
 //#region src/UI/Components/SkillList/SkillList/SkillList.html?raw
@@ -233196,6 +233928,46 @@ var init_SkillList$3 = __esmMin((() => {
 var SkillList_default$1;
 var init_SkillList$2 = __esmMin((() => {
 	SkillList_default$1 = ":host {\r\n	top: 100px;\r\n	left: 100px;\r\n}\r\n\r\n.SkillList {\r\n	position: absolute;\r\n	border-radius: 5px;\r\n	background: white;\r\n	line-height: 18px;\r\n	letter-spacing: 0px;\r\n	border: 1px solid #c1c6c2;\r\n}\r\n.SkillList .border {\r\n	border: 1px solid #c1c6c2;\r\n	margin: 1px;\r\n	border-radius: 5px;\r\n}\r\n\r\n.SkillList .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n}\r\n.SkillList .titlebar .base {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n.SkillList .titlebar .text {\r\n	text-shadow: 1px 1px white;\r\n	vertical-align: -2px;\r\n	white-space: nowrap;\r\n	/* chrome bug */\r\n	display: inline-block;\r\n	width: 120px;\r\n	height: 13px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n\r\n.SkillList .titlebar .left {\r\n	margin-left: 3px;\r\n	float: left;\r\n}\r\n.SkillList .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n}\r\n.SkillList .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n.SkillList .content {\r\n	overflow-y: auto;\r\n	padding: 5px;\r\n	width: 270px;\r\n	height: 200px;\r\n}\r\n.SkillList .content table {\r\n	border: none;\r\n	border-spacing: 0px;\r\n	padding-top: 5px;\r\n}\r\n.SkillList .content td,\r\n.SkillList .content .name {\r\n	padding: 0px;\r\n}\r\n\r\n.SkillList .levelup {\r\n	border: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	padding: 0;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n.SkillList td.type {\r\n	vertical-align: bottom;\r\n}\r\n\r\n.SkillList .content .icon {\r\n	padding-left: 15px;\r\n}\r\n.SkillList .content .levelupcontainer {\r\n	padding-left: 5px;\r\n	padding-right: 5px;\r\n	width: 24px;\r\n}\r\n.SkillList .content div.name {\r\n	line-height: 12px;\r\n	white-space: nowrap;\r\n	padding-left: 5px;\r\n	white-space: nowrap;\r\n	width: 120px;\r\n	padding-top: 4px;\r\n	height: 28px;\r\n}\r\n.SkillList .disabled .icon,\r\n.SkillList .disabled .name {\r\n	opacity: 0.5;\r\n}\r\n.SkillList .disabled .consume,\r\n.SkillList .disabled .level {\r\n	display: none;\r\n}\r\n.SkillList .currentDown,\r\n.SkillList .currentUp {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n\r\n.SkillList .selected.disabled .selectable {\r\n	background-color: #b5b5b5;\r\n}\r\n.SkillList .selected.passive .selectable {\r\n	background-color: #73d5ee;\r\n}\r\n.SkillList .selected.active .selectable {\r\n	background-color: #739cee;\r\n}\r\n\r\n.SkillList .footer {\r\n	width: 100%;\r\n	height: 27px;\r\n	background-repeat: repeat-x;\r\n	background-color: transparent;\r\n	position: relative;\r\n}\r\n.SkillList .footer .text {\r\n	padding-top: 7px;\r\n	margin-left: 10px;\r\n}\r\n.SkillList .footer .extend {\r\n	position: absolute;\r\n	right: 0px;\r\n	bottom: 1px;\r\n	width: 13px;\r\n	height: 13px;\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#lvlup_job {\r\n	z-index: 51;\r\n	position: absolute;\r\n	right: 0px;\r\n	bottom: 0px;\r\n	width: 43px;\r\n	height: 43px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n";
+}));
+//#endregion
+//#region src/UI/Components/SkillListMH/SkillListMH.js
+/**
+* Build a Homunculus/Mercenary skill window on top of the shared SkillList
+* factory, using its list-only (old-style) mode and layering the MH-specific
+* bits (window name, titlebar text, drag origin, Escape-to-close) on top.
+*/
+function createSkillListMH(type) {
+	const component = createSkillList({
+		name: `SkillList${type === "homunculus" ? "HOM" : "MER"}`,
+		htmlText: SkillList_default$2,
+		cssText: SkillList_default$1,
+		listOnly: true,
+		dragFrom: "SkillListMH",
+		titlebarText: type === "homunculus" ? "Homunculus Skills" : "Mercenary Skills",
+		containerSelector: ".SkillList",
+		preferenceDefaults: {
+			x: 100,
+			y: 200,
+			width: 8,
+			height: 5,
+			show: false
+		}
+	});
+	component.onKeyDown = function onKeyDown(event) {
+		if ((event.which === KEYS.ESCAPE || event.key === "Escape") && this.ui.is(":visible")) this.toggle();
+	};
+	return component;
+}
+var SkillListMH_default;
+var init_SkillListMH = __esmMin((() => {
+	init_KeyEventHandler();
+	init_SkillListCommon();
+	init_SkillList$3();
+	init_SkillList$2();
+	SkillListMH_default = {
+		homunculus: createSkillListMH("homunculus"),
+		mercenary: createSkillListMH("mercenary")
+	};
 }));
 //#endregion
 //#region src/UI/Components/SkillList/SkillList/SkillList.js
@@ -233275,6 +234047,3307 @@ var init_SkillList = __esmMin((() => {
 			}
 		};
 	};
+}));
+//#endregion
+//#region src/UI/Components/ShortCut/ShortCut.html?raw
+var ShortCut_default$2;
+var init_ShortCut$2 = __esmMin((() => {
+	ShortCut_default$2 = "<div id=\"ShortCut\" data-background=\"basic_interface/shortitem_bg.bmp\">\r\n	<button\r\n		class=\"close\"\r\n		data-background=\"basic_interface/sys_close_off.bmp\"\r\n		data-hover=\"basic_interface/sys_close_on.bmp\"\r\n	></button>\r\n	<button class=\"resize\" data-background=\"btn_resize.bmp\"></button>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"0\"></div>\r\n		<div class=\"container\" data-index=\"1\"></div>\r\n		<div class=\"container\" data-index=\"2\"></div>\r\n		<div class=\"container\" data-index=\"3\"></div>\r\n		<div class=\"container\" data-index=\"4\"></div>\r\n		<div class=\"container\" data-index=\"5\"></div>\r\n		<div class=\"container\" data-index=\"6\"></div>\r\n		<div class=\"container\" data-index=\"7\"></div>\r\n		<div class=\"container\" data-index=\"8\"></div>\r\n		<div class=\"index\">1</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"9\"></div>\r\n		<div class=\"container\" data-index=\"10\"></div>\r\n		<div class=\"container\" data-index=\"11\"></div>\r\n		<div class=\"container\" data-index=\"12\"></div>\r\n		<div class=\"container\" data-index=\"13\"></div>\r\n		<div class=\"container\" data-index=\"14\"></div>\r\n		<div class=\"container\" data-index=\"15\"></div>\r\n		<div class=\"container\" data-index=\"16\"></div>\r\n		<div class=\"container\" data-index=\"17\"></div>\r\n		<div class=\"index\">2</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"18\"></div>\r\n		<div class=\"container\" data-index=\"19\"></div>\r\n		<div class=\"container\" data-index=\"20\"></div>\r\n		<div class=\"container\" data-index=\"21\"></div>\r\n		<div class=\"container\" data-index=\"22\"></div>\r\n		<div class=\"container\" data-index=\"23\"></div>\r\n		<div class=\"container\" data-index=\"24\"></div>\r\n		<div class=\"container\" data-index=\"25\"></div>\r\n		<div class=\"container\" data-index=\"26\"></div>\r\n		<div class=\"index\">3</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"27\"></div>\r\n		<div class=\"container\" data-index=\"28\"></div>\r\n		<div class=\"container\" data-index=\"29\"></div>\r\n		<div class=\"container\" data-index=\"30\"></div>\r\n		<div class=\"container\" data-index=\"31\"></div>\r\n		<div class=\"container\" data-index=\"32\"></div>\r\n		<div class=\"container\" data-index=\"33\"></div>\r\n		<div class=\"container\" data-index=\"34\"></div>\r\n		<div class=\"container\" data-index=\"35\"></div>\r\n		<div class=\"index\">4</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"shortcut-tooltip\"></div>\r\n</div>\r\n";
+}));
+//#endregion
+//#region src/UI/Components/ShortCut/ShortCut.css?raw
+var ShortCut_default$1;
+var init_ShortCut$1 = __esmMin((() => {
+	ShortCut_default$1 = ":host {\r\n	width: 280px;\r\n	top: 0px;\r\n	left: 480px;\r\n	overflow: hidden;\r\n}\r\n\r\n#ShortCut {\r\n	position: absolute;\r\n	width: 280px;\r\n	height: 100%;\r\n	background-repeat: repeat-y;\r\n}\r\n#ShortCut .close {\r\n	position: absolute;\r\n	top: 2px;\r\n	right: 2px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 11px;\r\n	height: 11px;\r\n}\r\n#ShortCut .resize {\r\n	position: absolute;\r\n	bottom: 1px;\r\n	right: 1px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 13px;\r\n	height: 13px;\r\n}\r\n\r\n#ShortCut .row {\r\n	position: relative;\r\n}\r\n#ShortCut .row .container {\r\n	float: left;\r\n	width: 24px;\r\n	height: 23px;\r\n	margin-top: 5px;\r\n	margin-left: 5px;\r\n	margin-bottom: 6px;\r\n}\r\n#ShortCut .row .container:hover {\r\n	background-color: #b5ffb5;\r\n}\r\n#ShortCut .row .index {\r\n	float: left;\r\n	position: relative;\r\n	top: 13px;\r\n	left: 5px;\r\n}\r\n#ShortCut .row .clear {\r\n}\r\n\r\n#ShortCut .icon {\r\n	position: relative;\r\n}\r\n#ShortCut .icon .img {\r\n	width: 24px;\r\n	height: 24px;\r\n	background-repeat: no-repeat;\r\n	border: none;\r\n	background-color: transparent;\r\n}\r\n#ShortCut .icon .name {\r\n	display: none;\r\n	z-index: 1;\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n}\r\n#ShortCut .icon:hover .name {\r\n	display: block;\r\n}\r\n#ShortCut .icon.hide .name {\r\n	display: none;\r\n}\r\n#ShortCut .icon .amount {\r\n	position: absolute;\r\n	right: 1px;\r\n	top: 20px;\r\n	text-shadow: 1px 1px 0px white;\r\n	text-align: right;\r\n	font-weight: bold;\r\n}\r\n\r\n.shortcut-tooltip {\r\n	display: none;\r\n	position: fixed;\r\n	background-color: rgba(0, 0, 0, 0.8);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 2px 6px;\r\n	white-space: nowrap;\r\n	z-index: 10000;\r\n	border-radius: 2px;\r\n	pointer-events: none;\r\n	line-height: 1.2;\r\n}\r\n.shortcut-tooltip.show {\r\n	display: block;\r\n}\r\n\r\n#ShortCut .cooldown-overlay {\r\n	position: absolute;\r\n	top: 0;\r\n	left: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	pointer-events: none;\r\n	border-radius: 2px;\r\n	z-index: 999;\r\n	background: conic-gradient(rgba(0, 0, 0, 0.75) 0deg, transparent 0deg);\r\n}\r\n";
+}));
+//#endregion
+//#region src/UI/Components/ShortCut/ShortCut.js
+var ShortCut_exports = /* @__PURE__ */ __exportAll({ default: () => ShortCut_default });
+/**
+* Resolve which skill window owns a skill id
+*
+* @param {number} skill id
+* @return {object} component exposing useSkillID / getSkillById
+*/
+function getSkillOwner(id) {
+	if (id >= SkillConst_default.GD_APPROVAL && id <= SkillConst_default.GD_LAST) return Guild_default;
+	if (id >= SkillConst_default.HOMUN_BEGIN && id <= SkillConst_default.HOMUN_LAST) return SkillListMH_default.homunculus;
+	if (id >= SkillConst_default.MERCENARY_BEGIN && id <= SkillConst_default.MERCENARY_LAST) return SkillListMH_default.mercenary;
+	return Controller$4.getUI();
+}
+/**
+* Update tooltip for empty slots with hotkey only
+*/
+function updateEmptySlotTooltips() {
+	const containers = ShortCut.getRoot().querySelectorAll(".container");
+	for (let i = 0; i < containers.length; ++i) if (!_list$4[i] || !_list$4[i].isSkill && !_list$4[i].ID) {
+		const hotkey = getHotKeyString(i);
+		if (hotkey) containers[i].setAttribute("data-tooltip", hotkey);
+	}
+}
+/**
+* Get hotkey string for shortcut index
+*
+* @param {number} index of the shortcut slot
+* @return {string} hotkey string or empty string
+*/
+function getHotKeyString(index) {
+	const shortcutKeys = [
+		"F1_1",
+		"F1_2",
+		"F1_3",
+		"F1_4",
+		"F1_5",
+		"F1_6",
+		"F1_7",
+		"F1_8",
+		"F1_9",
+		"F2_1",
+		"F2_2",
+		"F2_3",
+		"F2_4",
+		"F2_5",
+		"F2_6",
+		"F2_7",
+		"F2_8",
+		"F2_9",
+		"F3_1",
+		"F3_2",
+		"F3_3",
+		"F3_4",
+		"F3_5",
+		"F3_6",
+		"F3_7",
+		"F3_8",
+		"F3_9",
+		"F4_1",
+		"F4_2",
+		"F4_3",
+		"F4_4",
+		"F4_5",
+		"F4_6",
+		"F4_7",
+		"F4_8",
+		"F4_9"
+	];
+	if (index < 0 || index >= shortcutKeys.length) return "";
+	const scKey = shortcutKeys[index];
+	const shortcut = ShortCutControls_default.ShortCuts[scKey];
+	if (!shortcut) return "";
+	const key = shortcut.cust ? shortcut.cust.key : shortcut.init.key;
+	const alt = shortcut.cust ? shortcut.cust.alt : shortcut.init.alt;
+	const ctrl = shortcut.cust ? shortcut.cust.ctrl : shortcut.init.ctrl;
+	const shift = shortcut.cust ? shortcut.cust.shift : shortcut.init.shift;
+	if (!key) return "";
+	let hotkeyStr = "";
+	if (alt) hotkeyStr += "ALT + ";
+	if (ctrl) hotkeyStr += "CTRL + ";
+	if (shift) hotkeyStr += "SHIFT + ";
+	hotkeyStr += KEYS.toReadableKey(key);
+	return hotkeyStr;
+}
+/**
+* Show fixed tooltip on container hover
+*/
+function onContainerMouseEnter(event) {
+	const tooltipText = event.currentTarget.getAttribute("data-tooltip");
+	if (tooltipText) {
+		const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
+		const hostRect = ShortCut._host.getBoundingClientRect();
+		tooltip.textContent = tooltipText;
+		tooltip.classList.add("show");
+		const tooltipRect = tooltip.getBoundingClientRect();
+		const showAbove = window.innerHeight - (hostRect.top + hostRect.height) < tooltipRect.height + 10;
+		const left = hostRect.left + hostRect.width / 2 - tooltipRect.width / 2;
+		let top;
+		if (showAbove) top = hostRect.top - tooltipRect.height - 2;
+		else top = hostRect.top + hostRect.height + 2;
+		tooltip.style.left = `${left}px`;
+		tooltip.style.top = `${top}px`;
+	}
+}
+/**
+* Hide fixed tooltip on container leave
+*/
+function onContainerMouseLeave() {
+	const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
+	if (tooltip) tooltip.classList.remove("show");
+}
+/**
+* Resizing hotkey window
+*/
+function onResize$6(event) {
+	const host = ShortCut._host;
+	const top = host.offsetTop;
+	let lastHeight = 0;
+	function resizing() {
+		let h = Math.floor((Mouse.screen.y - top) / 34 + 1);
+		h = Math.min(Math.max(h, 1), _rowCount);
+		if (h === lastHeight) return;
+		host.style.height = `${h * 34}px`;
+		_preferences$31.size = h;
+		_preferences$31.save();
+		lastHeight = h;
+	}
+	const _Interval = setInterval(resizing, 30);
+	const mouseUpHandler = (_event) => {
+		if (_event.which === 1) {
+			clearInterval(_Interval);
+			window.removeEventListener("mouseup", mouseUpHandler);
+		}
+	};
+	window.addEventListener("mouseup", mouseUpHandler);
+	event.stopImmediatePropagation();
+	event.preventDefault();
+}
+/**
+* Displays the cooldown overlay on an icon
+*
+* @param {number} index of the icon
+* @param {number} delay in ms
+*/
+function setDelayOnIndex(index, delay) {
+	if (!_list$4[index]) return;
+	if (_list$4[index].Delay && _list$4[index].Delay >= Renderer.tick + delay) return;
+	_list$4[index].Delay = Renderer.tick + delay;
+	const ui = ShortCut.getRoot().querySelector(`.container[data-index="${index}"]`);
+	if (!ui) return;
+	const existing = ui.querySelector(".cooldown-overlay");
+	if (existing) existing.remove();
+	const overlay = document.createElement("div");
+	overlay.className = "cooldown-overlay";
+	const icon = ui.querySelector(".icon");
+	if (icon) {
+		icon.appendChild(overlay);
+		const img = icon.querySelector(".img");
+		if (img) img.style.filter = "none";
+	}
+	if (_activeAnimations.has(index)) {
+		cancelAnimationFrame(_activeAnimations.get(index));
+		_activeAnimations.delete(index);
+	}
+	function updateCooldown() {
+		if (!_list$4 || !_list$4[index]) {
+			overlay.remove();
+			if (_activeAnimations.has(index)) {
+				cancelAnimationFrame(_activeAnimations.get(index));
+				_activeAnimations.delete(index);
+			}
+			return;
+		}
+		const now = Renderer.tick;
+		const remaining = _list$4[index].Delay - now;
+		if (remaining <= 0 || !_list$4[index].Delay) {
+			overlay.remove();
+			_list$4[index].Delay = 0;
+			if (_activeAnimations.has(index)) {
+				cancelAnimationFrame(_activeAnimations.get(index));
+				_activeAnimations.delete(index);
+			}
+			return;
+		}
+		const degrees = (1 - remaining / delay) * 360;
+		overlay.style.background = `conic-gradient(transparent 0deg, transparent ${degrees}deg, rgba(0,0,0,0.75) ${degrees}deg)`;
+		const animationId = requestAnimationFrame(updateCooldown);
+		_activeAnimations.set(index, animationId);
+	}
+	const animationId = requestAnimationFrame(updateCooldown);
+	_activeAnimations.set(index, animationId);
+}
+/**
+* Drop something in the shortcut
+* Does the client allow other source than shortcut, inventory
+* and skill window to save to shortcut ?
+*/
+function onDrop$10(event, target) {
+	let data, element;
+	const index = parseInt(target.getAttribute("data-index"), 10);
+	const row = Math.floor(index / 9);
+	event.stopImmediatePropagation();
+	event.preventDefault();
+	try {
+		data = JSON.parse(event.dataTransfer.getData("Text"));
+		element = data.data;
+	} catch (_e) {
+		return;
+	}
+	if (data.type !== "item" && data.type !== "skill") return;
+	switch (data.from) {
+		case "SkillList":
+		case "Guild":
+		case "SkillListMH":
+			ShortCut.removeElement(true, element.SKID, row, element.selectedLevel ? element.selectedLevel : element.level);
+			ShortCut.addElement(index, true, element.SKID, element.selectedLevel ? element.selectedLevel : element.level);
+			ShortCut.onChange(index, true, element.SKID, element.selectedLevel ? element.selectedLevel : element.level);
+			break;
+		case "Inventory":
+			ShortCut.removeElement(false, element.ITID, row);
+			ShortCut.addElement(index, false, element.ITID, 0);
+			ShortCut.onChange(index, false, element.ITID, 0);
+			break;
+		case "ShortCut":
+			ShortCut.removeElement(element.isSkill, element.ID, row, element.isSkill ? element.count : null);
+			ShortCut.addElement(index, element.isSkill, element.ID, element.count);
+			ShortCut.onChange(index, element.isSkill, element.ID, element.count);
+	}
+}
+/**
+* Stop the drag and drop
+*/
+function onDragEnd(icon) {
+	delete window._OBJ_DRAG_;
+	icon.classList.remove("hide");
+}
+/**
+* Prepare data to be stored in the dragged element
+* to change position in the shortcut.
+*/
+function onDragStart$2(event, icon) {
+	const index = parseInt(icon.parentNode.getAttribute("data-index"), 10);
+	icon.classList.add("hide");
+	const img = new Image();
+	img.decoding = "async";
+	img.src = icon.querySelector(".img").style.backgroundImage.match(/\(([^)]+)/)[1].replace(/"/g, "");
+	event.dataTransfer.setDragImage(img, 12, 12);
+	event.dataTransfer.setData("Text", JSON.stringify(window._OBJ_DRAG_ = {
+		type: _list$4[index].isSkill ? "skill" : "item",
+		from: "ShortCut",
+		data: _list$4[index]
+	}));
+}
+/**
+* Get informations from a skill/item when
+* using right click on it.
+*/
+function onElementInfo(event, icon) {
+	const index = parseInt(icon.parentNode.getAttribute("data-index"), 10);
+	const element = _list$4[index];
+	event.stopImmediatePropagation();
+	event.preventDefault();
+	if (element.isSkill) {
+		if (SkillDescription_default.uid === _list$4[index].ID) SkillDescription_default.remove();
+		else {
+			SkillDescription_default.append();
+			SkillDescription_default.setSkill(_list$4[index].ID);
+		}
+	} else {
+		if (ItemInfo_default.uid === _list$4[index].ID) {
+			ItemInfo_default.remove();
+			return;
+		}
+		ItemInfo_default.append();
+		ItemInfo_default.uid = _list$4[index].ID;
+		ItemInfo_default.setItem(InventoryController.getUI().getItemById(_list$4[index].ID));
+	}
+}
+/**
+* Double-click on a shortcut
+*/
+function onUseShortCut(icon) {
+	clickElement(parseInt(icon.parentNode.getAttribute("data-index"), 10));
+}
+/**
+* Clicking on a shortcut
+*
+* @param {number} shortcut index
+*/
+function clickElement(index) {
+	const shortcut = _list$4[index];
+	SkillTargetSelection_default.remove();
+	if (!shortcut) return;
+	if (shortcut.isSkill) ShortCut.useSkill(shortcut.ID, shortcut.count);
+	else {
+		const item = InventoryController.getUI().getItemById(_list$4[index].ID);
+		if (item) InventoryController.getUI().useItem(item);
+	}
+}
+/**
+* Closing the window
+*/
+function onClose$6() {
+	ShortCut._host.style.height = "0px";
+	_preferences$31.size = 0;
+	_preferences$31.save();
+}
+/**
+* Hook Inventory, get informations when there is a change
+* to update the shortcut
+*
+* @param {number} index
+* @param {number} count
+*/
+function onUpdateItem(index, count) {
+	ShortCut.setElement(false, index, count);
+}
+/**
+* Hook Skill List, get informations when there is a change
+* to update the shortcut
+*
+* @param {number} skill id
+* @param {number} level
+*/
+function onUpdateSkill(id, level) {
+	ShortCut.setElement(true, id, level);
+}
+function onUpdateOwnerName$1() {
+	for (const index in _list$4) if (!_list$4[index].isSkill) ShortCut.setElement(false, _list$4[index].ID, _list$4[index].count);
+}
+function convertHotkeysToServerFormat() {
+	const serverData = {
+		Type: 1,
+		data: {
+			EmotionHotkey: [],
+			UserHotkey_V2: { SkillBar_1Tab: [] }
+		}
+	};
+	[
+		"Macro1",
+		"Macro2",
+		"Macro3",
+		"Macro4",
+		"Macro5",
+		"Macro6",
+		"Macro7",
+		"Macro8",
+		"Macro9",
+		"Macro10"
+	].forEach((key, index) => {
+		const shortcut = ShortCutControls_default.ShortCuts[key];
+		if (shortcut && shortcut.cust && shortcut.cust.emotion) serverData.data.EmotionHotkey[index] = shortcut.cust.emotion;
+	});
+	[
+		"F1_1",
+		"F1_2",
+		"F1_3",
+		"F1_4",
+		"F1_5",
+		"F1_6",
+		"F1_7",
+		"F1_8",
+		"F1_9",
+		"F2_1",
+		"F2_2",
+		"F2_3",
+		"F2_4",
+		"F2_5",
+		"F2_6",
+		"F2_7",
+		"F2_8",
+		"F2_9",
+		"F3_1",
+		"F3_2",
+		"F3_3",
+		"F3_4",
+		"F3_5",
+		"F3_6",
+		"F3_7",
+		"F3_8",
+		"F3_9",
+		"F4_1",
+		"F4_2",
+		"F4_3",
+		"F4_4",
+		"F4_5",
+		"F4_6",
+		"F4_7",
+		"F4_8",
+		"F4_9"
+	].forEach((key, index) => {
+		const shortcut = ShortCutControls_default.ShortCuts[key];
+		if (shortcut) {
+			const keyData = shortcut.cust || shortcut.init;
+			serverData.data.UserHotkey_V2.SkillBar_1Tab.push({
+				desc: `Skill ${index + 1}`,
+				index,
+				key1: keyData.key || 0,
+				key2: 0
+			});
+		}
+	});
+	return serverData;
+}
+function convertHotkeysFromServerFormat(serverData) {
+	if (!serverData || !serverData.data) return;
+	if (serverData.data.EmotionHotkey) {
+		const emotionKeys = [
+			"Macro1",
+			"Macro2",
+			"Macro3",
+			"Macro4",
+			"Macro5",
+			"Macro6",
+			"Macro7",
+			"Macro8",
+			"Macro9",
+			"Macro10"
+		];
+		serverData.data.EmotionHotkey.forEach((emotion, index) => {
+			if (emotion && emotionKeys[index]) {
+				if (!ShortCutControls_default.ShortCuts[emotionKeys[index]].cust) ShortCutControls_default.ShortCuts[emotionKeys[index]].cust = {};
+				ShortCutControls_default.ShortCuts[emotionKeys[index]].cust.emotion = emotion;
+			}
+		});
+	}
+	if (serverData.data.UserHotkey_V2 && serverData.data.UserHotkey_V2.SkillBar_1Tab) {
+		const shortcutKeys = [
+			"F1_1",
+			"F1_2",
+			"F1_3",
+			"F1_4",
+			"F1_5",
+			"F1_6",
+			"F1_7",
+			"F1_8",
+			"F1_9",
+			"F2_1",
+			"F2_2",
+			"F2_3",
+			"F2_4",
+			"F2_5",
+			"F2_6",
+			"F2_7",
+			"F2_8",
+			"F2_9",
+			"F3_1",
+			"F3_2",
+			"F3_3",
+			"F3_4",
+			"F3_5",
+			"F3_6",
+			"F3_7",
+			"F3_8",
+			"F3_9",
+			"F4_1",
+			"F4_2",
+			"F4_3",
+			"F4_4",
+			"F4_5",
+			"F4_6",
+			"F4_7",
+			"F4_8",
+			"F4_9"
+		];
+		serverData.data.UserHotkey_V2.SkillBar_1Tab.forEach((skillData) => {
+			if (skillData && skillData.index < shortcutKeys.length) {
+				const key = shortcutKeys[skillData.index];
+				if (key && skillData.key1) {
+					if (!ShortCutControls_default.ShortCuts[key].cust) ShortCutControls_default.ShortCuts[key].cust = {};
+					ShortCutControls_default.ShortCuts[key].cust.key = skillData.key1;
+				}
+			}
+		});
+	}
+}
+function haveHotkeysChanged(currentData) {
+	if (!_lastServerHotkeys) return true;
+	return JSON.stringify(currentData) !== JSON.stringify(_lastServerHotkeys);
+}
+var ShortCut, _list$4, _rowCount, _lastServerHotkeys, _activeAnimations, _preferences$31, ShortCut_default;
+var init_ShortCut = __esmMin((() => {
+	init_DBManager();
+	init_ItemType();
+	init_SkillInfo();
+	init_SkillConst();
+	init_Client();
+	init_Preferences$1();
+	init_SessionStorage();
+	init_Renderer();
+	init_MouseEventHandler();
+	init_UIManager();
+	init_GUIComponent();
+	init_ItemInfo();
+	init_Inventory();
+	init_SkillListMH();
+	init_SkillDescription();
+	init_SkillTargetSelection();
+	init_Guild$1();
+	init_ShortCutControls();
+	init_KeyEventHandler();
+	init_Configs();
+	init_PacketVerManager();
+	init_SkillList();
+	init_ShortCut$2();
+	init_ShortCut$1();
+	ShortCut = new GUIComponent("ShortCut", ShortCut_default$1);
+	ShortCut.render = () => ShortCut_default$2;
+	_list$4 = [];
+	_rowCount = 0;
+	_lastServerHotkeys = null;
+	_activeAnimations = /* @__PURE__ */ new Map();
+	_preferences$31 = Preferences.get("ShortCut", {
+		x: 480,
+		y: 0,
+		size: 1,
+		magnet_top: true,
+		magnet_bottom: false,
+		magnet_left: false,
+		magnet_right: false
+	}, 1);
+	/**
+	* Initialize UI
+	*/
+	ShortCut.init = function init() {
+		const root = ShortCut.getRoot();
+		const resizeBtn = root.querySelector(".resize");
+		if (resizeBtn) resizeBtn.addEventListener("mousedown", onResize$6);
+		const closeBtn = root.querySelector(".close");
+		if (closeBtn) {
+			closeBtn.addEventListener("mousedown", (e) => {
+				e.stopImmediatePropagation();
+				e.preventDefault();
+			});
+			closeBtn.addEventListener("click", onClose$6);
+		}
+		const container = root.querySelector("#ShortCut");
+		container.addEventListener("drop", (e) => {
+			const target = e.target.closest(".container");
+			if (target) onDrop$10(e, target);
+		});
+		container.addEventListener("dragover", (e) => {
+			if (e.target.closest(".container")) {
+				e.stopImmediatePropagation();
+				e.preventDefault();
+			}
+		});
+		container.addEventListener("dragstart", (e) => {
+			const icon = e.target.closest(".icon");
+			if (icon) onDragStart$2(e, icon);
+		});
+		container.addEventListener("dragend", (e) => {
+			const icon = e.target.closest(".icon");
+			if (icon) onDragEnd(icon);
+		});
+		container.addEventListener("dblclick", (e) => {
+			const icon = e.target.closest(".icon");
+			if (icon) onUseShortCut(icon);
+		});
+		container.addEventListener("contextmenu", (e) => {
+			const icon = e.target.closest(".icon");
+			if (icon) onElementInfo(e, icon);
+		});
+		container.addEventListener("mousedown", (e) => {
+			if (e.target.closest(".icon")) e.stopImmediatePropagation();
+		});
+		this.draggable();
+		root.querySelectorAll(".container").forEach((el) => {
+			el.addEventListener("mouseenter", onContainerMouseEnter);
+			el.addEventListener("mouseleave", onContainerMouseLeave);
+		});
+		DB.UpdateOwnerName.ShortCut = onUpdateOwnerName$1;
+		InventoryController.getUI().onUpdateItem = onUpdateItem;
+	};
+	/**
+	* Append to body
+	*/
+	ShortCut.onAppend = function onAppend() {
+		this._host.style.height = `${34 * _preferences$31.size}px`;
+		const rect = this._host.getBoundingClientRect();
+		this._host.style.top = `${Math.min(Math.max(0, _preferences$31.y), Renderer.height - rect.height)}px`;
+		this._host.style.left = `${Math.min(Math.max(0, _preferences$31.x), Renderer.width - rect.width)}px`;
+		this.magnet.TOP = _preferences$31.magnet_top;
+		this.magnet.BOTTOM = _preferences$31.magnet_bottom;
+		this.magnet.LEFT = _preferences$31.magnet_left;
+		this.magnet.RIGHT = _preferences$31.magnet_right;
+		Controller$4.getUI().onUpdateSkill = onUpdateSkill;
+		updateEmptySlotTooltips();
+	};
+	/**
+	* When removed, clean up
+	*/
+	ShortCut.onRemove = function onRemove() {
+		const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
+		if (tooltip) tooltip.classList.remove("show");
+		for (const [index, animationId] of _activeAnimations.entries()) cancelAnimationFrame(animationId);
+		_activeAnimations.clear();
+		_preferences$31.y = parseInt(this._host.style.top, 10);
+		_preferences$31.x = parseInt(this._host.style.left, 10);
+		_preferences$31.size = Math.floor(parseInt(this._host.style.height, 10) / 34);
+		_preferences$31.magnet_top = this.magnet.TOP;
+		_preferences$31.magnet_bottom = this.magnet.BOTTOM;
+		_preferences$31.magnet_left = this.magnet.LEFT;
+		_preferences$31.magnet_right = this.magnet.RIGHT;
+		_preferences$31.save();
+	};
+	/**
+	* Request to clean the list
+	* Used only from MapEngine when exiting the game
+	*/
+	ShortCut.clean = function clean() {
+		for (const [index, animationId] of _activeAnimations.entries()) cancelAnimationFrame(animationId);
+		_activeAnimations.clear();
+		_list$4.length = 0;
+		ShortCut.getRoot().querySelectorAll(".container").forEach((el) => {
+			el.innerHTML = "";
+		});
+	};
+	/**
+	* Process shortcut
+	*
+	* @param {object} key
+	*/
+	ShortCut.onShortCut = function onShortCut(key) {
+		switch (key.cmd.replace(/\d+$/, "")) {
+			case "EXECUTE":
+				clickElement(parseInt(key.cmd.match(/\d+$/).toString(), 10));
+				break;
+			case "EXTEND":
+				_preferences$31.size = (_preferences$31.size + 1) % (_rowCount + 1);
+				_preferences$31.save();
+				this._host.style.height = `${_preferences$31.size * 34}px`;
+		}
+	};
+	ShortCut.useSkill = function useSkill(id, level) {
+		getSkillOwner(id).useSkillID(id, level);
+	};
+	ShortCut.getSkillById = function getSkillById(id) {
+		return getSkillOwner(id).getSkillById(id);
+	};
+	/**
+	* Bind UI with list of shortcut
+	*
+	* @param {Array} shortcut list
+	*/
+	ShortCut.setList = function setList(list) {
+		let skill;
+		let needGuildSkills = false;
+		ShortCut.getRoot().querySelectorAll(".container").forEach((el) => {
+			el.innerHTML = "";
+		});
+		_list$4.length = list.length;
+		_rowCount = Math.min(4, Math.floor(list.length / 9));
+		for (let i = 0, count = list.length; i < count; ++i) if (list[i].isSkill) {
+			skill = ShortCut.getSkillById(list[i].ID);
+			if (getSkillOwner(list[i].ID) === Guild_default) needGuildSkills = true;
+			if (skill && skill.level) ShortCut.addElement(i, true, list[i].ID, list[i].count || skill.level);
+			else {
+				if (!_list$4[i]) _list$4[i] = {};
+				_list$4[i].isSkill = true;
+				_list$4[i].ID = list[i].ID;
+				_list$4[i].count = list[i].count;
+			}
+		} else ShortCut.addElement(i, list[i].isSkill, list[i].ID, list[i].count);
+		if (needGuildSkills) ShortCut.onRequestGuildSkills();
+	};
+	/**
+	* Hook: ask the server for the guild skill list (set by MapEngine/Guild)
+	*/
+	ShortCut.onRequestGuildSkills = function onRequestGuildSkills() {};
+	/**
+	* Update all tooltips (for both empty and filled slots)
+	* Called when hotkey settings change
+	*/
+	ShortCut.updateAllTooltips = function updateAllTooltips() {
+		const root = ShortCut.getRoot();
+		for (let i = 0, size = _list$4.length; i < size; ++i) {
+			const container = root.querySelector(`.container[data-index="${i}"]`);
+			if (!container) continue;
+			const hotkey = getHotKeyString(i);
+			if (!_list$4[i] || !_list$4[i].isSkill && !_list$4[i].ID) {
+				if (hotkey) container.setAttribute("data-tooltip", hotkey);
+			} else if (_list$4[i] && (_list$4[i].isSkill || _list$4[i].ID)) {
+				let name = "";
+				if (_list$4[i].isSkill && SkillInfo[_list$4[i].ID]) name = SkillInfo[_list$4[i].ID].SkillName;
+				else if (_list$4[i].ID) {
+					const item = InventoryController.getUI().getItemById(_list$4[i].ID);
+					if (item) name = DB.getItemName(item);
+				}
+				if (name) {
+					const tooltipText = hotkey ? `[ ${hotkey} ] ${name}` : name;
+					container.setAttribute("data-tooltip", tooltipText);
+				}
+			}
+		}
+	};
+	ShortCut.setElement = function setElement(isSkill, ID, count) {
+		for (let i = 0, size = _list$4.length; i < size; ++i) if (_list$4[i] && _list$4[i].isSkill == isSkill && _list$4[i].ID === ID) {
+			if (isSkill && _list$4[i].count && _list$4[i].count <= count) ShortCut.addElement(i, isSkill, ID, _list$4[i].count);
+			else ShortCut.addElement(i, isSkill, ID, count);
+		}
+	};
+	/**
+	* Add an element to shortcut
+	*
+	* @param {number} index of the element
+	* @param {boolean} is a skill ?
+	* @param {number} ID
+	* @param {number} count or level
+	*/
+	ShortCut.addElement = function addElement(index, isSkill, ID, count) {
+		let file, name;
+		const ui = ShortCut.getRoot().querySelector(`.container[data-index="${index}"]`);
+		if (!ui) return;
+		ui.innerHTML = "";
+		if (!_list$4[index]) _list$4[index] = {};
+		_list$4[index].isSkill = isSkill;
+		_list$4[index].ID = ID;
+		if (isSkill) {
+			if (!count) return;
+			else {
+				_list$4[index].count = count;
+				file = SkillInfo[ID].Name;
+				name = SkillInfo[ID].SkillName;
+			}
+		} else {
+			_list$4[index].count = count;
+			const item = InventoryController.getUI().getItemById(ID);
+			if (!item) return;
+			const it = DB.getItemInfo(ID);
+			file = item.IsIdentified ? it.identifiedResourceName : it.unidentifiedResourceName;
+			name = DB.getItemName(item);
+			if (item.type === ItemType_default.WEAPON || item.type === ItemType_default.ARMOR || item.type === ItemType_default.SHADOWGEAR) count = 1;
+			else count = item.count;
+			if (!count) return;
+		}
+		const hotkey = getHotKeyString(index);
+		const tooltipText = hotkey ? `[ ${hotkey} ] ${name}` : name;
+		Client.loadFile(`${DB.INTERFACE_PATH}item/${file}.bmp`, (url) => {
+			ui.innerHTML = "<div draggable=\"true\" class=\"icon\"><div class=\"img\"></div><div class=\"amount\"></div></div>";
+			ui.querySelector(".img").style.backgroundImage = `url(${url})`;
+			ui.querySelector(".amount").textContent = count;
+			ui.setAttribute("data-tooltip", tooltipText);
+		});
+	};
+	/**
+	* Displays the cooldown over every skill
+	*
+	* @param {number} delay in ms
+	*/
+	ShortCut.setGlobalSkillDelay = function setGlobalSkillDelay(delay) {
+		_list$4.forEach((element, index) => {
+			if (element.isSkill) setDelayOnIndex(index, delay);
+		});
+	};
+	/**
+	* Displays the cooldown over a single skill
+	*
+	* @param {number} ID of the skill
+	* @param {number} delay in ms
+	*/
+	ShortCut.setSkillDelay = function setSkillDelay(ID, delay) {
+		_list$4.forEach((element, index) => {
+			if (element.isSkill && element.ID == ID) setDelayOnIndex(index, delay);
+		});
+	};
+	/**
+	* Remove an element from shortcut
+	*
+	* @param {boolean} is a skill ?
+	* @param {number} ID of the element to remove
+	* @param {number} row id
+	* @param {number} amount (optional)
+	*/
+	ShortCut.removeElement = function removeElement(isSkill, ID, row, amount) {
+		if (!ID) return;
+		const root = ShortCut.getRoot();
+		for (let i = row * 9, count = Math.min(_list$4.length, row * 9 + 9); i < count; ++i) if (_list$4[i] && _list$4[i].isSkill == isSkill && _list$4[i].ID === ID && (!isSkill || _list$4[i].count == amount)) {
+			const container = root.querySelector(`.container[data-index="${i}"]`);
+			if (container) container.innerHTML = "";
+			_list$4[i].isSkill = 0;
+			_list$4[i].ID = 0;
+			_list$4[i].count = 0;
+			ShortCut.onChange(i, 0, 0, 0);
+		}
+	};
+	Guild_default.onUpdateSkill = (id, level) => {
+		ShortCut.setElement(true, id, level);
+	};
+	SkillListMH_default.mercenary.onUpdateSkill = (id, level) => {
+		ShortCut.setElement(true, id, level);
+	};
+	SkillListMH_default.homunculus.onUpdateSkill = (id, level) => {
+		ShortCut.setElement(true, id, level);
+	};
+	/**
+	* Method to define to notify a change.
+	*
+	* @param {number} index
+	* @param {boolean} isSkill
+	* @param {number} id
+	* @param {number} count
+	*/
+	ShortCut.onChange = function onChange() {};
+	ShortCut.saveToServer = function saveToServer() {
+		if (PacketVerManager_default.value >= 20170315 && SessionStorage_default.WebToken) {
+			const hotkeys = JSON.stringify(convertHotkeysToServerFormat());
+			if (!haveHotkeysChanged(hotkeys)) return;
+			const formData = new FormData();
+			formData.append("AID", SessionStorage_default.AID);
+			formData.append("WorldName", SessionStorage_default.ServerName);
+			formData.append("AuthToken", SessionStorage_default.WebToken);
+			formData.append("data", hotkeys);
+			const xhr = new XMLHttpRequest();
+			let webserverAddress = "";
+			if (window.location.protocol !== "http:" && window.location.protocol !== "https:") webserverAddress = Configs.get("webserverAddress", "http://127.0.0.1:8888");
+			xhr.open("POST", `${webserverAddress}/userconfig/save`, true);
+			xhr.timeout = 5e3;
+			xhr.onload = () => {
+				if (xhr.status === 200) console.log("Hotkeys saved to server successfully");
+				else console.warn("Hotkey save returned non-200 status:", xhr.status);
+			};
+			xhr.onerror = () => {
+				console.warn("Hotkey save failed: web-server unreachable");
+			};
+			xhr.ontimeout = () => {
+				console.warn("Hotkey save timed out");
+			};
+			xhr.send(formData);
+		}
+	};
+	ShortCut.loadFromServer = function loadFromServer(callback) {
+		if (PacketVerManager_default.value >= 20170315 && SessionStorage_default.WebToken) {
+			const formData = new FormData();
+			formData.append("AID", SessionStorage_default.AID);
+			formData.append("WorldName", SessionStorage_default.ServerName);
+			formData.append("AuthToken", SessionStorage_default.WebToken);
+			const xhr = new XMLHttpRequest();
+			let webserverAddress = "";
+			if (window.location.protocol !== "http:" && window.location.protocol !== "https:") webserverAddress = Configs.get("webserverAddress", "http://127.0.0.1:8888");
+			xhr.open("POST", `${webserverAddress}/userconfig/load`, true);
+			xhr.timeout = 5e3;
+			xhr.onload = () => {
+				if (xhr.status === 200) try {
+					const serverData = JSON.parse(xhr.responseText);
+					_lastServerHotkeys = JSON.parse(JSON.stringify(serverData));
+					convertHotkeysFromServerFormat(serverData);
+				} catch (e) {
+					console.error("Error parsing server hotkeys:", e);
+				}
+				else console.warn("Hotkey load returned non-200 status:", xhr.status);
+				if (callback) callback();
+			};
+			xhr.onerror = () => {
+				console.warn("Hotkey load failed: web-server unreachable");
+				if (callback) callback();
+			};
+			xhr.ontimeout = () => {
+				console.warn("Hotkey load timed out");
+				if (callback) callback();
+			};
+			xhr.send(formData);
+		} else if (callback) callback();
+	};
+	ShortCut.getList = function getList() {
+		return _list$4;
+	};
+	ShortCut_default = UIManager.addComponent(ShortCut);
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickSetManager.js
+var currentSet, JoystickSetManager_default;
+var init_JoystickSetManager = __esmMin((() => {
+	currentSet = 1;
+	JoystickSetManager_default = {
+		getCurrentSet: function() {
+			return currentSet;
+		},
+		set: function(n) {
+			currentSet = n === 1 || n === 2 ? n : currentSet;
+		},
+		toggle: function() {
+			currentSet = currentSet === 1 ? 2 : 1;
+		}
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickShortcutMapper.js
+function getGroup(btn) {
+	const l1 = btn[4] === "holding";
+	const r1 = btn[5] === "holding";
+	const l2 = btn[6] === "holding";
+	const r2 = btn[7] === "holding";
+	if (l1 && r1 && !l2 && !r2) return "L1R1";
+	if (l1) return "L1";
+	if (r1) return "R1";
+	if (l2) return "L2";
+	if (r2) return "R2";
+	return "";
+}
+function getIndexFromButtons(btn, set) {
+	const group = getGroup(btn);
+	if (group === "") return -1;
+	const a = btn[0] === "pressed";
+	const b = btn[1] === "pressed";
+	const x = btn[2] === "pressed";
+	const y = btn[3] === "pressed";
+	let slot = -1;
+	let tab = 1;
+	let offset = 0;
+	if (set === 2) offset = 2;
+	if (group === "L1R1") tab = 0;
+	else if (group === "L1") tab = 1 + offset;
+	else if (group === "R1") tab = 2 + offset;
+	else if (group === "L2") tab = 1 + offset;
+	else if (group === "R2") tab = 2 + offset;
+	if (group === "L1R1") {
+		if (y) {
+			slot = 8;
+			tab = 1;
+		} else if (x) {
+			slot = 8;
+			tab = 2;
+		} else if (b) {
+			slot = 8;
+			tab = 3;
+		} else if (a) {
+			slot = 8;
+			tab = 4;
+		}
+	} else if (group === "L1" || group === "R1") {
+		if (y) slot = 0;
+		else if (x) slot = 1;
+		else if (b) slot = 2;
+		else if (a) slot = 3;
+	} else if (group === "L2" || group === "R2") {
+		if (y) slot = 4;
+		else if (x) slot = 5;
+		else if (b) slot = 6;
+		else if (a) slot = 7;
+	}
+	if (slot === -1) return -1;
+	return (tab - 1) * 9 + slot;
+}
+function prepare() {
+	if (!this.__loaded) {
+		const oldonChange = ShortCut_default.onChange;
+		ShortCut_default.onChange = function(index, isSkill, ID, count) {
+			oldonChange.call(ShortCut_default, index, isSkill, ID, count);
+			JoystickUIRenderer_default.updateByIndex(index);
+		};
+		const oldSetList = ShortCut_default.setList;
+		ShortCut_default.setList = function(list) {
+			oldSetList.call(ShortCut_default, list);
+			JoystickUIRenderer_default.sync();
+		};
+		const oldSetElement = ShortCut_default.setElement;
+		ShortCut_default.setElement = function(isSkill, ID, count) {
+			oldSetElement.call(ShortCut_default, isSkill, ID, count);
+			JoystickUIRenderer_default.updateById(ID);
+		};
+		this.__loaded = true;
+	}
+}
+var slotMapping, JoystickShortcutMapper_default;
+var init_JoystickShortcutMapper = __esmMin((() => {
+	init_JoystickSetManager();
+	init_ShortCut();
+	init_JoystickUIRenderer();
+	slotMapping = [
+		0,
+		1,
+		2,
+		3,
+		4,
+		5,
+		6,
+		7,
+		8,
+		17,
+		26,
+		35,
+		13,
+		14,
+		15,
+		16,
+		9,
+		10,
+		11,
+		12,
+		18,
+		19,
+		20,
+		21,
+		22,
+		23,
+		24,
+		25,
+		8,
+		17,
+		26,
+		35,
+		31,
+		32,
+		33,
+		34,
+		27,
+		28,
+		29,
+		30
+	];
+	JoystickShortcutMapper_default = {
+		slotMap: slotMapping,
+		prepare,
+		getGroup,
+		getShortcutIndex: function(btn) {
+			const idx = getIndexFromButtons(btn, JoystickSetManager_default.getCurrentSet());
+			if (idx === -1) return -1;
+			return idx;
+		}
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickMouseCursorAdapter.js
+function move$1(dx, dy) {
+	moveBy(dx * Controls_default.joySense, dy * Controls_default.joySense);
+}
+/**
+* Move the virtual cursor by a pixel offset, clamped to the viewport.
+*/
+function moveBy(dx, dy) {
+	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, Mouse.screen.x + dx));
+	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, Mouse.screen.y + dy));
+	const cursor = document.querySelector(".cursor");
+	if (cursor) {
+		cursor.style.left = Mouse.screen.x + "px";
+		cursor.style.top = Mouse.screen.y + "px";
+	}
+}
+function moveMouseToEntity(entity) {
+	if (!entity || !entity.position) return;
+	const mat4 = exports$3.mat4;
+	const vec4 = exports$3.vec4;
+	const _matrix = mat4.create();
+	const _vector = vec4.create();
+	const _pos = vec4.create();
+	_vector[0] = entity.position[0] + .5;
+	_vector[1] = -entity.position[2];
+	_vector[2] = entity.position[1] + .5;
+	_vector[3] = 1;
+	mat4.translate(_matrix, Camera.modelView, _vector);
+	_matrix[0] = 1;
+	_matrix[1] = 0;
+	_matrix[2] = 0;
+	_matrix[4] = 0;
+	_matrix[5] = 1;
+	_matrix[6] = 0;
+	_matrix[8] = 0;
+	_matrix[9] = 0;
+	_matrix[10] = 1;
+	mat4.multiply(_matrix, Camera.projection, _matrix);
+	_pos[0] = 0;
+	_pos[1] = 0;
+	_pos[2] = 0;
+	_pos[3] = 1;
+	vec4.transformMat4(_pos, _pos, _matrix);
+	const z = _pos[3] === 0 ? 1 : 1 / _pos[3];
+	const screenX = Renderer.width / 2 + Math.round(Renderer.width / 2 * (_pos[0] * z));
+	let screenY = Renderer.height / 2 - Math.round(Renderer.height / 2 * (_pos[1] * z));
+	screenY = screenY - 13;
+	Mouse.screen.x = screenX;
+	Mouse.screen.y = screenY;
+	const _selector = document.querySelector(".cursor");
+	if (_selector) {
+		_selector.style.left = screenX + "px";
+		_selector.style.top = screenY + "px";
+	}
+}
+function leftClick(click = false) {
+	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	if (!el) {
+		handleWorldLeftClick();
+		return;
+	}
+	if (Controls_default.joyDisableVirtualMouse) return;
+	const eventOptions = {
+		bubbles: true,
+		cancelable: true,
+		view: window,
+		clientX: Mouse.screen.x,
+		clientY: Mouse.screen.y,
+		which: 1
+	};
+	el.dispatchEvent(new MouseEvent("mousedown", eventOptions));
+	setTimeout(function() {
+		el.dispatchEvent(new MouseEvent("mouseup", eventOptions));
+		if (click) el.dispatchEvent(new MouseEvent("click", eventOptions));
+	}, 50);
+}
+function rightClick(holding = false) {
+	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	const isCanvas = el && el.tagName.toLowerCase() === "canvas";
+	if (!el || isCanvas) {
+		handleWorldRightClick();
+		return;
+	}
+	if (holding) {
+		const draggableElement = el.closest(".item, .skill");
+		if (draggableElement) {
+			if (JoystickInteractionService_default.openSelectionWindow(draggableElement)) return;
+		}
+	}
+	if (Controls_default.joyDisableVirtualMouse) return;
+	el.dispatchEvent(new MouseEvent("mousedown", { which: 3 }));
+	setTimeout(function() {
+		el.dispatchEvent(new MouseEvent("mouseup", { which: 3 }));
+	}, 100);
+}
+function _dispatchMouseEvent(target, type, which) {
+	target.dispatchEvent(new MouseEvent(type, {
+		bubbles: true,
+		cancelable: true,
+		view: window,
+		button: which === 3 ? 2 : 0,
+		which
+	}));
+}
+function handleWorldLeftClick() {
+	if (!Mouse.intersect) Mouse.intersect = true;
+	_dispatchMouseEvent(Renderer.canvas, "mousedown", 1);
+	setTimeout(function() {
+		_dispatchMouseEvent(Renderer.canvas, "mouseup", 1);
+	}, 100);
+}
+function handleWorldRightClick() {
+	if (!Mouse.intersect) Mouse.intersect = true;
+	_dispatchMouseEvent(Renderer.canvas, "mousedown", 3);
+	setTimeout(function() {
+		_dispatchMouseEvent(Renderer.canvas, "mouseup", 3);
+	}, 100);
+}
+function changeCameraAngle(angle) {
+	Camera.angleFinal[1] += angle;
+	Camera.updateState();
+	Camera.save();
+}
+function changeCameraZoom(zoom) {
+	Camera.setZoom(zoom);
+}
+function _dispatchKeyEvent(target, type, which) {
+	target.dispatchEvent(new KeyboardEvent(type, {
+		bubbles: true,
+		cancelable: true,
+		which,
+		keyCode: which
+	}));
+}
+function esc() {
+	_dispatchKeyEvent(document, "keydown", 27);
+}
+function enter() {
+	_dispatchKeyEvent(document, "keydown", 13);
+}
+function contextMenu() {
+	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	const draggableElement = el.closest(".item, .skill");
+	if (el && draggableElement) {
+		const contextMenuEvent = new MouseEvent("contextmenu", {
+			bubbles: true,
+			cancelable: true,
+			view: window,
+			clientX: Mouse.screen.x,
+			clientY: Mouse.screen.y,
+			which: 3
+		});
+		el.dispatchEvent(contextMenuEvent);
+		return true;
+	}
+	return false;
+}
+function navigateDraggableItems(direction) {
+	const container = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y).closest(".item, .skill");
+	if (!container) {
+		let keyCode;
+		switch (direction) {
+			case "up":
+				keyCode = 38;
+				break;
+			case "down":
+				keyCode = 40;
+				break;
+			case "left":
+				keyCode = 37;
+				break;
+			case "right": keyCode = 39;
+		}
+		_dispatchKeyEvent(document, "keydown", keyCode);
+		return;
+	}
+	let allDraggables = Array.from(container.querySelectorAll(".item, .skill")).filter((item) => !item.matches(".tabs button, .tab-btn"));
+	if (allDraggables.length === 0) allDraggables = Array.from(document.querySelectorAll(".item, .skill")).filter((item) => item.offsetParent !== null && !item.matches(".tabs button, .tab-btn"));
+	const isSkillContainer = container.id && container.id.indexOf("positionSkills") === 0 || container.querySelector("#positionSkills1, #positionSkills2, #positionSkills3, #positionSkills4, #positionSkills5") || container.closest(".skillCol") !== null;
+	const draggableElement = container.closest(".item, .skill");
+	const currentIndex = allDraggables.indexOf(draggableElement);
+	let newIndex = currentIndex;
+	let GRID_WIDTH;
+	if (isSkillContainer) GRID_WIDTH = 7;
+	else {
+		const containerWidth = container.clientWidth || 200;
+		const iconElement = draggableElement.querySelector(".icon");
+		const totalIconWidth = (iconElement && iconElement.clientWidth || 24) + 8;
+		GRID_WIDTH = Math.max(6, Math.min(8, Math.floor(containerWidth / totalIconWidth)));
+	}
+	switch (direction) {
+		case "up":
+			newIndex = currentIndex - GRID_WIDTH;
+			break;
+		case "down":
+			newIndex = currentIndex + GRID_WIDTH;
+			break;
+		case "left":
+			newIndex = currentIndex - 1;
+			break;
+		case "right": newIndex = currentIndex + 1;
+	}
+	newIndex = Math.max(0, Math.min(allDraggables.length - 1, newIndex));
+	if (newIndex !== currentIndex && newIndex < allDraggables.length) {
+		const targetRect = allDraggables[newIndex].getBoundingClientRect();
+		if (targetRect) {
+			const targetCenterX = targetRect.left + targetRect.width / 2;
+			const targetCenterY = targetRect.top + targetRect.height / 2;
+			Mouse.screen.x = targetCenterX;
+			Mouse.screen.y = targetCenterY;
+			const _selector = document.querySelector(".cursor");
+			if (_selector) {
+				_selector.style.left = targetCenterX + "px";
+				_selector.style.top = targetCenterY + "px";
+			}
+		}
+	}
+}
+function quickCastClick() {
+	setTimeout(function() {
+		_dispatchMouseEvent(Renderer.canvas, "mousedown", 1);
+		setTimeout(function() {
+			_dispatchMouseEvent(Renderer.canvas, "mouseup", 1);
+		}, 100);
+	}, 100);
+}
+/**
+* Snap the virtual cursor back to the middle of the viewport.
+*/
+function recenter() {
+	Mouse.screen.x = Math.floor(Renderer.width / 2);
+	Mouse.screen.y = Math.floor(Renderer.height / 2);
+	const cursor = document.querySelector(".cursor");
+	if (cursor) {
+		cursor.style.left = Mouse.screen.x + "px";
+		cursor.style.top = Mouse.screen.y + "px";
+	}
+}
+var JoystickMouseCursorAdapter_default;
+var init_JoystickMouseCursorAdapter = __esmMin((() => {
+	init_Renderer();
+	init_MouseEventHandler();
+	init_gl_matrix$1();
+	init_Camera();
+	init_Controls();
+	init_JoystickInteractionService();
+	JoystickMouseCursorAdapter_default = {
+		quickCastClick,
+		moveMouseToEntity,
+		navigateDraggableItems,
+		contextMenu,
+		esc,
+		enter,
+		changeCameraZoom,
+		changeCameraAngle,
+		move: move$1,
+		moveBy,
+		leftClick,
+		rightClick,
+		recenter
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickTargetService.js
+function getCycleTypes(Entity) {
+	switch (Controls_default.joyCycleMode) {
+		case CYCLE_MODE.ITEMS: return [Entity.TYPE_ITEM];
+		case CYCLE_MODE.BOTH: return [Entity.TYPE_MOB, Entity.TYPE_ITEM];
+		default: return [Entity.TYPE_MOB];
+	}
+}
+/**
+* The cycled ground item, or null once it was picked up, expired or left
+* the entity list.
+*/
+function getCycledItem() {
+	if (_cycledItem && (_cycledItem.remove_tick !== 0 || EntityManager.get(_cycledItem.GID) !== _cycledItem)) _cycledItem = null;
+	return _cycledItem;
+}
+function releaseItem() {
+	if (_cycledItem) {
+		_cycledItem.attachments.remove("lockon");
+		_cycledItem = null;
+	}
+}
+/**
+* Mark a ground item as the cycle target: drop any combat lock-on and show
+* the same lock-on arrow mobs get, so the player sees which item Y will pick.
+*/
+/**
+* Drop the current focus without telling the server to stop attacking.
+*
+* onFocusEnd() sends CZ_CANCEL_LOCKON (rAthena: clif_parse_StopAttack) only
+* while the entity is still the focus. Clearing the focus first skips it,
+* the same trick MapControl.onMouseUp uses. Switching focus on the gamepad
+* (D-pad cycle, X picking a new target) must not stop a running attack:
+* cycling only moves the arrow, and X's REQUEST_ACT replaces the attack
+* on the server anyway.
+*/
+function dropFocusQuietly() {
+	const focus = EntityManager.getFocusEntity();
+	if (focus) {
+		EntityManager.setFocusEntity(null);
+		focus.onFocusEnd();
+	}
+}
+function focusItem(item) {
+	dropFocusQuietly();
+	releaseItem();
+	item.attachments.add({
+		uid: "lockon",
+		spr: "data/sprite/cursors.spr",
+		act: "data/sprite/cursors.act",
+		frame: Cursor.ACTION.LOCK,
+		repeat: true,
+		depth: 10
+	});
+	_cycledItem = item;
+}
+function getEntityInContext() {
+	const focus = EntityManager.getFocusEntity();
+	if (typeof window !== "undefined") window.__dpadAttackPick = {
+		at: Date.now(),
+		hasFocus: !!focus,
+		focusGid: focus ? focus.GID : null,
+		focusType: focus ? focus.objecttype : null,
+		focusAction: focus ? focus.action : null,
+		dieConst: focus && focus.ACTION ? focus.ACTION.DIE : null,
+		focusRemoveTick: focus ? focus.remove_tick : null
+	};
+	if (focus && focus.action !== focus.ACTION.DIE && focus.remove_tick === 0) {
+		if (typeof window !== "undefined") window.__dpadAttackPick.chosen = "focus";
+		return focus;
+	}
+	if (typeof window !== "undefined") window.__dpadAttackPick.chosen = "fallback";
+	let target = null;
+	if (Controls_default.attackTargetMode === 1) {
+		target = EntityManager.getLowestHpEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_MOB);
+		if (!target) target = EntityManager.getLowestHpEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_PC);
+	}
+	if (!target) target = EntityManager.getClosestEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_MOB);
+	if (!target) target = EntityManager.getClosestEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_PC);
+	return target || SessionStorage_default.Entity;
+}
+/**
+* Make the entity the focus (lock-on arrow, name) without acting on it.
+*
+* EntityControl.onFocus() for TYPE_MOB sends REQUEST_ACT / REQUEST_MOVE when
+* Session.TouchTargeting and Session.autoFollow are both off. That is right
+* for a mouse click, wrong here: a cycle step must not attack, and X sends
+* its own attack in JoystickCharacterControl.attack(), so letting onFocus
+* act too sent every new-target attack twice, with two different in-range
+* rules. Toggle TouchTargeting around the call so onFocus() takes the
+* "focused, do not attack" branch. The call is synchronous; nothing else
+* observes TouchTargeting in between.
+*/
+function focusEntity(entity) {
+	const prevTouch = SessionStorage_default.TouchTargeting;
+	SessionStorage_default.TouchTargeting = true;
+	try {
+		entity.onFocus();
+	} finally {
+		SessionStorage_default.TouchTargeting = prevTouch;
+	}
+	EntityManager.setFocusEntity(entity);
+}
+function focusTarget(entity) {
+	releaseItem();
+	const focus = EntityManager.getFocusEntity();
+	if (focus && entity.GID !== focus.GID) {
+		dropFocusQuietly();
+		focusEntity(entity);
+	} else if (!focus) focusEntity(entity);
+}
+/**
+* Step the focused target to the next (or previous) mob and/or ground item,
+* depending on ControlsSettings.joyCycleMode, by straight-line distance from
+* the player. Wraps at both ends. If nothing is focused, or the focused
+* entity is not in the sorted list (dead, picked up, out of range, wrong
+* type for the mode), 'next' jumps to the closest and 'prev' to the farthest.
+*
+* Always distance-ordered, regardless of ControlsSettings.attackTargetMode:
+* that preference governs the X-button auto-pick, not cycling, and the two
+* should not fight each other.
+*
+* @param {string} direction 'next' or 'prev'
+*/
+function cycle(direction) {
+	const player = SessionStorage_default.Entity;
+	if (!player) return;
+	const Entity = player.constructor;
+	const sorted = EntityManager.getEntitiesSortedByDistance(player, getCycleTypes(Entity));
+	if (sorted.length === 0) return;
+	const current = getCycledItem() || EntityManager.getFocusEntity();
+	const index = current ? sorted.indexOf(current) : -1;
+	let newIndex;
+	if (index === -1) newIndex = direction === "next" ? 0 : sorted.length - 1;
+	else if (direction === "next") newIndex = (index + 1) % sorted.length;
+	else newIndex = (index - 1 + sorted.length) % sorted.length;
+	const target = sorted[newIndex];
+	if (target.objecttype === Entity.TYPE_ITEM) {
+		focusItem(target);
+		JoystickMouseCursorAdapter_default.moveMouseToEntity(target);
+		return;
+	}
+	focusTarget(target);
+	JoystickMouseCursorAdapter_default.moveMouseToEntity(target);
+	if (typeof window !== "undefined") {
+		window.__dpadLastSort = sorted.map((e, i) => ({
+			i,
+			gid: e.GID,
+			type: e.objecttype,
+			pos: [e.position[0], e.position[1]],
+			dsq: Math.round(((e.position[0] - player.position[0]) ** 2 + (e.position[1] - player.position[1]) ** 2) * 100) / 100
+		}));
+		window.__dpadLastPlayer = [player.position[0], player.position[1]];
+		window.__dpadLastSetFocusGid = target.GID;
+		const after = EntityManager.getFocusEntity();
+		window.__dpadFocusAfterCycle = after ? after.GID : null;
+	}
+}
+/**
+* Clear the focused entity (if any) and snap the virtual cursor back to the
+* middle of the viewport. Used to reset the cycle so the next D-pad press
+* starts from the closest mob again.
+*/
+function clearFocus() {
+	if (typeof window !== "undefined") window.__dpadResetCalls = (window.__dpadResetCalls || 0) + 1;
+	releaseItem();
+	const focus = EntityManager.getFocusEntity();
+	if (focus) {
+		focus.onFocusEnd();
+		EntityManager.setFocusEntity(null);
+	}
+	JoystickMouseCursorAdapter_default.recenter();
+}
+/**
+* Advance the cycle mode (mobs -> items -> both -> mobs), save it, and tell
+* the player in the chat box. A cycled item is released when the new mode
+* no longer includes items.
+*/
+function nextCycleMode() {
+	Controls_default.joyCycleMode = ((Controls_default.joyCycleMode | 0) + 1) % CYCLE_MODE_NAMES.length;
+	Controls_default.save();
+	if (Controls_default.joyCycleMode === CYCLE_MODE.MOBS) releaseItem();
+	ChatBox_default.addText("D-pad target cycle: " + CYCLE_MODE_NAMES[Controls_default.joyCycleMode], ChatBox_default.TYPE.INFO, ChatBox_default.FILTER.PUBLIC_LOG);
+}
+var CYCLE_MODE, CYCLE_MODE_NAMES, _cycledItem, JoystickTargetService_default;
+var init_JoystickTargetService = __esmMin((() => {
+	init_SessionStorage();
+	init_EntityManager();
+	init_Controls();
+	init_JoystickMouseCursorAdapter();
+	init_ChatBox();
+	init_CursorManager();
+	CYCLE_MODE = {
+		MOBS: 0,
+		ITEMS: 1,
+		BOTH: 2
+	};
+	CYCLE_MODE_NAMES = [
+		"mobs",
+		"items",
+		"mobs and items"
+	];
+	_cycledItem = null;
+	JoystickTargetService_default = {
+		getEntity: getEntityInContext,
+		focus: focusTarget,
+		cycle,
+		clear: clearFocus,
+		getItem: getCycledItem,
+		snapCursorToFocus: function() {
+			const focus = EntityManager.getFocusEntity();
+			if (focus) JoystickMouseCursorAdapter_default.moveMouseToEntity(focus);
+		},
+		nextCycleMode
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickCharacterControl.js
+/**
+* Left stick is back inside the deadzone: stick moves are allowed again.
+*/
+function releaseStick() {
+	_stickHeld = false;
+}
+function move(x, y) {
+	const player = SessionStorage_default.Entity;
+	if (!player || _stickHeld) return;
+	SessionStorage_default.moveAction = null;
+	_lastAttackGid = null;
+	direction$1[0] = x;
+	direction$1[1] = y;
+	exports$3.mat2.identity(rotate$1);
+	exports$3.mat2.rotate(rotate$1, rotate$1, -Camera.direction * 45 / 180 * Math.PI);
+	exports$3.vec2.transformMat2(direction$1, direction$1, rotate$1);
+	const nx = Math.round(player.position[0] + direction$1[0] * 3);
+	const ny = Math.round(player.position[1] + direction$1[1] * 3);
+	const movePacket = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.REQUEST_MOVE2() : new PACKET.CZ.REQUEST_MOVE();
+	movePacket.dest[0] = nx;
+	movePacket.dest[1] = ny;
+	Network.sendPacket(movePacket);
+}
+/**
+* Attack the context target (focused/cycled mob, else per attackTargetMode).
+*
+* @param {boolean} repeat true while X is held: only attack when the target
+*   differs from the last one X attacked. The server keeps attacking on its
+*   own (action 7), so re-sending would only restart the walk.
+* @return {boolean} whether an attack was sent
+*/
+function attack(repeat) {
+	const Player = SessionStorage_default.Entity;
+	if (!Player) return false;
+	const target = JoystickTargetService_default.getEntity();
+	if (!target || target === Player) return false;
+	if (repeat && target.GID === _lastAttackGid) return false;
+	JoystickTargetService_default.focus(target);
+	const entityFocus = EntityManager.getFocusEntity();
+	if (!entityFocus) return;
+	let pkt;
+	const out = [];
+	const count = PathFinding_default.search(Player.position[0] | 0, Player.position[1] | 0, entityFocus.position[0] | 0, entityFocus.position[1] | 0, Player.attack_range + 1, out);
+	if (!count) return false;
+	_lastAttackGid = entityFocus.GID;
+	_stickHeld = true;
+	if (PacketVerManager_default.value >= 20180307) pkt = new PACKET.CZ.REQUEST_ACT2();
+	else pkt = new PACKET.CZ.REQUEST_ACT();
+	pkt.action = 7;
+	pkt.targetGID = entityFocus.GID;
+	if (count < 2) {
+		SessionStorage_default.moveAction = null;
+		Network.sendPacket(pkt);
+		return true;
+	}
+	SessionStorage_default.moveAction = pkt;
+	if (PacketVerManager_default.value >= 20180307) pkt = new PACKET.CZ.REQUEST_MOVE2();
+	else pkt = new PACKET.CZ.REQUEST_MOVE();
+	pkt.dest[0] = out[(count - 1) * 2];
+	pkt.dest[1] = out[(count - 1) * 2 + 1];
+	Network.sendPacket(pkt);
+	return true;
+}
+/**
+* Pick up the item the D-pad cycle rests on, else the closest one. Out of
+* reach (more than 2 cells, same rule as a mouse click in EntityControl),
+* walk to it first and let onWalkEnd send the pickup via Session.moveAction.
+*/
+function pickUp() {
+	const Player = SessionStorage_default.Entity;
+	if (!Player) return;
+	const item = JoystickTargetService_default.getItem() || EntityManager.getClosestEntity(Player, Player.constructor.TYPE_ITEM);
+	if (!item) return;
+	let pkt = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.ITEM_PICKUP2() : new PACKET.CZ.ITEM_PICKUP();
+	pkt.ITAID = item.GID;
+	Player.lookTo(item.position[0], item.position[1]);
+	if (exports$3.vec2.distance(Player.position, item.position) > 2) {
+		SessionStorage_default.moveAction = pkt;
+		pkt = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.REQUEST_MOVE2() : new PACKET.CZ.REQUEST_MOVE();
+		pkt.dest[0] = item.position[0] | 0;
+		pkt.dest[1] = item.position[1] | 0;
+	}
+	Network.sendPacket(pkt);
+}
+var direction$1, rotate$1, _stickHeld, _lastAttackGid, JoystickCharacterControl_default;
+var init_JoystickCharacterControl = __esmMin((() => {
+	init_SessionStorage();
+	init_EntityManager();
+	init_NetworkManager();
+	init_PacketStructure();
+	init_PacketVerManager();
+	init_gl_matrix$1();
+	init_Camera();
+	init_PathFinding();
+	init_JoystickTargetService();
+	direction$1 = exports$3.vec2.create();
+	rotate$1 = exports$3.mat2.create();
+	_stickHeld = false;
+	_lastAttackGid = null;
+	JoystickCharacterControl_default = {
+		attack,
+		pickUp,
+		move,
+		releaseStick
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickSelectionUI.html?raw
+var JoystickSelectionUI_default$2;
+var init_JoystickSelectionUI$2 = __esmMin((() => {
+	JoystickSelectionUI_default$2 = "<div id=\"shortcut-selection\" class=\"joystick-selection-window\">\r\n	<h3 class=\"selection-title\">Select slot for <span class=\"item-name\"></span></h3>\r\n	<div class=\"tab-container\">\r\n		<div class=\"tab-buttons\"></div>\r\n		<div class=\"shortcut-grid\"></div>\r\n	</div>\r\n	<div class=\"footer-instructions\">\r\n		Use L2/R2 to change tab, D-pad to navigate slot, A to select, Select to cancel\r\n	</div>\r\n</div>\r\n";
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickSelectionUI.css?raw
+var JoystickSelectionUI_default$1;
+var init_JoystickSelectionUI$1 = __esmMin((() => {
+	JoystickSelectionUI_default$1 = ":host {\r\n	top: 50%;\r\n	left: 50%;\r\n	transform: translate(-50%, -50%);\r\n	z-index: 10000;\r\n	display: none;\r\n}\r\n\r\n#shortcut-selection {\r\n	position: absolute;\r\n	top: 0;\r\n	left: 0;\r\n	background: rgba(0, 0, 0, 0.95);\r\n	border: 2px solid #fff;\r\n	padding: 20px;\r\n	color: white;\r\n	min-width: 780px;\r\n	box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);\r\n	border-radius: 8px;\r\n}\r\n\r\n#shortcut-selection h3 {\r\n	margin-top: 0;\r\n	margin-bottom: 10px;\r\n	text-align: center;\r\n}\r\n\r\n#shortcut-selection .tab-buttons {\r\n	display: flex;\r\n	gap: 5px;\r\n	margin-bottom: 10px;\r\n}\r\n\r\n#shortcut-selection .tab-btn {\r\n	padding: 5px 10px;\r\n	border: 1px solid #fff;\r\n	color: white;\r\n	cursor: pointer;\r\n	background: #666;\r\n	flex: 1;\r\n}\r\n\r\n#shortcut-selection .tab-btn.active {\r\n	background: #ff6600;\r\n}\r\n\r\n#shortcut-selection .shortcut-grid {\r\n	display: grid;\r\n	grid-template-columns: repeat(9, 1fr);\r\n	gap: 8px;\r\n	justify-content: center;\r\n	padding: 10px;\r\n	background: rgba(255, 255, 255, 0.05);\r\n	border-radius: 5px;\r\n}\r\n\r\n#shortcut-selection .slot-btn {\r\n	width: 75px;\r\n	height: 60px;\r\n	border: 2px solid #555;\r\n	background: #555;\r\n	display: flex;\r\n	align-items: center;\r\n	justify-content: center;\r\n	font-weight: bold;\r\n	cursor: pointer;\r\n	color: white;\r\n	transition: all 0.1s;\r\n	border-radius: 5px;\r\n	text-align: center;\r\n	line-height: 1.2;\r\n	padding: 5px;\r\n	box-sizing: border-box;\r\n}\r\n\r\n#shortcut-selection .slot-btn.empty {\r\n	background: #222;\r\n}\r\n\r\n#shortcut-selection .slot-btn.selected {\r\n	background: #ff6600;\r\n	border-color: #fff;\r\n}\r\n\r\n#shortcut-selection .footer-instructions {\r\n	margin-top: 15px;\r\n	text-align: center;\r\n	opacity: 0.8;\r\n}\r\n";
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickSelectionUI.js
+function setClickInterval() {
+	if (clickLock$1) clearTimeout(clickLock$1);
+	clickLock$1 = setTimeout(function() {
+		clickLock$1 = null;
+	}, 200);
+}
+function isLocked() {
+	return clickLock$1 !== null;
+}
+function getJoystickComboForSlot(slotIndex) {
+	return {
+		0: "L1+Y",
+		1: "L1+X",
+		2: "L1+B",
+		3: "L1+A",
+		4: "L2+Y",
+		5: "L2+X",
+		6: "L2+B",
+		7: "L2+A",
+		8: "L1+R1+Y",
+		9: "R1+Y",
+		10: "R1+X",
+		11: "R1+B",
+		12: "R1+A",
+		13: "R2+Y",
+		14: "R2+X",
+		15: "R2+B",
+		16: "R2+A",
+		17: "L1+R1+X",
+		18: "L1+Y (Set2)",
+		19: "L1+X (Set2)",
+		20: "L1+B (Set2)",
+		21: "L1+A (Set2)",
+		22: "L2+Y (Set2)",
+		23: "L2+X (Set2)",
+		24: "L2+B (Set2)",
+		25: "L2+A (Set2)",
+		26: "L1+R1+B",
+		27: "R1+Y (Set2)",
+		28: "R1+X (Set2)",
+		29: "R1+B (Set2)",
+		30: "R1+A (Set2)",
+		31: "R2+Y (Set2)",
+		32: "R2+X (Set2)",
+		33: "R2+B (Set2)",
+		34: "R2+A (Set2)",
+		35: "L1+R1+A"
+	}[slotIndex];
+}
+function updateGrid() {
+	const grid = JoystickSelectionUI.getRoot().querySelector(".shortcut-grid");
+	if (!grid) return;
+	grid.innerHTML = "";
+	const startIdx = currentTab * 9;
+	for (let i = 0; i < 9; i++) {
+		const globalIndex = startIdx + i;
+		const slot = ShortCut_default.getList()[globalIndex];
+		const isEmpty = !slot || !slot.isSkill && !slot.ID;
+		const displayText = getJoystickComboForSlot(globalIndex) || (i + 1).toString();
+		const slotDiv = document.createElement("div");
+		slotDiv.className = "slot-btn";
+		slotDiv.dataset.index = i;
+		slotDiv.textContent = displayText;
+		if (isEmpty) slotDiv.classList.add("empty");
+		grid.appendChild(slotDiv);
+	}
+	updateSelection();
+}
+function updateSelection() {
+	const grid = JoystickSelectionUI.getRoot().querySelector(".shortcut-grid");
+	if (!grid) return;
+	grid.querySelectorAll(".slot-btn").forEach((el) => el.classList.remove("selected"));
+	const selected = grid.querySelector(`.slot-btn[data-index="${slotInTab}"]`);
+	if (selected) selected.classList.add("selected");
+}
+function updateTabButtons() {
+	const tabButtons = JoystickSelectionUI.getRoot().querySelector(".tab-buttons");
+	if (!tabButtons) return;
+	tabButtons.querySelectorAll(".tab-btn").forEach((el) => el.classList.remove("active"));
+	const active = tabButtons.querySelector(`.tab-btn[data-tab="${currentTab}"]`);
+	if (active) active.classList.add("active");
+}
+function createTabButtons() {
+	const tabButtons = JoystickSelectionUI.getRoot().querySelector(".tab-buttons");
+	if (!tabButtons) return;
+	tabButtons.innerHTML = "";
+	for (let t = 0; t < 4; t++) {
+		const tabBtn = document.createElement("button");
+		tabBtn.className = "tab-btn";
+		tabBtn.dataset.tab = t;
+		tabBtn.textContent = `Tab ${t + 1}`;
+		tabButtons.appendChild(tabBtn);
+	}
+}
+function selectSlot() {
+	if (!itemData) return;
+	const row = currentTab;
+	const pos = row * 9 + slotInTab;
+	ShortCut_default.removeElement(itemData.isSkill, itemData.ID, row, itemData.value);
+	ShortCut_default.addElement(pos, itemData.isSkill, itemData.ID, itemData.value);
+	ShortCut_default.onChange(pos, itemData.isSkill, itemData.ID, itemData.value);
+	JoystickSelectionUI.hideSelection();
+}
+var JoystickSelectionUI, currentTab, slotInTab, itemData, clickLock$1, JoystickSelectionUI_default;
+var init_JoystickSelectionUI = __esmMin((() => {
+	init_GUIComponent();
+	init_UIManager();
+	init_ShortCut();
+	init_JoystickSelectionUI$2();
+	init_JoystickSelectionUI$1();
+	JoystickSelectionUI = new GUIComponent("JoystickSelectionUI", JoystickSelectionUI_default$1);
+	JoystickSelectionUI.render = () => JoystickSelectionUI_default$2;
+	currentTab = 0;
+	slotInTab = 0;
+	itemData = null;
+	clickLock$1 = null;
+	/**
+	* Main input handler
+	* as expected by JoystickButtonInput.js
+	*/
+	JoystickSelectionUI.handleGamepadInput = function handleGamepadInput(buttons) {
+		if (isLocked()) return true;
+		if (buttons[0] !== "unpressed") {
+			setClickInterval();
+			selectSlot();
+			return true;
+		}
+		if (buttons[8] !== "unpressed") {
+			setClickInterval();
+			JoystickSelectionUI.hideSelection();
+			return true;
+		}
+		if (buttons[6] !== "unpressed") {
+			setClickInterval();
+			if (currentTab > 0) {
+				currentTab--;
+				slotInTab = 0;
+				updateGrid();
+				updateTabButtons();
+			}
+			return true;
+		}
+		if (buttons[7] !== "unpressed") {
+			setClickInterval();
+			if (currentTab < 3) {
+				currentTab++;
+				slotInTab = 0;
+				updateGrid();
+				updateTabButtons();
+			}
+			return true;
+		}
+		if (buttons[12] !== "unpressed") {
+			setClickInterval();
+			if (slotInTab >= 3) {
+				slotInTab -= 3;
+				updateSelection();
+			}
+			return true;
+		}
+		if (buttons[13] !== "unpressed") {
+			setClickInterval();
+			if (slotInTab < 6) {
+				slotInTab += 3;
+				updateSelection();
+			}
+			return true;
+		}
+		if (buttons[14] !== "unpressed") {
+			setClickInterval();
+			if (slotInTab > 0) {
+				slotInTab--;
+				updateSelection();
+			}
+			return true;
+		}
+		if (buttons[15] !== "unpressed") {
+			setClickInterval();
+			if (slotInTab < 8) {
+				slotInTab++;
+				updateSelection();
+			}
+			return true;
+		}
+		return false;
+	};
+	JoystickSelectionUI.init = function() {
+		createTabButtons();
+		this._host.style.position = "fixed";
+		this._host.style.display = "none";
+	};
+	JoystickSelectionUI.showSelection = function(data) {
+		itemData = data;
+		currentTab = 0;
+		slotInTab = 0;
+		updateGrid();
+		updateTabButtons();
+		this.focus();
+		this._host.style.display = "block";
+		this._fixPositionOverflow();
+	};
+	JoystickSelectionUI.hideSelection = function() {
+		this._host.style.display = "none";
+		itemData = null;
+	};
+	JoystickSelectionUI.active = function() {
+		return this._host && this._host.style.display !== "none";
+	};
+	JoystickSelectionUI_default = UIManager.addComponent(JoystickSelectionUI);
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickInteractionService.js
+var JoystickInteractionService_default;
+var init_JoystickInteractionService = __esmMin((() => {
+	init_ShortCut();
+	init_Inventory();
+	init_ItemType();
+	init_JoystickCharacterControl();
+	init_JoystickTargetService();
+	init_JoystickMouseCursorAdapter();
+	init_Controls();
+	init_JoystickSelectionUI();
+	init_JoystickInputService();
+	init_DBManager();
+	init_SkillInfo();
+	init_JoystickShortcutMapper();
+	init_MouseEventHandler();
+	JoystickInteractionService_default = {
+		prepare: function() {},
+		dispose: function() {},
+		cancelQuick: false,
+		executeShortcut: function(index, group) {
+			const shortcut = ShortCut_default.getList()[index];
+			if (!shortcut) return;
+			if (!shortcut.isSkill) {
+				const item = InventoryController.getUI().getItemById(shortcut.ID);
+				if (!item || item.count === 0) return;
+			} else if (Controls_default.attackTargetMode) {
+				const targetEntity = JoystickTargetService_default.getEntity();
+				if (targetEntity) JoystickMouseCursorAdapter_default.moveMouseToEntity(targetEntity);
+			}
+			ShortCut_default.onShortCut({ cmd: "EXECUTE" + index });
+			if (Controls_default.joyQuick === 2) JoystickMouseCursorAdapter_default.quickCastClick();
+			else if (Controls_default.joyQuick === 1) {
+				this.cancelQuick = false;
+				const waitforRelease = () => {
+					setTimeout(() => {
+						const buttons = JoystickInputService_default.buttonStates;
+						if (JoystickShortcutMapper_default.getGroup(buttons) !== group) JoystickMouseCursorAdapter_default.quickCastClick();
+						else if (!this.cancelQuick) waitforRelease();
+					}, 50);
+				};
+				waitforRelease();
+			}
+		},
+		openSelectionWindow: function(draggableElement) {
+			const index = parseInt(draggableElement.getAttribute("data-index"), 10);
+			const isSkill = draggableElement.closest(".skill");
+			let itemData;
+			if (!isSkill) {
+				const item = InventoryController.getUI().getItemByIndex(index);
+				if (item) {
+					if (item.type === ItemType_default.UNKNOWN || item.type === ItemType_default.ETC || item.type === ItemType_default.CARD || item.type === ItemType_default.PETEGG || item.type === ItemType_default.PETARMOR) return false;
+					itemData = {
+						isSkill: false,
+						ID: item.ITID,
+						value: item.count,
+						name: DB.getItemName(item)
+					};
+				}
+			} else {
+				const skill = ShortCut_default.getSkillById(index);
+				if (skill) itemData = {
+					isSkill: true,
+					ID: skill.SKID,
+					value: skill.selectedLevel ? skill.selectedLevel : skill.level,
+					name: SkillInfo[skill.SKID].SkillName
+				};
+			}
+			if (itemData) {
+				JoystickSelectionUI_default.showSelection(itemData);
+				return true;
+			}
+			return false;
+		},
+		leftClick: function(click) {
+			JoystickMouseCursorAdapter_default.leftClick(click);
+		},
+		rightClick: function(holding) {
+			JoystickMouseCursorAdapter_default.rightClick(holding);
+		},
+		pickUpItem: function() {
+			JoystickCharacterControl_default.pickUp();
+		},
+		/**
+		* @param {boolean} repeat true while X is held (see Character.attack)
+		* @return {boolean} whether an attack was sent
+		*/
+		attackTargeted: function(repeat) {
+			const sent = JoystickCharacterControl_default.attack(repeat);
+			if (sent) JoystickTargetService_default.snapCursorToFocus();
+			return sent;
+		},
+		releaseStick: function() {
+			JoystickCharacterControl_default.releaseStick();
+		},
+		moveCursor: function(dx, dy) {
+			JoystickMouseCursorAdapter_default.move(dx, dy);
+		},
+		cameraZoom: function(zoom) {
+			JoystickMouseCursorAdapter_default.changeCameraZoom(zoom);
+		},
+		cameraAngle: function(angle) {
+			JoystickMouseCursorAdapter_default.changeCameraAngle(angle);
+		},
+		escape: function() {
+			JoystickMouseCursorAdapter_default.esc();
+		},
+		enter: function() {
+			JoystickMouseCursorAdapter_default.enter();
+		},
+		showinfo: function() {
+			return JoystickMouseCursorAdapter_default.contextMenu();
+		},
+		navigateDpad: function(direction) {
+			return JoystickMouseCursorAdapter_default.navigateDraggableItems(direction);
+		},
+		/**
+		* D-pad left/right. If the virtual cursor is parked over an item or
+		* skill container, keep today's grid navigation so inventory nav still
+		* works with the D-pad. Over the world, cycle the targeted mob.
+		*
+		* @param {string} direction 'next' or 'prev'
+		*/
+		cycleTarget: function(direction) {
+			const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+			if (el && el.closest(".item, .skill")) {
+				this.navigateDpad(direction === "next" ? "right" : "left");
+				return;
+			}
+			JoystickTargetService_default.cycle(direction);
+		},
+		/**
+		* Clear the cycle focus and recenter the virtual cursor. Lets the player
+		* drop the current target so the next D-pad step starts from the closest
+		* mob again.
+		*/
+		resetFocus: function() {
+			JoystickTargetService_default.clear();
+		},
+		/**
+		* Switch what the D-pad cycle walks through: mobs, items, or both.
+		*/
+		nextCycleMode: function() {
+			JoystickTargetService_default.nextCycleMode();
+		},
+		moveCharacter: function(x, y) {
+			JoystickCharacterControl_default.move(x, y);
+		}
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickButtonInput.js
+function setClickLock() {
+	clickLock = true;
+	setTimeout(function() {
+		clickLock = false;
+	}, lockTimeout);
+}
+var clickLock, lockTimeout, ButtonInput;
+var init_JoystickButtonInput = __esmMin((() => {
+	init_JoystickShortcutMapper();
+	init_JoystickInteractionService();
+	init_JoystickSetManager();
+	init_JoystickUIRenderer();
+	init_JoystickSelectionUI();
+	clickLock = false;
+	lockTimeout = 200;
+	ButtonInput = {
+		update: function(buttons) {
+			if (clickLock) return false;
+			if (JoystickSelectionUI_default.active()) {
+				JoystickSelectionUI_default.handleGamepadInput(buttons);
+				return false;
+			}
+			let pressed = false;
+			JoystickUIRenderer_default.updateVisuals(buttons);
+			pressed |= this._handleSpecial(buttons);
+			pressed |= this._handleSetChange(buttons);
+			if (!pressed) {
+				pressed |= this._handleWorldActions(buttons);
+				pressed |= this._handleShortcuts(buttons);
+			}
+			return pressed;
+		},
+		_handleWorldActions: function(btn) {
+			let pressed = false;
+			if (JoystickShortcutMapper_default.getGroup(btn) !== "") return false;
+			if (btn[0] !== "unpressed") {
+				JoystickInteractionService_default.leftClick(btn[0] === "holding");
+				pressed = true;
+			}
+			if (btn[1] !== "unpressed") {
+				JoystickInteractionService_default.rightClick(btn[1] === "holding");
+				pressed = true;
+			}
+			if (btn[2] !== "unpressed" && JoystickInteractionService_default.attackTargeted(btn[2] === "holding")) pressed = true;
+			if (btn[3] === "pressed") {
+				JoystickInteractionService_default.pickUpItem();
+				pressed = true;
+			}
+			if (btn[11] === "pressed") {
+				JoystickInteractionService_default.resetFocus();
+				pressed = true;
+			}
+			if (btn[10] === "pressed") {
+				JoystickInteractionService_default.nextCycleMode();
+				pressed = true;
+			}
+			if (pressed) setClickLock();
+			return pressed;
+		},
+		_handleSetChange: function(btn) {
+			const l2 = btn[6] === "holding";
+			const r2 = btn[7] === "holding";
+			if (l2 && r2) {
+				JoystickSetManager_default.toggle();
+				JoystickUIRenderer_default.updateSetIndicator();
+				JoystickUIRenderer_default.sync();
+				setClickLock();
+				return true;
+			}
+			return false;
+		},
+		_handleSpecial: function(buttons) {
+			let pressed = false;
+			if (buttons[8] === "holding") {
+				if (buttons[12] !== "unpressed") {
+					JoystickInteractionService_default.cameraZoom(-2);
+					pressed = true;
+				} else if (buttons[13] !== "unpressed") {
+					JoystickInteractionService_default.cameraZoom(2);
+					pressed = true;
+				} else if (buttons[14] !== "unpressed") {
+					JoystickInteractionService_default.cameraAngle(-5);
+					pressed = true;
+				} else if (buttons[15] !== "unpressed") {
+					JoystickInteractionService_default.cameraAngle(5);
+					pressed = true;
+				} else if (buttons[9] !== "unpressed") {
+					JoystickInteractionService_default.escape();
+					pressed = true;
+				} else pressed = JoystickInteractionService_default.showinfo();
+				if (pressed) {
+					setClickLock();
+					return pressed;
+				}
+			}
+			if (buttons[12] !== "unpressed") {
+				JoystickInteractionService_default.navigateDpad("up");
+				pressed = true;
+			} else if (buttons[13] !== "unpressed") {
+				JoystickInteractionService_default.navigateDpad("down");
+				pressed = true;
+			} else if (buttons[14] !== "unpressed") {
+				JoystickInteractionService_default.cycleTarget("prev");
+				pressed = true;
+			} else if (buttons[15] !== "unpressed") {
+				JoystickInteractionService_default.cycleTarget("next");
+				pressed = true;
+			} else if (buttons[9] !== "unpressed") {
+				JoystickInteractionService_default.enter();
+				pressed = true;
+			}
+			if (pressed) setClickLock();
+			return pressed;
+		},
+		_handleShortcuts: function(btn) {
+			const idx = JoystickShortcutMapper_default.getShortcutIndex(btn);
+			if (idx !== -1) {
+				JoystickInteractionService_default.executeShortcut(idx, JoystickShortcutMapper_default.getGroup(btn));
+				setClickLock();
+				return true;
+			}
+			return false;
+		}
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickAxisInput.js
+var JoystickAxisInput_default;
+var init_JoystickAxisInput = __esmMin((() => {
+	init_JoystickInteractionService();
+	init_Controls();
+	init_JoystickUIRenderer();
+	JoystickAxisInput_default = { update: function(axes) {
+		let active = false;
+		let lx = axes[0];
+		let ly = axes[1];
+		if (Controls_default.joyReverseStick && axes.length >= 4) {
+			lx = axes[2];
+			ly = axes[3];
+		}
+		if (Math.abs(lx) > Controls_default.joyDeadline || Math.abs(ly) > Controls_default.joyDeadline) {
+			JoystickInteractionService_default.moveCharacter(lx, -ly);
+			JoystickInteractionService_default.cancelQuick = true;
+			active = true;
+		} else JoystickInteractionService_default.releaseStick();
+		if (axes.length >= 4) {
+			let rx = axes[2];
+			let ry = axes[3];
+			if (Controls_default.joyReverseStick) {
+				rx = axes[0];
+				ry = axes[1];
+			}
+			if (Math.abs(rx) > Controls_default.joyDeadline || Math.abs(ry) > Controls_default.joyDeadline) active = true;
+		}
+		if (active) JoystickUIRenderer_default.show();
+		return active;
+	} };
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickInputService.js
+var hideTimeout, hideTimeoutHandle, JoystickInputService_default;
+var init_JoystickInputService = __esmMin((() => {
+	init_JoystickButtonInput();
+	init_JoystickAxisInput();
+	init_JoystickUIRenderer();
+	init_Controls();
+	init_JoystickButtonMap();
+	hideTimeout = false;
+	hideTimeoutHandle = null;
+	JoystickInputService_default = {
+		active: false,
+		buttonStates: {},
+		_rawStates: [],
+		_listening: false,
+		prepare: function() {
+			if (this._listening) return;
+			this._boundOnConnect = this._onConnect.bind(this);
+			this._boundOnDisconnect = this._onDisconnect.bind(this);
+			window.addEventListener("gamepadconnected", this._boundOnConnect);
+			window.addEventListener("gamepaddisconnected", this._boundOnDisconnect);
+			this._listening = true;
+		},
+		dispose: function() {
+			window.removeEventListener("gamepadconnected", this._boundOnConnect);
+			window.removeEventListener("gamepaddisconnected", this._boundOnDisconnect);
+			this._listening = false;
+			if (hideTimeoutHandle) {
+				clearTimeout(hideTimeoutHandle);
+				hideTimeoutHandle = null;
+			}
+			hideTimeout = false;
+			this.active = false;
+			this.buttonStates = {};
+			this._rawStates = [];
+		},
+		getStates: function(gp) {
+			if (!gp) return null;
+			const states = {
+				buttons: [],
+				raw: [],
+				axes: []
+			};
+			const self = this;
+			gp.buttons.forEach(function(btn, index) {
+				const isPressed = btn.pressed;
+				const prevState = self._rawStates[index] || "unpressed";
+				let newState = "unpressed";
+				if (isPressed) newState = prevState === "unpressed" ? "pressed" : "holding";
+				self._rawStates[index] = newState;
+				states.raw[index] = newState;
+			});
+			states.buttons = JoystickButtonMap_default.toLogical(states.raw);
+			self.buttonStates = states.buttons;
+			gp.axes.forEach(function(axis, index) {
+				states.axes[index] = Math.abs(axis) > Controls_default.joyDeadline ? axis : 0;
+			});
+			return states;
+		},
+		update: function() {
+			const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+			let activeGamepad = null;
+			for (let i = 0; i < gamepads.length; i++) if (gamepads[i]) {
+				activeGamepad = gamepads[i];
+				break;
+			}
+			if (!activeGamepad) {
+				if (this.active) {
+					this.active = false;
+					JoystickUIRenderer_default.hide();
+				}
+				return false;
+			}
+			const states = this.getStates(activeGamepad);
+			let anyActivity = false;
+			if (!states) {
+				this.active = false;
+				return false;
+			}
+			const buttonsActive = JoystickButtonMap_default.consume(states.raw) || ButtonInput.update(states.buttons);
+			const axisActive = JoystickAxisInput_default.update(states.axes);
+			if (buttonsActive || axisActive) anyActivity = true;
+			if (anyActivity && !this.active) {
+				JoystickUIRenderer_default.show();
+				this.active = true;
+			}
+			if (!anyActivity && this.active && !hideTimeout) {
+				hideTimeout = true;
+				const self = this;
+				this.active = false;
+				hideTimeoutHandle = setTimeout(function() {
+					hideTimeout = false;
+					hideTimeoutHandle = null;
+					if (self.active === false) JoystickUIRenderer_default.hide();
+				}, 3e4);
+			} else if (!hideTimeout) this.active = true;
+			return true;
+		},
+		_onConnect: function() {
+			this.active = true;
+			JoystickUIRenderer_default.show();
+		},
+		_onDisconnect: function() {
+			this.active = false;
+			this.buttonStates = {};
+			this._rawStates = [];
+			JoystickUIRenderer_default.hide();
+		}
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickUIRenderer.js
+/**
+* Get internal shadow root
+* @returns {ShadowRoot|HTMLElement}
+*/
+function _getShadow() {
+	if (!ui) return null;
+	const host = ui[0];
+	return host.shadowRoot || host;
+}
+function setupUIHide() {
+	let lastMouseX = 0;
+	let lastMouseY = 0;
+	_mouseMoveHandler = (event) => {
+		if (!ui || !_isVisible$1()) return;
+		const deltaX = Math.abs(event.clientX - lastMouseX);
+		const deltaY = Math.abs(event.clientY - lastMouseY);
+		if ((deltaX > 5 || deltaY > 5) && Controls_default.joyAutoHide) {
+			hide$1();
+			JoystickInputService_default.active = false;
+		}
+		lastMouseX = event.clientX;
+		lastMouseY = event.clientY;
+	};
+	document.addEventListener("mousemove", _mouseMoveHandler);
+}
+function _isVisible$1() {
+	if (!ui) return false;
+	const host = ui[0];
+	if (!host) return false;
+	return host.style.display !== "none";
+}
+function attach(root) {
+	ui = root;
+	setupUIHide();
+}
+function updateJoystickSlot(joystickSlotIndex, shortcutIndex) {
+	const item = ShortCut_default.getList()[shortcutIndex];
+	const shadow = _getShadow();
+	if (!shadow) return;
+	const slot = shadow.querySelectorAll(".slot")[joystickSlotIndex];
+	if (!slot) return;
+	const icon = slot.querySelector(".icon");
+	const img = icon.querySelector(".img");
+	const amount = icon.querySelector(".amount");
+	if (!item || item.ID === 0) {
+		icon.style.display = "none";
+		img.style.backgroundImage = "none";
+		amount.textContent = "";
+		return;
+	}
+	icon.style.display = "block";
+	if (item.isSkill && item.count) {
+		const skillInfo = SkillInfo[item.ID];
+		if (skillInfo) Client.loadFile(`${DB.INTERFACE_PATH}item/${skillInfo.Name}.bmp`, (url) => {
+			img.style.backgroundImage = `url(${url})`;
+			amount.textContent = item.count;
+		});
+	} else {
+		const inventoryItem = InventoryController.getUI().getItemById(item.ID);
+		if (inventoryItem) {
+			const itemInfo = DB.getItemInfo(item.ID);
+			const fileName = inventoryItem.IsIdentified ? itemInfo.identifiedResourceName : itemInfo.unidentifiedResourceName;
+			let count = inventoryItem.count;
+			if ((inventoryItem.type === ItemType_default.WEAPON || inventoryItem.type === ItemType_default.ARMOR || inventoryItem.type === ItemType_default.SHADOWGEAR) && count) count = 1;
+			Client.loadFile(`${DB.INTERFACE_PATH}item/${fileName}.bmp`, (url) => {
+				img.style.backgroundImage = `url(${url})`;
+				amount.textContent = count;
+			});
+		}
+	}
+}
+function updateById(Id) {
+	if (!ui) return;
+	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
+	for (let i = 0; i < 20; i++) {
+		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
+		const shortcut = ShortCut_default.getList()[shortcutIndex];
+		if (shortcut && shortcut.ID === Id) updateJoystickSlot(i, shortcutIndex);
+	}
+}
+function updateByIndex(index) {
+	if (!ui) return;
+	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
+	for (let i = 0; i < 20; i++) {
+		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
+		if (shortcutIndex === index) updateJoystickSlot(i, shortcutIndex);
+	}
+}
+/**
+* Write the current physical button names into the HUD: group headers
+* (LB, LT, ...) and the face-button labels on each slot cross.
+*/
+function relabel() {
+	const shadow = _getShadow();
+	if (!shadow) return;
+	const B = JoystickButtonMap_default.BUTTON;
+	const groups = {
+		L1: JoystickButtonMap_default.nameOf(B.LB),
+		L2: JoystickButtonMap_default.nameOf(B.LT),
+		R1: JoystickButtonMap_default.nameOf(B.RB),
+		R2: JoystickButtonMap_default.nameOf(B.RT),
+		L1R1: JoystickButtonMap_default.nameOf(B.LB) + "+" + JoystickButtonMap_default.nameOf(B.RB)
+	};
+	const faces = {
+		top: JoystickButtonMap_default.nameOf(B.Y),
+		left: JoystickButtonMap_default.nameOf(B.X),
+		right: JoystickButtonMap_default.nameOf(B.B),
+		bottom: JoystickButtonMap_default.nameOf(B.A)
+	};
+	shadow.querySelectorAll(".group-container").forEach((group) => {
+		const header = group.querySelector(".group-header");
+		if (header && groups[group.dataset.group]) header.textContent = groups[group.dataset.group];
+		Object.keys(faces).forEach((position) => {
+			const label = group.querySelector(".slot." + position + " .key-label");
+			if (label) label.textContent = faces[position];
+		});
+	});
+}
+function sync() {
+	if (!ui) return;
+	relabel();
+	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
+	for (let i = 0; i < 20; i++) {
+		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
+		updateJoystickSlot(i, shortcutIndex);
+	}
+}
+function updateSetIndicator() {
+	const shadow = _getShadow();
+	if (!shadow) return;
+	shadow.querySelectorAll(".set-btn").forEach((el) => el.classList.remove("active"));
+	const currentSet = JoystickSetManager_default.getCurrentSet();
+	const activeBtn = shadow.querySelector(`.set-btn:nth-child(${currentSet})`);
+	if (activeBtn) activeBtn.classList.add("active");
+}
+function updateVisuals(buttons) {
+	const shadow = _getShadow();
+	if (!shadow) return;
+	shadow.querySelectorAll(".group-container").forEach((el) => el.classList.remove("active"));
+	const activeGroup = JoystickShortcutMapper_default.getGroup(buttons);
+	if (activeGroup !== "") {
+		const active = shadow.querySelector(`[data-group="${activeGroup}"]`);
+		if (active) active.classList.add("active");
+	}
+}
+function show$1() {
+	if (ui && !_isVisible$1()) ui.show();
+}
+function hide$1() {
+	if (ui && _isVisible$1()) ui.hide();
+}
+function dispose() {
+	hide$1();
+	if (_mouseMoveHandler) {
+		document.removeEventListener("mousemove", _mouseMoveHandler);
+		_mouseMoveHandler = null;
+	}
+	ui = null;
+}
+var ui, _mouseMoveHandler, JoystickUIRenderer_default;
+var init_JoystickUIRenderer = __esmMin((() => {
+	init_ShortCut();
+	init_Inventory();
+	init_JoystickSetManager();
+	init_DBManager();
+	init_Client();
+	init_Controls();
+	init_ItemType();
+	init_JoystickShortcutMapper();
+	init_JoystickInputService();
+	init_SkillInfo();
+	init_JoystickButtonMap();
+	ui = null;
+	_mouseMoveHandler = null;
+	JoystickUIRenderer_default = {
+		attach,
+		dispose,
+		sync,
+		updateById,
+		updateByIndex,
+		updateSetIndicator,
+		updateVisuals,
+		relabel,
+		show: show$1,
+		hide: hide$1
+	};
+}));
+//#endregion
+//#region src/UI/Components/ShortCutOption/ShortCutOption.js
+/**
+* Checks if there is a match in the temporary settings
+* Returns the name of the conflicting shortcut, or false if no conflict
+*/
+function tempMatch(key) {
+	const TempState = {};
+	let matchSC = false;
+	Object.keys(ShortCuts$1).forEach(function(SC) {
+		if (ShortCuts$1[SC].cust) {
+			TempState[SC] = {};
+			TempState[SC].key = ShortCuts$1[SC].cust.key;
+			TempState[SC].alt = ShortCuts$1[SC].cust.alt;
+			TempState[SC].ctrl = ShortCuts$1[SC].cust.ctrl;
+			TempState[SC].shift = ShortCuts$1[SC].cust.shift;
+		} else {
+			TempState[SC] = {};
+			TempState[SC].key = ShortCuts$1[SC].init.key;
+			TempState[SC].alt = ShortCuts$1[SC].init.alt;
+			TempState[SC].ctrl = ShortCuts$1[SC].init.ctrl;
+			TempState[SC].shift = ShortCuts$1[SC].init.shift;
+		}
+	});
+	Object.keys(ShortCutsTemp).forEach(function(SC) {
+		if (ShortCutsTemp[SC].cust) {
+			TempState[SC] = {};
+			TempState[SC].key = ShortCutsTemp[SC].cust.key;
+			TempState[SC].alt = ShortCutsTemp[SC].cust.alt;
+			TempState[SC].ctrl = ShortCutsTemp[SC].cust.ctrl;
+			TempState[SC].shift = ShortCutsTemp[SC].cust.shift;
+		} else {
+			TempState[SC] = {};
+			TempState[SC].key = ShortCuts$1[SC].init.key;
+			TempState[SC].alt = ShortCuts$1[SC].init.alt;
+			TempState[SC].ctrl = ShortCuts$1[SC].init.ctrl;
+			TempState[SC].shift = ShortCuts$1[SC].init.shift;
+		}
+	});
+	Object.keys(TempState).every(function(SC) {
+		if (TempState[SC]) {
+			if (TempState[SC].key == key && TempState[SC].alt == KEYS.ALT && TempState[SC].ctrl == KEYS.CTRL && TempState[SC].shift == KEYS.SHIFT) {
+				matchSC = SC;
+				return false;
+			} else return true;
+		}
+	});
+	return matchSC;
+}
+/**
+* Updates the key list on the UI
+*/
+function updateKeyList() {
+	const cells = ShortCutOption.getRoot().querySelectorAll("td[data-button]");
+	for (let i = 0; i < cells.length; i++) {
+		const btnName = cells[i].dataset.button;
+		if (getKey(btnName)) cells[i].textContent = (getAlt(btnName) ? "ALT + " : "") + (getCtrl(btnName) ? "CTRL + " : "") + (getShift(btnName) ? "SHIFT + " : "") + KEYS.toReadableKey(parseInt(getKey(btnName), 10));
+		else cells[i].textContent = "N/A";
+	}
+}
+/**
+* Resets key bindings to initial
+*/
+function resetKeysToDefault() {
+	const root = ShortCutOption.getRoot();
+	Object.keys(ShortCuts$1).forEach(function(SC) {
+		ShortCutsTemp[SC] = {};
+		ShortCutsTemp[SC].cust = false;
+		const cell = root.querySelector("td[data-button='" + SC + "']");
+		if (cell) {
+			if (ShortCuts$1[SC].cust != ShortCutsTemp[SC].cust) cell.classList.add("changed");
+			else cell.classList.remove("changed");
+		}
+	});
+	updateKeyList();
+}
+/**
+* Applies the key bindings
+*/
+function applySettings() {
+	Object.keys(ShortCutsTemp).forEach(function(SC) {
+		if (ShortCutsTemp[SC].cust) {
+			ShortCuts$1[SC].cust = {};
+			ShortCuts$1[SC].cust.key = ShortCutsTemp[SC].cust.key;
+			ShortCuts$1[SC].cust.alt = ShortCutsTemp[SC].cust.alt;
+			ShortCuts$1[SC].cust.ctrl = ShortCutsTemp[SC].cust.ctrl;
+			ShortCuts$1[SC].cust.shift = ShortCutsTemp[SC].cust.shift;
+		} else ShortCuts$1[SC].cust = false;
+	});
+	ShortCutControls_default.save();
+	BattleMode.reload();
+	ShortCutsTemp = {};
+	updateKeyList();
+	ShortCutOption.getRoot().querySelectorAll("td.changed").forEach(function(el) {
+		el.classList.remove("changed");
+	});
+	const ShortCut = UIManager.getComponent("ShortCut");
+	if (ShortCut && ShortCut.updateAllTooltips) ShortCut.updateAllTooltips();
+}
+/**
+* Cancels the key bindings
+*/
+function cancelSettings() {
+	ShortCutsTemp = {};
+	updateKeyList();
+	ShortCutOption.getRoot().querySelectorAll("td.changed").forEach(function(el) {
+		el.classList.remove("changed");
+	});
+}
+/**
+* Get shortcut key setting
+*/
+function getKey(sc) {
+	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.key : ShortCuts$1[sc].init.key;
+	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.key : ShortCuts$1[sc].init.key;
+	else return false;
+}
+/**
+* Get shortcut alt setting
+*/
+function getAlt(sc) {
+	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.alt : ShortCuts$1[sc].init.alt;
+	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.alt : ShortCuts$1[sc].init.alt;
+	else return false;
+}
+/**
+* Get shortcut ctrl setting
+*/
+function getCtrl(sc) {
+	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.ctrl : ShortCuts$1[sc].init.ctrl;
+	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.ctrl : ShortCuts$1[sc].init.ctrl;
+	else return false;
+}
+/**
+* Get shortcut shift setting
+*/
+function getShift(sc) {
+	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.shift : ShortCuts$1[sc].init.shift;
+	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.shift : ShortCuts$1[sc].init.shift;
+	else return false;
+}
+function onUpdateTargetOption() {
+	Controls_default.attackTargetMode = parseInt(this.value, 10);
+	Controls_default.save();
+}
+/**
+* Combinations, worded with the current button names.
+*/
+function getMappingCombos() {
+	const B = JoystickButtonMap_default.BUTTON;
+	const n = JoystickButtonMap_default.nameOf;
+	const faces = [
+		n(B.Y),
+		n(B.X),
+		n(B.B),
+		n(B.A)
+	].join(" / ");
+	const sticks = Controls_default.joyReverseStick ? ["Right stick", "Left stick"] : ["Left stick", "Right stick"];
+	return [
+		[n(B.LB) + " / " + n(B.RB) + " / " + n(B.LT) + " / " + n(B.RT) + " + " + faces, "Shortcut slot 1 / 2 / 3 / 4 of that group"],
+		[n(B.LB) + " + " + n(B.RB) + " + " + faces, "Slot 9 of skill bar 1 / 2 / 3 / 4"],
+		[n(B.LT) + " + " + n(B.RT), "Switch shortcut set (bars 1-2 / 3-4)"],
+		[n(B.VIEW) + " + " + n(B.UP) + " / " + n(B.DOWN), "Camera zoom"],
+		[n(B.VIEW) + " + " + n(B.LEFT) + " / " + n(B.RIGHT), "Camera rotate"],
+		[n(B.VIEW) + " + " + n(B.MENU), "Escape"],
+		[n(B.VIEW) + " (cursor on item/skill)", "Context menu"],
+		[sticks[0], "Move"],
+		[sticks[1], "Cursor"]
+	];
+}
+/**
+* Fill the mapping panel's tables from the current map.
+*/
+function renderMapping(root) {
+	const status = root.querySelector(".joyMappingStatus");
+	status.classList.remove("capturing");
+	status.textContent = "Remap: press Remap, then a button on the gamepad. The two buttons trade places.";
+	const roles = root.querySelector(".joyMappingRoles tbody");
+	roles.textContent = "";
+	MAPPING_ROLES.forEach(function([logical, label]) {
+		const tr = document.createElement("tr");
+		const name = document.createElement("td");
+		const button = document.createElement("td");
+		const action = document.createElement("td");
+		const remap = document.createElement("button");
+		name.textContent = label;
+		button.textContent = JoystickButtonMap_default.nameOf(logical);
+		remap.type = "button";
+		remap.className = "joyBtn";
+		remap.textContent = "Remap";
+		remap.addEventListener("click", function() {
+			startRemap(root, logical, label, remap);
+		});
+		action.appendChild(remap);
+		tr.append(name, button, action);
+		roles.appendChild(tr);
+	});
+	const combos = root.querySelector(".joyMappingCombos tbody");
+	combos.textContent = "";
+	getMappingCombos().forEach(function([buttons, label]) {
+		const tr = document.createElement("tr");
+		const keys = document.createElement("td");
+		const what = document.createElement("td");
+		keys.textContent = buttons;
+		what.textContent = label;
+		tr.append(keys, what);
+		combos.appendChild(tr);
+	});
+}
+/**
+* Wait for a gamepad button for one role. Pressing Remap again cancels.
+*/
+function startRemap(root, logical, label, remapButton) {
+	const wasThisOne = remapButton.classList.contains("capturing");
+	JoystickButtonMap_default.cancelCapture();
+	root.querySelectorAll(".joyMappingRoles .joyBtn.capturing").forEach(function(el) {
+		el.classList.remove("capturing");
+	});
+	const status = root.querySelector(".joyMappingStatus");
+	if (wasThisOne) {
+		renderMapping(root);
+		return;
+	}
+	remapButton.classList.add("capturing");
+	status.classList.add("capturing");
+	status.textContent = "Press a gamepad button for \"" + label + "\"... (press Remap again to cancel)";
+	JoystickButtonMap_default.startCapture(function(physical) {
+		JoystickButtonMap_default.assign(logical, physical);
+		JoystickUIRenderer_default.relabel();
+		renderMapping(root);
+	});
+}
+function onUpdateCycleMode() {
+	Controls_default.joyCycleMode = parseInt(this.value, 10);
+	Controls_default.save();
+}
+function onUpdateSense() {
+	Controls_default.joySense = parseFloat(this.value, 10);
+	Controls_default.save();
+}
+function onUpdateJoyQuick() {
+	Controls_default.joyQuick = parseInt(this.value, 10);
+	Controls_default.save();
+}
+function onUpdateJoyDeadline() {
+	Controls_default.joyDeadline = parseInt(this.value, 10);
+	Controls_default.save();
+}
+function onUpdateAutoHide() {
+	Controls_default.joyAutoHide = !!this.checked;
+	Controls_default.save();
+}
+function onUpdateReverseStick() {
+	Controls_default.joyReverseStick = !!this.checked;
+	Controls_default.save();
+}
+function onUpdateDisableVirtualMouse() {
+	Controls_default.joyDisableVirtualMouse = !!this.checked;
+	Controls_default.save();
+}
+var ShortCutOption, ShortCuts$1, ShortCutsTemp, _preferences$30, MAPPING_ROLES, ShortCutOption_default;
+var init_ShortCutOption = __esmMin((() => {
+	init_KeyEventHandler();
+	init_Preferences$1();
+	init_UIManager();
+	init_GUIComponent();
+	init_Elements();
+	init_ShortCutControls();
+	init_BattleMode();
+	init_ShortCutOption$2();
+	init_ShortCutOption$1();
+	init_Controls();
+	init_JoystickButtonMap();
+	init_JoystickUIRenderer();
+	ShortCutOption = new GUIComponent("ShortCutOption", ShortCutOption_default$1);
+	ShortCuts$1 = ShortCutControls_default.ShortCuts;
+	ShortCutsTemp = {};
+	ShortCutOption.isCapturing = false;
+	_preferences$30 = Preferences.get("ShortCutOption", {
+		x: 300,
+		y: 300
+	}, 1);
+	/**
+	* Render HTML
+	*/
+	ShortCutOption.render = () => ShortCutOption_default$2;
+	/**
+	* Initialize UI
+	*/
+	ShortCutOption.init = function() {
+		const root = this.getRoot();
+		let close = root.querySelector(".close");
+		function closebtn(btn) {
+			if (btn) {
+				btn.addEventListener("mousedown", (e) => {
+					e.stopImmediatePropagation();
+					ShortCutOption.remove();
+				});
+				btn.addEventListener("click", (e) => {
+					e.stopImmediatePropagation();
+					ShortCutOption.remove();
+				});
+			}
+		}
+		closebtn(close);
+		close = root.querySelector(".button.close");
+		closebtn(close);
+		root.querySelectorAll(".tabs button").forEach(function(btn) {
+			btn.addEventListener("click", function() {
+				root.querySelectorAll(".selectedtab").forEach(function(el) {
+					el.classList.remove("selectedtab");
+				});
+				const tab = this.dataset.index;
+				root.querySelectorAll("." + tab).forEach(function(el) {
+					el.classList.add("selectedtab");
+				});
+			});
+		});
+		root.querySelectorAll("td").forEach(function(td) {
+			td.addEventListener("click", function() {
+				if (this.classList.contains("customize")) {
+					ShortCutOption.isCapturing = true;
+					root.querySelectorAll("td.selected").forEach(function(el) {
+						el.classList.remove("selected");
+					});
+					this.classList.add("selected");
+				} else {
+					ShortCutOption.isCapturing = false;
+					root.querySelectorAll("td.selected").forEach(function(el) {
+						el.classList.remove("selected");
+					});
+				}
+			});
+		});
+		const bindChange = function(selector, handler) {
+			const el = root.querySelector(selector);
+			if (el) el.addEventListener("change", handler);
+		};
+		bindChange(".attackTargetMode", onUpdateTargetOption);
+		bindChange(".joyCycleMode", onUpdateCycleMode);
+		const gamepadTab = root.querySelector(".content.t_gamepad");
+		root.querySelector(".joyMappingOpen").addEventListener("click", function() {
+			renderMapping(root);
+			gamepadTab.classList.add("mapping-open");
+		});
+		root.querySelector(".joyMappingBack").addEventListener("click", function() {
+			JoystickButtonMap_default.cancelCapture();
+			gamepadTab.classList.remove("mapping-open");
+		});
+		root.querySelector(".joyMappingReset").addEventListener("click", function() {
+			JoystickButtonMap_default.cancelCapture();
+			JoystickButtonMap_default.reset();
+			JoystickUIRenderer_default.relabel();
+			renderMapping(root);
+		});
+		bindChange(".joySense", onUpdateSense);
+		bindChange(".joyQuick", onUpdateJoyQuick);
+		bindChange(".joyDeadline", onUpdateJoyDeadline);
+		bindChange(".joyReverseStick", onUpdateReverseStick);
+		bindChange(".joyAutoHide", onUpdateAutoHide);
+		bindChange(".joyDisableVirtualMouse", onUpdateDisableVirtualMouse);
+		const resetBtn = root.querySelector(".button.reset");
+		if (resetBtn) resetBtn.addEventListener("click", function() {
+			resetKeysToDefault();
+		});
+		const okBtn = root.querySelector(".button.ok");
+		if (okBtn) okBtn.addEventListener("click", function() {
+			applySettings();
+		});
+		const cancelBtn = root.querySelector(".button.cancel");
+		if (cancelBtn) cancelBtn.addEventListener("click", function() {
+			cancelSettings();
+		});
+		updateKeyList();
+		this.draggable(".titlebar");
+	};
+	/**
+	* Apply preferences once append to body
+	*/
+	ShortCutOption.onAppend = function() {
+		const cycleMode = this.getRoot().querySelector(".joyCycleMode");
+		if (cycleMode) cycleMode.value = String(Controls_default.joyCycleMode | 0);
+		this._host.style.left = _preferences$30.x + "px";
+		this._host.style.top = _preferences$30.y + "px";
+		this._host.style.zIndex = 100;
+	};
+	/**
+	* Remove from window (and so clean up)
+	*/
+	ShortCutOption.onRemove = function() {
+		JoystickButtonMap_default.cancelCapture();
+		_preferences$30.x = parseInt(this._host.style.left, 10);
+		_preferences$30.y = parseInt(this._host.style.top, 10);
+		_preferences$30.save();
+	};
+	/**
+	* Process key
+	*
+	* @param {object} key
+	*/
+	ShortCutOption.onKeyDown = function(event) {
+		if (ShortCutOption.isCapturing) {
+			if (16 != event.which && 17 != event.which && 18 != event.which) {
+				const root = ShortCutOption.getRoot();
+				const box = root.querySelector("td.selected");
+				const currentSC = box ? box.dataset.button : null;
+				if (!box || !currentSC || !ShortCuts$1[currentSC]) {
+					if (box) console.warn("Shortcut \"" + currentSC + "\" is not defined in ShortCutControls");
+					root.querySelectorAll("td.selected").forEach(function(el) {
+						el.classList.remove("selected");
+					});
+					ShortCutOption.isCapturing = false;
+					event.preventDefault();
+					event.stopImmediatePropagation();
+					return false;
+				}
+				if (event.which == 27) {
+					ShortCutsTemp[currentSC] = {};
+					ShortCutsTemp[currentSC].cust = {};
+					ShortCutsTemp[currentSC].cust.key = "";
+					ShortCutsTemp[currentSC].cust.alt = false;
+					ShortCutsTemp[currentSC].cust.ctrl = false;
+					ShortCutsTemp[currentSC].cust.shift = false;
+				} else {
+					const conflictSC = tempMatch(event.which);
+					if (conflictSC && conflictSC !== currentSC) {
+						const oldKey = getKey(currentSC);
+						const oldAlt = getAlt(currentSC);
+						const oldCtrl = getCtrl(currentSC);
+						const oldShift = getShift(currentSC);
+						ShortCutsTemp[conflictSC] = {};
+						ShortCutsTemp[conflictSC].cust = {};
+						ShortCutsTemp[conflictSC].cust.key = oldKey;
+						ShortCutsTemp[conflictSC].cust.alt = oldAlt;
+						ShortCutsTemp[conflictSC].cust.ctrl = oldCtrl;
+						ShortCutsTemp[conflictSC].cust.shift = oldShift;
+						const conflictCell = root.querySelector("td[data-button='" + conflictSC + "']");
+						if (conflictCell) {
+							conflictCell.classList.add("changed");
+							conflictCell.textContent = (oldAlt ? "ALT + " : "") + (oldCtrl ? "CTRL + " : "") + (oldShift ? "SHIFT + " : "") + (oldKey ? KEYS.toReadableKey(parseInt(oldKey, 10)) : "N/A");
+						}
+					}
+					ShortCutsTemp[currentSC] = {};
+					ShortCutsTemp[currentSC].cust = {};
+					ShortCutsTemp[currentSC].cust.key = event.which;
+					ShortCutsTemp[currentSC].cust.alt = KEYS.ALT;
+					ShortCutsTemp[currentSC].cust.ctrl = KEYS.CTRL;
+					ShortCutsTemp[currentSC].cust.shift = KEYS.SHIFT;
+				}
+				box.textContent = (getAlt(currentSC) ? "ALT + " : "") + (getCtrl(currentSC) ? "CTRL + " : "") + (getShift(currentSC) ? "SHIFT + " : "") + KEYS.toReadableKey(getKey(currentSC), 10);
+				root.querySelectorAll("td.selected").forEach(function(el) {
+					el.classList.add("changed");
+					el.classList.remove("selected");
+				});
+				ShortCutOption.isCapturing = false;
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				return false;
+			}
+		}
+	};
+	MAPPING_ROLES = [
+		[JoystickButtonMap_default.BUTTON.A, "Click / confirm"],
+		[JoystickButtonMap_default.BUTTON.B, "Right click (hold on item/skill: options)"],
+		[JoystickButtonMap_default.BUTTON.X, "Attack target"],
+		[JoystickButtonMap_default.BUTTON.Y, "Pick up item"],
+		[JoystickButtonMap_default.BUTTON.LEFT, "Previous target (grid left on items)"],
+		[JoystickButtonMap_default.BUTTON.RIGHT, "Next target (grid right on items)"],
+		[JoystickButtonMap_default.BUTTON.UP, "Up (arrow key, item grids)"],
+		[JoystickButtonMap_default.BUTTON.DOWN, "Down (arrow key, item grids)"],
+		[JoystickButtonMap_default.BUTTON.LS, "Target cycle: mobs / items / both"],
+		[JoystickButtonMap_default.BUTTON.RS, "Clear target, recenter cursor"],
+		[JoystickButtonMap_default.BUTTON.MENU, "Enter"],
+		[JoystickButtonMap_default.BUTTON.VIEW, "Camera & menu modifier"],
+		[JoystickButtonMap_default.BUTTON.LB, "Shortcuts: skill bar 1, slots 1-4"],
+		[JoystickButtonMap_default.BUTTON.LT, "Shortcuts: skill bar 1, slots 5-8"],
+		[JoystickButtonMap_default.BUTTON.RB, "Shortcuts: skill bar 2, slots 1-4"],
+		[JoystickButtonMap_default.BUTTON.RT, "Shortcuts: skill bar 2, slots 5-8"]
+	];
+	ShortCutOption.mouseMode = GUIComponent.MouseMode.STOP;
+	ShortCutOption.needFocus = true;
+	ShortCutOption_default = UIManager.addComponent(ShortCutOption);
+}));
+//#endregion
+//#region src/UI/Components/Escape/Escape.html?raw
+var Escape_default$2;
+var init_Escape$2 = __esmMin((() => {
+	Escape_default$2 = "<div id=\"Escape\" data-background=\"basic_interface/titlebar_fix.bmp\">\r\n	<div class=\"top\">\r\n		<button\r\n			class=\"node\"\r\n			data-background=\"basic_interface/sys_base_off.bmp\"\r\n			data-hover=\"basic_interface/sys_base_on.bmp\"\r\n		></button>\r\n		<div class=\"title\" data-text=\"1483\">Select Option</div>\r\n	</div>\r\n\r\n	<div class=\"container\">\r\n		<button\r\n			class=\"resurection\"\r\n			data-background=\"esc_05a.bmp\"\r\n			data-hover=\"esc_05b.bmp\"\r\n			data-down=\"esc_05c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"savepoint\"\r\n			data-background=\"esc_04a.bmp\"\r\n			data-hover=\"esc_04b.bmp\"\r\n			data-down=\"esc_04c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"charselect\"\r\n			data-background=\"esc_01a.bmp\"\r\n			data-hover=\"esc_01b.bmp\"\r\n			data-down=\"esc_01c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"graphics\"\r\n			data-background=\"esc_06a.bmp\"\r\n			data-hover=\"esc_06b.bmp\"\r\n			data-down=\"esc_06c.bmp\"\r\n		></button>\r\n		<button class=\"sound\" data-background=\"esc_07a.bmp\" data-hover=\"esc_07b.bmp\" data-down=\"esc_07c.bmp\"></button>\r\n		<button class=\"hotkey\" data-background=\"esc_08a.bmp\" data-hover=\"esc_08b.bmp\" data-down=\"esc_08c.bmp\"></button>\r\n		<button class=\"exit\" data-background=\"esc_03a.bmp\" data-hover=\"esc_03b.bmp\" data-down=\"esc_03c.bmp\"></button>\r\n		<button class=\"cancel\" data-background=\"esc_02a.bmp\" data-hover=\"esc_02b.bmp\" data-down=\"esc_02c.bmp\"></button>\r\n	</div>\r\n</div>\r\n";
+}));
+//#endregion
+//#region src/UI/Components/Escape/Escape.css?raw
+var Escape_default$1;
+var init_Escape$1 = __esmMin((() => {
+	Escape_default$1 = ":host {\r\n	width: 280px;\r\n	height: auto;\r\n	top: 200px;\r\n	left: 200px;\r\n}\r\n\r\n#Escape {\r\n	width: 280px;\r\n	height: auto;\r\n	border-radius: 5px;\r\n	background-color: white;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#Escape .top .node {\r\n	width: 11px;\r\n	height: 11px;\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#Escape .top .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n\r\n#Escape .container {\r\n	width: 220px;\r\n	height: auto;\r\n	padding: 20px 30px 6px 30px;\r\n}\r\n\r\n#Escape .container button {\r\n	width: 221px;\r\n	height: 20px;\r\n	margin-top: 3px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n";
+}));
+//#endregion
+//#region src/UI/Components/Escape/Escape.js
+/**
+* Click on Sound button, toggle the UI
+*/
+function onToggleSoundUI() {
+	if (!SoundOption_default._host || !SoundOption_default._host.parentNode) SoundOption_default.append();
+	else SoundOption_default.remove();
+}
+/**
+* Click on Graphic button, toggle the UI
+*/
+function onToggleGraphicUI() {
+	if (!GraphicsOption_default._host || !GraphicsOption_default._host.parentNode) GraphicsOption_default.append();
+	else GraphicsOption_default.remove();
+}
+/**
+* Click on Shortcut button, toggle the UI
+*/
+function onToggleShortcutUI() {
+	if (!ShortCutOption_default._host || !ShortCutOption_default._host.parentNode) ShortCutOption_default.append();
+	else ShortCutOption_default.remove();
+}
+var Escape, Escape_default;
+var init_Escape = __esmMin((() => {
+	init_KeyEventHandler();
+	init_Renderer();
+	init_UIManager();
+	init_GUIComponent();
+	init_ExitHooks();
+	init_SoundOption();
+	init_GraphicsOption();
+	init_ShortCutOption();
+	init_Escape$2();
+	init_Escape$1();
+	Escape = new GUIComponent("Escape", Escape_default$1);
+	/**
+	* Render HTML
+	*/
+	Escape.render = () => Escape_default$2;
+	/**
+	* Initialize UI
+	*/
+	Escape.init = function init() {
+		const root = this.getRoot();
+		const rect = this._host.getBoundingClientRect();
+		this._host.style.top = (Renderer.height - rect.height) * .75 + "px";
+		this._host.style.left = (Renderer.width - rect.width) * .5 + "px";
+		this.draggable();
+		const nodeBtn = root.querySelector(".node");
+		if (nodeBtn) nodeBtn.addEventListener("mousedown", function(event) {
+			event.stopImmediatePropagation();
+			return false;
+		});
+		root.querySelectorAll("button").forEach(function(el) {
+			el.style.display = "";
+		});
+		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
+			el.style.display = "none";
+		});
+		root.querySelector(".sound").addEventListener("click", onToggleSoundUI);
+		root.querySelector(".graphics").addEventListener("click", onToggleGraphicUI);
+		root.querySelector(".resurection").addEventListener("click", function() {
+			Escape.onResurectionRequest();
+		});
+		root.querySelector(".savepoint").addEventListener("click", function() {
+			Escape.onReturnSavePointRequest();
+		});
+		root.querySelector(".charselect").addEventListener("click", function() {
+			ExitHooks_default.emit("charSelect", "escape");
+			Escape.onCharSelectionRequest();
+		});
+		root.querySelector(".hotkey").addEventListener("click", onToggleShortcutUI);
+		root.querySelector(".exit").addEventListener("click", function() {
+			ExitHooks_default.emit("login", "escape");
+			Escape.onExitRequest();
+		});
+		root.querySelector(".cancel").addEventListener("click", function() {
+			Escape._host.style.display = "none";
+		});
+		this._host.style.display = "none";
+	};
+	/**
+	* Window must not be visible once append
+	* but need to be here to manage key event
+	*/
+	Escape.onAppend = function onAppend() {
+		this._host.style.display = "none";
+	};
+	/**
+	* Reset buttons once UI is removed
+	*/
+	Escape.onRemove = function onRemove() {
+		this._host.style.display = "none";
+		const root = this.getRoot();
+		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
+			el.style.display = "none";
+		});
+		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
+			el.style.display = "";
+		});
+	};
+	/**
+	* Key Listener
+	*
+	* @param {object} event
+	* @return {boolean}
+	*/
+	Escape.onKeyDown = function onKeyDown(event) {
+		if (event.which === KEYS.ESCAPE || event.key === "Escape") {
+			if (this._host.style.display === "none") {
+				this._host.style.display = "";
+				this.focus();
+			} else this._host.style.display = "none";
+		}
+	};
+	/**
+	* Show death menu (called when player dies)
+	*/
+	Escape.showDeathMenu = function showDeathMenu(hasSiegfried) {
+		const root = this.getRoot();
+		this._host.style.display = "";
+		root.querySelector(".savepoint").style.display = "";
+		if (hasSiegfried) root.querySelector(".resurection").style.display = "";
+		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
+			el.style.display = "none";
+		});
+	};
+	/**
+	* Reset to normal menu (called when player resurrects)
+	*/
+	Escape.resetMenu = function resetMenu() {
+		this._host.style.display = "none";
+		const root = this.getRoot();
+		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
+			el.style.display = "none";
+		});
+		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
+			el.style.display = "";
+		});
+	};
+	/**
+	* @var {function} callback when player want to resurect using Token of Siegfried
+	*/
+	Escape.onResurectionRequest = function onResurectionRequest() {};
+	/**
+	* @var {function} callback to define to disconnect from game
+	*/
+	Escape.onExitRequest = function onExitRequest() {};
+	/**
+	* @var {function} callback when player want to resurect using Token of Siegfried
+	*/
+	Escape.onReturnSavePointRequest = function onReturnSavePointRequest() {};
+	/**
+	* @var {function} callback when player want to return to char selection
+	*/
+	Escape.onCharSelectionRequest = function onCharSelectionRequest() {};
+	Escape.mouseMode = GUIComponent.MouseMode.STOP;
+	Escape.needFocus = true;
+	Escape_default = UIManager.addComponent(Escape);
+}));
+//#endregion
+//#region src/UI/Components/CheckAttendance/CheckAttendance.html?raw
+var CheckAttendance_default$2;
+var init_CheckAttendance$2 = __esmMin((() => {
+	CheckAttendance_default$2 = "<div id=\"CheckAttendance\">\r\n	<div class=\"titlebar\" data-background=\"check_attendance/attendance_bg.bmp\">\r\n		<div class=\"top-panel\">\r\n			<div class=\"top-panel-reward\">\r\n				<div class=\"text\">Check Reward</div>\r\n			</div>\r\n			<div class=\"top-panel-period\"></div>\r\n		</div>\r\n		<div class=\"left-panel\">\r\n			<ul class=\"days-list\"></ul>\r\n		</div>\r\n		<div class=\"right-panel\">\r\n			<div class=\"total-days\"></div>\r\n			<div class=\"npc\"></div>\r\n			<div class=\"remaining-days\">\r\n				<div class=\"remaining-day\">\r\n					<div class=\"remaining-day-text\"></div>\r\n				</div>\r\n				<div class=\"remaining-text\">\r\n					<div class=\"remaining-text-div\">Day</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n		<div class=\"bottom-panel\">\r\n			<div class=\"close-container\">\r\n				<ui-button\r\n					class=\"close-container-btn\"\r\n					bg=\"check_attendance/bt_ok_normal.bmp\"\r\n					down=\"check_attendance/bt_ok_press.bmp\"\r\n					>Close</ui-button\r\n				>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
+}));
+//#endregion
+//#region src/UI/Components/CheckAttendance/CheckAttendance.css?raw
+var CheckAttendance_default$1;
+var init_CheckAttendance$1 = __esmMin((() => {
+	CheckAttendance_default$1 = ":host {\r\n	width: 488px;\r\n	height: 413px;\r\n}\r\n\r\n#CheckAttendance {\r\n	position: absolute;\r\n	width: 488px;\r\n	height: 413px;\r\n}\r\n\r\n#CheckAttendance .titlebar {\r\n	width: 100%;\r\n	height: 100%;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel {\r\n	width: 100%;\r\n	height: 85px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-reward {\r\n	width: 100%;\r\n	height: 70px;\r\n	position: relative;\r\n	display: flex;\r\n	justify-content: center;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-reward .text {\r\n	font-weight: bolder;\r\n	color: #633921;\r\n	display: table;\r\n	position: absolute;\r\n	top: 55%;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-period {\r\n	width: 100%;\r\n	height: 15px;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #a55239;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel {\r\n	width: 335px;\r\n	height: 270px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list {\r\n	list-style: none;\r\n	padding-left: 25px;\r\n	margin-top: 8px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item {\r\n	float: left;\r\n	width: 58px;\r\n	height: 60px;\r\n	margin: 2px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item {\r\n	width: 100%;\r\n	height: 40px;\r\n	position: relative;\r\n	background-position: center;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .item-quantity {\r\n	position: absolute;\r\n	bottom: 2px;\r\n	right: 15px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .name {\r\n	position: relative;\r\n	display: none;\r\n	z-index: 1;\r\n	top: -10px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item:hover .name {\r\n	display: table;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .name {\r\n	display: none;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .day {\r\n	width: 100%;\r\n	height: 20px;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #394aa5;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked,\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked-hidden,\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .completed {\r\n	position: absolute;\r\n	width: 58px;\r\n	height: 60px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked-hidden {\r\n	display: none;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel {\r\n	width: 152px;\r\n	height: 270px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .total-days {\r\n	width: 80%;\r\n	height: 85px;\r\n	text-align: center;\r\n	display: flex;\r\n	align-items: center;\r\n	font-weight: bold;\r\n	color: #a53963;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .npc {\r\n	width: 100%;\r\n	height: 105px;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days {\r\n	width: 100%;\r\n	height: 80px;\r\n	font-weight: bold;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-day {\r\n	height: 100%;\r\n	width: 85px;\r\n	float: left;\r\n	position: relative;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-day .remaining-day-text {\r\n	position: absolute;\r\n	right: 10px;\r\n	bottom: 20px;\r\n	font-weight: bolder;\r\n	font-size: 20px;\r\n	color: white;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-text {\r\n	height: 100%;\r\n	width: 35px;\r\n	float: left;\r\n	position: relative;\r\n	font-weight: bolder;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-text .remaining-text-div {\r\n	position: absolute;\r\n	left: 3px;\r\n	bottom: 20px;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel {\r\n	width: 100%;\r\n	height: 58px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel .close-container {\r\n	width: 100%;\r\n	height: 100%;\r\n	position: relative;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel .close-container .close-container-btn {\r\n	width: 146px;\r\n	height: 30px;\r\n	border: 0;\r\n	font-weight: bold;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	position: absolute;\r\n	top: 35%;\r\n	left: 35%;\r\n	display: inline-block;\r\n	text-align: center;\r\n	line-height: 30px;\r\n}\r\n";
+}));
+//#endregion
+//#region src/UI/Components/CheckAttendance/CheckAttendance.js
+/**
+* Request Attendance Item
+*/
+function onClickAttendance(e) {
+	const root = CheckAttendance.getRoot();
+	const el = e.currentTarget;
+	const id = el.id;
+	const checkedHidden = root.querySelector(`#${id} .checked-hidden`);
+	if (checkedHidden) checkedHidden.className = "checked";
+	const completedDiv = document.createElement("div");
+	completedDiv.className = "completed";
+	completedDiv.dataset.background = "check_attendance/bt_slot_complete.tga";
+	el.appendChild(completedDiv);
+	GUIComponent.processDataAttrs(completedDiv);
+	const total_days_string = `${parseInt(_checkAttendanceData / 10) + 1} Day attendance success`;
+	const totalDaysEl = root.querySelector(".total-days");
+	if (totalDaysEl) totalDaysEl.innerHTML = total_days_string;
+	const _pkt = new PACKET.CZ.REQ_CHECK_ATTENDANCE();
+	Network.sendPacket(_pkt);
+}
+var CheckAttendance, _checkAttendanceData, _CheckAttendanceInfo, _preferences$29, CheckAttendance_default;
+var init_CheckAttendance = __esmMin((() => {
+	init_DBManager();
+	init_Preferences$1();
+	init_Renderer();
+	init_UIManager();
+	init_GUIComponent();
+	init_NetworkManager();
+	init_PacketStructure();
+	init_CheckAttendance$2();
+	init_CheckAttendance$1();
+	init_ChatBox();
+	init_Elements();
+	CheckAttendance = new GUIComponent("CheckAttendance", CheckAttendance_default$1);
+	CheckAttendance.render = () => CheckAttendance_default$2;
+	_preferences$29 = Preferences.get("CheckAttendance", {
+		x: 200,
+		y: 200
+	}, 1);
+	/**
+	* Initialize the component (event listener, etc.)
+	*/
+	CheckAttendance.init = function init() {
+		_CheckAttendanceInfo = DB.getCheckAttendanceInfo();
+		const root = this.getRoot();
+		const baseEl = root.querySelector(".base");
+		if (baseEl) baseEl.addEventListener("mousedown", (event) => {
+			event.stopImmediatePropagation();
+			event.preventDefault();
+		});
+		root.querySelector(".close-container-btn").addEventListener("click", () => {
+			CheckAttendance._host.style.display = "none";
+		});
+		this.draggable(root.querySelector(".titlebar"));
+	};
+	/**
+	* Once append to the DOM, start to position the UI
+	*/
+	CheckAttendance.onAppend = function onAppend() {
+		Object.assign(this._host.style, {
+			top: `${Math.min(Math.max(0, _preferences$29.y), Renderer.height - this._host.getBoundingClientRect().height)}px`,
+			left: `${Math.min(Math.max(0, _preferences$29.x), Renderer.width - this._host.getBoundingClientRect().width)}px`
+		});
+		if (!_preferences$29.show) this._host.style.display = "none";
+		if (_checkAttendanceData >= 0 && _CheckAttendanceInfo.Config) {
+			CheckAttendance.updateUI();
+			this.focus();
+		} else ChatBox_default.addText("Currently there is no attendance check event.", ChatBox_default.TYPE.ERROR | ChatBox_default.TYPE.SELF);
+	};
+	/**
+	* Window Shortcuts
+	*/
+	CheckAttendance.onShortCut = function onShortCut(key) {
+		switch (key.cmd) {
+			case "TOGGLE": if (this._host.style.display === "none") {
+				this._host.style.display = "";
+				this.focus();
+			} else this._host.style.display = "none";
+		}
+	};
+	/**
+	* Show/Hide UI
+	*/
+	CheckAttendance.toggle = function toggle() {
+		if (this._host.style.display !== "none") this._host.style.display = "none";
+		else {
+			const _pkt = new PACKET.CZ.UI_OPEN();
+			_pkt.UIType = 5;
+			Network.sendPacket(_pkt);
+		}
+	};
+	/**
+	* Set Data to Attendance
+	*/
+	CheckAttendance.setData = function setData(data) {
+		_checkAttendanceData = data;
+	};
+	/**
+	* Update CheckAttendance UI
+	*/
+	CheckAttendance.updateUI = function updateUI() {
+		const root = this.getRoot();
+		let already_requested = 0;
+		let attendance_count = 0;
+		let current_day = 1;
+		if (_CheckAttendanceInfo.Config) {
+			const regex = /(\d{4})(\d{2})(\d{2})/;
+			const start = regex.exec(_CheckAttendanceInfo.Config.StartDate);
+			const end = regex.exec(_CheckAttendanceInfo.Config.EndDate);
+			const period_string = `Event Period: From ${start[2]}/${start[3]} ~ Until ${end[2]}/${end[3]} (Month/Day) 24:00`;
+			const periodEl = root.querySelector(".top-panel-period");
+			if (periodEl) periodEl.innerHTML = period_string;
+			if (_checkAttendanceData >= 0) {
+				already_requested = _checkAttendanceData % 10;
+				attendance_count = parseInt(_checkAttendanceData / 10);
+				current_day = attendance_count + 1;
+				const total_days_string = attendance_count >= 20 || already_requested ? `${attendance_count} Day attendance success` : `Click the item to claim day ${current_day} reward`;
+				const end_date = /* @__PURE__ */ new Date(`${end[1]}-${end[2]}-${end[3]}`);
+				const now_date = /* @__PURE__ */ new Date();
+				const remaining_days = Math.round(Math.abs((end_date.getTime() - now_date.getTime()) / 864e5));
+				const totalDaysEl = root.querySelector(".total-days");
+				if (totalDaysEl) totalDaysEl.innerHTML = total_days_string;
+				const remainingEl = root.querySelector(".remaining-day-text");
+				if (remainingEl) remainingEl.textContent = remaining_days;
+			}
+		}
+		if (_CheckAttendanceInfo.Rewards) {
+			const daysList = root.querySelector(".days-list");
+			for (let i = 0; i < 20; i++) {
+				const item = DB.getItemInfo(_CheckAttendanceInfo.Rewards[i].item_id);
+				const day = i + 1;
+				const background = !already_requested && day == current_day ? `data-background="check_attendance/bt_slot_a.bmp" data-down="check_attendance/bt_slot_press.bmp"` : "";
+				const checked = day <= attendance_count ? "checked" : "checked-hidden";
+				const slot_complete_string = day > (already_requested ? attendance_count - 1 : attendance_count) ? "bt_slot_complete" : "bt_slot_off";
+				const item_slot = `<li id="attendance_day_${i}" class="attendance-item" ${background}><div class="item" data-background="${DB.INTERFACE_PATH}item/${item.identifiedResourceName}.bmp"><span class="item-quantity">${_CheckAttendanceInfo.Rewards[i].quantity}</span><span class="name">${item.identifiedDisplayName}</span><div class="${checked}" data-background="check_attendance/${slot_complete_string}.tga"></div></div><div class="day">${day} Day</div></li>`;
+				if (daysList) daysList.insertAdjacentHTML("beforeend", item_slot);
+				if (!already_requested && day == current_day) {
+					const dayEl = root.querySelector(`#attendance_day_${i}`);
+					if (dayEl) {
+						dayEl.addEventListener("click", onClickAttendance);
+						dayEl.classList.add("event_add_cursor");
+					}
+				}
+			}
+			const dataAttrSelector = "[data-background],[data-hover],[data-down],[data-active],[data-text],[data-preload]";
+			if (daysList) daysList.querySelectorAll(dataAttrSelector).forEach((node) => {
+				GUIComponent.processDataAttrs(node);
+			});
+		}
+	};
+	/**
+	* Clean CheckAttendance UI
+	*/
+	CheckAttendance.cleanUI = function cleanUI() {
+		const root = CheckAttendance.getRoot();
+		const periodEl = root.querySelector(".top-panel-period");
+		if (periodEl) periodEl.innerHTML = "";
+		const daysListEl = root.querySelector(".days-list");
+		if (daysListEl) daysListEl.innerHTML = "";
+		const totalDaysEl = root.querySelector(".total-days");
+		if (totalDaysEl) totalDaysEl.innerHTML = "";
+		const remainingEl = root.querySelector(".remaining-day-text");
+		if (remainingEl) remainingEl.innerHTML = "";
+	};
+	/**
+	* Close the window
+	*/
+	CheckAttendance.onClose = function onClose() {
+		CheckAttendance._host.style.display = "none";
+	};
+	CheckAttendance_default = UIManager.addComponent(CheckAttendance);
 }));
 //#endregion
 //#region src/UI/Components/Quest/QuestCommon.js
@@ -234143,14 +238216,14 @@ function isInCooldown(quest) {
 	if (quest.end_time > epoch_seconds) return true;
 	return false;
 }
-var _preferences$29, QuestWindow, QuestWindow_default;
+var _preferences$28, QuestWindow, QuestWindow_default;
 var init_QuestWindow = __esmMin((() => {
 	init_Preferences$1();
 	init_UIManager();
 	init_GUIComponent();
 	init_QuestWindow$2();
 	init_QuestWindow$1();
-	_preferences$29 = Preferences.get("Quest", {
+	_preferences$28 = Preferences.get("Quest", {
 		x: 200,
 		y: 200,
 		show: false,
@@ -234170,7 +238243,7 @@ var init_QuestWindow = __esmMin((() => {
 	* Once append to the DOM, start to position the UI
 	*/
 	QuestWindow.onAppend = function onAppend() {
-		if (!_preferences$29.showwindow) this.ui.hide();
+		if (!_preferences$28.showwindow) this.ui.hide();
 	};
 	/**
 	* Clean up UI
@@ -234338,7 +238411,7 @@ var init_Achievement$2 = __esmMin((() => {
 }));
 //#endregion
 //#region src/UI/Components/Achievement/Achievement.js
-var _preferences$28, MAJOR_CATEGORIES, AchievementComponent, Achievement, Achievement_default;
+var _preferences$27, MAJOR_CATEGORIES, AchievementComponent, Achievement, Achievement_default;
 var init_Achievement$1 = __esmMin((() => {
 	init_GUIComponent();
 	init_UIManager();
@@ -234352,7 +238425,7 @@ var init_Achievement$1 = __esmMin((() => {
 	init_ItemInfo();
 	init_Achievement$3();
 	init_Achievement$2();
-	_preferences$28 = Preferences.get("Achievement", {
+	_preferences$27 = Preferences.get("Achievement", {
 		x: 100,
 		y: 100
 	}, 1);
@@ -234495,15 +238568,15 @@ var init_Achievement$1 = __esmMin((() => {
 			this._host.style.display = "none";
 		}
 		onAppend() {
-			this._host.style.left = `${_preferences$28.x}px`;
-			this._host.style.top = `${_preferences$28.y}px`;
+			this._host.style.left = `${_preferences$27.x}px`;
+			this._host.style.top = `${_preferences$27.y}px`;
 			this._fixPositionOverflow();
 			this.updateHeaderAndView();
 		}
 		onRemove() {
-			_preferences$28.x = parseInt(this._host.style.left, 10);
-			_preferences$28.y = parseInt(this._host.style.top, 10);
-			_preferences$28.save();
+			_preferences$27.x = parseInt(this._host.style.left, 10);
+			_preferences$27.y = parseInt(this._host.style.top, 10);
+			_preferences$27.save();
 		}
 		toggle() {
 			if (this.__active && this._host.style.display !== "none") this._host.style.display = "none";
@@ -235212,7 +239285,7 @@ function performSearch(query) {
 /**
 * Closing window
 */
-function onClose$6() {
+function onClose$5() {
 	Reputation._host.style.display = "none";
 }
 /**
@@ -235263,7 +239336,7 @@ function clearHighlights() {
 		el.dataset.highlight = "false";
 	});
 }
-var Reputation, _preferences$27, bg, bg_highlight, indicator_empty, indicator_blue, indicator_red, Reputation_default;
+var Reputation, _preferences$26, bg, bg_highlight, indicator_empty, indicator_blue, indicator_red, Reputation_default;
 var init_Reputation = __esmMin((() => {
 	init_DBManager();
 	init_NetworkManager();
@@ -235276,7 +239349,7 @@ var init_Reputation = __esmMin((() => {
 	init_Reputation$2();
 	init_Reputation$1();
 	Reputation = new GUIComponent("Reputation", Reputation_default$1);
-	_preferences$27 = Preferences.get("Reputation", {
+	_preferences$26 = Preferences.get("Reputation", {
 		x: 400,
 		y: 200,
 		show: true
@@ -235330,9 +239403,9 @@ var init_Reputation = __esmMin((() => {
 			});
 		});
 		const closeBtn = root.querySelector(".close");
-		if (closeBtn) closeBtn.addEventListener("click", onClose$6);
+		if (closeBtn) closeBtn.addEventListener("click", onClose$5);
 		const bigCloseBtn = root.querySelector(".big_btn_close");
-		if (bigCloseBtn) bigCloseBtn.addEventListener("click", onClose$6);
+		if (bigCloseBtn) bigCloseBtn.addEventListener("click", onClose$5);
 		const prevBtn = root.querySelector(".page_prev");
 		if (prevBtn) prevBtn.addEventListener("click", () => {
 			if (Reputation.page.current > 0) renderReputePage(Reputation.page.current - 1);
@@ -235359,8 +239432,8 @@ var init_Reputation = __esmMin((() => {
 	* binding group selector events and rendering the default view.
 	*/
 	Reputation.onAppend = function onAppend() {
-		this._host.style.top = `${Math.min(Math.max(0, _preferences$27.y), window.innerHeight - (this._host.offsetHeight || 0))}px`;
-		this._host.style.left = `${Math.min(Math.max(0, _preferences$27.x), window.innerWidth - (this._host.offsetWidth || 0))}px`;
+		this._host.style.top = `${Math.min(Math.max(0, _preferences$26.y), window.innerHeight - (this._host.offsetHeight || 0))}px`;
+		this._host.style.left = `${Math.min(Math.max(0, _preferences$26.x), window.innerWidth - (this._host.offsetWidth || 0))}px`;
 		buildGroupSelector();
 		bindGroupSelector();
 		bindSearch();
@@ -235371,10 +239444,10 @@ var init_Reputation = __esmMin((() => {
 	* Once remove from body, save user preferences
 	*/
 	Reputation.onRemove = function onRemove() {
-		_preferences$27.show = this._host.style.display !== "none";
-		_preferences$27.y = parseInt(this._host.style.top, 10);
-		_preferences$27.x = parseInt(this._host.style.left, 10);
-		_preferences$27.save();
+		_preferences$26.show = this._host.style.display !== "none";
+		_preferences$26.y = parseInt(this._host.style.top, 10);
+		_preferences$26.x = parseInt(this._host.style.left, 10);
+		_preferences$26.save();
 	};
 	/**
 	* Request to toggle open/close reputation
@@ -237977,14 +242050,30 @@ var init_StrEffect = __esmMin((() => {
 		xy: /* @__PURE__ */ new Float32Array(8)
 	};
 	StrEffect = class {
-		constructor(filename, position, startTick, texturePath) {
+		constructor(filename, position, startTick, texturePath, fallbacks = []) {
 			this.filename = filename;
 			this.startTick = startTick;
 			this.position = position;
 			this.texturePath = texturePath;
+			this.fallbacks = fallbacks.slice();
+			this.load();
+		}
+		/**
+		* Load the file. Clients keep the same art under different folders from one
+		* release to the next, so a missing file moves on to the next candidate;
+		* when none is left the effect is removed.
+		*/
+		load() {
 			Client.loadFile(this.filename, null, () => {
-				this.needCleanUp = true;
-			}, { texturePath });
+				const next = this.fallbacks.shift();
+				if (!next) {
+					this.needCleanUp = true;
+					return;
+				}
+				this.filename = next.filename;
+				this.texturePath = next.texturePath;
+				this.load();
+			}, { texturePath: this.texturePath });
 		}
 		/**
 		* Preparing for render
@@ -238002,6 +242091,17 @@ var init_StrEffect = __esmMin((() => {
 		free(gl) {
 			this.ready = false;
 		}
+		/** Advance expiration even when distance culling skips drawing. */
+		updateLifetime(tick) {
+			if (this.needCleanUp || this.persistent || tick < this.startTick) return;
+			const endTick = this._Params?.Inst?.endTick;
+			if (endTick > 0 && tick >= endTick) {
+				this.needCleanUp = true;
+				return;
+			}
+			const strFile = Client.loadFile(this.filename, null, null, { texturePath: this.texturePath });
+			if (strFile && tick >= this.startTick + strFile.maxKey / strFile.fps * 1e3) this.needCleanUp = true;
+		}
 		/**
 		* Render in 3D effect
 		*
@@ -238009,6 +242109,8 @@ var init_StrEffect = __esmMin((() => {
 		* @param {number} tick
 		*/
 		render(gl, tick) {
+			this.updateLifetime(tick);
+			if (this.needCleanUp || tick < this.startTick) return;
 			let layer;
 			let i, keyIndex;
 			if (this.ownerEntity && this.ownerEntity.position) {
@@ -239742,7 +243844,7 @@ function onClickValidateName(e) {
 *
 * @param {event}
 */
-function onDrop$10(event) {
+function onDrop$9(event) {
 	let item, data;
 	event.stopImmediatePropagation();
 	event.preventDefault();
@@ -239912,7 +244014,7 @@ var init_WriteRodex = __esmMin((() => {
 		valueInput.max = SessionStorage_default.zeny;
 		root.querySelector(".item-list").innerHTML = "";
 		const itemsEl = root.querySelector(".items");
-		itemsEl.addEventListener("drop", onDrop$10);
+		itemsEl.addEventListener("drop", onDrop$9);
 		itemsEl.addEventListener("dragover", stopPropagation$8);
 		this._host.style.display = "";
 		this.focus();
@@ -242169,7 +246271,7 @@ var init_Storage$1 = __esmMin((() => {
 /**
 * Extend inventory window size
 */
-function onResize$6() {
+function onResize$5() {
 	const content = CartItems.getRoot().querySelector(".container .content");
 	const hideEl = CartItems.getRoot().querySelector(".hide");
 	const top = CartItems._host.offsetTop;
@@ -242221,7 +246323,7 @@ function onToggleReduction() {
 *
 * @param {event}
 */
-function onDrop$9(event) {
+function onDrop$8(event) {
 	let item, data;
 	event.stopImmediatePropagation();
 	try {
@@ -242379,7 +246481,7 @@ function onItemUsed$1(event) {
 	event.stopImmediatePropagation();
 	event.preventDefault();
 }
-var CartItems, _realSize$1, _preferences$26, CartItems_default;
+var CartItems, _realSize$1, _preferences$25, CartItems_default;
 var init_CartItems = __esmMin((() => {
 	init_DBManager();
 	init_ItemType();
@@ -242407,7 +246509,7 @@ var init_CartItems = __esmMin((() => {
 	*/
 	CartItems.list = [];
 	_realSize$1 = 0;
-	_preferences$26 = Preferences.get("CartItems", {
+	_preferences$25 = Preferences.get("CartItems", {
 		x: 200,
 		y: 200,
 		width: 7,
@@ -242425,12 +246527,12 @@ var init_CartItems = __esmMin((() => {
 		const miniBtn = root.querySelector(".titlebar .mini");
 		if (miniBtn) miniBtn.addEventListener("click", onToggleReduction);
 		const extendBtn = root.querySelector(".footer .extend");
-		if (extendBtn) extendBtn.addEventListener("mousedown", onResize$6);
+		if (extendBtn) extendBtn.addEventListener("mousedown", onResize$5);
 		const closeBtn = root.querySelector(".titlebar .close");
 		if (closeBtn) closeBtn.addEventListener("click", () => {
 			CartItems._host.style.display = "none";
 		});
-		this._host.addEventListener("drop", onDrop$9);
+		this._host.addEventListener("drop", onDrop$8);
 		this._host.addEventListener("dragover", (e) => {
 			e.stopImmediatePropagation();
 			e.preventDefault();
@@ -242469,12 +246571,12 @@ var init_CartItems = __esmMin((() => {
 	*/
 	CartItems.onAppend = function OnAppend() {
 		if (SessionStorage_default.Entity.hasCart === false) this._host.style.display = "none";
-		if (!_preferences$26.show) this._host.style.display = "none";
-		this.resize(_preferences$26.width, _preferences$26.height);
+		if (!_preferences$25.show) this._host.style.display = "none";
+		this.resize(_preferences$25.width, _preferences$25.height);
 		const hostRect = this._host.getBoundingClientRect();
-		this._host.style.top = `${Math.min(Math.max(0, _preferences$26.y), Renderer.height - hostRect.height)}px`;
-		this._host.style.left = `${Math.min(Math.max(0, _preferences$26.x), Renderer.width - hostRect.width)}px`;
-		_realSize$1 = _preferences$26.reduce ? 0 : hostRect.height;
+		this._host.style.top = `${Math.min(Math.max(0, _preferences$25.y), Renderer.height - hostRect.height)}px`;
+		this._host.style.left = `${Math.min(Math.max(0, _preferences$25.x), Renderer.width - hostRect.width)}px`;
+		_realSize$1 = _preferences$25.reduce ? 0 : hostRect.height;
 		const miniBtn = this.getRoot().querySelector(".titlebar .mini");
 		if (miniBtn) miniBtn.dispatchEvent(new Event("mousedown"));
 	};
@@ -242486,14 +246588,14 @@ var init_CartItems = __esmMin((() => {
 		if (content) content.innerHTML = "";
 		this.list.length = 0;
 		document.querySelectorAll(".ItemInfo").forEach((el) => el.remove());
-		_preferences$26.show = this._host.style.display !== "none";
-		_preferences$26.reduce = !!_realSize$1;
-		_preferences$26.y = parseInt(this._host.style.top, 10);
-		_preferences$26.x = parseInt(this._host.style.left, 10);
+		_preferences$25.show = this._host.style.display !== "none";
+		_preferences$25.reduce = !!_realSize$1;
+		_preferences$25.y = parseInt(this._host.style.top, 10);
+		_preferences$25.x = parseInt(this._host.style.left, 10);
 		const hostRect = this._host.getBoundingClientRect();
-		_preferences$26.width = Math.floor((hostRect.width - 25) / 32);
-		_preferences$26.height = Math.floor((hostRect.height - 20) / 32);
-		_preferences$26.save();
+		_preferences$25.width = Math.floor((hostRect.width - 25) / 32);
+		_preferences$25.height = Math.floor((hostRect.height - 20) / 32);
+		_preferences$25.save();
 	};
 	/**
 	* Process shortcut
@@ -243723,7 +247825,7 @@ function addCard(cardList, itemId, index, slotCount) {
 /**
 * Extend ItemInfo window size
 */
-function onResize$5() {
+function onResize$4() {
 	const top = ItemInfo._host.offsetTop;
 	let lastHeight = 0;
 	function resizing() {
@@ -244038,7 +248140,7 @@ var init_ItemInfo = __esmMin((() => {
 		this._host.style.top = "200px";
 		this._host.style.left = "480px";
 		const extendBtn = root.querySelector(".extend");
-		if (extendBtn) extendBtn.addEventListener("mousedown", onResize$5);
+		if (extendBtn) extendBtn.addEventListener("mousedown", onResize$4);
 		const closeBtn = root.querySelector(".close");
 		if (closeBtn) {
 			closeBtn.addEventListener("mousedown", (e) => {
@@ -244257,7 +248359,7 @@ function processText(text) {
 	text = processColorCodes(text);
 	return text;
 }
-function _isVisible$1(el) {
+function _isVisible(el) {
 	return !!el && getComputedStyle(el).display !== "none";
 }
 var NpcBox, _needCleanUp, NpcBox_default;
@@ -244357,17 +248459,17 @@ var init_NpcBox = __esmMin((() => {
 		switch (event.which) {
 			case KEYS.SPACE:
 			case KEYS.ENTER:
-				if (_isVisible$1(root.querySelector(".next"))) {
+				if (_isVisible(root.querySelector(".next"))) {
 					this.next();
 					break;
 				}
-				if (_isVisible$1(root.querySelector(".close"))) {
+				if (_isVisible(root.querySelector(".close"))) {
 					this.close();
 					break;
 				}
 				return true;
 			case KEYS.ESCAPE:
-				if (_isVisible$1(root.querySelector(".close"))) {
+				if (_isVisible(root.querySelector(".close"))) {
 					this.close();
 					break;
 				}
@@ -244464,7 +248566,7 @@ function parseChatSetup() {
 	this.requestRoom();
 	this.hide();
 }
-var ChatRoomCreate, _preferences$25, ChatRoomCreate_default;
+var ChatRoomCreate, _preferences$24, ChatRoomCreate_default;
 var init_ChatRoomCreate = __esmMin((() => {
 	init_DBManager();
 	init_KeyEventHandler();
@@ -244500,7 +248602,7 @@ var init_ChatRoomCreate = __esmMin((() => {
 	* @var {string} password
 	*/
 	ChatRoomCreate.password = "";
-	_preferences$25 = Preferences.get("ChatRoomCreate", {
+	_preferences$24 = Preferences.get("ChatRoomCreate", {
 		x: 480,
 		y: 200,
 		show: false
@@ -244534,18 +248636,18 @@ var init_ChatRoomCreate = __esmMin((() => {
 	* Once append to body
 	*/
 	ChatRoomCreate.onAppend = function onAppend() {
-		if (!_preferences$25.show) this._host.style.display = "none";
-		this._host.style.top = Math.min(Math.max(0, _preferences$25.y), Renderer.height - this._host.offsetHeight) + "px";
-		this._host.style.left = Math.min(Math.max(0, _preferences$25.x), Renderer.width - this._host.offsetWidth) + "px";
+		if (!_preferences$24.show) this._host.style.display = "none";
+		this._host.style.top = Math.min(Math.max(0, _preferences$24.y), Renderer.height - this._host.offsetHeight) + "px";
+		this._host.style.left = Math.min(Math.max(0, _preferences$24.x), Renderer.width - this._host.offsetWidth) + "px";
 	};
 	/**
 	* Once removed from DOM, save preferences
 	*/
 	ChatRoomCreate.onRemove = function onRemove() {
-		_preferences$25.show = this._host.style.display !== "none";
-		_preferences$25.y = parseInt(this._host.style.top, 10);
-		_preferences$25.x = parseInt(this._host.style.left, 10);
-		_preferences$25.save();
+		_preferences$24.show = this._host.style.display !== "none";
+		_preferences$24.y = parseInt(this._host.style.top, 10);
+		_preferences$24.x = parseInt(this._host.style.left, 10);
+		_preferences$24.save();
 		ChatRoomCreate.editMode = false;
 	};
 	/**
@@ -244555,7 +248657,7 @@ var init_ChatRoomCreate = __esmMin((() => {
 		this._host.style.display = "";
 		this.getRoot().querySelector(".title").focus();
 		this._fixPositionOverflow();
-		_preferences$25.show = true;
+		_preferences$24.show = true;
 	};
 	/**
 	* Hide the setup ui
@@ -244564,7 +248666,7 @@ var init_ChatRoomCreate = __esmMin((() => {
 		this._host.style.display = "none";
 		this.getRoot().querySelector(".setup").reset();
 		ChatRoomCreate.editMode = false;
-		_preferences$25.show = false;
+		_preferences$24.show = false;
 	};
 	/**
 	* Pre-fill form with values (used by ChatRoom.openRoomSettings)
@@ -244728,7 +248830,7 @@ function sendChatMessage() {
 /**
 * Resize ChatRoom via drag
 */
-function onResize$4() {
+function onResize$3() {
 	const top = ChatRoom._host.offsetTop;
 	const left = ChatRoom._host.offsetLeft;
 	let lastWidth = 0;
@@ -244773,7 +248875,7 @@ function resize$2(width, height) {
 		if (inner) ChatRoom._host.style.height = inner.offsetHeight + "px";
 	}
 }
-var ChatRoom, _gridWidth, _gridHeight, _preferences$24, ChatRoom_default;
+var ChatRoom, _gridWidth, _gridHeight, _preferences$23, ChatRoom_default;
 var init_ChatRoom$1 = __esmMin((() => {
 	init_Preferences$1();
 	init_Renderer();
@@ -244830,7 +248932,7 @@ var init_ChatRoom$1 = __esmMin((() => {
 	ChatRoom.isOpen = false;
 	_gridWidth = 7;
 	_gridHeight = 3;
-	_preferences$24 = Preferences.get("ChatRoom", {
+	_preferences$23 = Preferences.get("ChatRoom", {
 		x: 480,
 		y: 200,
 		width: 7,
@@ -244850,7 +248952,7 @@ var init_ChatRoom$1 = __esmMin((() => {
 		root.querySelector(".sendmsg").addEventListener("mousedown", (event) => {
 			event.stopImmediatePropagation();
 		});
-		root.querySelector(".extend").addEventListener("mousedown", onResize$4);
+		root.querySelector(".extend").addEventListener("mousedown", onResize$3);
 		this.draggable(".titlebar");
 	};
 	/**
@@ -244859,11 +248961,11 @@ var init_ChatRoom$1 = __esmMin((() => {
 	ChatRoom.onAppend = function onAppend() {
 		const root = this.getRoot();
 		this.isOpen = true;
-		_gridWidth = _preferences$24.width;
-		_gridHeight = _preferences$24.height;
+		_gridWidth = _preferences$23.width;
+		_gridHeight = _preferences$23.height;
 		resize$2(_gridWidth, _gridHeight);
-		this._host.style.top = Math.min(Math.max(0, _preferences$24.y), Renderer.height - this._host.getBoundingClientRect().height) + "px";
-		this._host.style.left = Math.min(Math.max(0, _preferences$24.x), Renderer.width - this._host.getBoundingClientRect().width) + "px";
+		this._host.style.top = Math.min(Math.max(0, _preferences$23.y), Renderer.height - this._host.getBoundingClientRect().height) + "px";
+		this._host.style.left = Math.min(Math.max(0, _preferences$23.x), Renderer.width - this._host.getBoundingClientRect().width) + "px";
 		root.querySelector(".sendmsg").focus();
 		this.updateChat();
 	};
@@ -244880,11 +248982,11 @@ var init_ChatRoom$1 = __esmMin((() => {
 		this.isOpen = false;
 		const messages = this.getRoot().querySelector(".messages");
 		if (messages) messages.innerHTML = "";
-		_preferences$24.y = parseInt(this._host.style.top, 10);
-		_preferences$24.x = parseInt(this._host.style.left, 10);
-		_preferences$24.width = _gridWidth;
-		_preferences$24.height = _gridHeight;
-		_preferences$24.save();
+		_preferences$23.y = parseInt(this._host.style.top, 10);
+		_preferences$23.x = parseInt(this._host.style.left, 10);
+		_preferences$23.width = _gridWidth;
+		_preferences$23.height = _gridHeight;
+		_preferences$23.save();
 		this.exitRoom();
 	};
 	/**
@@ -246187,929 +250289,6 @@ var init_Inflate = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/UI/Components/SkillListMH/SkillListMH.js
-/**
-* Build a Homunculus/Mercenary skill window on top of the shared SkillList
-* factory, using its list-only (old-style) mode and layering the MH-specific
-* bits (window name, titlebar text, drag origin, Escape-to-close) on top.
-*/
-function createSkillListMH(type) {
-	const component = createSkillList({
-		name: `SkillList${type === "homunculus" ? "HOM" : "MER"}`,
-		htmlText: SkillList_default$2,
-		cssText: SkillList_default$1,
-		listOnly: true,
-		dragFrom: "SkillListMH",
-		titlebarText: type === "homunculus" ? "Homunculus Skills" : "Mercenary Skills",
-		containerSelector: ".SkillList",
-		preferenceDefaults: {
-			x: 100,
-			y: 200,
-			width: 8,
-			height: 5,
-			show: false
-		}
-	});
-	component.onKeyDown = function onKeyDown(event) {
-		if ((event.which === KEYS.ESCAPE || event.key === "Escape") && this.ui.is(":visible")) this.toggle();
-	};
-	return component;
-}
-var SkillListMH_default;
-var init_SkillListMH = __esmMin((() => {
-	init_KeyEventHandler();
-	init_SkillListCommon();
-	init_SkillList$3();
-	init_SkillList$2();
-	SkillListMH_default = {
-		homunculus: createSkillListMH("homunculus"),
-		mercenary: createSkillListMH("mercenary")
-	};
-}));
-//#endregion
-//#region src/UI/Components/ShortCut/ShortCut.html?raw
-var ShortCut_default$2;
-var init_ShortCut$2 = __esmMin((() => {
-	ShortCut_default$2 = "<div id=\"ShortCut\" data-background=\"basic_interface/shortitem_bg.bmp\">\r\n	<button\r\n		class=\"close\"\r\n		data-background=\"basic_interface/sys_close_off.bmp\"\r\n		data-hover=\"basic_interface/sys_close_on.bmp\"\r\n	></button>\r\n	<button class=\"resize\" data-background=\"btn_resize.bmp\"></button>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"0\"></div>\r\n		<div class=\"container\" data-index=\"1\"></div>\r\n		<div class=\"container\" data-index=\"2\"></div>\r\n		<div class=\"container\" data-index=\"3\"></div>\r\n		<div class=\"container\" data-index=\"4\"></div>\r\n		<div class=\"container\" data-index=\"5\"></div>\r\n		<div class=\"container\" data-index=\"6\"></div>\r\n		<div class=\"container\" data-index=\"7\"></div>\r\n		<div class=\"container\" data-index=\"8\"></div>\r\n		<div class=\"index\">1</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"9\"></div>\r\n		<div class=\"container\" data-index=\"10\"></div>\r\n		<div class=\"container\" data-index=\"11\"></div>\r\n		<div class=\"container\" data-index=\"12\"></div>\r\n		<div class=\"container\" data-index=\"13\"></div>\r\n		<div class=\"container\" data-index=\"14\"></div>\r\n		<div class=\"container\" data-index=\"15\"></div>\r\n		<div class=\"container\" data-index=\"16\"></div>\r\n		<div class=\"container\" data-index=\"17\"></div>\r\n		<div class=\"index\">2</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"18\"></div>\r\n		<div class=\"container\" data-index=\"19\"></div>\r\n		<div class=\"container\" data-index=\"20\"></div>\r\n		<div class=\"container\" data-index=\"21\"></div>\r\n		<div class=\"container\" data-index=\"22\"></div>\r\n		<div class=\"container\" data-index=\"23\"></div>\r\n		<div class=\"container\" data-index=\"24\"></div>\r\n		<div class=\"container\" data-index=\"25\"></div>\r\n		<div class=\"container\" data-index=\"26\"></div>\r\n		<div class=\"index\">3</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"27\"></div>\r\n		<div class=\"container\" data-index=\"28\"></div>\r\n		<div class=\"container\" data-index=\"29\"></div>\r\n		<div class=\"container\" data-index=\"30\"></div>\r\n		<div class=\"container\" data-index=\"31\"></div>\r\n		<div class=\"container\" data-index=\"32\"></div>\r\n		<div class=\"container\" data-index=\"33\"></div>\r\n		<div class=\"container\" data-index=\"34\"></div>\r\n		<div class=\"container\" data-index=\"35\"></div>\r\n		<div class=\"index\">4</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"shortcut-tooltip\"></div>\r\n</div>\r\n";
-}));
-//#endregion
-//#region src/UI/Components/ShortCut/ShortCut.css?raw
-var ShortCut_default$1;
-var init_ShortCut$1 = __esmMin((() => {
-	ShortCut_default$1 = ":host {\r\n	width: 280px;\r\n	top: 0px;\r\n	left: 480px;\r\n	overflow: hidden;\r\n}\r\n\r\n#ShortCut {\r\n	position: absolute;\r\n	width: 280px;\r\n	height: 100%;\r\n	background-repeat: repeat-y;\r\n}\r\n#ShortCut .close {\r\n	position: absolute;\r\n	top: 2px;\r\n	right: 2px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 11px;\r\n	height: 11px;\r\n}\r\n#ShortCut .resize {\r\n	position: absolute;\r\n	bottom: 1px;\r\n	right: 1px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 13px;\r\n	height: 13px;\r\n}\r\n\r\n#ShortCut .row {\r\n	position: relative;\r\n}\r\n#ShortCut .row .container {\r\n	float: left;\r\n	width: 24px;\r\n	height: 23px;\r\n	margin-top: 5px;\r\n	margin-left: 5px;\r\n	margin-bottom: 6px;\r\n}\r\n#ShortCut .row .container:hover {\r\n	background-color: #b5ffb5;\r\n}\r\n#ShortCut .row .index {\r\n	float: left;\r\n	position: relative;\r\n	top: 13px;\r\n	left: 5px;\r\n}\r\n#ShortCut .row .clear {\r\n}\r\n\r\n#ShortCut .icon {\r\n	position: relative;\r\n}\r\n#ShortCut .icon .img {\r\n	width: 24px;\r\n	height: 24px;\r\n	background-repeat: no-repeat;\r\n	border: none;\r\n	background-color: transparent;\r\n}\r\n#ShortCut .icon .name {\r\n	display: none;\r\n	z-index: 1;\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n}\r\n#ShortCut .icon:hover .name {\r\n	display: block;\r\n}\r\n#ShortCut .icon.hide .name {\r\n	display: none;\r\n}\r\n#ShortCut .icon .amount {\r\n	position: absolute;\r\n	right: 1px;\r\n	top: 20px;\r\n	text-shadow: 1px 1px 0px white;\r\n	text-align: right;\r\n	font-weight: bold;\r\n}\r\n\r\n.shortcut-tooltip {\r\n	display: none;\r\n	position: fixed;\r\n	background-color: rgba(0, 0, 0, 0.8);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 2px 6px;\r\n	white-space: nowrap;\r\n	z-index: 10000;\r\n	border-radius: 2px;\r\n	pointer-events: none;\r\n	line-height: 1.2;\r\n}\r\n.shortcut-tooltip.show {\r\n	display: block;\r\n}\r\n\r\n#ShortCut .cooldown-overlay {\r\n	position: absolute;\r\n	top: 0;\r\n	left: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	pointer-events: none;\r\n	border-radius: 2px;\r\n	z-index: 999;\r\n	background: conic-gradient(rgba(0, 0, 0, 0.75) 0deg, transparent 0deg);\r\n}\r\n";
-}));
-//#endregion
-//#region src/UI/Components/ShortCut/ShortCut.js
-var ShortCut_exports = /* @__PURE__ */ __exportAll({ default: () => ShortCut_default });
-/**
-* Resolve which skill window owns a skill id
-*
-* @param {number} skill id
-* @return {object} component exposing useSkillID / getSkillById
-*/
-function getSkillOwner(id) {
-	if (id >= SkillConst_default.GD_APPROVAL && id <= SkillConst_default.GD_LAST) return Guild_default;
-	if (id >= SkillConst_default.HOMUN_BEGIN && id <= SkillConst_default.HOMUN_LAST) return SkillListMH_default.homunculus;
-	if (id >= SkillConst_default.MERCENARY_BEGIN && id <= SkillConst_default.MERCENARY_LAST) return SkillListMH_default.mercenary;
-	return Controller$4.getUI();
-}
-/**
-* Update tooltip for empty slots with hotkey only
-*/
-function updateEmptySlotTooltips() {
-	const containers = ShortCut.getRoot().querySelectorAll(".container");
-	for (let i = 0; i < containers.length; ++i) if (!_list$4[i] || !_list$4[i].isSkill && !_list$4[i].ID) {
-		const hotkey = getHotKeyString(i);
-		if (hotkey) containers[i].setAttribute("data-tooltip", hotkey);
-	}
-}
-/**
-* Get hotkey string for shortcut index
-*
-* @param {number} index of the shortcut slot
-* @return {string} hotkey string or empty string
-*/
-function getHotKeyString(index) {
-	const shortcutKeys = [
-		"F1_1",
-		"F1_2",
-		"F1_3",
-		"F1_4",
-		"F1_5",
-		"F1_6",
-		"F1_7",
-		"F1_8",
-		"F1_9",
-		"F2_1",
-		"F2_2",
-		"F2_3",
-		"F2_4",
-		"F2_5",
-		"F2_6",
-		"F2_7",
-		"F2_8",
-		"F2_9",
-		"F3_1",
-		"F3_2",
-		"F3_3",
-		"F3_4",
-		"F3_5",
-		"F3_6",
-		"F3_7",
-		"F3_8",
-		"F3_9",
-		"F4_1",
-		"F4_2",
-		"F4_3",
-		"F4_4",
-		"F4_5",
-		"F4_6",
-		"F4_7",
-		"F4_8",
-		"F4_9"
-	];
-	if (index < 0 || index >= shortcutKeys.length) return "";
-	const scKey = shortcutKeys[index];
-	const shortcut = ShortCutControls_default.ShortCuts[scKey];
-	if (!shortcut) return "";
-	const key = shortcut.cust ? shortcut.cust.key : shortcut.init.key;
-	const alt = shortcut.cust ? shortcut.cust.alt : shortcut.init.alt;
-	const ctrl = shortcut.cust ? shortcut.cust.ctrl : shortcut.init.ctrl;
-	const shift = shortcut.cust ? shortcut.cust.shift : shortcut.init.shift;
-	if (!key) return "";
-	let hotkeyStr = "";
-	if (alt) hotkeyStr += "ALT + ";
-	if (ctrl) hotkeyStr += "CTRL + ";
-	if (shift) hotkeyStr += "SHIFT + ";
-	hotkeyStr += KEYS.toReadableKey(key);
-	return hotkeyStr;
-}
-/**
-* Show fixed tooltip on container hover
-*/
-function onContainerMouseEnter(event) {
-	const tooltipText = event.currentTarget.getAttribute("data-tooltip");
-	if (tooltipText) {
-		const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
-		const hostRect = ShortCut._host.getBoundingClientRect();
-		tooltip.textContent = tooltipText;
-		tooltip.classList.add("show");
-		const tooltipRect = tooltip.getBoundingClientRect();
-		const showAbove = window.innerHeight - (hostRect.top + hostRect.height) < tooltipRect.height + 10;
-		const left = hostRect.left + hostRect.width / 2 - tooltipRect.width / 2;
-		let top;
-		if (showAbove) top = hostRect.top - tooltipRect.height - 2;
-		else top = hostRect.top + hostRect.height + 2;
-		tooltip.style.left = `${left}px`;
-		tooltip.style.top = `${top}px`;
-	}
-}
-/**
-* Hide fixed tooltip on container leave
-*/
-function onContainerMouseLeave() {
-	const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
-	if (tooltip) tooltip.classList.remove("show");
-}
-/**
-* Resizing hotkey window
-*/
-function onResize$3(event) {
-	const host = ShortCut._host;
-	const top = host.offsetTop;
-	let lastHeight = 0;
-	function resizing() {
-		let h = Math.floor((Mouse.screen.y - top) / 34 + 1);
-		h = Math.min(Math.max(h, 1), _rowCount);
-		if (h === lastHeight) return;
-		host.style.height = `${h * 34}px`;
-		_preferences$23.size = h;
-		_preferences$23.save();
-		lastHeight = h;
-	}
-	const _Interval = setInterval(resizing, 30);
-	const mouseUpHandler = (_event) => {
-		if (_event.which === 1) {
-			clearInterval(_Interval);
-			window.removeEventListener("mouseup", mouseUpHandler);
-		}
-	};
-	window.addEventListener("mouseup", mouseUpHandler);
-	event.stopImmediatePropagation();
-	event.preventDefault();
-}
-/**
-* Displays the cooldown overlay on an icon
-*
-* @param {number} index of the icon
-* @param {number} delay in ms
-*/
-function setDelayOnIndex(index, delay) {
-	if (!_list$4[index]) return;
-	if (_list$4[index].Delay && _list$4[index].Delay >= Renderer.tick + delay) return;
-	_list$4[index].Delay = Renderer.tick + delay;
-	const ui = ShortCut.getRoot().querySelector(`.container[data-index="${index}"]`);
-	if (!ui) return;
-	const existing = ui.querySelector(".cooldown-overlay");
-	if (existing) existing.remove();
-	const overlay = document.createElement("div");
-	overlay.className = "cooldown-overlay";
-	const icon = ui.querySelector(".icon");
-	if (icon) {
-		icon.appendChild(overlay);
-		const img = icon.querySelector(".img");
-		if (img) img.style.filter = "none";
-	}
-	if (_activeAnimations.has(index)) {
-		cancelAnimationFrame(_activeAnimations.get(index));
-		_activeAnimations.delete(index);
-	}
-	function updateCooldown() {
-		if (!_list$4 || !_list$4[index]) {
-			overlay.remove();
-			if (_activeAnimations.has(index)) {
-				cancelAnimationFrame(_activeAnimations.get(index));
-				_activeAnimations.delete(index);
-			}
-			return;
-		}
-		const now = Renderer.tick;
-		const remaining = _list$4[index].Delay - now;
-		if (remaining <= 0 || !_list$4[index].Delay) {
-			overlay.remove();
-			_list$4[index].Delay = 0;
-			if (_activeAnimations.has(index)) {
-				cancelAnimationFrame(_activeAnimations.get(index));
-				_activeAnimations.delete(index);
-			}
-			return;
-		}
-		const degrees = (1 - remaining / delay) * 360;
-		overlay.style.background = `conic-gradient(transparent 0deg, transparent ${degrees}deg, rgba(0,0,0,0.75) ${degrees}deg)`;
-		const animationId = requestAnimationFrame(updateCooldown);
-		_activeAnimations.set(index, animationId);
-	}
-	const animationId = requestAnimationFrame(updateCooldown);
-	_activeAnimations.set(index, animationId);
-}
-/**
-* Drop something in the shortcut
-* Does the client allow other source than shortcut, inventory
-* and skill window to save to shortcut ?
-*/
-function onDrop$8(event, target) {
-	let data, element;
-	const index = parseInt(target.getAttribute("data-index"), 10);
-	const row = Math.floor(index / 9);
-	event.stopImmediatePropagation();
-	event.preventDefault();
-	try {
-		data = JSON.parse(event.dataTransfer.getData("Text"));
-		element = data.data;
-	} catch (_e) {
-		return;
-	}
-	if (data.type !== "item" && data.type !== "skill") return;
-	switch (data.from) {
-		case "SkillList":
-		case "Guild":
-		case "SkillListMH":
-			ShortCut.removeElement(true, element.SKID, row, element.selectedLevel ? element.selectedLevel : element.level);
-			ShortCut.addElement(index, true, element.SKID, element.selectedLevel ? element.selectedLevel : element.level);
-			ShortCut.onChange(index, true, element.SKID, element.selectedLevel ? element.selectedLevel : element.level);
-			break;
-		case "Inventory":
-			ShortCut.removeElement(false, element.ITID, row);
-			ShortCut.addElement(index, false, element.ITID, 0);
-			ShortCut.onChange(index, false, element.ITID, 0);
-			break;
-		case "ShortCut":
-			ShortCut.removeElement(element.isSkill, element.ID, row, element.isSkill ? element.count : null);
-			ShortCut.addElement(index, element.isSkill, element.ID, element.count);
-			ShortCut.onChange(index, element.isSkill, element.ID, element.count);
-	}
-}
-/**
-* Stop the drag and drop
-*/
-function onDragEnd(icon) {
-	delete window._OBJ_DRAG_;
-	icon.classList.remove("hide");
-}
-/**
-* Prepare data to be stored in the dragged element
-* to change position in the shortcut.
-*/
-function onDragStart$2(event, icon) {
-	const index = parseInt(icon.parentNode.getAttribute("data-index"), 10);
-	icon.classList.add("hide");
-	const img = new Image();
-	img.decoding = "async";
-	img.src = icon.querySelector(".img").style.backgroundImage.match(/\(([^)]+)/)[1].replace(/"/g, "");
-	event.dataTransfer.setDragImage(img, 12, 12);
-	event.dataTransfer.setData("Text", JSON.stringify(window._OBJ_DRAG_ = {
-		type: _list$4[index].isSkill ? "skill" : "item",
-		from: "ShortCut",
-		data: _list$4[index]
-	}));
-}
-/**
-* Get informations from a skill/item when
-* using right click on it.
-*/
-function onElementInfo(event, icon) {
-	const index = parseInt(icon.parentNode.getAttribute("data-index"), 10);
-	const element = _list$4[index];
-	event.stopImmediatePropagation();
-	event.preventDefault();
-	if (element.isSkill) {
-		if (SkillDescription_default.uid === _list$4[index].ID) SkillDescription_default.remove();
-		else {
-			SkillDescription_default.append();
-			SkillDescription_default.setSkill(_list$4[index].ID);
-		}
-	} else {
-		if (ItemInfo_default.uid === _list$4[index].ID) {
-			ItemInfo_default.remove();
-			return;
-		}
-		ItemInfo_default.append();
-		ItemInfo_default.uid = _list$4[index].ID;
-		ItemInfo_default.setItem(InventoryController.getUI().getItemById(_list$4[index].ID));
-	}
-}
-/**
-* Double-click on a shortcut
-*/
-function onUseShortCut(icon) {
-	clickElement(parseInt(icon.parentNode.getAttribute("data-index"), 10));
-}
-/**
-* Clicking on a shortcut
-*
-* @param {number} shortcut index
-*/
-function clickElement(index) {
-	const shortcut = _list$4[index];
-	SkillTargetSelection_default.remove();
-	if (!shortcut) return;
-	if (shortcut.isSkill) ShortCut.useSkill(shortcut.ID, shortcut.count);
-	else {
-		const item = InventoryController.getUI().getItemById(_list$4[index].ID);
-		if (item) InventoryController.getUI().useItem(item);
-	}
-}
-/**
-* Closing the window
-*/
-function onClose$5() {
-	ShortCut._host.style.height = "0px";
-	_preferences$23.size = 0;
-	_preferences$23.save();
-}
-/**
-* Hook Inventory, get informations when there is a change
-* to update the shortcut
-*
-* @param {number} index
-* @param {number} count
-*/
-function onUpdateItem(index, count) {
-	ShortCut.setElement(false, index, count);
-}
-/**
-* Hook Skill List, get informations when there is a change
-* to update the shortcut
-*
-* @param {number} skill id
-* @param {number} level
-*/
-function onUpdateSkill(id, level) {
-	ShortCut.setElement(true, id, level);
-}
-function onUpdateOwnerName$1() {
-	for (const index in _list$4) if (!_list$4[index].isSkill) ShortCut.setElement(false, _list$4[index].ID, _list$4[index].count);
-}
-function convertHotkeysToServerFormat() {
-	const serverData = {
-		Type: 1,
-		data: {
-			EmotionHotkey: [],
-			UserHotkey_V2: { SkillBar_1Tab: [] }
-		}
-	};
-	[
-		"Macro1",
-		"Macro2",
-		"Macro3",
-		"Macro4",
-		"Macro5",
-		"Macro6",
-		"Macro7",
-		"Macro8",
-		"Macro9",
-		"Macro10"
-	].forEach((key, index) => {
-		const shortcut = ShortCutControls_default.ShortCuts[key];
-		if (shortcut && shortcut.cust && shortcut.cust.emotion) serverData.data.EmotionHotkey[index] = shortcut.cust.emotion;
-	});
-	[
-		"F1_1",
-		"F1_2",
-		"F1_3",
-		"F1_4",
-		"F1_5",
-		"F1_6",
-		"F1_7",
-		"F1_8",
-		"F1_9",
-		"F2_1",
-		"F2_2",
-		"F2_3",
-		"F2_4",
-		"F2_5",
-		"F2_6",
-		"F2_7",
-		"F2_8",
-		"F2_9",
-		"F3_1",
-		"F3_2",
-		"F3_3",
-		"F3_4",
-		"F3_5",
-		"F3_6",
-		"F3_7",
-		"F3_8",
-		"F3_9",
-		"F4_1",
-		"F4_2",
-		"F4_3",
-		"F4_4",
-		"F4_5",
-		"F4_6",
-		"F4_7",
-		"F4_8",
-		"F4_9"
-	].forEach((key, index) => {
-		const shortcut = ShortCutControls_default.ShortCuts[key];
-		if (shortcut) {
-			const keyData = shortcut.cust || shortcut.init;
-			serverData.data.UserHotkey_V2.SkillBar_1Tab.push({
-				desc: `Skill ${index + 1}`,
-				index,
-				key1: keyData.key || 0,
-				key2: 0
-			});
-		}
-	});
-	return serverData;
-}
-function convertHotkeysFromServerFormat(serverData) {
-	if (!serverData || !serverData.data) return;
-	if (serverData.data.EmotionHotkey) {
-		const emotionKeys = [
-			"Macro1",
-			"Macro2",
-			"Macro3",
-			"Macro4",
-			"Macro5",
-			"Macro6",
-			"Macro7",
-			"Macro8",
-			"Macro9",
-			"Macro10"
-		];
-		serverData.data.EmotionHotkey.forEach((emotion, index) => {
-			if (emotion && emotionKeys[index]) {
-				if (!ShortCutControls_default.ShortCuts[emotionKeys[index]].cust) ShortCutControls_default.ShortCuts[emotionKeys[index]].cust = {};
-				ShortCutControls_default.ShortCuts[emotionKeys[index]].cust.emotion = emotion;
-			}
-		});
-	}
-	if (serverData.data.UserHotkey_V2 && serverData.data.UserHotkey_V2.SkillBar_1Tab) {
-		const shortcutKeys = [
-			"F1_1",
-			"F1_2",
-			"F1_3",
-			"F1_4",
-			"F1_5",
-			"F1_6",
-			"F1_7",
-			"F1_8",
-			"F1_9",
-			"F2_1",
-			"F2_2",
-			"F2_3",
-			"F2_4",
-			"F2_5",
-			"F2_6",
-			"F2_7",
-			"F2_8",
-			"F2_9",
-			"F3_1",
-			"F3_2",
-			"F3_3",
-			"F3_4",
-			"F3_5",
-			"F3_6",
-			"F3_7",
-			"F3_8",
-			"F3_9",
-			"F4_1",
-			"F4_2",
-			"F4_3",
-			"F4_4",
-			"F4_5",
-			"F4_6",
-			"F4_7",
-			"F4_8",
-			"F4_9"
-		];
-		serverData.data.UserHotkey_V2.SkillBar_1Tab.forEach((skillData) => {
-			if (skillData && skillData.index < shortcutKeys.length) {
-				const key = shortcutKeys[skillData.index];
-				if (key && skillData.key1) {
-					if (!ShortCutControls_default.ShortCuts[key].cust) ShortCutControls_default.ShortCuts[key].cust = {};
-					ShortCutControls_default.ShortCuts[key].cust.key = skillData.key1;
-				}
-			}
-		});
-	}
-}
-function haveHotkeysChanged(currentData) {
-	if (!_lastServerHotkeys) return true;
-	return JSON.stringify(currentData) !== JSON.stringify(_lastServerHotkeys);
-}
-var ShortCut, _list$4, _rowCount, _lastServerHotkeys, _activeAnimations, _preferences$23, ShortCut_default;
-var init_ShortCut = __esmMin((() => {
-	init_DBManager();
-	init_ItemType();
-	init_SkillInfo();
-	init_SkillConst();
-	init_Client();
-	init_Preferences$1();
-	init_SessionStorage();
-	init_Renderer();
-	init_MouseEventHandler();
-	init_UIManager();
-	init_GUIComponent();
-	init_ItemInfo();
-	init_Inventory();
-	init_SkillListMH();
-	init_SkillDescription();
-	init_SkillTargetSelection();
-	init_Guild$1();
-	init_ShortCutControls();
-	init_KeyEventHandler();
-	init_Configs();
-	init_PacketVerManager();
-	init_SkillList();
-	init_ShortCut$2();
-	init_ShortCut$1();
-	ShortCut = new GUIComponent("ShortCut", ShortCut_default$1);
-	ShortCut.render = () => ShortCut_default$2;
-	_list$4 = [];
-	_rowCount = 0;
-	_lastServerHotkeys = null;
-	_activeAnimations = /* @__PURE__ */ new Map();
-	_preferences$23 = Preferences.get("ShortCut", {
-		x: 480,
-		y: 0,
-		size: 1,
-		magnet_top: true,
-		magnet_bottom: false,
-		magnet_left: false,
-		magnet_right: false
-	}, 1);
-	/**
-	* Initialize UI
-	*/
-	ShortCut.init = function init() {
-		const root = ShortCut.getRoot();
-		const resizeBtn = root.querySelector(".resize");
-		if (resizeBtn) resizeBtn.addEventListener("mousedown", onResize$3);
-		const closeBtn = root.querySelector(".close");
-		if (closeBtn) {
-			closeBtn.addEventListener("mousedown", (e) => {
-				e.stopImmediatePropagation();
-				e.preventDefault();
-			});
-			closeBtn.addEventListener("click", onClose$5);
-		}
-		const container = root.querySelector("#ShortCut");
-		container.addEventListener("drop", (e) => {
-			const target = e.target.closest(".container");
-			if (target) onDrop$8(e, target);
-		});
-		container.addEventListener("dragover", (e) => {
-			if (e.target.closest(".container")) {
-				e.stopImmediatePropagation();
-				e.preventDefault();
-			}
-		});
-		container.addEventListener("dragstart", (e) => {
-			const icon = e.target.closest(".icon");
-			if (icon) onDragStart$2(e, icon);
-		});
-		container.addEventListener("dragend", (e) => {
-			const icon = e.target.closest(".icon");
-			if (icon) onDragEnd(icon);
-		});
-		container.addEventListener("dblclick", (e) => {
-			const icon = e.target.closest(".icon");
-			if (icon) onUseShortCut(icon);
-		});
-		container.addEventListener("contextmenu", (e) => {
-			const icon = e.target.closest(".icon");
-			if (icon) onElementInfo(e, icon);
-		});
-		container.addEventListener("mousedown", (e) => {
-			if (e.target.closest(".icon")) e.stopImmediatePropagation();
-		});
-		this.draggable();
-		root.querySelectorAll(".container").forEach((el) => {
-			el.addEventListener("mouseenter", onContainerMouseEnter);
-			el.addEventListener("mouseleave", onContainerMouseLeave);
-		});
-		DB.UpdateOwnerName.ShortCut = onUpdateOwnerName$1;
-		InventoryController.getUI().onUpdateItem = onUpdateItem;
-	};
-	/**
-	* Append to body
-	*/
-	ShortCut.onAppend = function onAppend() {
-		this._host.style.height = `${34 * _preferences$23.size}px`;
-		const rect = this._host.getBoundingClientRect();
-		this._host.style.top = `${Math.min(Math.max(0, _preferences$23.y), Renderer.height - rect.height)}px`;
-		this._host.style.left = `${Math.min(Math.max(0, _preferences$23.x), Renderer.width - rect.width)}px`;
-		this.magnet.TOP = _preferences$23.magnet_top;
-		this.magnet.BOTTOM = _preferences$23.magnet_bottom;
-		this.magnet.LEFT = _preferences$23.magnet_left;
-		this.magnet.RIGHT = _preferences$23.magnet_right;
-		Controller$4.getUI().onUpdateSkill = onUpdateSkill;
-		updateEmptySlotTooltips();
-	};
-	/**
-	* When removed, clean up
-	*/
-	ShortCut.onRemove = function onRemove() {
-		const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
-		if (tooltip) tooltip.classList.remove("show");
-		for (const [index, animationId] of _activeAnimations.entries()) cancelAnimationFrame(animationId);
-		_activeAnimations.clear();
-		_preferences$23.y = parseInt(this._host.style.top, 10);
-		_preferences$23.x = parseInt(this._host.style.left, 10);
-		_preferences$23.size = Math.floor(parseInt(this._host.style.height, 10) / 34);
-		_preferences$23.magnet_top = this.magnet.TOP;
-		_preferences$23.magnet_bottom = this.magnet.BOTTOM;
-		_preferences$23.magnet_left = this.magnet.LEFT;
-		_preferences$23.magnet_right = this.magnet.RIGHT;
-		_preferences$23.save();
-	};
-	/**
-	* Request to clean the list
-	* Used only from MapEngine when exiting the game
-	*/
-	ShortCut.clean = function clean() {
-		for (const [index, animationId] of _activeAnimations.entries()) cancelAnimationFrame(animationId);
-		_activeAnimations.clear();
-		_list$4.length = 0;
-		ShortCut.getRoot().querySelectorAll(".container").forEach((el) => {
-			el.innerHTML = "";
-		});
-	};
-	/**
-	* Process shortcut
-	*
-	* @param {object} key
-	*/
-	ShortCut.onShortCut = function onShortCut(key) {
-		switch (key.cmd.replace(/\d+$/, "")) {
-			case "EXECUTE":
-				clickElement(parseInt(key.cmd.match(/\d+$/).toString(), 10));
-				break;
-			case "EXTEND":
-				_preferences$23.size = (_preferences$23.size + 1) % (_rowCount + 1);
-				_preferences$23.save();
-				this._host.style.height = `${_preferences$23.size * 34}px`;
-		}
-	};
-	ShortCut.useSkill = function useSkill(id, level) {
-		getSkillOwner(id).useSkillID(id, level);
-	};
-	ShortCut.getSkillById = function getSkillById(id) {
-		return getSkillOwner(id).getSkillById(id);
-	};
-	/**
-	* Bind UI with list of shortcut
-	*
-	* @param {Array} shortcut list
-	*/
-	ShortCut.setList = function setList(list) {
-		let skill;
-		let needGuildSkills = false;
-		ShortCut.getRoot().querySelectorAll(".container").forEach((el) => {
-			el.innerHTML = "";
-		});
-		_list$4.length = list.length;
-		_rowCount = Math.min(4, Math.floor(list.length / 9));
-		for (let i = 0, count = list.length; i < count; ++i) if (list[i].isSkill) {
-			skill = ShortCut.getSkillById(list[i].ID);
-			if (getSkillOwner(list[i].ID) === Guild_default) needGuildSkills = true;
-			if (skill && skill.level) ShortCut.addElement(i, true, list[i].ID, list[i].count || skill.level);
-			else {
-				if (!_list$4[i]) _list$4[i] = {};
-				_list$4[i].isSkill = true;
-				_list$4[i].ID = list[i].ID;
-				_list$4[i].count = list[i].count;
-			}
-		} else ShortCut.addElement(i, list[i].isSkill, list[i].ID, list[i].count);
-		if (needGuildSkills) ShortCut.onRequestGuildSkills();
-	};
-	/**
-	* Hook: ask the server for the guild skill list (set by MapEngine/Guild)
-	*/
-	ShortCut.onRequestGuildSkills = function onRequestGuildSkills() {};
-	/**
-	* Update all tooltips (for both empty and filled slots)
-	* Called when hotkey settings change
-	*/
-	ShortCut.updateAllTooltips = function updateAllTooltips() {
-		const root = ShortCut.getRoot();
-		for (let i = 0, size = _list$4.length; i < size; ++i) {
-			const container = root.querySelector(`.container[data-index="${i}"]`);
-			if (!container) continue;
-			const hotkey = getHotKeyString(i);
-			if (!_list$4[i] || !_list$4[i].isSkill && !_list$4[i].ID) {
-				if (hotkey) container.setAttribute("data-tooltip", hotkey);
-			} else if (_list$4[i] && (_list$4[i].isSkill || _list$4[i].ID)) {
-				let name = "";
-				if (_list$4[i].isSkill && SkillInfo[_list$4[i].ID]) name = SkillInfo[_list$4[i].ID].SkillName;
-				else if (_list$4[i].ID) {
-					const item = InventoryController.getUI().getItemById(_list$4[i].ID);
-					if (item) name = DB.getItemName(item);
-				}
-				if (name) {
-					const tooltipText = hotkey ? `[ ${hotkey} ] ${name}` : name;
-					container.setAttribute("data-tooltip", tooltipText);
-				}
-			}
-		}
-	};
-	ShortCut.setElement = function setElement(isSkill, ID, count) {
-		for (let i = 0, size = _list$4.length; i < size; ++i) if (_list$4[i] && _list$4[i].isSkill == isSkill && _list$4[i].ID === ID) {
-			if (isSkill && _list$4[i].count && _list$4[i].count <= count) ShortCut.addElement(i, isSkill, ID, _list$4[i].count);
-			else ShortCut.addElement(i, isSkill, ID, count);
-		}
-	};
-	/**
-	* Add an element to shortcut
-	*
-	* @param {number} index of the element
-	* @param {boolean} is a skill ?
-	* @param {number} ID
-	* @param {number} count or level
-	*/
-	ShortCut.addElement = function addElement(index, isSkill, ID, count) {
-		let file, name;
-		const ui = ShortCut.getRoot().querySelector(`.container[data-index="${index}"]`);
-		if (!ui) return;
-		ui.innerHTML = "";
-		if (!_list$4[index]) _list$4[index] = {};
-		_list$4[index].isSkill = isSkill;
-		_list$4[index].ID = ID;
-		if (isSkill) {
-			if (!count) return;
-			else {
-				_list$4[index].count = count;
-				file = SkillInfo[ID].Name;
-				name = SkillInfo[ID].SkillName;
-			}
-		} else {
-			_list$4[index].count = count;
-			const item = InventoryController.getUI().getItemById(ID);
-			if (!item) return;
-			const it = DB.getItemInfo(ID);
-			file = item.IsIdentified ? it.identifiedResourceName : it.unidentifiedResourceName;
-			name = DB.getItemName(item);
-			if (item.type === ItemType_default.WEAPON || item.type === ItemType_default.ARMOR || item.type === ItemType_default.SHADOWGEAR) count = 1;
-			else count = item.count;
-			if (!count) return;
-		}
-		const hotkey = getHotKeyString(index);
-		const tooltipText = hotkey ? `[ ${hotkey} ] ${name}` : name;
-		Client.loadFile(`${DB.INTERFACE_PATH}item/${file}.bmp`, (url) => {
-			ui.innerHTML = "<div draggable=\"true\" class=\"icon\"><div class=\"img\"></div><div class=\"amount\"></div></div>";
-			ui.querySelector(".img").style.backgroundImage = `url(${url})`;
-			ui.querySelector(".amount").textContent = count;
-			ui.setAttribute("data-tooltip", tooltipText);
-		});
-	};
-	/**
-	* Displays the cooldown over every skill
-	*
-	* @param {number} delay in ms
-	*/
-	ShortCut.setGlobalSkillDelay = function setGlobalSkillDelay(delay) {
-		_list$4.forEach((element, index) => {
-			if (element.isSkill) setDelayOnIndex(index, delay);
-		});
-	};
-	/**
-	* Displays the cooldown over a single skill
-	*
-	* @param {number} ID of the skill
-	* @param {number} delay in ms
-	*/
-	ShortCut.setSkillDelay = function setSkillDelay(ID, delay) {
-		_list$4.forEach((element, index) => {
-			if (element.isSkill && element.ID == ID) setDelayOnIndex(index, delay);
-		});
-	};
-	/**
-	* Remove an element from shortcut
-	*
-	* @param {boolean} is a skill ?
-	* @param {number} ID of the element to remove
-	* @param {number} row id
-	* @param {number} amount (optional)
-	*/
-	ShortCut.removeElement = function removeElement(isSkill, ID, row, amount) {
-		if (!ID) return;
-		const root = ShortCut.getRoot();
-		for (let i = row * 9, count = Math.min(_list$4.length, row * 9 + 9); i < count; ++i) if (_list$4[i] && _list$4[i].isSkill == isSkill && _list$4[i].ID === ID && (!isSkill || _list$4[i].count == amount)) {
-			const container = root.querySelector(`.container[data-index="${i}"]`);
-			if (container) container.innerHTML = "";
-			_list$4[i].isSkill = 0;
-			_list$4[i].ID = 0;
-			_list$4[i].count = 0;
-			ShortCut.onChange(i, 0, 0, 0);
-		}
-	};
-	Guild_default.onUpdateSkill = (id, level) => {
-		ShortCut.setElement(true, id, level);
-	};
-	SkillListMH_default.mercenary.onUpdateSkill = (id, level) => {
-		ShortCut.setElement(true, id, level);
-	};
-	SkillListMH_default.homunculus.onUpdateSkill = (id, level) => {
-		ShortCut.setElement(true, id, level);
-	};
-	/**
-	* Method to define to notify a change.
-	*
-	* @param {number} index
-	* @param {boolean} isSkill
-	* @param {number} id
-	* @param {number} count
-	*/
-	ShortCut.onChange = function onChange() {};
-	ShortCut.saveToServer = function saveToServer() {
-		if (PacketVerManager_default.value >= 20170315 && SessionStorage_default.WebToken) {
-			const hotkeys = JSON.stringify(convertHotkeysToServerFormat());
-			if (!haveHotkeysChanged(hotkeys)) return;
-			const formData = new FormData();
-			formData.append("AID", SessionStorage_default.AID);
-			formData.append("WorldName", SessionStorage_default.ServerName);
-			formData.append("AuthToken", SessionStorage_default.WebToken);
-			formData.append("data", hotkeys);
-			const xhr = new XMLHttpRequest();
-			let webserverAddress = "";
-			if (window.location.protocol !== "http:" && window.location.protocol !== "https:") webserverAddress = Configs.get("webserverAddress", "http://127.0.0.1:8888");
-			xhr.open("POST", `${webserverAddress}/userconfig/save`, true);
-			xhr.timeout = 5e3;
-			xhr.onload = () => {
-				if (xhr.status === 200) console.log("Hotkeys saved to server successfully");
-				else console.warn("Hotkey save returned non-200 status:", xhr.status);
-			};
-			xhr.onerror = () => {
-				console.warn("Hotkey save failed: web-server unreachable");
-			};
-			xhr.ontimeout = () => {
-				console.warn("Hotkey save timed out");
-			};
-			xhr.send(formData);
-		}
-	};
-	ShortCut.loadFromServer = function loadFromServer(callback) {
-		if (PacketVerManager_default.value >= 20170315 && SessionStorage_default.WebToken) {
-			const formData = new FormData();
-			formData.append("AID", SessionStorage_default.AID);
-			formData.append("WorldName", SessionStorage_default.ServerName);
-			formData.append("AuthToken", SessionStorage_default.WebToken);
-			const xhr = new XMLHttpRequest();
-			let webserverAddress = "";
-			if (window.location.protocol !== "http:" && window.location.protocol !== "https:") webserverAddress = Configs.get("webserverAddress", "http://127.0.0.1:8888");
-			xhr.open("POST", `${webserverAddress}/userconfig/load`, true);
-			xhr.timeout = 5e3;
-			xhr.onload = () => {
-				if (xhr.status === 200) try {
-					const serverData = JSON.parse(xhr.responseText);
-					_lastServerHotkeys = JSON.parse(JSON.stringify(serverData));
-					convertHotkeysFromServerFormat(serverData);
-				} catch (e) {
-					console.error("Error parsing server hotkeys:", e);
-				}
-				else console.warn("Hotkey load returned non-200 status:", xhr.status);
-				if (callback) callback();
-			};
-			xhr.onerror = () => {
-				console.warn("Hotkey load failed: web-server unreachable");
-				if (callback) callback();
-			};
-			xhr.ontimeout = () => {
-				console.warn("Hotkey load timed out");
-				if (callback) callback();
-			};
-			xhr.send(formData);
-		} else if (callback) callback();
-	};
-	ShortCut.getList = function getList() {
-		return _list$4;
-	};
-	ShortCut_default = UIManager.addComponent(ShortCut);
-}));
-//#endregion
 //#region src/Engine/MapEngine/Guild.js
 function adler32(data) {
 	let s1 = 1;
@@ -247161,9 +250340,16 @@ function onGuildAccess(pkt) {
 function onGuildOwnInfo(pkt) {
 	if (pkt.GDID === void 0) return;
 	GuildEngine.guild_id = pkt.GDID;
+	const wasMaster = SessionStorage_default.isGuildMaster;
+	const knewRole = SessionStorage_default.hasGuild;
 	SessionStorage_default.hasGuild = true;
-	SessionStorage_default.guildRight = pkt.right;
+	SessionStorage_default.guildPermission = pkt.right;
 	SessionStorage_default.isGuildMaster = !!pkt.isMaster;
+	if (SessionStorage_default.isGuildMaster !== wasMaster) {
+		if (knewRole) Guild_default.invalidateAccess();
+		Guild_default.updateMasterView();
+	}
+	Guild_default.requestAccessIfUnknown();
 	if (pkt.GName) SessionStorage_default.guildName = pkt.GName;
 	SessionStorage_default.Entity.GUID = pkt.GDID;
 	SessionStorage_default.Entity.GEmblemVer = pkt.emblemVersion;
@@ -247184,12 +250370,33 @@ function onGuildRelation(pkt) {
 	Guild_default.setRelations(pkt.relatedGuildList);
 }
 /**
+* A guild changed its emblem - fetch the new one for everyone wearing it
+*
+* Sent to everyone in range, so it arrives for other guilds too. The request
+* repaints every entity of that guild.
+* @see docs/reference/guild/emblem-picker.md
+*
+* @param {object} pkt - PACKET.ZC.CHANGE_GUILD | PACKET.ZC.CHANGE_GUILD2
+*/
+function onGuildEmblemChanged(pkt) {
+	if (!pkt.GDID || !pkt.emblemVersion) return;
+	if (_emblemNotified[pkt.GDID] === pkt.emblemVersion) return;
+	_emblemNotified[pkt.GDID] = pkt.emblemVersion;
+	const isOwnGuild = pkt.GDID === SessionStorage_default.Entity.GUID;
+	if (isOwnGuild) SessionStorage_default.Entity.GEmblemVer = pkt.emblemVersion;
+	GuildEngine.requestGuildEmblem(pkt.GDID, pkt.emblemVersion, (image) => {
+		if (isOwnGuild) Guild_default.setEmblem(image);
+	}, () => {
+		if (_emblemNotified[pkt.GDID] === pkt.emblemVersion) delete _emblemNotified[pkt.GDID];
+	});
+}
+/**
 * Get guild members informations
 *
 * @param {object} pkt - PACKET.ZC.MEMBERMGR_INFO
 */
 function onGuildMembers(pkt) {
-	Guild_default.setMembers(pkt.memberInfo);
+	Guild_default.setMembers(pkt.memberInfo, pkt instanceof PACKET.ZC.MEMBERMGR_INFO);
 }
 /**
 * Update guild positions
@@ -247214,6 +250421,17 @@ function onGuildPositionsName(pkt) {
 	Guild_default.setPositionsName(pkt.memberList);
 }
 /**
+* A server did answer the member info request
+*
+* There is no window to show it in yet, but the answer is what tells us the
+* request is supported, so the timer waiting on it has to be called off.
+*
+* @param {object} pkt - PACKET.ZC.ACK_OPEN_MEMBER_INFO
+*/
+function onGuildMemberInfo() {
+	clearTimeout(_memberInfoTimer);
+}
+/**
 * Update a guild member
 *
 * @param {object} pkt - PACKET.ZC.ACK_GUILD_MEMBER_INFO
@@ -247222,12 +250440,12 @@ function onGuildMemberUpdate(pkt) {
 	Guild_default.setMember(pkt.Info);
 }
 /**
-* Update member rank
+* Update member ranks
 *
 * @param {object} pkt - PACKET.ZC.ACK_REQ_CHANGE_MEMBERS
 */
 function onGuildMemberPositionUpdate(pkt) {
-	Guild_default.updateMemberPosition(pkt.AID, pkt.GID, pkt.positionID);
+	Guild_default.setMemberPositions(pkt.memberInfo);
 }
 /**
 * List of guild skills
@@ -247244,8 +250462,10 @@ function onGuildSkillList(pkt) {
 * @param {object} pkt - PACKET.ZC.GUILD_NOTICE
 */
 function onGuildNotice(pkt) {
-	ChatBox_default.addText("[ " + pkt.subject + " ]", ChatBox_default.TYPE.GUILD, ChatBox_default.FILTER.GUILD, "#FFFF63");
-	ChatBox_default.addText("[ " + pkt.notice + " ]", ChatBox_default.TYPE.GUILD, ChatBox_default.FILTER.GUILD, "#FFFF63");
+	if (UI_default.li) {
+		ChatBox_default.addText("[ " + pkt.subject + " ]", ChatBox_default.TYPE.GUILD, ChatBox_default.FILTER.GUILD, "#FFFF63");
+		ChatBox_default.addText("[ " + pkt.notice + " ]", ChatBox_default.TYPE.GUILD, ChatBox_default.FILTER.GUILD, "#FFFF63");
+	}
 	Guild_default.setNotice(pkt.subject, pkt.notice);
 }
 /**
@@ -247300,8 +250520,9 @@ function onGuildDestroy(pkt) {
 			SessionStorage_default.hasGuild = false;
 			SessionStorage_default.guildName = "";
 			SessionStorage_default.isGuildMaster = false;
-			SessionStorage_default.guildRight = 0;
+			SessionStorage_default.guildPermission = 0;
 			SessionStorage_default.Entity.GUID = 0;
+			Guild_default.reset();
 			ChatBox_default.addText(DB.getMessage(400), ChatBox_default.TYPE.BLUE, ChatBox_default.FILTER.GUILD);
 			break;
 		case 1:
@@ -247328,6 +250549,22 @@ function onGuildInviteRequest(pkt) {
 	UIManager.showPromptBox("(" + pkt.guildName + ") " + DB.getMessage(377), "ok", "cancel", answer(1), answer(0));
 }
 /**
+* One line of the invitation result, with the invited character's name
+* substituted if the message table asked for one.
+*
+* A no-op on the stock tables, none of whose strings carry a `%s`.
+* @see docs/reference/guild/invitation-ack.md
+*
+* @param {number} id - message table id
+* @param {string} defaultText - used when the table has no such id
+* @param {number} type - ChatBox.TYPE
+*/
+function addInviteResult(id, defaultText, type) {
+	const text = DB.getMessage(id, defaultText).replace("%s", _lastInvited || DB.getMessage(581, "Nameless"));
+	_lastInvited = "";
+	ChatBox_default.addText(text, type, ChatBox_default.FILTER.GUILD);
+}
+/**
 * Result from a guild invitation
 *
 * @param {object} pkt - PACKET.ZC.ACK_REQ_JOIN_GUILD
@@ -247335,15 +250572,15 @@ function onGuildInviteRequest(pkt) {
 function onGuildInviteResult(pkt) {
 	switch (pkt.answer) {
 		case 0:
-			ChatBox_default.addText(DB.getMessage(378), ChatBox_default.TYPE.ERROR, ChatBox_default.FILTER.GUILD);
+			addInviteResult(378, "He/She is already in a Guild.", ChatBox_default.TYPE.ERROR);
 			break;
 		case 1:
-			ChatBox_default.addText(DB.getMessage(379), ChatBox_default.TYPE.ERROR, ChatBox_default.FILTER.GUILD);
+			addInviteResult(379, "You have refused the guild invitation.", ChatBox_default.TYPE.ERROR);
 			break;
 		case 2:
-			ChatBox_default.addText(DB.getMessage(380), ChatBox_default.TYPE.BLUE, ChatBox_default.FILTER.GUILD);
+			addInviteResult(380, "You have accepted the guild invitation.", ChatBox_default.TYPE.BLUE);
 			break;
-		case 3: ChatBox_default.addText(DB.getMessage(381), ChatBox_default.TYPE.ERROR, ChatBox_default.FILTER.GUILD);
+		case 3: addInviteResult(381, "Your Guild is full.", ChatBox_default.TYPE.ERROR);
 	}
 }
 /**
@@ -247355,38 +250592,62 @@ function onGuildMemberStatus(pkt) {
 	Guild_default.updateMemberStatus(pkt);
 }
 /**
-* Event occured when a player got expel from the guild
+* Announce a member's departure, and empty the window when it is ours
 *
-* @param {object} pkt - PACKET.ZC.ACK_BAN_GUILD_SSO
+* The server sends nothing else that would take the window down, so this is
+* where it happens.
+*
+* @param {string} charName - who left
+* @param {string} reasonDesc - the reason the server gave
+* @param {boolean} isSelf - whether the member who left is us
+* @param {number} announceID - message for the departure line
+* @param {number} reasonID - message for the reason line
 */
-function onGuildMemberExpulsion(pkt) {
-	ChatBox_default.addText(DB.getMessage(370).replace("%s", pkt.charName), ChatBox_default.TYPE.GUILD, ChatBox_default.FILTER.GUILD, "#FFFF00");
-	ChatBox_default.addText(DB.getMessage(371).replace("%s", pkt.reasonDesc), ChatBox_default.TYPE.GUILD, ChatBox_default.FILTER.GUILD, "#FFFF00");
-	if (pkt.charName === SessionStorage_default.Entity.display.name) {
-		Guild_default.hide();
-		SessionStorage_default.hasGuild = false;
-		SessionStorage_default.guildName = "";
-		SessionStorage_default.isGuildMaster = false;
-		SessionStorage_default.guildRight = 0;
-		SessionStorage_default.Entity.GUID = 0;
-	}
+function reportDeparture(charName, reasonDesc, isSelf, announceID, reasonID) {
+	ChatBox_default.addText(DB.getMessage(announceID).replace("%s", charName), ChatBox_default.TYPE.GUILD, ChatBox_default.FILTER.GUILD, "#FFFF00");
+	ChatBox_default.addText(DB.getMessage(reasonID).replace("%s", reasonDesc), ChatBox_default.TYPE.GUILD, ChatBox_default.FILTER.GUILD, "#FFFF00");
+	if (!isSelf) return;
+	Guild_default.hide();
+	SessionStorage_default.hasGuild = false;
+	SessionStorage_default.guildName = "";
+	SessionStorage_default.isGuildMaster = false;
+	SessionStorage_default.guildPermission = 0;
+	SessionStorage_default.Entity.GUID = 0;
+	Guild_default.reset();
 }
 /**
 * Event occured when a player got expel from the guild
 *
+* @param {object} pkt - PACKET.ZC.ACK_BAN_GUILD | PACKET.ZC.ACK_BAN_GUILD_SSO
+*/
+function onGuildMemberExpulsion(pkt) {
+	reportDeparture(pkt.charName, pkt.reasonDesc, pkt.charName === SessionStorage_default.Entity.display.name, 370, 371);
+}
+/**
+* Event occured when a player left the guild
+*
 * @param {object} pkt - PACKET.ZC.ACK_LEAVE_GUILD
 */
 function onGuildMemberLeave(pkt) {
-	ChatBox_default.addText(DB.getMessage(364).replace("%s", pkt.charName), ChatBox_default.TYPE.GUILD, ChatBox_default.FILTER.GUILD, "#FFFF00");
-	ChatBox_default.addText(DB.getMessage(365).replace("%s", pkt.reasonDesc), ChatBox_default.TYPE.GUILD, ChatBox_default.FILTER.GUILD, "#FFFF00");
-	if (pkt.charName === SessionStorage_default.Entity.display.name) {
-		Guild_default.hide();
-		SessionStorage_default.hasGuild = false;
-		SessionStorage_default.guildName = "";
-		SessionStorage_default.isGuildMaster = false;
-		SessionStorage_default.guildRight = 0;
-		SessionStorage_default.Entity.GUID = 0;
-	}
+	reportDeparture(pkt.charName, pkt.reasonDesc, pkt.charName === SessionStorage_default.Entity.display.name, 364, 365);
+}
+/**
+* The same two departures, from the era that sends a character id and no name
+*
+* Session.GID is the character id; Session.Entity.GID is the account's, and
+* matching on that one would never fire.
+* @see docs/reference/guild/member-view.md
+*
+* @param {object} pkt - PACKET.ZC.ACK_BAN_GUILD_DELNAME
+*/
+function onGuildMemberExpulsionByID(pkt) {
+	reportDeparture(Guild_default.getMemberName(pkt.GID), pkt.reasonDesc, pkt.GID === SessionStorage_default.GID, 370, 371);
+}
+/**
+* @param {object} pkt - PACKET.ZC.ACK_LEAVE_GUILD_DELNAME
+*/
+function onGuildMemberLeaveByID(pkt) {
+	reportDeparture(Guild_default.getMemberName(pkt.GID), pkt.reasonDesc, pkt.GID === SessionStorage_default.GID, 364, 365);
 }
 /**
 * Remove guild relation
@@ -247466,7 +250727,7 @@ function onGuildHostilityResult(pkt) {
 	}
 }
 function onGuildCastleInfo(pkt) {}
-var _emblems, _pendingGuildSkillRequest, GuildEngine, onGuildEmblem;
+var _emblems, _pendingGuildSkillRequest, _memberInfoTimer, _emblemNotified, _lastInvited, GuildEngine, onGuildEmblem;
 var init_Guild = __esmMin((() => {
 	init_DBManager();
 	init_Inflate();
@@ -247484,8 +250745,12 @@ var init_Guild = __esmMin((() => {
 	init_Configs();
 	init_MiniMap();
 	init_ShortCut();
+	init_UI();
 	_emblems = {};
 	_pendingGuildSkillRequest = false;
+	_memberInfoTimer = 0;
+	_emblemNotified = {};
+	_lastInvited = "";
 	GuildEngine = class GuildEngine {
 		/**
 		* @var {number} our guild id
@@ -247507,6 +250772,7 @@ var init_Guild = __esmMin((() => {
 			Network.hookPacket(PACKET.ZC.MEMBERMGR_INFO2, onGuildMembers);
 			Network.hookPacket(PACKET.ZC.MEMBERMGR_INFO3, onGuildMembers);
 			Network.hookPacket(PACKET.ZC.ACK_GUILD_MEMBER_INFO, onGuildMemberUpdate);
+			Network.hookPacket(PACKET.ZC.ACK_OPEN_MEMBER_INFO, onGuildMemberInfo);
 			Network.hookPacket(PACKET.ZC.POSITION_INFO, onGuildPositions);
 			Network.hookPacket(PACKET.ZC.POSITION_ID_NAME_INFO, onGuildPositionsName);
 			Network.hookPacket(PACKET.ZC.ACK_CHANGE_GUILD_POSITIONINFO, onGuildPositions);
@@ -247518,6 +250784,11 @@ var init_Guild = __esmMin((() => {
 			Network.hookPacket(PACKET.ZC.UPDATE_GDID, onGuildOwnInfo);
 			Network.hookPacket(PACKET.ZC.UPDATE_GDID2, onGuildOwnInfo);
 			Network.hookPacket(PACKET.ZC.BAN_LIST, onGuildExpelList);
+			Network.hookPacket(PACKET.ZC.BAN_LIST2, onGuildExpelList);
+			Network.hookPacket(PACKET.ZC.BAN_LIST3, onGuildExpelList);
+			Network.hookPacket(PACKET.ZC.CHANGE_GUILD, onGuildEmblemChanged);
+			Network.hookPacket(PACKET.ZC.CHANGE_GUILD2, onGuildEmblemChanged);
+			Network.hookPacket(PACKET.ZC.CHANGE_GUILD3, onGuildEmblemChanged);
 			Network.hookPacket(PACKET.ZC.ACK_DISORGANIZE_GUILD_RESULT, onGuildDestroy);
 			Network.hookPacket(PACKET.ZC.REQ_JOIN_GUILD, onGuildInviteRequest);
 			Network.hookPacket(PACKET.ZC.ACK_REQ_JOIN_GUILD, onGuildInviteResult);
@@ -247525,7 +250796,9 @@ var init_Guild = __esmMin((() => {
 			Network.hookPacket(PACKET.ZC.UPDATE_CHARSTAT2, onGuildMemberStatus);
 			Network.hookPacket(PACKET.ZC.ACK_BAN_GUILD, onGuildMemberExpulsion);
 			Network.hookPacket(PACKET.ZC.ACK_BAN_GUILD_SSO, onGuildMemberExpulsion);
+			Network.hookPacket(PACKET.ZC.ACK_BAN_GUILD_DELNAME, onGuildMemberExpulsionByID);
 			Network.hookPacket(PACKET.ZC.ACK_LEAVE_GUILD, onGuildMemberLeave);
+			Network.hookPacket(PACKET.ZC.ACK_LEAVE_GUILD_DELNAME, onGuildMemberLeaveByID);
 			Network.hookPacket(PACKET.ZC.DELETE_RELATED_GUILD, onGuildAllianceDeleteAck);
 			Network.hookPacket(PACKET.ZC.ADD_RELATED_GUILD, onGuildAllianceAdd);
 			Network.hookPacket(PACKET.ZC.REQ_ALLY_GUILD, onGuildAskForAlliance);
@@ -247573,8 +250846,10 @@ var init_Guild = __esmMin((() => {
 		* @param {number} guild id
 		* @param {number} version
 		* @param {function} callback
+		* @param {function} [onFailure] - the fetch gave up, and nothing was repainted
 		*/
-		static requestGuildEmblem(guild_id, version, callback) {
+		static requestGuildEmblem(guild_id, version, callback, onFailure) {
+			const failed = onFailure || function() {};
 			if (!_emblems[guild_id]) _emblems[guild_id] = {
 				version: -1,
 				image: new Image(),
@@ -247591,7 +250866,10 @@ var init_Guild = __esmMin((() => {
 				return;
 			}
 			if (PacketVerManager_default.value >= 20170315) {
-				if (!guild_id || typeof guild_id === "undefined" || !SessionStorage_default.AID || SessionStorage_default.AID === 0 || !SessionStorage_default.ServerName || SessionStorage_default.ServerName === void 0 || !SessionStorage_default.WebToken || SessionStorage_default.WebToken === void 0) return;
+				if (!guild_id || typeof guild_id === "undefined" || !SessionStorage_default.AID || SessionStorage_default.AID === 0 || !SessionStorage_default.ServerName || SessionStorage_default.ServerName === void 0 || !SessionStorage_default.WebToken || SessionStorage_default.WebToken === void 0) {
+					failed();
+					return;
+				}
 				const formData = new FormData();
 				formData.append("GDID", guild_id);
 				formData.append("WorldName", SessionStorage_default.ServerName);
@@ -247603,22 +250881,29 @@ var init_Guild = __esmMin((() => {
 				xhr.open("POST", webserverAddress + "/emblem/download", true);
 				xhr.responseType = "blob";
 				xhr.timeout = 5e3;
+				const commit = (img, gifCanvas) => {
+					if (version < emblem.version) return;
+					if (version > emblem.version) {
+						emblem.version = version;
+						emblem.image = img;
+						emblem.gif = gifCanvas;
+					}
+					callback(emblem.image, emblem.gif);
+					EntityManager.forEach((entity) => {
+						if (entity.GUID === guild_id) entity.setEntityGuildEmblem(emblem.image, emblem.gif);
+					});
+				};
 				xhr.onload = () => {
 					if (xhr.status !== 200) {
 						console.warn("Emblem download returned non-200 status:", xhr.status);
+						failed();
 						return;
 					}
 					try {
 						if (!(xhr.getResponseHeader("Content-Type") === "image/gif")) {
 							const img = new Image();
 							img.onload = () => {
-								emblem.version = version;
-								emblem.image = img;
-								emblem.gif = null;
-								callback(emblem.image, emblem.gif);
-								EntityManager.forEach((entity) => {
-									if (entity.GUID === guild_id) entity.setEntityGuildEmblem(img);
-								});
+								commit(img, null);
 							};
 							img.decoding = "async";
 							const blobUrl = URL.createObjectURL(xhr.response);
@@ -247631,13 +250916,7 @@ var init_Guild = __esmMin((() => {
 								const gifCanvas = this;
 								const img = new Image();
 								img.onload = () => {
-									emblem.version = version;
-									emblem.image = img;
-									emblem.gif = gifCanvas;
-									callback(emblem.image, emblem.gif);
-									EntityManager.forEach((entity) => {
-										if (entity.GUID === guild_id) entity.setEntityGuildEmblem(img, gifCanvas);
-									});
+									commit(img, gifCanvas);
 								};
 								img.decoding = "async";
 								const blobUrl = URL.createObjectURL(xhr.response);
@@ -247645,17 +250924,23 @@ var init_Guild = __esmMin((() => {
 									img.src = this.toDataURL();
 									URL.revokeObjectURL(blobUrl);
 								});
+							} else {
+								console.warn("Emblem gif could not be decoded");
+								failed();
 							}
 						});
 					} catch (e) {
 						console.error("Error processing guild emblem:", e);
+						failed();
 					}
 				};
 				xhr.onerror = () => {
 					console.warn("Emblem download failed: web-server unreachable");
+					failed();
 				};
 				xhr.ontimeout = () => {
 					console.warn("Emblem download timed out");
+					failed();
 				};
 				xhr.send(formData);
 			} else {
@@ -247670,6 +250955,16 @@ var init_Guild = __esmMin((() => {
 		*/
 		static requestAccess() {
 			Network.sendPacket(new PACKET.CZ.REQ_GUILD_MENUINTERFACE());
+		}
+		/**
+		* Empty the guild window for the character now entering the map
+		* @see docs/reference/guild/member-view.md
+		*/
+		static resetForNewCharacter() {
+			SessionStorage_default.isGuildMaster = false;
+			clearTimeout(_memberInfoTimer);
+			_memberInfoTimer = 0;
+			Guild_default.reset();
 		}
 		/**
 		* Ask the server to create a guild
@@ -247731,6 +251026,8 @@ var init_Guild = __esmMin((() => {
 		* @param {number} target account id
 		*/
 		static requestPlayerInvitation(AID) {
+			const entity = EntityManager.get(AID);
+			_lastInvited = entity ? entity.display.name : "";
 			const pkt = new PACKET.CZ.REQ_JOIN_GUILD();
 			pkt.AID = AID;
 			pkt.MyAID = SessionStorage_default.AID;
@@ -247752,6 +251049,7 @@ var init_Guild = __esmMin((() => {
 				ChatBox_default.addText("Guild invite by name requires client 2012-01-31 or newer.", ChatBox_default.TYPE.ERROR, ChatBox_default.FILTER.PUBLIC_LOG);
 				return;
 			}
+			_lastInvited = name;
 			const pkt = new PACKET.CZ.REQ_JOIN_GUILD2();
 			pkt.name = name;
 			Network.sendPacket(pkt);
@@ -247817,6 +251115,10 @@ var init_Guild = __esmMin((() => {
 			const pkt = new PACKET.CZ.REQ_OPEN_MEMBER_INFO();
 			pkt.AID = AID;
 			Network.sendPacket(pkt);
+			clearTimeout(_memberInfoTimer);
+			_memberInfoTimer = setTimeout(() => {
+				ChatBox_default.addText(`${DB.getMessage(129, "View Information")} : the server did not answer.`, ChatBox_default.TYPE.ERROR, ChatBox_default.FILTER.GUILD);
+			}, 3e3);
 		}
 		/**
 		* Request to delete an ally or antagonist
@@ -247835,6 +251137,7 @@ var init_Guild = __esmMin((() => {
 		* Note: it's a hacky way that do not compress the emblem.
 		*
 		* @param {Uint8Array} file
+		* @see docs/reference/guild/emblem-picker.md
 		*/
 		static sendEmblem(data) {
 			if (PacketVerManager_default.value >= 20170315) {
@@ -247869,6 +251172,12 @@ var init_Guild = __esmMin((() => {
 					try {
 						const response = JSON.parse(xhr.responseText);
 						console.log("Emblem uploaded successfully, version:", response.version);
+						if (PacketVerManager_default.value >= 20190724) {
+							const pkt = new PACKET.CZ.REQ_ADD_NEW_EMBLEM();
+							pkt.GDID = SessionStorage_default.Entity.GUID;
+							pkt.version = response.version;
+							Network.sendPacket(pkt);
+						}
 						GuildEngine.requestGuildEmblem(SessionStorage_default.Entity.GUID, response.version, (image, _gif) => {
 							Guild_default.setEmblem(image);
 						});
@@ -249805,8 +253114,9 @@ var init_SakuraWeatherEffect = __esmMin((() => {
 				const radY = leave.angY * Math.PI / 180;
 				const driftX = leave.swayFacX * Math.sin(radX);
 				const driftY = leave.swayFacY * Math.sin(radY);
-				leave.x += driftX * .1;
-				leave.y += driftY * .1;
+				const driftScale = dt / RAG_TICK_MS$1;
+				leave.x += driftX * .1 * driftScale;
+				leave.y += driftY * .1 * driftScale;
 				leave._lastTick = tick;
 				let alpha = 1;
 				let alphaCap = 1;
@@ -249932,11 +253242,14 @@ var init_PokJukWeatherEffect = __esmMin((() => {
 			};
 		}
 		render(gl, tick) {
-			for (let i = 0; i < this.fireworks.length; i++) {
-				const fw = this.fireworks[i];
-				this.updateFirework(fw);
-				this.drawFirework(fw);
+			const dt = Math.min(tick - (this._lastTick || tick), 250);
+			this._lastTick = tick;
+			this._accumTime = (this._accumTime || 0) + dt;
+			while (this._accumTime >= 16) {
+				this._accumTime -= 16;
+				for (let i = 0; i < this.fireworks.length; i++) this.updateFirework(this.fireworks[i]);
 			}
+			for (let i = 0; i < this.fireworks.length; i++) this.drawFirework(this.fireworks[i]);
 		}
 		updateFirework(fw) {
 			fw.process++;
@@ -250309,6 +253622,7 @@ var init_CloudWeatherEffect = __esmMin((() => {
 			cloud.direction[2] = (Math.random() * .1 - .05) * speed;
 			cloud.born_tick = cloud.death_tick ? cloud.death_tick + 2e3 : now;
 			cloud.death_tick = cloud.born_tick + 6e3;
+			cloud._lastTick = cloud.born_tick;
 		}
 		render(gl, tick) {
 			if (!this._display) return;
@@ -250340,7 +253654,9 @@ var init_CloudWeatherEffect = __esmMin((() => {
 				SpriteRenderer.zIndex = zindex;
 				SpriteRenderer.color[3] = opacity;
 				SpriteRenderer.image.texture = this._textures[cloud.sprite];
-				vec3$8.add(cloud.position, cloud.position, cloud.direction);
+				const dt = Math.min(tick - (cloud._lastTick || cloud.born_tick), 250);
+				cloud._lastTick = tick;
+				vec3$8.scaleAndAdd(cloud.position, cloud.position, cloud.direction, dt / 25);
 				SpriteRenderer.position.set(cloud.position);
 				SpriteRenderer.runWithDepth(!overlay, false, !overlay, () => {
 					SpriteRenderer.render();
@@ -250540,6 +253856,15 @@ var init_ProcessCommand = __esmMin((() => {
 				this.addText(DB.getMessage(317 + Map_default.miss), this.TYPE.INFO, this.FILTER.PUBLIC_LOG);
 				Map_default.miss = !Map_default.miss;
 				Map_default.save();
+			}
+		},
+		li: {
+			description: "Toggles the chat announcements when a friend or a guild member connects or disconnects",
+			callback: function() {
+				const line = UI_default.li ? DB.getMessage(1045, "Do not display online status of friends in Chat Window.  [/li OFF]") : DB.getMessage(1044, "Display online status of friends in Chat Window. [/li ON]");
+				this.addText(line, this.TYPE.INFO, this.FILTER.PUBLIC_LOG);
+				UI_default.li = !UI_default.li;
+				UI_default.save();
 			}
 		},
 		aura: {
@@ -254886,10 +258211,24 @@ function PrepareInit(callParams) {
 function spamSTR(Params) {
 	let filename;
 	const texturePath = Params.effect.texturePath || "";
-	if (Map_default.mineffect && Params.effect.min) filename = Params.effect.min;
+	const minimal = !!(Map_default.mineffect && Params.effect.min);
+	if (minimal) filename = Params.effect.min;
 	else filename = Params.effect.file;
-	if (Params.effect.rand) filename = filename.replace("%d", Math.round(Params.effect.rand[0] + (Params.effect.rand[1] - Params.effect.rand[0]) * Math.random()));
-	EffectManager.add(new StrEffect("data/texture/effect/" + filename + ".str", Params.Inst.position, Params.Inst.startTick, texturePath), Params);
+	let pick = (name) => name;
+	if (Params.effect.rand) {
+		const n = Math.round(Params.effect.rand[0] + (Params.effect.rand[1] - Params.effect.rand[0]) * Math.random());
+		pick = (name) => name.replace("%d", n);
+	}
+	filename = pick(filename);
+	const fallbacks = (Params.effect.fallback || []).map((file) => ({
+		filename: "data/texture/effect/" + pick(file) + ".str",
+		texturePath: file.substring(0, file.lastIndexOf("/") + 1)
+	}));
+	if (minimal) fallbacks.unshift({
+		filename: "data/texture/effect/" + pick(Params.effect.file) + ".str",
+		texturePath
+	});
+	EffectManager.add(new StrEffect("data/texture/effect/" + filename + ".str", Params.Inst.position, Params.Inst.startTick, texturePath, fallbacks), Params);
 }
 /**
 * Spam an effect to the scene
@@ -254981,7 +258320,7 @@ function clean(name, AID, effectID) {
 function cleanRepeat(name, AID, effectID) {
 	const effectIdList = Array.isArray(effectID) ? effectID : [effectID];
 	_list$3[name].forEach((item) => {
-		if ((!AID || item._Params.Init.ownerAID === AID) && (!effectID || effectIdList.includes(item.effectID))) {
+		if ((!AID || item._Params.Init.ownerAID === AID) && (!effectID || effectIdList.includes(item._Params.Inst.effectID))) {
 			if (item._Params.Inst.persistent) item._Params.Inst.persistent = false;
 			if (item._Params.Inst.repeatEnd) item._Params.Inst.repeatEnd = false;
 		}
@@ -255132,13 +258471,14 @@ var init_EffectManager = __esmMin((() => {
 					for (j = 0, size = list.length; j < size; ++j) {
 						if (!!list[j].renderBeforeEntities !== renderBeforeEntities) continue;
 						const effect = list[j];
+						if (effect.updateLifetime) effect.updateLifetime(tick);
 						const pos = effect._Params && effect._Params.Inst ? effect._Params.Inst.position : null;
 						let culled = false;
 						if (pos) {
 							if ((pos[0] - center[0]) * (pos[0] - center[0]) + (pos[1] - center[1]) * (pos[1] - center[1]) > cullDistanceSq) {
 								let shouldRemove = false;
 								if (effect._Params.Inst.duration > 0 && effect._Params.Inst.endTick > 0 && tick > effect._Params.Inst.endTick) shouldRemove = true;
-								if (shouldRemove) {
+								if (shouldRemove || effect.needCleanUp) {
 									effect.needCleanUp = true;
 									culled = true;
 								} else {
@@ -255147,7 +258487,7 @@ var init_EffectManager = __esmMin((() => {
 								}
 							}
 						}
-						if (!culled) {
+						if (!culled && !effect.needCleanUp) {
 							if (!effect.ready && effect.needInit) {
 								effect.init(gl);
 								effect.needInit = false;
@@ -255788,7 +259128,7 @@ var init_EntitySignboard = __esmMin((() => {
 			btn.addEventListener("dblclick", this._dblclickHandler);
 			btn.addEventListener("mousedown", this._mousedownHandler);
 		}
-		this._host.style.zIndex = "45";
+		this._host.style.zIndex = "30";
 	};
 	/**
 	* Remove data from UI
@@ -255867,6 +259207,7 @@ var signboards, mat4$12, vec4$6, _pos$7, _size$6, SignboardManager;
 var init_SignboardManager = __esmMin((() => {
 	init_gl_matrix();
 	init_Renderer();
+	init_Altitude();
 	init_DBManager();
 	init_EntitySignboard();
 	init_VerticalFlip();
@@ -255906,7 +259247,7 @@ var init_SignboardManager = __esmMin((() => {
 			signboards.forEach((signboard) => {
 				const ui = signboard.ui.ui[0];
 				_vector[0] = signboard.x + .5;
-				_vector[1] = 0;
+				_vector[1] = -Altitude.getCellHeight(signboard.x, signboard.y);
 				_vector[2] = signboard.y + .5;
 				mat4$12.translate(_matrix, modelView, _vector);
 				_matrix[0] = 1;
@@ -256510,6 +259851,7 @@ function cloudInit(cloud) {
 	cloud.direction[2] = Math.random() * .002 - .001;
 	cloud.born_tick = cloud.death_tick ? cloud.death_tick + 2e3 : Date.now();
 	cloud.death_tick = cloud.born_tick + 6e3;
+	cloud._lastTick = cloud.born_tick;
 }
 /**
 * Rendering clouds on maps
@@ -256544,7 +259886,9 @@ function render$7(gl, modelView, projection, fog, tick) {
 		SpriteRenderer.zIndex = 0;
 		SpriteRenderer.color[3] = opacity;
 		SpriteRenderer.image.texture = _textures[cloud.sprite];
-		vec3$8.add(cloud.position, cloud.position, cloud.direction);
+		const dt = Math.min(tick - (cloud._lastTick || cloud.born_tick), 250);
+		cloud._lastTick = tick;
+		vec3$8.scaleAndAdd(cloud.position, cloud.position, cloud.direction, dt / 25);
 		SpriteRenderer.position.set(cloud.position);
 		SpriteRenderer.runWithDepth(true, false, true, function() {
 			SpriteRenderer.render();
@@ -257035,1524 +260379,6 @@ var init_Damage = __esmMin((() => {
 		LUCKY: 256,
 		ENDURE: 512,
 		COMBO_B: 1024
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickSetManager.js
-var currentSet, JoystickSetManager_default;
-var init_JoystickSetManager = __esmMin((() => {
-	currentSet = 1;
-	JoystickSetManager_default = {
-		getCurrentSet: function() {
-			return currentSet;
-		},
-		set: function(n) {
-			currentSet = n === 1 || n === 2 ? n : currentSet;
-		},
-		toggle: function() {
-			currentSet = currentSet === 1 ? 2 : 1;
-		}
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickUIRenderer.js
-/**
-* Get internal shadow root
-* @returns {ShadowRoot|HTMLElement}
-*/
-function _getShadow() {
-	if (!ui) return null;
-	const host = ui[0];
-	return host.shadowRoot || host;
-}
-function setupUIHide() {
-	let lastMouseX = 0;
-	let lastMouseY = 0;
-	_mouseMoveHandler = (event) => {
-		if (!ui || !_isVisible()) return;
-		const deltaX = Math.abs(event.clientX - lastMouseX);
-		const deltaY = Math.abs(event.clientY - lastMouseY);
-		if ((deltaX > 5 || deltaY > 5) && Controls_default.joyAutoHide) {
-			hide();
-			JoystickInputService_default.active = false;
-		}
-		lastMouseX = event.clientX;
-		lastMouseY = event.clientY;
-	};
-	document.addEventListener("mousemove", _mouseMoveHandler);
-}
-function _isVisible() {
-	if (!ui) return false;
-	const host = ui[0];
-	if (!host) return false;
-	return host.style.display !== "none";
-}
-function attach(root) {
-	ui = root;
-	setupUIHide();
-}
-function updateJoystickSlot(joystickSlotIndex, shortcutIndex) {
-	const item = ShortCut_default.getList()[shortcutIndex];
-	const shadow = _getShadow();
-	if (!shadow) return;
-	const slot = shadow.querySelectorAll(".slot")[joystickSlotIndex];
-	if (!slot) return;
-	const icon = slot.querySelector(".icon");
-	const img = icon.querySelector(".img");
-	const amount = icon.querySelector(".amount");
-	if (!item || item.ID === 0) {
-		icon.style.display = "none";
-		img.style.backgroundImage = "none";
-		amount.textContent = "";
-		return;
-	}
-	icon.style.display = "block";
-	if (item.isSkill && item.count) {
-		const skillInfo = SkillInfo[item.ID];
-		if (skillInfo) Client.loadFile(`${DB.INTERFACE_PATH}item/${skillInfo.Name}.bmp`, (url) => {
-			img.style.backgroundImage = `url(${url})`;
-			amount.textContent = item.count;
-		});
-	} else {
-		const inventoryItem = InventoryController.getUI().getItemById(item.ID);
-		if (inventoryItem) {
-			const itemInfo = DB.getItemInfo(item.ID);
-			const fileName = inventoryItem.IsIdentified ? itemInfo.identifiedResourceName : itemInfo.unidentifiedResourceName;
-			let count = inventoryItem.count;
-			if ((inventoryItem.type === ItemType_default.WEAPON || inventoryItem.type === ItemType_default.ARMOR || inventoryItem.type === ItemType_default.SHADOWGEAR) && count) count = 1;
-			Client.loadFile(`${DB.INTERFACE_PATH}item/${fileName}.bmp`, (url) => {
-				img.style.backgroundImage = `url(${url})`;
-				amount.textContent = count;
-			});
-		}
-	}
-}
-function updateById(Id) {
-	if (!ui) return;
-	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
-	for (let i = 0; i < 20; i++) {
-		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
-		const shortcut = ShortCut_default.getList()[shortcutIndex];
-		if (shortcut && shortcut.ID === Id) updateJoystickSlot(i, shortcutIndex);
-	}
-}
-function updateByIndex(index) {
-	if (!ui) return;
-	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
-	for (let i = 0; i < 20; i++) {
-		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
-		if (shortcutIndex === index) updateJoystickSlot(i, shortcutIndex);
-	}
-}
-function sync() {
-	if (!ui) return;
-	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
-	for (let i = 0; i < 20; i++) {
-		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
-		updateJoystickSlot(i, shortcutIndex);
-	}
-}
-function updateSetIndicator() {
-	const shadow = _getShadow();
-	if (!shadow) return;
-	shadow.querySelectorAll(".set-btn").forEach((el) => el.classList.remove("active"));
-	const currentSet = JoystickSetManager_default.getCurrentSet();
-	const activeBtn = shadow.querySelector(`.set-btn:nth-child(${currentSet})`);
-	if (activeBtn) activeBtn.classList.add("active");
-}
-function updateVisuals(buttons) {
-	const shadow = _getShadow();
-	if (!shadow) return;
-	shadow.querySelectorAll(".group-container").forEach((el) => el.classList.remove("active"));
-	const activeGroup = JoystickShortcutMapper_default.getGroup(buttons);
-	if (activeGroup !== "") {
-		const active = shadow.querySelector(`[data-group="${activeGroup}"]`);
-		if (active) active.classList.add("active");
-	}
-}
-function show() {
-	if (ui && !_isVisible()) ui.show();
-}
-function hide() {
-	if (ui && _isVisible()) ui.hide();
-}
-function dispose() {
-	hide();
-	if (_mouseMoveHandler) {
-		document.removeEventListener("mousemove", _mouseMoveHandler);
-		_mouseMoveHandler = null;
-	}
-	ui = null;
-}
-var ui, _mouseMoveHandler, JoystickUIRenderer_default;
-var init_JoystickUIRenderer = __esmMin((() => {
-	init_ShortCut();
-	init_Inventory();
-	init_JoystickSetManager();
-	init_DBManager();
-	init_Client();
-	init_Controls();
-	init_ItemType();
-	init_JoystickShortcutMapper();
-	init_JoystickInputService();
-	init_SkillInfo();
-	ui = null;
-	_mouseMoveHandler = null;
-	JoystickUIRenderer_default = {
-		attach,
-		dispose,
-		sync,
-		updateById,
-		updateByIndex,
-		updateSetIndicator,
-		updateVisuals,
-		show,
-		hide
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickShortcutMapper.js
-function getGroup(btn) {
-	const l1 = btn[4] === "holding";
-	const r1 = btn[5] === "holding";
-	const l2 = btn[6] === "holding";
-	const r2 = btn[7] === "holding";
-	if (l1 && r1 && !l2 && !r2) return "L1R1";
-	if (l1) return "L1";
-	if (r1) return "R1";
-	if (l2) return "L2";
-	if (r2) return "R2";
-	return "";
-}
-function getIndexFromButtons(btn, set) {
-	const group = getGroup(btn);
-	if (group === "") return -1;
-	const a = btn[0] === "pressed";
-	const b = btn[1] === "pressed";
-	const x = btn[2] === "pressed";
-	const y = btn[3] === "pressed";
-	let slot = -1;
-	let tab = 1;
-	let offset = 0;
-	if (set === 2) offset = 2;
-	if (group === "L1R1") tab = 0;
-	else if (group === "L1") tab = 1 + offset;
-	else if (group === "R1") tab = 2 + offset;
-	else if (group === "L2") tab = 1 + offset;
-	else if (group === "R2") tab = 2 + offset;
-	if (group === "L1R1") {
-		if (y) {
-			slot = 8;
-			tab = 1;
-		} else if (x) {
-			slot = 8;
-			tab = 2;
-		} else if (b) {
-			slot = 8;
-			tab = 3;
-		} else if (a) {
-			slot = 8;
-			tab = 4;
-		}
-	} else if (group === "L1" || group === "R1") {
-		if (y) slot = 0;
-		else if (x) slot = 1;
-		else if (b) slot = 2;
-		else if (a) slot = 3;
-	} else if (group === "L2" || group === "R2") {
-		if (y) slot = 4;
-		else if (x) slot = 5;
-		else if (b) slot = 6;
-		else if (a) slot = 7;
-	}
-	if (slot === -1) return -1;
-	return (tab - 1) * 9 + slot;
-}
-function prepare() {
-	if (!this.__loaded) {
-		const oldonChange = ShortCut_default.onChange;
-		ShortCut_default.onChange = function(index, isSkill, ID, count) {
-			oldonChange.call(ShortCut_default, index, isSkill, ID, count);
-			JoystickUIRenderer_default.updateByIndex(index);
-		};
-		const oldSetList = ShortCut_default.setList;
-		ShortCut_default.setList = function(list) {
-			oldSetList.call(ShortCut_default, list);
-			JoystickUIRenderer_default.sync();
-		};
-		const oldSetElement = ShortCut_default.setElement;
-		ShortCut_default.setElement = function(isSkill, ID, count) {
-			oldSetElement.call(ShortCut_default, isSkill, ID, count);
-			JoystickUIRenderer_default.updateById(ID);
-		};
-		this.__loaded = true;
-	}
-}
-var slotMapping, JoystickShortcutMapper_default;
-var init_JoystickShortcutMapper = __esmMin((() => {
-	init_JoystickSetManager();
-	init_ShortCut();
-	init_JoystickUIRenderer();
-	slotMapping = [
-		0,
-		1,
-		2,
-		3,
-		4,
-		5,
-		6,
-		7,
-		8,
-		17,
-		26,
-		35,
-		13,
-		14,
-		15,
-		16,
-		9,
-		10,
-		11,
-		12,
-		18,
-		19,
-		20,
-		21,
-		22,
-		23,
-		24,
-		25,
-		8,
-		17,
-		26,
-		35,
-		31,
-		32,
-		33,
-		34,
-		27,
-		28,
-		29,
-		30
-	];
-	JoystickShortcutMapper_default = {
-		slotMap: slotMapping,
-		prepare,
-		getGroup,
-		getShortcutIndex: function(btn) {
-			const idx = getIndexFromButtons(btn, JoystickSetManager_default.getCurrentSet());
-			if (idx === -1) return -1;
-			return idx;
-		}
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickMouseCursorAdapter.js
-function move$1(dx, dy) {
-	moveBy(dx * Controls_default.joySense, dy * Controls_default.joySense);
-}
-/**
-* Move the virtual cursor by a pixel offset, clamped to the viewport.
-*/
-function moveBy(dx, dy) {
-	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, Mouse.screen.x + dx));
-	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, Mouse.screen.y + dy));
-	const cursor = document.querySelector(".cursor");
-	if (cursor) {
-		cursor.style.left = Mouse.screen.x + "px";
-		cursor.style.top = Mouse.screen.y + "px";
-	}
-}
-function moveMouseToEntity(entity) {
-	if (!entity || !entity.position) return;
-	const mat4 = exports$3.mat4;
-	const vec4 = exports$3.vec4;
-	const _matrix = mat4.create();
-	const _vector = vec4.create();
-	const _pos = vec4.create();
-	_vector[0] = entity.position[0] + .5;
-	_vector[1] = -entity.position[2];
-	_vector[2] = entity.position[1] + .5;
-	_vector[3] = 1;
-	mat4.translate(_matrix, Camera.modelView, _vector);
-	_matrix[0] = 1;
-	_matrix[1] = 0;
-	_matrix[2] = 0;
-	_matrix[4] = 0;
-	_matrix[5] = 1;
-	_matrix[6] = 0;
-	_matrix[8] = 0;
-	_matrix[9] = 0;
-	_matrix[10] = 1;
-	mat4.multiply(_matrix, Camera.projection, _matrix);
-	_pos[0] = 0;
-	_pos[1] = 0;
-	_pos[2] = 0;
-	_pos[3] = 1;
-	vec4.transformMat4(_pos, _pos, _matrix);
-	const z = _pos[3] === 0 ? 1 : 1 / _pos[3];
-	const screenX = Renderer.width / 2 + Math.round(Renderer.width / 2 * (_pos[0] * z));
-	let screenY = Renderer.height / 2 - Math.round(Renderer.height / 2 * (_pos[1] * z));
-	screenY = screenY - 13;
-	Mouse.screen.x = screenX;
-	Mouse.screen.y = screenY;
-	const _selector = document.querySelector(".cursor");
-	if (_selector) {
-		_selector.style.left = screenX + "px";
-		_selector.style.top = screenY + "px";
-	}
-}
-function leftClick(click = false) {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
-	if (!el) {
-		handleWorldLeftClick();
-		return;
-	}
-	if (Controls_default.joyDisableVirtualMouse) return;
-	const eventOptions = {
-		bubbles: true,
-		cancelable: true,
-		view: window,
-		clientX: Mouse.screen.x,
-		clientY: Mouse.screen.y,
-		which: 1
-	};
-	el.dispatchEvent(new MouseEvent("mousedown", eventOptions));
-	setTimeout(function() {
-		el.dispatchEvent(new MouseEvent("mouseup", eventOptions));
-		if (click) el.dispatchEvent(new MouseEvent("click", eventOptions));
-	}, 50);
-}
-function rightClick(holding = false) {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
-	const isCanvas = el && el.tagName.toLowerCase() === "canvas";
-	if (!el || isCanvas) {
-		handleWorldRightClick();
-		return;
-	}
-	if (holding) {
-		const draggableElement = el.closest(".item, .skill");
-		if (draggableElement) {
-			if (JoystickInteractionService_default.openSelectionWindow(draggableElement)) return;
-		}
-	}
-	if (Controls_default.joyDisableVirtualMouse) return;
-	el.dispatchEvent(new MouseEvent("mousedown", { which: 3 }));
-	setTimeout(function() {
-		el.dispatchEvent(new MouseEvent("mouseup", { which: 3 }));
-	}, 100);
-}
-function _dispatchMouseEvent(target, type, which) {
-	target.dispatchEvent(new MouseEvent(type, {
-		bubbles: true,
-		cancelable: true,
-		view: window,
-		button: which === 3 ? 2 : 0,
-		which
-	}));
-}
-function handleWorldLeftClick() {
-	if (!Mouse.intersect) Mouse.intersect = true;
-	_dispatchMouseEvent(Renderer.canvas, "mousedown", 1);
-	setTimeout(function() {
-		_dispatchMouseEvent(Renderer.canvas, "mouseup", 1);
-	}, 100);
-}
-function handleWorldRightClick() {
-	if (!Mouse.intersect) Mouse.intersect = true;
-	_dispatchMouseEvent(Renderer.canvas, "mousedown", 3);
-	setTimeout(function() {
-		_dispatchMouseEvent(Renderer.canvas, "mouseup", 3);
-	}, 100);
-}
-function changeCameraAngle(angle) {
-	Camera.angleFinal[1] += angle;
-	Camera.updateState();
-	Camera.save();
-}
-function changeCameraZoom(zoom) {
-	Camera.setZoom(zoom);
-}
-function _dispatchKeyEvent(target, type, which) {
-	target.dispatchEvent(new KeyboardEvent(type, {
-		bubbles: true,
-		cancelable: true,
-		which,
-		keyCode: which
-	}));
-}
-function esc() {
-	_dispatchKeyEvent(document, "keydown", 27);
-}
-function enter() {
-	_dispatchKeyEvent(document, "keydown", 13);
-}
-function contextMenu() {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
-	const draggableElement = el.closest(".item, .skill");
-	if (el && draggableElement) {
-		const contextMenuEvent = new MouseEvent("contextmenu", {
-			bubbles: true,
-			cancelable: true,
-			view: window,
-			clientX: Mouse.screen.x,
-			clientY: Mouse.screen.y,
-			which: 3
-		});
-		el.dispatchEvent(contextMenuEvent);
-		return true;
-	}
-	return false;
-}
-function navigateDraggableItems(direction) {
-	const container = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y).closest(".item, .skill");
-	if (!container) {
-		let keyCode;
-		switch (direction) {
-			case "up":
-				keyCode = 38;
-				break;
-			case "down":
-				keyCode = 40;
-				break;
-			case "left":
-				keyCode = 37;
-				break;
-			case "right": keyCode = 39;
-		}
-		_dispatchKeyEvent(document, "keydown", keyCode);
-		return;
-	}
-	let allDraggables = Array.from(container.querySelectorAll(".item, .skill")).filter((item) => !item.matches(".tabs button, .tab-btn"));
-	if (allDraggables.length === 0) allDraggables = Array.from(document.querySelectorAll(".item, .skill")).filter((item) => item.offsetParent !== null && !item.matches(".tabs button, .tab-btn"));
-	const isSkillContainer = container.id && container.id.indexOf("positionSkills") === 0 || container.querySelector("#positionSkills1, #positionSkills2, #positionSkills3, #positionSkills4, #positionSkills5") || container.closest(".skillCol") !== null;
-	const draggableElement = container.closest(".item, .skill");
-	const currentIndex = allDraggables.indexOf(draggableElement);
-	let newIndex = currentIndex;
-	let GRID_WIDTH;
-	if (isSkillContainer) GRID_WIDTH = 7;
-	else {
-		const containerWidth = container.clientWidth || 200;
-		const iconElement = draggableElement.querySelector(".icon");
-		const totalIconWidth = (iconElement && iconElement.clientWidth || 24) + 8;
-		GRID_WIDTH = Math.max(6, Math.min(8, Math.floor(containerWidth / totalIconWidth)));
-	}
-	switch (direction) {
-		case "up":
-			newIndex = currentIndex - GRID_WIDTH;
-			break;
-		case "down":
-			newIndex = currentIndex + GRID_WIDTH;
-			break;
-		case "left":
-			newIndex = currentIndex - 1;
-			break;
-		case "right": newIndex = currentIndex + 1;
-	}
-	newIndex = Math.max(0, Math.min(allDraggables.length - 1, newIndex));
-	if (newIndex !== currentIndex && newIndex < allDraggables.length) {
-		const targetRect = allDraggables[newIndex].getBoundingClientRect();
-		if (targetRect) {
-			const targetCenterX = targetRect.left + targetRect.width / 2;
-			const targetCenterY = targetRect.top + targetRect.height / 2;
-			Mouse.screen.x = targetCenterX;
-			Mouse.screen.y = targetCenterY;
-			const _selector = document.querySelector(".cursor");
-			if (_selector) {
-				_selector.style.left = targetCenterX + "px";
-				_selector.style.top = targetCenterY + "px";
-			}
-		}
-	}
-}
-function quickCastClick() {
-	setTimeout(function() {
-		_dispatchMouseEvent(Renderer.canvas, "mousedown", 1);
-		setTimeout(function() {
-			_dispatchMouseEvent(Renderer.canvas, "mouseup", 1);
-		}, 100);
-	}, 100);
-}
-/**
-* Snap the virtual cursor back to the middle of the viewport.
-*/
-function recenter() {
-	Mouse.screen.x = Math.floor(Renderer.width / 2);
-	Mouse.screen.y = Math.floor(Renderer.height / 2);
-	const cursor = document.querySelector(".cursor");
-	if (cursor) {
-		cursor.style.left = Mouse.screen.x + "px";
-		cursor.style.top = Mouse.screen.y + "px";
-	}
-}
-var JoystickMouseCursorAdapter_default;
-var init_JoystickMouseCursorAdapter = __esmMin((() => {
-	init_Renderer();
-	init_MouseEventHandler();
-	init_gl_matrix$1();
-	init_Camera();
-	init_Controls();
-	init_JoystickInteractionService();
-	JoystickMouseCursorAdapter_default = {
-		quickCastClick,
-		moveMouseToEntity,
-		navigateDraggableItems,
-		contextMenu,
-		esc,
-		enter,
-		changeCameraZoom,
-		changeCameraAngle,
-		move: move$1,
-		moveBy,
-		leftClick,
-		rightClick,
-		recenter
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickTargetService.js
-function getCycleTypes(Entity) {
-	switch (Controls_default.joyCycleMode) {
-		case CYCLE_MODE.ITEMS: return [Entity.TYPE_ITEM];
-		case CYCLE_MODE.BOTH: return [Entity.TYPE_MOB, Entity.TYPE_ITEM];
-		default: return [Entity.TYPE_MOB];
-	}
-}
-/**
-* The cycled ground item, or null once it was picked up, expired or left
-* the entity list.
-*/
-function getCycledItem() {
-	if (_cycledItem && (_cycledItem.remove_tick !== 0 || EntityManager.get(_cycledItem.GID) !== _cycledItem)) _cycledItem = null;
-	return _cycledItem;
-}
-function releaseItem() {
-	if (_cycledItem) {
-		_cycledItem.attachments.remove("lockon");
-		_cycledItem = null;
-	}
-}
-/**
-* Mark a ground item as the cycle target: drop any combat lock-on and show
-* the same lock-on arrow mobs get, so the player sees which item Y will pick.
-*/
-function focusItem(item) {
-	const focus = EntityManager.getFocusEntity();
-	if (focus) {
-		focus.onFocusEnd();
-		EntityManager.setFocusEntity(null);
-	}
-	releaseItem();
-	item.attachments.add({
-		uid: "lockon",
-		spr: "data/sprite/cursors.spr",
-		act: "data/sprite/cursors.act",
-		frame: Cursor.ACTION.LOCK,
-		repeat: true,
-		depth: 10
-	});
-	_cycledItem = item;
-}
-function getEntityInContext() {
-	const focus = EntityManager.getFocusEntity();
-	if (typeof window !== "undefined") window.__dpadAttackPick = {
-		at: Date.now(),
-		hasFocus: !!focus,
-		focusGid: focus ? focus.GID : null,
-		focusType: focus ? focus.objecttype : null,
-		focusAction: focus ? focus.action : null,
-		dieConst: focus && focus.ACTION ? focus.ACTION.DIE : null,
-		focusRemoveTick: focus ? focus.remove_tick : null
-	};
-	if (focus && focus.action !== focus.ACTION.DIE && focus.remove_tick === 0) {
-		if (typeof window !== "undefined") window.__dpadAttackPick.chosen = "focus";
-		return focus;
-	}
-	if (typeof window !== "undefined") window.__dpadAttackPick.chosen = "fallback";
-	let target = null;
-	if (Controls_default.attackTargetMode === 1) {
-		target = EntityManager.getLowestHpEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_MOB);
-		if (!target) target = EntityManager.getLowestHpEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_PC);
-	}
-	if (!target) target = EntityManager.getClosestEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_MOB);
-	if (!target) target = EntityManager.getClosestEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_PC);
-	return target || SessionStorage_default.Entity;
-}
-/**
-* Make the entity the focus (lock-on arrow, name) without acting on it.
-*
-* EntityControl.onFocus() for TYPE_MOB sends REQUEST_ACT / REQUEST_MOVE when
-* Session.TouchTargeting and Session.autoFollow are both off. That is right
-* for a mouse click, wrong here: a cycle step must not attack, and X sends
-* its own attack in JoystickCharacterControl.attack(), so letting onFocus
-* act too sent every new-target attack twice, with two different in-range
-* rules. Toggle TouchTargeting around the call so onFocus() takes the
-* "focused, do not attack" branch. The call is synchronous; nothing else
-* observes TouchTargeting in between.
-*/
-function focusEntity(entity) {
-	const prevTouch = SessionStorage_default.TouchTargeting;
-	SessionStorage_default.TouchTargeting = true;
-	try {
-		entity.onFocus();
-	} finally {
-		SessionStorage_default.TouchTargeting = prevTouch;
-	}
-	EntityManager.setFocusEntity(entity);
-}
-function focusTarget(entity) {
-	releaseItem();
-	const focus = EntityManager.getFocusEntity();
-	if (focus && entity.GID !== focus.GID) {
-		focus.onFocusEnd();
-		EntityManager.setFocusEntity(null);
-		focusEntity(entity);
-	} else if (!focus) focusEntity(entity);
-}
-/**
-* Step the focused target to the next (or previous) mob and/or ground item,
-* depending on ControlsSettings.joyCycleMode, by straight-line distance from
-* the player. Wraps at both ends. If nothing is focused, or the focused
-* entity is not in the sorted list (dead, picked up, out of range, wrong
-* type for the mode), 'next' jumps to the closest and 'prev' to the farthest.
-*
-* Always distance-ordered, regardless of ControlsSettings.attackTargetMode:
-* that preference governs the X-button auto-pick, not cycling, and the two
-* should not fight each other.
-*
-* @param {string} direction 'next' or 'prev'
-*/
-function cycle(direction) {
-	const player = SessionStorage_default.Entity;
-	if (!player) return;
-	const Entity = player.constructor;
-	const sorted = EntityManager.getEntitiesSortedByDistance(player, getCycleTypes(Entity));
-	if (sorted.length === 0) return;
-	const current = getCycledItem() || EntityManager.getFocusEntity();
-	const index = current ? sorted.indexOf(current) : -1;
-	let newIndex;
-	if (index === -1) newIndex = direction === "next" ? 0 : sorted.length - 1;
-	else if (direction === "next") newIndex = (index + 1) % sorted.length;
-	else newIndex = (index - 1 + sorted.length) % sorted.length;
-	const target = sorted[newIndex];
-	if (target.objecttype === Entity.TYPE_ITEM) {
-		focusItem(target);
-		JoystickMouseCursorAdapter_default.moveMouseToEntity(target);
-		return;
-	}
-	focusTarget(target);
-	JoystickMouseCursorAdapter_default.moveMouseToEntity(target);
-	if (typeof window !== "undefined") {
-		window.__dpadLastSort = sorted.map((e, i) => ({
-			i,
-			gid: e.GID,
-			type: e.objecttype,
-			pos: [e.position[0], e.position[1]],
-			dsq: Math.round(((e.position[0] - player.position[0]) ** 2 + (e.position[1] - player.position[1]) ** 2) * 100) / 100
-		}));
-		window.__dpadLastPlayer = [player.position[0], player.position[1]];
-		window.__dpadLastSetFocusGid = target.GID;
-		const after = EntityManager.getFocusEntity();
-		window.__dpadFocusAfterCycle = after ? after.GID : null;
-	}
-}
-/**
-* Clear the focused entity (if any) and snap the virtual cursor back to the
-* middle of the viewport. Used to reset the cycle so the next D-pad press
-* starts from the closest mob again.
-*/
-function clearFocus() {
-	if (typeof window !== "undefined") window.__dpadResetCalls = (window.__dpadResetCalls || 0) + 1;
-	releaseItem();
-	const focus = EntityManager.getFocusEntity();
-	if (focus) {
-		focus.onFocusEnd();
-		EntityManager.setFocusEntity(null);
-	}
-	JoystickMouseCursorAdapter_default.recenter();
-}
-/**
-* Advance the cycle mode (mobs -> items -> both -> mobs), save it, and tell
-* the player in the chat box. A cycled item is released when the new mode
-* no longer includes items.
-*/
-function nextCycleMode() {
-	Controls_default.joyCycleMode = ((Controls_default.joyCycleMode | 0) + 1) % CYCLE_MODE_NAMES.length;
-	Controls_default.save();
-	if (Controls_default.joyCycleMode === CYCLE_MODE.MOBS) releaseItem();
-	ChatBox_default.addText("D-pad target cycle: " + CYCLE_MODE_NAMES[Controls_default.joyCycleMode], ChatBox_default.TYPE.INFO, ChatBox_default.FILTER.PUBLIC_LOG);
-}
-var CYCLE_MODE, CYCLE_MODE_NAMES, _cycledItem, JoystickTargetService_default;
-var init_JoystickTargetService = __esmMin((() => {
-	init_SessionStorage();
-	init_EntityManager();
-	init_Controls();
-	init_JoystickMouseCursorAdapter();
-	init_ChatBox();
-	init_CursorManager();
-	CYCLE_MODE = {
-		MOBS: 0,
-		ITEMS: 1,
-		BOTH: 2
-	};
-	CYCLE_MODE_NAMES = [
-		"mobs",
-		"items",
-		"mobs and items"
-	];
-	_cycledItem = null;
-	JoystickTargetService_default = {
-		getEntity: getEntityInContext,
-		focus: focusTarget,
-		cycle,
-		clear: clearFocus,
-		getItem: getCycledItem,
-		nextCycleMode
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickCharacterControl.js
-/**
-* Left stick is back inside the deadzone: stick moves are allowed again.
-*/
-function releaseStick() {
-	_stickHeld = false;
-}
-function move(x, y) {
-	const player = SessionStorage_default.Entity;
-	if (!player || _stickHeld) return;
-	SessionStorage_default.moveAction = null;
-	_lastAttackGid = null;
-	direction$1[0] = x;
-	direction$1[1] = y;
-	exports$3.mat2.identity(rotate$1);
-	exports$3.mat2.rotate(rotate$1, rotate$1, -Camera.direction * 45 / 180 * Math.PI);
-	exports$3.vec2.transformMat2(direction$1, direction$1, rotate$1);
-	const nx = Math.round(player.position[0] + direction$1[0] * 3);
-	const ny = Math.round(player.position[1] + direction$1[1] * 3);
-	const movePacket = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.REQUEST_MOVE2() : new PACKET.CZ.REQUEST_MOVE();
-	movePacket.dest[0] = nx;
-	movePacket.dest[1] = ny;
-	Network.sendPacket(movePacket);
-}
-/**
-* Attack the context target (focused/cycled mob, else per attackTargetMode).
-*
-* @param {boolean} repeat true while X is held: only attack when the target
-*   differs from the last one X attacked. The server keeps attacking on its
-*   own (action 7), so re-sending would only restart the walk.
-* @return {boolean} whether an attack was sent
-*/
-function attack(repeat) {
-	const Player = SessionStorage_default.Entity;
-	if (!Player) return false;
-	const target = JoystickTargetService_default.getEntity();
-	if (!target || target === Player) return false;
-	if (repeat && target.GID === _lastAttackGid) return false;
-	JoystickTargetService_default.focus(target);
-	const entityFocus = EntityManager.getFocusEntity();
-	if (!entityFocus) return;
-	let pkt;
-	const out = [];
-	const count = PathFinding_default.search(Player.position[0] | 0, Player.position[1] | 0, entityFocus.position[0] | 0, entityFocus.position[1] | 0, Player.attack_range + 1, out);
-	if (!count) return false;
-	_lastAttackGid = entityFocus.GID;
-	_stickHeld = true;
-	if (PacketVerManager_default.value >= 20180307) pkt = new PACKET.CZ.REQUEST_ACT2();
-	else pkt = new PACKET.CZ.REQUEST_ACT();
-	pkt.action = 7;
-	pkt.targetGID = entityFocus.GID;
-	if (count < 2) {
-		SessionStorage_default.moveAction = null;
-		Network.sendPacket(pkt);
-		return true;
-	}
-	SessionStorage_default.moveAction = pkt;
-	if (PacketVerManager_default.value >= 20180307) pkt = new PACKET.CZ.REQUEST_MOVE2();
-	else pkt = new PACKET.CZ.REQUEST_MOVE();
-	pkt.dest[0] = out[(count - 1) * 2];
-	pkt.dest[1] = out[(count - 1) * 2 + 1];
-	Network.sendPacket(pkt);
-	return true;
-}
-/**
-* Pick up the item the D-pad cycle rests on, else the closest one. Out of
-* reach (more than 2 cells, same rule as a mouse click in EntityControl),
-* walk to it first and let onWalkEnd send the pickup via Session.moveAction.
-*/
-function pickUp() {
-	const Player = SessionStorage_default.Entity;
-	if (!Player) return;
-	const item = JoystickTargetService_default.getItem() || EntityManager.getClosestEntity(Player, Player.constructor.TYPE_ITEM);
-	if (!item) return;
-	let pkt = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.ITEM_PICKUP2() : new PACKET.CZ.ITEM_PICKUP();
-	pkt.ITAID = item.GID;
-	Player.lookTo(item.position[0], item.position[1]);
-	if (exports$3.vec2.distance(Player.position, item.position) > 2) {
-		SessionStorage_default.moveAction = pkt;
-		pkt = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.REQUEST_MOVE2() : new PACKET.CZ.REQUEST_MOVE();
-		pkt.dest[0] = item.position[0] | 0;
-		pkt.dest[1] = item.position[1] | 0;
-	}
-	Network.sendPacket(pkt);
-}
-var direction$1, rotate$1, _stickHeld, _lastAttackGid, JoystickCharacterControl_default;
-var init_JoystickCharacterControl = __esmMin((() => {
-	init_SessionStorage();
-	init_EntityManager();
-	init_NetworkManager();
-	init_PacketStructure();
-	init_PacketVerManager();
-	init_gl_matrix$1();
-	init_Camera();
-	init_PathFinding();
-	init_JoystickTargetService();
-	direction$1 = exports$3.vec2.create();
-	rotate$1 = exports$3.mat2.create();
-	_stickHeld = false;
-	_lastAttackGid = null;
-	JoystickCharacterControl_default = {
-		attack,
-		pickUp,
-		move,
-		releaseStick
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickSelectionUI.html?raw
-var JoystickSelectionUI_default$2;
-var init_JoystickSelectionUI$2 = __esmMin((() => {
-	JoystickSelectionUI_default$2 = "<div id=\"shortcut-selection\" class=\"joystick-selection-window\">\r\n	<h3 class=\"selection-title\">Select slot for <span class=\"item-name\"></span></h3>\r\n	<div class=\"tab-container\">\r\n		<div class=\"tab-buttons\"></div>\r\n		<div class=\"shortcut-grid\"></div>\r\n	</div>\r\n	<div class=\"footer-instructions\">\r\n		Use L2/R2 to change tab, D-pad to navigate slot, A to select, Select to cancel\r\n	</div>\r\n</div>\r\n";
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickSelectionUI.css?raw
-var JoystickSelectionUI_default$1;
-var init_JoystickSelectionUI$1 = __esmMin((() => {
-	JoystickSelectionUI_default$1 = ":host {\r\n	top: 50%;\r\n	left: 50%;\r\n	transform: translate(-50%, -50%);\r\n	z-index: 10000;\r\n	display: none;\r\n}\r\n\r\n#shortcut-selection {\r\n	position: absolute;\r\n	top: 0;\r\n	left: 0;\r\n	background: rgba(0, 0, 0, 0.95);\r\n	border: 2px solid #fff;\r\n	padding: 20px;\r\n	color: white;\r\n	min-width: 780px;\r\n	box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);\r\n	border-radius: 8px;\r\n}\r\n\r\n#shortcut-selection h3 {\r\n	margin-top: 0;\r\n	margin-bottom: 10px;\r\n	text-align: center;\r\n}\r\n\r\n#shortcut-selection .tab-buttons {\r\n	display: flex;\r\n	gap: 5px;\r\n	margin-bottom: 10px;\r\n}\r\n\r\n#shortcut-selection .tab-btn {\r\n	padding: 5px 10px;\r\n	border: 1px solid #fff;\r\n	color: white;\r\n	cursor: pointer;\r\n	background: #666;\r\n	flex: 1;\r\n}\r\n\r\n#shortcut-selection .tab-btn.active {\r\n	background: #ff6600;\r\n}\r\n\r\n#shortcut-selection .shortcut-grid {\r\n	display: grid;\r\n	grid-template-columns: repeat(9, 1fr);\r\n	gap: 8px;\r\n	justify-content: center;\r\n	padding: 10px;\r\n	background: rgba(255, 255, 255, 0.05);\r\n	border-radius: 5px;\r\n}\r\n\r\n#shortcut-selection .slot-btn {\r\n	width: 75px;\r\n	height: 60px;\r\n	border: 2px solid #555;\r\n	background: #555;\r\n	display: flex;\r\n	align-items: center;\r\n	justify-content: center;\r\n	font-weight: bold;\r\n	cursor: pointer;\r\n	color: white;\r\n	transition: all 0.1s;\r\n	border-radius: 5px;\r\n	text-align: center;\r\n	line-height: 1.2;\r\n	padding: 5px;\r\n	box-sizing: border-box;\r\n}\r\n\r\n#shortcut-selection .slot-btn.empty {\r\n	background: #222;\r\n}\r\n\r\n#shortcut-selection .slot-btn.selected {\r\n	background: #ff6600;\r\n	border-color: #fff;\r\n}\r\n\r\n#shortcut-selection .footer-instructions {\r\n	margin-top: 15px;\r\n	text-align: center;\r\n	opacity: 0.8;\r\n}\r\n";
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickSelectionUI.js
-function setClickInterval() {
-	if (clickLock$1) clearTimeout(clickLock$1);
-	clickLock$1 = setTimeout(function() {
-		clickLock$1 = null;
-	}, 200);
-}
-function isLocked() {
-	return clickLock$1 !== null;
-}
-function getJoystickComboForSlot(slotIndex) {
-	return {
-		0: "L1+Y",
-		1: "L1+X",
-		2: "L1+B",
-		3: "L1+A",
-		4: "L2+Y",
-		5: "L2+X",
-		6: "L2+B",
-		7: "L2+A",
-		8: "L1+R1+Y",
-		9: "R1+Y",
-		10: "R1+X",
-		11: "R1+B",
-		12: "R1+A",
-		13: "R2+Y",
-		14: "R2+X",
-		15: "R2+B",
-		16: "R2+A",
-		17: "L1+R1+X",
-		18: "L1+Y (Set2)",
-		19: "L1+X (Set2)",
-		20: "L1+B (Set2)",
-		21: "L1+A (Set2)",
-		22: "L2+Y (Set2)",
-		23: "L2+X (Set2)",
-		24: "L2+B (Set2)",
-		25: "L2+A (Set2)",
-		26: "L1+R1+B",
-		27: "R1+Y (Set2)",
-		28: "R1+X (Set2)",
-		29: "R1+B (Set2)",
-		30: "R1+A (Set2)",
-		31: "R2+Y (Set2)",
-		32: "R2+X (Set2)",
-		33: "R2+B (Set2)",
-		34: "R2+A (Set2)",
-		35: "L1+R1+A"
-	}[slotIndex];
-}
-function updateGrid() {
-	const grid = JoystickSelectionUI.getRoot().querySelector(".shortcut-grid");
-	if (!grid) return;
-	grid.innerHTML = "";
-	const startIdx = currentTab * 9;
-	for (let i = 0; i < 9; i++) {
-		const globalIndex = startIdx + i;
-		const slot = ShortCut_default.getList()[globalIndex];
-		const isEmpty = !slot || !slot.isSkill && !slot.ID;
-		const displayText = getJoystickComboForSlot(globalIndex) || (i + 1).toString();
-		const slotDiv = document.createElement("div");
-		slotDiv.className = "slot-btn";
-		slotDiv.dataset.index = i;
-		slotDiv.textContent = displayText;
-		if (isEmpty) slotDiv.classList.add("empty");
-		grid.appendChild(slotDiv);
-	}
-	updateSelection();
-}
-function updateSelection() {
-	const grid = JoystickSelectionUI.getRoot().querySelector(".shortcut-grid");
-	if (!grid) return;
-	grid.querySelectorAll(".slot-btn").forEach((el) => el.classList.remove("selected"));
-	const selected = grid.querySelector(`.slot-btn[data-index="${slotInTab}"]`);
-	if (selected) selected.classList.add("selected");
-}
-function updateTabButtons() {
-	const tabButtons = JoystickSelectionUI.getRoot().querySelector(".tab-buttons");
-	if (!tabButtons) return;
-	tabButtons.querySelectorAll(".tab-btn").forEach((el) => el.classList.remove("active"));
-	const active = tabButtons.querySelector(`.tab-btn[data-tab="${currentTab}"]`);
-	if (active) active.classList.add("active");
-}
-function createTabButtons() {
-	const tabButtons = JoystickSelectionUI.getRoot().querySelector(".tab-buttons");
-	if (!tabButtons) return;
-	tabButtons.innerHTML = "";
-	for (let t = 0; t < 4; t++) {
-		const tabBtn = document.createElement("button");
-		tabBtn.className = "tab-btn";
-		tabBtn.dataset.tab = t;
-		tabBtn.textContent = `Tab ${t + 1}`;
-		tabButtons.appendChild(tabBtn);
-	}
-}
-function selectSlot() {
-	if (!itemData) return;
-	const row = currentTab;
-	const pos = row * 9 + slotInTab;
-	ShortCut_default.removeElement(itemData.isSkill, itemData.ID, row, itemData.value);
-	ShortCut_default.addElement(pos, itemData.isSkill, itemData.ID, itemData.value);
-	ShortCut_default.onChange(pos, itemData.isSkill, itemData.ID, itemData.value);
-	JoystickSelectionUI.hideSelection();
-}
-var JoystickSelectionUI, currentTab, slotInTab, itemData, clickLock$1, JoystickSelectionUI_default;
-var init_JoystickSelectionUI = __esmMin((() => {
-	init_GUIComponent();
-	init_UIManager();
-	init_ShortCut();
-	init_JoystickSelectionUI$2();
-	init_JoystickSelectionUI$1();
-	JoystickSelectionUI = new GUIComponent("JoystickSelectionUI", JoystickSelectionUI_default$1);
-	JoystickSelectionUI.render = () => JoystickSelectionUI_default$2;
-	currentTab = 0;
-	slotInTab = 0;
-	itemData = null;
-	clickLock$1 = null;
-	/**
-	* Main input handler
-	* as expected by JoystickButtonInput.js
-	*/
-	JoystickSelectionUI.handleGamepadInput = function handleGamepadInput(buttons) {
-		if (isLocked()) return true;
-		if (buttons[0] !== "unpressed") {
-			setClickInterval();
-			selectSlot();
-			return true;
-		}
-		if (buttons[8] !== "unpressed") {
-			setClickInterval();
-			JoystickSelectionUI.hideSelection();
-			return true;
-		}
-		if (buttons[6] !== "unpressed") {
-			setClickInterval();
-			if (currentTab > 0) {
-				currentTab--;
-				slotInTab = 0;
-				updateGrid();
-				updateTabButtons();
-			}
-			return true;
-		}
-		if (buttons[7] !== "unpressed") {
-			setClickInterval();
-			if (currentTab < 3) {
-				currentTab++;
-				slotInTab = 0;
-				updateGrid();
-				updateTabButtons();
-			}
-			return true;
-		}
-		if (buttons[12] !== "unpressed") {
-			setClickInterval();
-			if (slotInTab >= 3) {
-				slotInTab -= 3;
-				updateSelection();
-			}
-			return true;
-		}
-		if (buttons[13] !== "unpressed") {
-			setClickInterval();
-			if (slotInTab < 6) {
-				slotInTab += 3;
-				updateSelection();
-			}
-			return true;
-		}
-		if (buttons[14] !== "unpressed") {
-			setClickInterval();
-			if (slotInTab > 0) {
-				slotInTab--;
-				updateSelection();
-			}
-			return true;
-		}
-		if (buttons[15] !== "unpressed") {
-			setClickInterval();
-			if (slotInTab < 8) {
-				slotInTab++;
-				updateSelection();
-			}
-			return true;
-		}
-		return false;
-	};
-	JoystickSelectionUI.init = function() {
-		createTabButtons();
-		this._host.style.position = "fixed";
-		this._host.style.display = "none";
-	};
-	JoystickSelectionUI.showSelection = function(data) {
-		itemData = data;
-		currentTab = 0;
-		slotInTab = 0;
-		updateGrid();
-		updateTabButtons();
-		this.focus();
-		this._host.style.display = "block";
-		this._fixPositionOverflow();
-	};
-	JoystickSelectionUI.hideSelection = function() {
-		this._host.style.display = "none";
-		itemData = null;
-	};
-	JoystickSelectionUI.active = function() {
-		return this._host && this._host.style.display !== "none";
-	};
-	JoystickSelectionUI_default = UIManager.addComponent(JoystickSelectionUI);
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickInteractionService.js
-var JoystickInteractionService_default;
-var init_JoystickInteractionService = __esmMin((() => {
-	init_ShortCut();
-	init_Inventory();
-	init_ItemType();
-	init_JoystickCharacterControl();
-	init_JoystickTargetService();
-	init_JoystickMouseCursorAdapter();
-	init_Controls();
-	init_JoystickSelectionUI();
-	init_JoystickInputService();
-	init_DBManager();
-	init_SkillInfo();
-	init_JoystickShortcutMapper();
-	init_MouseEventHandler();
-	JoystickInteractionService_default = {
-		prepare: function() {},
-		dispose: function() {},
-		cancelQuick: false,
-		executeShortcut: function(index, group) {
-			const shortcut = ShortCut_default.getList()[index];
-			if (!shortcut) return;
-			if (!shortcut.isSkill) {
-				const item = InventoryController.getUI().getItemById(shortcut.ID);
-				if (!item || item.count === 0) return;
-			} else if (Controls_default.attackTargetMode) {
-				const targetEntity = JoystickTargetService_default.getEntity();
-				if (targetEntity) JoystickMouseCursorAdapter_default.moveMouseToEntity(targetEntity);
-			}
-			ShortCut_default.onShortCut({ cmd: "EXECUTE" + index });
-			if (Controls_default.joyQuick === 2) JoystickMouseCursorAdapter_default.quickCastClick();
-			else if (Controls_default.joyQuick === 1) {
-				this.cancelQuick = false;
-				const waitforRelease = () => {
-					setTimeout(() => {
-						const buttons = JoystickInputService_default.buttonStates;
-						if (JoystickShortcutMapper_default.getGroup(buttons) !== group) JoystickMouseCursorAdapter_default.quickCastClick();
-						else if (!this.cancelQuick) waitforRelease();
-					}, 50);
-				};
-				waitforRelease();
-			}
-		},
-		openSelectionWindow: function(draggableElement) {
-			const index = parseInt(draggableElement.getAttribute("data-index"), 10);
-			const isSkill = draggableElement.closest(".skill");
-			let itemData;
-			if (!isSkill) {
-				const item = InventoryController.getUI().getItemByIndex(index);
-				if (item) {
-					if (item.type === ItemType_default.UNKNOWN || item.type === ItemType_default.ETC || item.type === ItemType_default.CARD || item.type === ItemType_default.PETEGG || item.type === ItemType_default.PETARMOR) return false;
-					itemData = {
-						isSkill: false,
-						ID: item.ITID,
-						value: item.count,
-						name: DB.getItemName(item)
-					};
-				}
-			} else {
-				const skill = ShortCut_default.getSkillById(index);
-				if (skill) itemData = {
-					isSkill: true,
-					ID: skill.SKID,
-					value: skill.selectedLevel ? skill.selectedLevel : skill.level,
-					name: SkillInfo[skill.SKID].SkillName
-				};
-			}
-			if (itemData) {
-				JoystickSelectionUI_default.showSelection(itemData);
-				return true;
-			}
-			return false;
-		},
-		leftClick: function(click) {
-			JoystickMouseCursorAdapter_default.leftClick(click);
-		},
-		rightClick: function(holding) {
-			JoystickMouseCursorAdapter_default.rightClick(holding);
-		},
-		pickUpItem: function() {
-			JoystickCharacterControl_default.pickUp();
-		},
-		/**
-		* @param {boolean} repeat true while X is held (see Character.attack)
-		* @return {boolean} whether an attack was sent
-		*/
-		attackTargeted: function(repeat) {
-			return JoystickCharacterControl_default.attack(repeat);
-		},
-		releaseStick: function() {
-			JoystickCharacterControl_default.releaseStick();
-		},
-		moveCursor: function(dx, dy) {
-			JoystickMouseCursorAdapter_default.move(dx, dy);
-		},
-		cameraZoom: function(zoom) {
-			JoystickMouseCursorAdapter_default.changeCameraZoom(zoom);
-		},
-		cameraAngle: function(angle) {
-			JoystickMouseCursorAdapter_default.changeCameraAngle(angle);
-		},
-		escape: function() {
-			JoystickMouseCursorAdapter_default.esc();
-		},
-		enter: function() {
-			JoystickMouseCursorAdapter_default.enter();
-		},
-		showinfo: function() {
-			return JoystickMouseCursorAdapter_default.contextMenu();
-		},
-		navigateDpad: function(direction) {
-			return JoystickMouseCursorAdapter_default.navigateDraggableItems(direction);
-		},
-		/**
-		* D-pad left/right. If the virtual cursor is parked over an item or
-		* skill container, keep today's grid navigation so inventory nav still
-		* works with the D-pad. Over the world, cycle the targeted mob.
-		*
-		* @param {string} direction 'next' or 'prev'
-		*/
-		cycleTarget: function(direction) {
-			const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
-			if (el && el.closest(".item, .skill")) {
-				this.navigateDpad(direction === "next" ? "right" : "left");
-				return;
-			}
-			JoystickTargetService_default.cycle(direction);
-		},
-		/**
-		* Clear the cycle focus and recenter the virtual cursor. Lets the player
-		* drop the current target so the next D-pad step starts from the closest
-		* mob again.
-		*/
-		resetFocus: function() {
-			JoystickTargetService_default.clear();
-		},
-		/**
-		* Switch what the D-pad cycle walks through: mobs, items, or both.
-		*/
-		nextCycleMode: function() {
-			JoystickTargetService_default.nextCycleMode();
-		},
-		moveCharacter: function(x, y) {
-			JoystickCharacterControl_default.move(x, y);
-		}
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickButtonInput.js
-function setClickLock() {
-	clickLock = true;
-	setTimeout(function() {
-		clickLock = false;
-	}, lockTimeout);
-}
-var clickLock, lockTimeout, ButtonInput;
-var init_JoystickButtonInput = __esmMin((() => {
-	init_JoystickShortcutMapper();
-	init_JoystickInteractionService();
-	init_JoystickSetManager();
-	init_JoystickUIRenderer();
-	init_JoystickSelectionUI();
-	clickLock = false;
-	lockTimeout = 200;
-	ButtonInput = {
-		update: function(buttons) {
-			if (clickLock) return false;
-			if (JoystickSelectionUI_default.active()) {
-				JoystickSelectionUI_default.handleGamepadInput(buttons);
-				return false;
-			}
-			let pressed = false;
-			JoystickUIRenderer_default.updateVisuals(buttons);
-			pressed |= this._handleSpecial(buttons);
-			pressed |= this._handleSetChange(buttons);
-			if (!pressed) {
-				pressed |= this._handleWorldActions(buttons);
-				pressed |= this._handleShortcuts(buttons);
-			}
-			return pressed;
-		},
-		_handleWorldActions: function(btn) {
-			let pressed = false;
-			if (JoystickShortcutMapper_default.getGroup(btn) !== "") return false;
-			if (btn[0] !== "unpressed") {
-				JoystickInteractionService_default.leftClick(btn[0] === "holding");
-				pressed = true;
-			}
-			if (btn[1] !== "unpressed") {
-				JoystickInteractionService_default.rightClick(btn[1] === "holding");
-				pressed = true;
-			}
-			if (btn[2] !== "unpressed" && JoystickInteractionService_default.attackTargeted(btn[2] === "holding")) pressed = true;
-			if (btn[3] === "pressed") {
-				JoystickInteractionService_default.pickUpItem();
-				pressed = true;
-			}
-			if (btn[11] === "pressed") {
-				JoystickInteractionService_default.resetFocus();
-				pressed = true;
-			}
-			if (btn[10] === "pressed") {
-				JoystickInteractionService_default.nextCycleMode();
-				pressed = true;
-			}
-			if (pressed) setClickLock();
-			return pressed;
-		},
-		_handleSetChange: function(btn) {
-			const l2 = btn[6] === "holding";
-			const r2 = btn[7] === "holding";
-			if (l2 && r2) {
-				JoystickSetManager_default.toggle();
-				JoystickUIRenderer_default.updateSetIndicator();
-				JoystickUIRenderer_default.sync();
-				setClickLock();
-				return true;
-			}
-			return false;
-		},
-		_handleSpecial: function(buttons) {
-			let pressed = false;
-			if (buttons[8] === "holding") {
-				if (buttons[12] !== "unpressed") {
-					JoystickInteractionService_default.cameraZoom(-2);
-					pressed = true;
-				} else if (buttons[13] !== "unpressed") {
-					JoystickInteractionService_default.cameraZoom(2);
-					pressed = true;
-				} else if (buttons[14] !== "unpressed") {
-					JoystickInteractionService_default.cameraAngle(-5);
-					pressed = true;
-				} else if (buttons[15] !== "unpressed") {
-					JoystickInteractionService_default.cameraAngle(5);
-					pressed = true;
-				} else if (buttons[9] !== "unpressed") {
-					JoystickInteractionService_default.escape();
-					pressed = true;
-				} else pressed = JoystickInteractionService_default.showinfo();
-				if (pressed) {
-					setClickLock();
-					return pressed;
-				}
-			}
-			if (buttons[12] !== "unpressed") {
-				JoystickInteractionService_default.navigateDpad("up");
-				pressed = true;
-			} else if (buttons[13] !== "unpressed") {
-				JoystickInteractionService_default.navigateDpad("down");
-				pressed = true;
-			} else if (buttons[14] !== "unpressed") {
-				JoystickInteractionService_default.cycleTarget("prev");
-				pressed = true;
-			} else if (buttons[15] !== "unpressed") {
-				JoystickInteractionService_default.cycleTarget("next");
-				pressed = true;
-			} else if (buttons[9] !== "unpressed") {
-				JoystickInteractionService_default.enter();
-				pressed = true;
-			}
-			if (pressed) setClickLock();
-			return pressed;
-		},
-		_handleShortcuts: function(btn) {
-			const idx = JoystickShortcutMapper_default.getShortcutIndex(btn);
-			if (idx !== -1) {
-				JoystickInteractionService_default.executeShortcut(idx, JoystickShortcutMapper_default.getGroup(btn));
-				setClickLock();
-				return true;
-			}
-			return false;
-		}
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickAxisInput.js
-var JoystickAxisInput_default;
-var init_JoystickAxisInput = __esmMin((() => {
-	init_JoystickInteractionService();
-	init_Controls();
-	init_JoystickUIRenderer();
-	JoystickAxisInput_default = { update: function(axes) {
-		let active = false;
-		let lx = axes[0];
-		let ly = axes[1];
-		if (Controls_default.joyReverseStick && axes.length >= 4) {
-			lx = axes[2];
-			ly = axes[3];
-		}
-		if (Math.abs(lx) > Controls_default.joyDeadline || Math.abs(ly) > Controls_default.joyDeadline) {
-			JoystickInteractionService_default.moveCharacter(lx, -ly);
-			JoystickInteractionService_default.cancelQuick = true;
-			active = true;
-		} else JoystickInteractionService_default.releaseStick();
-		if (axes.length >= 4) {
-			let rx = axes[2];
-			let ry = axes[3];
-			if (Controls_default.joyReverseStick) {
-				rx = axes[0];
-				ry = axes[1];
-			}
-			if (Math.abs(rx) > Controls_default.joyDeadline || Math.abs(ry) > Controls_default.joyDeadline) active = true;
-		}
-		if (active) JoystickUIRenderer_default.show();
-		return active;
-	} };
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickInputService.js
-var hideTimeout, hideTimeoutHandle, JoystickInputService_default;
-var init_JoystickInputService = __esmMin((() => {
-	init_JoystickButtonInput();
-	init_JoystickAxisInput();
-	init_JoystickUIRenderer();
-	init_Controls();
-	hideTimeout = false;
-	hideTimeoutHandle = null;
-	JoystickInputService_default = {
-		active: false,
-		buttonStates: {},
-		_listening: false,
-		prepare: function() {
-			if (this._listening) return;
-			this._boundOnConnect = this._onConnect.bind(this);
-			this._boundOnDisconnect = this._onDisconnect.bind(this);
-			window.addEventListener("gamepadconnected", this._boundOnConnect);
-			window.addEventListener("gamepaddisconnected", this._boundOnDisconnect);
-			this._listening = true;
-		},
-		dispose: function() {
-			window.removeEventListener("gamepadconnected", this._boundOnConnect);
-			window.removeEventListener("gamepaddisconnected", this._boundOnDisconnect);
-			this._listening = false;
-			if (hideTimeoutHandle) {
-				clearTimeout(hideTimeoutHandle);
-				hideTimeoutHandle = null;
-			}
-			hideTimeout = false;
-			this.active = false;
-			this.buttonStates = {};
-		},
-		getStates: function(gp) {
-			if (!gp) return null;
-			const states = {
-				buttons: [],
-				axes: []
-			};
-			const self = this;
-			gp.buttons.forEach(function(btn, index) {
-				const isPressed = btn.pressed;
-				const prevState = self.buttonStates[index] || "unpressed";
-				let newState = "unpressed";
-				if (isPressed) newState = prevState === "unpressed" ? "pressed" : "holding";
-				self.buttonStates[index] = newState;
-				states.buttons[index] = newState;
-			});
-			gp.axes.forEach(function(axis, index) {
-				states.axes[index] = Math.abs(axis) > Controls_default.joyDeadline ? axis : 0;
-			});
-			return states;
-		},
-		update: function() {
-			const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-			let activeGamepad = null;
-			for (let i = 0; i < gamepads.length; i++) if (gamepads[i]) {
-				activeGamepad = gamepads[i];
-				break;
-			}
-			if (!activeGamepad) {
-				if (this.active) {
-					this.active = false;
-					JoystickUIRenderer_default.hide();
-				}
-				return false;
-			}
-			const states = this.getStates(activeGamepad);
-			let anyActivity = false;
-			if (!states) {
-				this.active = false;
-				return false;
-			}
-			const buttonsActive = ButtonInput.update(states.buttons);
-			const axisActive = JoystickAxisInput_default.update(states.axes);
-			if (buttonsActive || axisActive) anyActivity = true;
-			if (anyActivity && !this.active) {
-				JoystickUIRenderer_default.show();
-				this.active = true;
-			}
-			if (!anyActivity && this.active && !hideTimeout) {
-				hideTimeout = true;
-				const self = this;
-				this.active = false;
-				hideTimeoutHandle = setTimeout(function() {
-					hideTimeout = false;
-					hideTimeoutHandle = null;
-					if (self.active === false) JoystickUIRenderer_default.hide();
-				}, 3e4);
-			} else if (!hideTimeout) this.active = true;
-			return true;
-		},
-		_onConnect: function() {
-			this.active = true;
-			JoystickUIRenderer_default.show();
-		},
-		_onDisconnect: function() {
-			this.active = false;
-			this.buttonStates = {};
-			JoystickUIRenderer_default.hide();
-		}
 	};
 }));
 //#endregion
@@ -259310,6 +261136,7 @@ function onWorldComplete(data) {
 	this.water = data.water;
 	this.sounds = data.sound;
 	this.effects = data.effect;
+	this.lights = data.lights || [];
 	this.diffuse = new Float32Array(this.light.diffuse);
 	this.light.env = new Float32Array([
 		1 - (1 - this.light.diffuse[0]) * (1 - this.light.ambient[0]),
@@ -259331,6 +261158,34 @@ function onWorldComplete(data) {
 	this.light.direction[1] = -dirVec[1];
 	this.light.direction[2] = -dirVec[2];
 }
+function hookContext(gl, modelView, projection, normalMat, fog, light, tick) {
+	const ctx = _hookContext;
+	ctx.gl = gl;
+	ctx.modelView = modelView;
+	ctx.projection = projection;
+	ctx.normalMat = normalMat;
+	ctx.fog = fog;
+	ctx.light = light;
+	ctx.tick = tick;
+	ctx.lightmap = Map_default.lightmap;
+	ctx.player = SessionStorage_default.Entity ? SessionStorage_default.Entity.position : null;
+	if (!ctx.drawScene) {
+		ctx.drawScene = (view, proj) => {
+			const depthTest = gl.isEnabled(gl.DEPTH_TEST);
+			gl.enable(gl.DEPTH_TEST);
+			gl.depthMask(true);
+			Sky_default.render(gl, view, proj, ctx.fog, ctx.tick);
+			Ground_default.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light);
+			Models_default.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light);
+			AnimatedModels_default.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light, ctx.tick);
+			if (!depthTest) gl.disable(gl.DEPTH_TEST);
+		};
+		ctx.drawModelsDepth = (program) => Models_default.renderDepth(gl, program);
+		ctx.restoreTarget = () => PostProcess.prepare(gl);
+		ctx.createProgram = (vertex, fragment) => WebGL_default.createShaderProgram(gl, vertex, fragment);
+	}
+	return ctx;
+}
 /**
 * Received ground data from Thread
 */
@@ -259340,6 +261195,40 @@ function onGroundComplete(data) {
 	this.water.vertCount = data.waterVertCount;
 	Ground_default.init(gl, data);
 	Water_default.init(gl, this.water);
+	const asFloat = (value) => new Float32Array(Int32Array.of(value).buffer)[0];
+	this.lights.forEach((light) => {
+		light.world = [
+			light.pos[0] + data.width,
+			light.pos[1],
+			light.pos[2] + data.height
+		];
+		const color = light.color.map((v) => Math.abs(v) > 65535 ? asFloat(v) : v);
+		const scale = Math.max(color[0], color[1], color[2]) > 1 ? 255 : 1;
+		light.rgb = color.map((v) => Math.min(Math.max(v / scale, 0), 1));
+		light.radius = light.range * .2;
+	});
+	MapHooks_default.mapReady(gl, {
+		name: stripMapExtension(this.currentMap),
+		width: data.width,
+		height: data.height,
+		cellTexture: data.cellTexture,
+		cellHeights: data.cellHeights,
+		cellUv: data.cellUv,
+		cellAtlas: data.cellAtlas,
+		cellLight: data.cellLight,
+		textureNames: data.textureNames || [],
+		textureUrls: Array.isArray(data.textures) ? data.textures.slice() : [],
+		groundTextures: () => Ground_default.textures(),
+		water: () => Water_default.state(),
+		lights: this.lights,
+		altitude: {
+			TYPE: Altitude.TYPE,
+			width: () => Altitude.width,
+			height: () => Altitude.height,
+			cellType: (x, y) => Altitude.getCellType(x, y),
+			cellHeight: (x, y) => Altitude.getCellHeight(x, y)
+		}
+	});
 	this.sounds.forEach((sound) => {
 		const tmp = -sound.pos[1];
 		sound.pos[0] += data.width;
@@ -259389,6 +261278,7 @@ function registerPostProcessModules(gl) {
 	if (WebGL_default.detectBadWebGL(gl)) GraphicsSettings.bloom = false;
 	else PostProcess.register(Bloom, gl);
 	PostProcess.register(GaussianBlur, gl);
+	PostProcess.registerExternal(gl);
 	PostProcess.register(FXAA, gl);
 	PostProcess.register(CAS, gl);
 	PostProcess.register(Cartoon, gl);
@@ -259434,7 +261324,7 @@ function onMapComplete(success, error) {
 		Mouse.intersect = true;
 	});
 }
-var mat4$11, _pos$6, MapRenderer;
+var mat4$11, _pos$6, MapRenderer, _hookContext;
 var init_MapRenderer = __esmMin((() => {
 	init_Thread();
 	init_SoundManager();
@@ -259452,6 +261342,7 @@ var init_MapRenderer = __esmMin((() => {
 	init_GridSelector();
 	init_Ground();
 	init_Altitude();
+	init_MapHooks();
 	init_Water();
 	init_Models();
 	init_AnimatedModels();
@@ -259500,6 +261391,7 @@ var init_MapRenderer = __esmMin((() => {
 		* @var {array} Sounds object list
 		*/
 		static sounds = null;
+		static lights = [];
 		/**
 		* @var {array} Effects object list
 		*/
@@ -259551,8 +261443,10 @@ var init_MapRenderer = __esmMin((() => {
 					Thread.hook("MAP_ALTITUDE", onAltitudeComplete.bind(MapRenderer));
 					Thread.hook("MAP_MODELS", onModelsComplete.bind(MapRenderer));
 					Thread.hook("MAP_ANIMATED_MODEL", onAnimatedModelComplete.bind(MapRenderer));
+					Thread.hook("MAP_REPLACED_MODELS", (models) => MapHooks_default.modelsReady(Renderer.getContext(), models));
 					MapRenderer.free();
 					Renderer.remove();
+					Thread.send("MAP_REPLACE_MODELS", MapHooks_default.modelNames());
 					Thread.send("LOAD_MAP", filename, onMapComplete.bind(MapRenderer));
 				});
 				return;
@@ -259580,6 +261474,7 @@ var init_MapRenderer = __esmMin((() => {
 			GridSelector_default.free(gl);
 			Sounds_default.free();
 			Effects_default.free();
+			MapHooks_default.mapFree(gl);
 			Ground_default.free(gl);
 			Water_default.free(gl);
 			Models_default.free(gl);
@@ -259596,6 +261491,7 @@ var init_MapRenderer = __esmMin((() => {
 			this.light = null;
 			this.water = null;
 			this.sounds = null;
+			this.lights = [];
 			this.effects = null;
 		}
 		/**
@@ -259608,7 +261504,7 @@ var init_MapRenderer = __esmMin((() => {
 			PostProcess.prepare(gl);
 			const fog = MapRenderer.fog;
 			fog.use = Map_default.fog;
-			const light = MapRenderer.light;
+			const light = MapHooks_default.light(MapRenderer.light);
 			let x, y;
 			Mouse.world.x = -1;
 			Mouse.world.y = -1;
@@ -259617,7 +261513,10 @@ var init_MapRenderer = __esmMin((() => {
 			const modelView = Camera.modelView;
 			const projection = Camera.projection;
 			const normalMat = Camera.normalMat;
+			const hooks = hookContext(gl, modelView, projection, normalMat, fog, light, tick);
+			MapHooks_default.stage("begin", hooks);
 			Ground_default.render(gl, modelView, projection, normalMat, fog, light);
+			MapHooks_default.stage("ground", hooks);
 			Effects_default.spam(SessionStorage_default.Entity.position, tick);
 			if (Mouse.intersect && Altitude.intersect(modelView, projection, _pos$6)) {
 				x = _pos$6[0];
@@ -259645,11 +261544,13 @@ var init_MapRenderer = __esmMin((() => {
 			Models_default.render(gl, modelView, projection, normalMat, fog, light);
 			AnimatedModels_default.render(gl, modelView, projection, normalMat, fog, light, tick);
 			GR2ModelRenderer_default.render(gl, modelView, projection, normalMat, fog, light, tick);
+			MapHooks_default.stage("models", hooks);
 			ScreenEffectManager.render(gl, modelView, projection, fog, tick, true);
 			EffectManager.render(gl, modelView, projection, fog, tick, true);
 			EntityManager.render(gl, modelView, projection, fog, false);
 			EntityManager.renderWaterDepth(gl, modelView, projection, fog);
-			Water_default.render(gl, modelView, projection, fog, light, tick);
+			if (MapHooks_default.replaces("water")) MapHooks_default.stage("water", hooks);
+			else Water_default.render(gl, modelView, projection, fog, light, tick);
 			Models_default.renderFaded(gl, modelView, projection, normalMat, fog, light);
 			AnimatedModels_default.renderFaded(gl, modelView, projection, normalMat, fog, light);
 			EffectManager.render(gl, modelView, projection, fog, tick, false);
@@ -259663,6 +261564,16 @@ var init_MapRenderer = __esmMin((() => {
 				EntityManager.setOverEntity(entity);
 			}
 			MemoryManager.clean(gl, tick);
+			MapHooks_default.stage("end", hooks);
+			PostProcess.scene = {
+				modelView,
+				projection,
+				light,
+				lights: MapRenderer.lights,
+				tick,
+				near: 1,
+				far: 1e3
+			};
 			PostProcess.render(gl);
 		}
 		/**
@@ -259670,6 +261581,7 @@ var init_MapRenderer = __esmMin((() => {
 		*/
 		static onLoad() {}
 	};
+	_hookContext = {};
 }));
 //#endregion
 //#region src/Renderer/Camera.js
@@ -261238,14 +263150,13 @@ var init_SwirlingAura = __esmMin((() => {
 			this.bands = [];
 			for (let ec = 0; ec < 3; ec++) this.bands.push({
 				life: 1,
-				process: 0,
+				initialRotStart: ec * 90,
 				rotStart: ec * 90,
 				maxHeight: (15 - 2 * ec) * GAME_TO_WORLD,
 				distance: (3.9 + .2 * ec) * GAME_TO_WORLD * INNER_CIRCLE_SCALE,
 				riseAngle: (55 - 5 * ec) * DEG_TO_RAD$1,
 				spinSpeed: ec + 3,
-				height: new Float32Array(E_DIVISION),
-				flag1: new Uint8Array(E_DIVISION)
+				height: new Float32Array(E_DIVISION)
 			});
 			this.basicAngle = FULL_DISPLAY_ANGLE / 20;
 			this.vertices = /* @__PURE__ */ new Float32Array(210);
@@ -261257,19 +263168,17 @@ var init_SwirlingAura = __esmMin((() => {
 		/**
 		* Update height profile for a band
 		*/
-		updateHeightProfile(band) {
+		updateHeightProfile(band, process) {
 			const middle = 10;
 			const step = 9;
-			for (let i = 0; i < E_DIVISION; i++) if (band.flag1[i] === 0) {
+			for (let i = 0; i < E_DIVISION; i++) {
 				const sinLimit = (90 + (i - middle) * step) * DEG_TO_RAD$1;
 				const sinLimitValue = Math.sin(sinLimit);
 				const maxPossible = band.maxHeight * sinLimitValue;
-				if (band.process <= 90) {
-					const sinProcess = Math.sin(band.process * DEG_TO_RAD$1);
-					band.height[i] = band.maxHeight * sinLimitValue * sinProcess;
-				}
-				band.height[i] = Math.max(0, Math.min(band.height[i], maxPossible));
-				if (band.height[i] >= maxPossible * .99) band.flag1[i] = 1;
+				if (process <= 90) {
+					const sinProcess = Math.sin(process * DEG_TO_RAD$1);
+					band.height[i] = Math.max(0, Math.min(band.maxHeight * sinLimitValue * sinProcess, maxPossible));
+				} else band.height[i] = maxPossible;
 			}
 		}
 		/**
@@ -261374,13 +263283,13 @@ var init_SwirlingAura = __esmMin((() => {
 			gl.enableVertexAttribArray(attribute.aPosition);
 			gl.enableVertexAttribArray(attribute.aTextureCoord);
 			const self = this;
+			const process = (tick - this.tick) / 25;
 			SpriteRenderer.runWithDepth(true, false, false, function() {
 				for (let ec = 0; ec < self.bands.length; ec++) {
 					const band = self.bands[ec];
 					if (!band.life) continue;
-					band.process++;
-					band.rotStart = (band.rotStart + band.spinSpeed) % 360;
-					self.updateHeightProfile(band);
+					band.rotStart = (band.initialRotStart + process * band.spinSpeed) % 360;
+					self.updateHeightProfile(band, process);
 					self.fillBandMesh(band);
 					gl.bindBuffer(gl.ARRAY_BUFFER, self.buffers[ec]);
 					gl.bufferSubData(gl.ARRAY_BUFFER, 0, self.vertices);
@@ -261542,6 +263451,8 @@ var init_GroundAura = __esmMin((() => {
 			this.aura[1].direction = -1;
 			this.cosCache = {};
 			this.sinCache = {};
+			this._lastTick = tick;
+			this._accumTime = 0;
 		}
 		/**
 		* Initialize instance
@@ -261563,16 +263474,29 @@ var init_GroundAura = __esmMin((() => {
 		render(gl, tick) {
 			const uniform = _program$7.uniform;
 			gl.bindTexture(gl.TEXTURE_2D, this.texture);
-			for (let i = 0; i < this.aura.length; i++) {
-				this.aura[i].riseAngle += 3;
-				if (this.aura[i].riseAngle && !(this.aura[i].riseAngle % 180)) {
-					this.aura[i].direction *= -1;
-					if (this.aura[i].direction < 0 && this.aura[i].size[0] < this.aura[i].initialSize[0] || this.aura[i].direction > 0 && this.aura[i].size[0] > this.aura[i].initialSize[0]) {
-						this.aura[i].size[0] = this.aura[i].initialSize[0];
-						this.aura[i].size[1] = this.aura[i].initialSize[1];
+			const RAG_TICK_MS = 25;
+			const dt = Math.min(tick - (this._lastTick || tick), 250);
+			this._lastTick = tick;
+			this._accumTime = (this._accumTime || 0) + dt;
+			while (this._accumTime >= RAG_TICK_MS) {
+				this._accumTime -= RAG_TICK_MS;
+				for (let i = 0; i < this.aura.length; i++) {
+					this.aura[i].riseAngle += 3;
+					if (this.aura[i].riseAngle && !(this.aura[i].riseAngle % 180)) {
+						this.aura[i].direction *= -1;
+						if (this.aura[i].direction < 0 && this.aura[i].size[0] < this.aura[i].initialSize[0] || this.aura[i].direction > 0 && this.aura[i].size[0] > this.aura[i].initialSize[0]) {
+							this.aura[i].size[0] = this.aura[i].initialSize[0];
+							this.aura[i].size[1] = this.aura[i].initialSize[1];
+						}
+					}
+					if (this.aura[i].riseAngle >= 360) this.aura[i].riseAngle -= 360;
+					if (this.aura[i].life) {
+						const auraAngle = i * 23;
+						const sizeModifier = calculateSize(this, this.aura, auraAngle, i);
+						this.aura[i].size[0] += sizeModifier[0] * this.aura[i].direction / (this.size / 2);
+						this.aura[i].size[1] += sizeModifier[1] * this.aura[i].direction / (this.size / 2);
 					}
 				}
-				if (this.aura[i].riseAngle >= 360) this.aura[i].riseAngle -= 360;
 			}
 			const groundZ = Altitude.getCellHeight(this.position[0], this.position[1]);
 			const worldPos = [
@@ -261586,9 +263510,6 @@ var init_GroundAura = __esmMin((() => {
 				for (let i = 0; i < self.aura.length; i++) {
 					if (!self.aura[i].life) continue;
 					const auraAngle = i * 23;
-					const sizeModifier = calculateSize(self, self.aura, auraAngle, i);
-					self.aura[i].size[0] += sizeModifier[0] * self.aura[i].direction / (self.size / 2);
-					self.aura[i].size[1] += sizeModifier[1] * self.aura[i].direction / (self.size / 2);
 					gl.uniform2f(uniform.uSize, self.aura[i].size[0], self.aura[i].size[1]);
 					gl.uniform1f(uniform.uAngle, auraAngle * Math.PI / 180);
 					gl.uniform4f(uniform.uColor, 1, 1, 1, .8);
@@ -261681,10 +263602,10 @@ function wrapDegrees(angle) {
 * Advance a phase angle toward a random target, reseed when reached.
 * Returns { angle, target }
 */
-function advancePhase(current, target) {
+function advancePhase(current, target, stepScale = 1) {
 	let diff = target - current;
 	diff = (diff + 540) % 360 - 180;
-	const step = 2 + Math.random();
+	const step = (2 + Math.random()) * stepScale;
 	if (Math.abs(diff) <= step) {
 		current = target;
 		target = randRange(0, 360);
@@ -261814,6 +263735,7 @@ var init_Level99Bubble = __esmMin((() => {
 			this.position = position;
 			this.textureName = textureName || "whitelight.tga";
 			this.tick = tick || 0;
+			this._lastTick = tick || Date.now();
 			this.flag1 = flag1 === 0 || flag1 ? flag1 : 1;
 			const isGhost = this.flag1 === 11 || this.flag1 === 3;
 			this.baseRadius = this.flag1 === 1 ? REF_RADIUS : isGhost ? 3.2 : .8;
@@ -261892,9 +263814,9 @@ var init_Level99Bubble = __esmMin((() => {
 		/**
 		* Update all phases in a column (advance toward random targets)
 		*/
-		updatePhases(column) {
+		updatePhases(column, stepScale = 1) {
 			for (let i = 0; i < 16; i++) {
-				const result = advancePhase(column.phases[i], column.phaseTargets[i]);
+				const result = advancePhase(column.phases[i], column.phaseTargets[i], stepScale);
 				column.phases[i] = result.angle;
 				column.phaseTargets[i] = result.target;
 			}
@@ -261906,17 +263828,17 @@ var init_Level99Bubble = __esmMin((() => {
 		* - Y drift: y -= v each frame
 		* - Reset when y < resetY: x=z=0, y=rand[0,seedMax], reseed phases
 		*/
-		updateAnchor(column, anchorIndex) {
+		updateAnchor(column, anchorIndex, stepScale = 1) {
 			const anchor = column.anchors[anchorIndex];
 			const signs = ANCHOR_SIGNS[anchorIndex];
 			const phaseOffsets = ANCHOR_PHASE_OFFSETS[anchorIndex];
 			if (anchor.y < 0) {
 				const phaseA = column.phases[phaseOffsets.pa] * DEG_TO_RAD;
 				const phaseB = column.phases[phaseOffsets.pb] * DEG_TO_RAD;
-				anchor.x += signs.kx * this.driftK * Math.sin(phaseA);
-				anchor.z += signs.kz * this.driftK * Math.sin(phaseB);
+				anchor.x += signs.kx * this.driftK * Math.sin(phaseA) * stepScale;
+				anchor.z += signs.kz * this.driftK * Math.sin(phaseB) * stepScale;
 			}
-			anchor.y -= this.fallSpeed * debugConfig.fallSpeedMult;
+			anchor.y -= this.fallSpeed * debugConfig.fallSpeedMult * stepScale;
 			const resetLimit = this.resetY * debugConfig.respawnDepthMult;
 			if (anchor.y < resetLimit) {
 				anchor.x = 0;
@@ -261980,12 +263902,16 @@ var init_Level99Bubble = __esmMin((() => {
 			gl.bindTexture(gl.TEXTURE_2D, this.texture);
 			if (debugConfig.showRedBg) this.renderBackground(gl, basePos);
 			const radius = this.baseRadius * GAME_TO_WORLD * debugConfig.scaleMult;
+			const RAG_TICK_MS = 25;
+			const dt = Math.min(tick - (this._lastTick || tick), 250);
+			this._lastTick = tick;
+			const stepScale = dt / RAG_TICK_MS;
 			for (let ec = 0; ec < this.columns.length; ec++) {
 				const column = this.columns[ec];
 				if (!column.life) continue;
-				this.updatePhases(column);
+				this.updatePhases(column, stepScale);
 				for (let ai = 0; ai < column.anchors.length; ai++) {
-					this.updateAnchor(column, ai);
+					this.updateAnchor(column, ai, stepScale);
 					const anchor = column.anchors[ai];
 					const anchorWorldX = anchor.x * GAME_TO_WORLD;
 					const anchorWorldY = anchor.y * GAME_TO_WORLD;
@@ -277480,18 +279406,21 @@ var init_EffectTable = __esmMin((() => {
 			type: "STR",
 			file: "imperial_guard/ig_guard_stance/new_guard_stance/new_guard_stance/new_guard_stance",
 			texturePath: "imperial_guard/ig_guard_stance/new_guard_stance/new_guard_stance/",
+			fallback: ["guard_stance/guard_stance/guard_stance"],
 			wav: "effect/ig_guard_stance"
 		}],
 		ef_ig_guard_stance_cast: [{
 			type: "STR",
 			file: "imperial_guard/ig_guard_stance/new_guard_stance/new_guard_stance_cast/new_guard_stance_cast",
 			texturePath: "imperial_guard/ig_guard_stance/new_guard_stance/new_guard_stance_cast/",
-			min: "imperial_guard/ig_guard_stance/new_guard_stance/new_guard_stance_cast/min_new_guard_stance_cast"
+			min: "imperial_guard/ig_guard_stance/new_guard_stance/new_guard_stance_cast/min_new_guard_stance_cast",
+			fallback: ["guard_stance/guard_stance_cast/guard_stance_cast"]
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_guard_stance/new_guard_stance/new_guard_stance_cast_bottom/new_guard_stance_cast_bottom",
 			texturePath: "imperial_guard/ig_guard_stance/new_guard_stance/new_guard_stance_cast_bottom/",
 			min: "imperial_guard/ig_guard_stance/new_guard_stance/new_guard_stance_cast_bottom/min_new_guard_stance_cast_bottom",
+			fallback: ["guard_stance/guard_stance_cast_bottom/guard_stance_cast_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_guardian_shield: [{
@@ -277499,12 +279428,14 @@ var init_EffectTable = __esmMin((() => {
 			file: "imperial_guard/ig_guardian_shield/new_guardianshield/guardianshield/guardianshield",
 			texturePath: "imperial_guard/ig_guardian_shield/new_guardianshield/guardianshield/",
 			min: "imperial_guard/ig_guardian_shield/new_guardianshield/guardianshield/min_guardianshield",
+			fallback: ["guardianshield/guardianshield/guardianshield"],
 			wav: "effect/ig_guardian_shield"
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_guardian_shield/new_guardianshield/guardianshield_bottom/guardianshield_bottom",
 			texturePath: "imperial_guard/ig_guardian_shield/new_guardianshield/guardianshield_bottom/",
 			min: "imperial_guard/ig_guardian_shield/new_guardianshield/guardianshield_bottom/min_guardianshield_bottom",
+			fallback: ["guardianshield/guardianshield_bottom/guardianshield_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_rebound_shield: [{
@@ -277512,41 +279443,48 @@ var init_EffectTable = __esmMin((() => {
 			file: "imperial_guard/ig_rebound_shield/new_rebound_shield/new_rebound_shield/new_rebound_shield",
 			texturePath: "imperial_guard/ig_rebound_shield/new_rebound_shield/new_rebound_shield/",
 			min: "imperial_guard/ig_rebound_shield/new_rebound_shield/new_rebound_shield/min_new_rebound_shield",
+			fallback: ["rebound_shield/rebound_shield/rebound_shield"],
 			wav: "effect/ig_rebound_shield"
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_rebound_shield/new_rebound_shield/new_rebound_shield_bottom/new_rebound_shield_bottom",
 			texturePath: "imperial_guard/ig_rebound_shield/new_rebound_shield/new_rebound_shield_bottom/",
 			min: "imperial_guard/ig_rebound_shield/new_rebound_shield/new_rebound_shield_bottom/min_new_rebound_shield_bottom",
+			fallback: ["rebound_shield/rebound_shield_bottom/rebound_shield_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_rebound_shield_cast: [{
 			type: "STR",
 			file: "imperial_guard/ig_rebound_shield/new_rebound_shield/rebound_shield_cast/rebound_shield_cast",
 			texturePath: "imperial_guard/ig_rebound_shield/new_rebound_shield/rebound_shield_cast/",
-			min: "imperial_guard/ig_rebound_shield/new_rebound_shield/rebound_shield_cast/min_rebound_shield_cast"
+			min: "imperial_guard/ig_rebound_shield/new_rebound_shield/rebound_shield_cast/min_rebound_shield_cast",
+			fallback: ["rebound_shield/rebound_shield_cast/rebound_shield_cast"]
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_rebound_shield/new_rebound_shield/rebound_shield_cast_bottom/rebound_shield_cast_bottom",
 			texturePath: "imperial_guard/ig_rebound_shield/new_rebound_shield/rebound_shield_cast_bottom/",
 			min: "imperial_guard/ig_rebound_shield/new_rebound_shield/rebound_shield_cast_bottom/min_rebound_shield_cast_bottom",
+			fallback: ["rebound_shield/rebound_shield_cast_bottom/rebound_shield_cast_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_attack_stance: [{
 			type: "STR",
 			file: "imperial_guard/ig_attack_stance/new_attack_stance/new_attack_stance/new_attack_stance",
-			texturePath: "imperial_guard/ig_attack_stance/new_attack_stance/new_attack_stance/"
+			texturePath: "imperial_guard/ig_attack_stance/new_attack_stance/new_attack_stance/",
+			fallback: ["attack_stance/attack_stance/attack_stance"]
 		}],
 		ef_ig_attack_stance_cast: [{
 			type: "STR",
 			file: "imperial_guard/ig_attack_stance/new_attack_stance/new_attack_stance_cast/new_attack_stance_cast",
 			texturePath: "imperial_guard/ig_attack_stance/new_attack_stance/new_attack_stance_cast/",
-			min: "imperial_guard/ig_attack_stance/new_attack_stance/new_attack_stance_cast/min_new_attack_stance_cast"
+			min: "imperial_guard/ig_attack_stance/new_attack_stance/new_attack_stance_cast/min_new_attack_stance_cast",
+			fallback: ["attack_stance/attack_stance_cast/attack_stance_cast"]
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_attack_stance/new_attack_stance/new_attack_stance_cast_bottom/new_attack_stance_cast_bottom",
 			texturePath: "imperial_guard/ig_attack_stance/new_attack_stance/new_attack_stance_cast_bottom/",
 			min: "imperial_guard/ig_attack_stance/new_attack_stance/new_attack_stance_cast_bottom/min_new_attack_stance_cast_bottom",
+			fallback: ["attack_stance/attack_stance_cast_bottom/attack_stance_cast_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_ultimate_sacrifice: [{
@@ -277554,19 +279492,22 @@ var init_EffectTable = __esmMin((() => {
 			file: "imperial_guard/ig_ultimate_sacrifice/ultimatesacrifice/ultimatesacrifice",
 			texturePath: "imperial_guard/ig_ultimate_sacrifice/ultimatesacrifice/",
 			min: "imperial_guard/ig_ultimate_sacrifice/ultimatesacrifice/min_ultimatesacrifice",
+			fallback: ["ultimate_sacrifice/ultimatesacrifice/ultimatesacrifice"],
 			wav: "effect/ig_ultimate_sacrifice"
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_ultimate_sacrifice/ultimatesacrifice_bottom/ultimatesacrifice_bottom",
 			texturePath: "imperial_guard/ig_ultimate_sacrifice/ultimatesacrifice_bottom/",
 			min: "imperial_guard/ig_ultimate_sacrifice/ultimatesacrifice_bottom/min_ultimatesacrifice_bottom",
+			fallback: ["ultimate_sacrifice/ultimatesacrifice_bottom/ultimatesacrifice_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_holy_shield: [{
 			type: "STR",
 			file: "imperial_guard/ig_holy_shield/new_holy_shield/new_holy_shield/new_holy_shield",
 			texturePath: "imperial_guard/ig_holy_shield/new_holy_shield/new_holy_shield/",
-			min: "imperial_guard/ig_holy_shield/new_holy_shield/new_holy_shield/min_new_holy_shield"
+			min: "imperial_guard/ig_holy_shield/new_holy_shield/new_holy_shield/min_new_holy_shield",
+			fallback: ["holy_shield/holy_shield/holy_shield"]
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_holy_shield/new_holy_shield/new_holy_shield_bottom/new_holy_shield_bottom",
@@ -277578,7 +279519,8 @@ var init_EffectTable = __esmMin((() => {
 			type: "STR",
 			file: "imperial_guard/ig_holy_shield/new_holy_shield/new_holy_shield_cast/new_holy_shield_cast",
 			texturePath: "imperial_guard/ig_holy_shield/new_holy_shield/new_holy_shield_cast/",
-			min: "imperial_guard/ig_holy_shield/new_holy_shield/new_holy_shield_cast/min_new_holy_shield_cast"
+			min: "imperial_guard/ig_holy_shield/new_holy_shield/new_holy_shield_cast/min_new_holy_shield_cast",
+			fallback: ["holy_shield/holy_shield_cast/holy_shield_cast"]
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_holy_shield/new_holy_shield/new_holy_shield_cast_bottom/new_holy_shield_cast_bottom",
@@ -277591,24 +279533,28 @@ var init_EffectTable = __esmMin((() => {
 			file: "imperial_guard/ig_grand_judgement/new_grand_judgement/new_grand_judgement/new_grand_judgement",
 			texturePath: "imperial_guard/ig_grand_judgement/new_grand_judgement/new_grand_judgement/",
 			min: "imperial_guard/ig_grand_judgement/new_grand_judgement/new_grand_judgement/min_new_grand_judgement",
+			fallback: ["grand_judgement/grand_judgement/grand_judgement"],
 			wav: "effect/ig_grand_judgement"
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_grand_judgement/new_grand_judgement/new_grand_judgement_bottom/new_grand_judgement_bottom",
 			texturePath: "imperial_guard/ig_grand_judgement/new_grand_judgement/new_grand_judgement_bottom/",
 			min: "imperial_guard/ig_grand_judgement/new_grand_judgement/new_grand_judgement_bottom/min_new_grand_judgement_bottom",
+			fallback: ["grand_judgement/grand_judgement_bottom/grand_judgement_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_grand_judgement_cast: [{
 			type: "STR",
 			file: "imperial_guard/ig_grand_judgement/new_grand_judgement/grand_judgement_cast/grand_judgement_cast",
 			texturePath: "imperial_guard/ig_grand_judgement/new_grand_judgement/grand_judgement_cast/",
-			min: "imperial_guard/ig_grand_judgement/new_grand_judgement/grand_judgement_cast/min_grand_judgement_cast"
+			min: "imperial_guard/ig_grand_judgement/new_grand_judgement/grand_judgement_cast/min_grand_judgement_cast",
+			fallback: ["grand_judgement/grand_judgement_cast/grand_judgement_cast"]
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_grand_judgement/new_grand_judgement/grand_judgement_cast_bottom/grand_judgement_cast_bottom",
 			texturePath: "imperial_guard/ig_grand_judgement/new_grand_judgement/grand_judgement_cast_bottom/",
 			min: "imperial_guard/ig_grand_judgement/new_grand_judgement/grand_judgement_cast_bottom/min_grand_judgement_cast_bottom",
+			fallback: ["grand_judgement/grand_judgement_cast_bottom/grand_judgement_cast_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_judgement_cross: [{
@@ -277616,24 +279562,28 @@ var init_EffectTable = __esmMin((() => {
 			file: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross/new_judgement_cross",
 			texturePath: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross/",
 			min: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross/min_new_judgement_cross",
+			fallback: ["judgement_cross/judgement_cross/judgement_cross"],
 			wav: "effect/ig_judgement_cross"
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross_bottom/new_judgement_cross_bottom",
 			texturePath: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross_bottom/",
 			min: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross_bottom/min_new_judgement_cross_bottom",
+			fallback: ["judgement_cross/judgement_cross_bottom/judgement_cross_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_judgement_cross_cast: [{
 			type: "STR",
 			file: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross_cast/new_judgement_cross_cast",
 			texturePath: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross_cast/",
-			min: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross_cast/min_new_judgement_cross_cast"
+			min: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross_cast/min_new_judgement_cross_cast",
+			fallback: ["judgement_cross/judgement_cross_cast/judgement_cross_cast"]
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross_cast_bottom/new_judgement_cross_cast_bottom",
 			texturePath: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross_cast_bottom/",
 			min: "imperial_guard/ig_judgement_cross/new_judgement_cross/new_judgement_cross_cast_bottom/min_new_judgement_cross_cast_bottom",
+			fallback: ["judgement_cross/judgement_cross_cast_bottom/judgement_cross_cast_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_judgement_cross_hit: [{
@@ -277665,49 +279615,57 @@ var init_EffectTable = __esmMin((() => {
 			type: "STR",
 			file: "imperial_guard/ig_overslash/new_overslash/new_overslash/new_overslash",
 			texturePath: "imperial_guard/ig_overslash/new_overslash/new_overslash/",
+			fallback: ["overslash/overslash/overslash"],
 			wav: "effect/ig_overslash"
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_overslash/new_overslash/new_overslash_bottom/new_overslash_bottom",
 			texturePath: "imperial_guard/ig_overslash/new_overslash/new_overslash_bottom/",
 			min: "imperial_guard/ig_overslash/new_overslash/new_overslash_bottom/min_new_overslash_bottom",
+			fallback: ["overslash/overslash_bottom/overslash_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_overslash_cast: [{
 			type: "STR",
 			file: "imperial_guard/ig_overslash/new_overslash/overslash_cast/overslash_cast",
 			texturePath: "imperial_guard/ig_overslash/new_overslash/overslash_cast/",
-			min: "imperial_guard/ig_overslash/new_overslash/overslash_cast/min_overslash_cast"
+			min: "imperial_guard/ig_overslash/new_overslash/overslash_cast/min_overslash_cast",
+			fallback: ["overslash/overslash_cast/overslash_cast"]
 		}],
 		ef_ig_overslash_hit: [{
 			type: "STR",
 			file: "imperial_guard/ig_overslash/new_overslash/new_overslash_hit/new_overslash_hit",
 			texturePath: "imperial_guard/ig_overslash/new_overslash/new_overslash_hit/",
-			min: "imperial_guard/ig_overslash/new_overslash/new_overslash_hit/min_new_overslash_hit"
+			min: "imperial_guard/ig_overslash/new_overslash/new_overslash_hit/min_new_overslash_hit",
+			fallback: ["overslash/overslash_hit/overslash_hit"]
 		}],
 		ef_ig_cross_rain: [{
 			type: "STR",
 			file: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain/new_cross_rain",
 			texturePath: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain/",
 			min: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain/min_new_cross_rain",
+			fallback: ["crossrain/cross_rain/cross_rain"],
 			wav: "effect/ig_cross_rain"
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain_bottom/new_cross_rain_bottom",
 			texturePath: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain_bottom/",
 			min: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain_bottom/min_new_cross_rain_bottom",
+			fallback: ["crossrain/cross_rain_bottom/cross_rain_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_cross_rain_cast: [{
 			type: "STR",
 			file: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain_cast/new_cross_rain_cast",
 			texturePath: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain_cast/",
-			min: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain_cast/min_new_cross_rain_cast"
+			min: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain_cast/min_new_cross_rain_cast",
+			fallback: ["crossrain/cross_rain_cast/cross_rain_cast"]
 		}, {
 			type: "STR",
 			file: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain_cast_bottom/new_cross_rain_cast_bottom",
 			texturePath: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain_cast_bottom/",
 			min: "imperial_guard/ig_cross_rain/new_crossrain/new_cross_rain_cast_bottom/min_new_cross_rain_cast_bottom",
+			fallback: ["crossrain/cross_rain_cast_bottom/cross_rain_cast_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_ig_radiant_spear_cast: [{
@@ -277746,7 +279704,8 @@ var init_EffectTable = __esmMin((() => {
 			type: "STR",
 			file: "imperial_guard/ig_imperial_pressure/new_rayofgenesis_hit/new_rayofgenesis_hit",
 			texturePath: "imperial_guard/ig_imperial_pressure/new_rayofgenesis_hit/",
-			min: "imperial_guard/ig_imperial_pressure/new_rayofgenesis_hit/min_new_rayofgenesis_hit"
+			min: "imperial_guard/ig_imperial_pressure/new_rayofgenesis_hit/min_new_rayofgenesis_hit",
+			fallback: ["new_rayofgenesis/new_rayofgenesis_hit/new_rayofgenesis_hit"]
 		}],
 		ef_crescentelbow: [{
 			wav: "effect/sr_crescentelbow",
@@ -278856,24 +280815,28 @@ var init_EffectTable = __esmMin((() => {
 			file: "dragon_knight/dk_servantweapon/servantweapon/servantweapon",
 			texturePath: "dragon_knight/dk_servantweapon/servantweapon/",
 			min: "dragon_knight/dk_servantweapon/servantweapon/min_servantweapon",
+			fallback: ["new_servantweapon/new_servantweapon/new_servantweapon"],
 			wav: "effect/dk_servantweapon"
 		}],
 		ef_dk_servantweapon_cast: [{
 			type: "STR",
 			file: "dragon_knight/dk_servantweapon/servantweapon_cast/servantweapon_cast",
 			texturePath: "dragon_knight/dk_servantweapon/servantweapon_cast/",
-			min: "dragon_knight/dk_servantweapon/servantweapon_cast/min_servantweapon_cast"
+			min: "dragon_knight/dk_servantweapon/servantweapon_cast/min_servantweapon_cast",
+			fallback: ["new_servantweapon/new_servantweapon_cast/new_servantweapon_cast"]
 		}],
 		ef_dk_servantweapon_hit: [{
 			type: "STR",
 			file: "dragon_knight/dk_servantweapon/servantweapon_hit/servantweapon_hit",
 			texturePath: "dragon_knight/dk_servantweapon/servantweapon_hit/",
-			min: "dragon_knight/dk_servantweapon/servantweapon_hit/min_servantweapon_hit"
+			min: "dragon_knight/dk_servantweapon/servantweapon_hit/min_servantweapon_hit",
+			fallback: ["new_servantweapon/new_servantweapon_hit/new_servantweapon_hit"]
 		}, {
 			type: "STR",
 			file: "dragon_knight/dk_servantweapon/servantweapon_hit_bottom/servantweapon_hit_bottom",
 			texturePath: "dragon_knight/dk_servantweapon/servantweapon_hit_bottom/",
 			min: "dragon_knight/dk_servantweapon/servantweapon_hit_bottom/min_servantweapon_hit_bottom",
+			fallback: ["new_servantweapon/new_servantweapon_hit_bottom/new_servantweapon_hit_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_dk_servantweapon_atk: [{
@@ -278893,12 +280856,14 @@ var init_EffectTable = __esmMin((() => {
 			file: "dragon_knight/dk_servant_w_sign/servant_sign/servant_sign",
 			texturePath: "dragon_knight/dk_servant_w_sign/servant_sign/",
 			min: "dragon_knight/dk_servant_w_sign/servant_sign/min_servant_sign",
+			fallback: ["servant_sign/servant_sign/servant_sign"],
 			wav: "effect/dk_servant_w_sign"
 		}, {
 			type: "STR",
 			file: "dragon_knight/dk_servant_w_sign/servant_sign_bottom/servant_sign_bottom",
 			texturePath: "dragon_knight/dk_servant_w_sign/servant_sign_bottom/",
 			min: "dragon_knight/dk_servant_w_sign/servant_sign_bottom/min_servant_sign_bottom",
+			fallback: ["servant_sign/servant_sign_bottom/servant_sign_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_dk_servant_w_phantom: [{
@@ -278906,12 +280871,14 @@ var init_EffectTable = __esmMin((() => {
 			file: "dragon_knight/dk_servant_w_phantom/servant_phantom_sub/servant_phantom_sub",
 			texturePath: "dragon_knight/dk_servant_w_phantom/servant_phantom_sub/",
 			min: "dragon_knight/dk_servant_w_phantom/servant_phantom_sub/min_servant_phantom_sub",
+			fallback: ["servant_phantom/servant_phantom_sub/servant_phantom_sub"],
 			wav: "effect/dk_servant_w_phantom"
 		}, {
 			type: "STR",
 			file: "dragon_knight/dk_servant_w_phantom/servant_phantom_sub_bottom/servant_phantom_sub_bottom",
 			texturePath: "dragon_knight/dk_servant_w_phantom/servant_phantom_sub_bottom/",
 			min: "dragon_knight/dk_servant_w_phantom/servant_phantom_sub_bottom/min_servant_phantom_sub_bottom",
+			fallback: ["servant_phantom/servant_phantom_sub_bottom/servant_phantom_sub_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_dk_servant_w_demol_hit: [{
@@ -278919,23 +280886,27 @@ var init_EffectTable = __esmMin((() => {
 			file: "dragon_knight/dk_servant_w_demol/servant_demolition_hit/servant_demolition_hit",
 			texturePath: "dragon_knight/dk_servant_w_demol/servant_demolition_hit/",
 			min: "dragon_knight/dk_servant_w_demol/servant_demolition_hit/min_servant_demolition_hit",
+			fallback: ["servant_demolition/servant_demolition_hit/servant_demolition_hit"],
 			wav: "effect/dk_servant_w_demol"
 		}],
 		ef_dk_chargingpierce_cast: [{
 			type: "STR",
 			file: "dragon_knight/dk_chargingpierce/chargingpierce_cast/chargingpierce_cast",
 			texturePath: "dragon_knight/dk_chargingpierce/chargingpierce_cast/",
+			fallback: ["new_chargingpierce/new_chargingpierce_cast/new_chargingpierce_cast"],
 			wav: "effect/dk_chargingpierce1"
 		}, {
 			type: "STR",
 			file: "dragon_knight/dk_chargingpierce/chargingpierce_cast_bottom/chargingpierce_cast_bottom",
 			texturePath: "dragon_knight/dk_chargingpierce/chargingpierce_cast_bottom/",
+			fallback: ["new_chargingpierce/new_chargingpierce_cast_bottom/new_chargingpierce_cast_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_dk_chargingpierce_hit: [{
 			type: "STR",
 			file: "dragon_knight/dk_chargingpierce/chargingpierce_hit/chargingpierce_hit",
 			texturePath: "dragon_knight/dk_chargingpierce/chargingpierce_hit/",
+			fallback: ["new_chargingpierce/new_chargingpierce_hit/new_chargingpierce_hit"],
 			wav: "effect/dk_chargingpierce2"
 		}],
 		ef_dk_hackandslasher: [{
@@ -278943,19 +280914,22 @@ var init_EffectTable = __esmMin((() => {
 			file: "dragon_knight/dk_hackandslasher/hackandslash/hackandslash",
 			texturePath: "dragon_knight/dk_hackandslasher/hackandslash/",
 			min: "dragon_knight/dk_hackandslasher/hackandslash/min_hackandslash",
+			fallback: ["hackandslash/hackandslash/hackandslash"],
 			wav: "effect/dk_hackandslasher"
 		}, {
 			type: "STR",
 			file: "dragon_knight/dk_hackandslasher/hackandslash_bottom/hackandslash_bottom",
 			texturePath: "dragon_knight/dk_hackandslasher/hackandslash_bottom/",
 			min: "dragon_knight/dk_hackandslasher/hackandslash_bottom/min_hackandslash_bottom",
+			fallback: ["hackandslash/hackandslash_bottom/hackandslash_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_dk_hackandslasher_hit: [{
 			type: "STR",
 			file: "dragon_knight/dk_hackandslasher/hackandslash_hit/hackandslash_hit",
 			texturePath: "dragon_knight/dk_hackandslasher/hackandslash_hit/",
-			min: "dragon_knight/dk_hackandslasher/hackandslash_hit/min_hackandslash_hit"
+			min: "dragon_knight/dk_hackandslasher/hackandslash_hit/min_hackandslash_hit",
+			fallback: ["hackandslash/hackandslash_hit/hackandslash_hit"]
 		}],
 		ef_dk_hackandslasher_atk: [{
 			type: "STR",
@@ -278972,12 +280946,14 @@ var init_EffectTable = __esmMin((() => {
 			file: "dragon_knight/dk_madness_crusher/madness_crusher/madness_crusher",
 			texturePath: "dragon_knight/dk_madness_crusher/madness_crusher/",
 			min: "dragon_knight/dk_madness_crusher/madness_crusher/min_madness_crusher",
+			fallback: ["madness_crusher/madness_crusher/madness_crusher"],
 			wav: "effect/dk_madness_crusher"
 		}, {
 			type: "STR",
 			file: "dragon_knight/dk_madness_crusher/madness_crusher_bottom/madness_crusher_bottom",
 			texturePath: "dragon_knight/dk_madness_crusher/madness_crusher_bottom/",
 			min: "dragon_knight/dk_madness_crusher/madness_crusher_bottom/min_madness_crusher_bottom",
+			fallback: ["madness_crusher/madness_crusher_bottom/madness_crusher_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_dk_vigor: [{
@@ -278985,13 +280961,15 @@ var init_EffectTable = __esmMin((() => {
 			file: "dragon_knight/dk_vigor/vigor_buff/vigor_buff",
 			texturePath: "dragon_knight/dk_vigor/vigor_buff/",
 			min: "dragon_knight/dk_vigor/vigor_buff/min_vigor_buff",
+			fallback: ["vigor/vigor_buff/vigor_buff"],
 			wav: "effect/dk_vigor"
 		}],
 		ef_dk_vigor_cast: [{
 			type: "STR",
 			file: "dragon_knight/dk_vigor/vigor_cast/vigor_cast",
 			texturePath: "dragon_knight/dk_vigor/vigor_cast/",
-			min: "dragon_knight/dk_vigor/vigor_cast/min_vigor_cast"
+			min: "dragon_knight/dk_vigor/vigor_cast/min_vigor_cast",
+			fallback: ["vigor/vigor_cast/vigor_cast"]
 		}],
 		ef_dk_stormslash_hit: [{
 			type: "STR",
@@ -278999,6 +280977,7 @@ var init_EffectTable = __esmMin((() => {
 			min: "dragon_knight/dk_stormslash/stormslash/min_stormslash_%d",
 			rand: [1, 5],
 			texturePath: "dragon_knight/dk_stormslash/stormslash/",
+			fallback: ["stormslash/stormslash/stormslash_%d"],
 			wav: "effect/dk_stormslash1"
 		}],
 		ef_dk_dragonic_breath: [{
@@ -279055,17 +281034,20 @@ var init_EffectTable = __esmMin((() => {
 			file: "shadow_cross/shc_shadow_exceed/shadow_exceed_cast/shadow_exceed_cast",
 			texturePath: "shadow_cross/shc_shadow_exceed/shadow_exceed_cast/",
 			min: "shadow_cross/shc_shadow_exceed/shadow_exceed_cast/min_shadow_exceed_cast",
+			fallback: ["shadow_exceed/shadow_exceed_cast/shadow_exceed_cast"],
 			wav: "effect/shc_shadow_exceed"
 		}],
 		ef_shc_dancing_knife_cast: [{
 			type: "STR",
 			file: "shadow_cross/shc_dancing_knife/dancing_knife_cast/dancing_knife_cast",
 			texturePath: "shadow_cross/shc_dancing_knife/dancing_knife_cast/",
+			fallback: ["dancing_knife/dancing_knife_cast/dancing_knife_cast"],
 			wav: "effect/shc_dancing_knife"
 		}, {
 			type: "STR",
 			file: "shadow_cross/shc_dancing_knife/dancing_knife_cast_bottom/dancing_knife_cast_bottom",
 			texturePath: "shadow_cross/shc_dancing_knife/dancing_knife_cast_bottom/",
+			fallback: ["dancing_knife/dancing_knife_cast_bottom/dancing_knife_cast_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_shc_savage_impact: [{
@@ -279111,6 +281093,7 @@ var init_EffectTable = __esmMin((() => {
 			type: "STR",
 			file: "shadow_cross/shc_shadow_stab/shadow_stab/shadow_stab",
 			texturePath: "shadow_cross/shc_shadow_stab/shadow_stab/",
+			fallback: ["shadow_stab/shadow_stab/shadow_stab"],
 			wav: "effect/shc_shadow_stab"
 		}],
 		ef_shc_impact_crater: [{
@@ -279118,30 +281101,35 @@ var init_EffectTable = __esmMin((() => {
 			file: "shadow_cross/shc_impact_crater/impact_crater/impact_crater",
 			texturePath: "shadow_cross/shc_impact_crater/impact_crater/",
 			min: "shadow_cross/shc_impact_crater/impact_crater/min_impact_crater",
+			fallback: ["impact_crater/impact_crater/impact_crater"],
 			wav: "effect/shc_impact_crater"
 		}, {
 			type: "STR",
 			file: "shadow_cross/shc_impact_crater/impact_crater_bottom/impact_crater_bottom",
 			texturePath: "shadow_cross/shc_impact_crater/impact_crater_bottom/",
 			min: "shadow_cross/shc_impact_crater/impact_crater_bottom/min_impact_crater_bottom",
+			fallback: ["impact_crater/impact_crater_bottom/impact_crater_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_shc_impact_crater_hit: [{
 			type: "STR",
 			file: "shadow_cross/shc_impact_crater/impact_crater_hit/impact_crater_hit",
 			texturePath: "shadow_cross/shc_impact_crater/impact_crater_hit/",
-			min: "shadow_cross/shc_impact_crater/impact_crater_hit/min_impact_crater_hit"
+			min: "shadow_cross/shc_impact_crater/impact_crater_hit/min_impact_crater_hit",
+			fallback: ["impact_crater/impact_crater_hit/impact_crater_hit"]
 		}],
 		ef_shc_enchanting_shadow: [{
 			type: "STR",
 			file: "shadow_cross/shc_enchanting_shadow/enchanting_shadow/enchanting_shadow",
 			texturePath: "shadow_cross/shc_enchanting_shadow/enchanting_shadow/",
-			min: "shadow_cross/shc_enchanting_shadow/enchanting_shadow/min_enchanting_shadow"
+			min: "shadow_cross/shc_enchanting_shadow/enchanting_shadow/min_enchanting_shadow",
+			fallback: ["enchanting_shadow/enchanting_shadow/new_enchanting_shadow"]
 		}, {
 			type: "STR",
 			file: "shadow_cross/shc_enchanting_shadow/enchanting_shadow_bottom/enchanting_shadow_bottom",
 			texturePath: "shadow_cross/shc_enchanting_shadow/enchanting_shadow_bottom/",
 			min: "shadow_cross/shc_enchanting_shadow/enchanting_shadow_bottom/min_enchanting_shadow_bottom",
+			fallback: ["enchanting_shadow/enchanting_shadow_bottom/new_enchanting_shadow_bottom"],
 			renderBeforeEntities: true
 		}],
 		ef_shc_fatal_shadow_crow: [{
@@ -279469,195 +281457,6 @@ var init_EffectTable = __esmMin((() => {
 			zOffset: 1,
 			zIndex: 1
 		}],
-		ef_wh_wind_sign: [{
-			type: "STR",
-			file: "windsign/windsign/windsign",
-			texturePath: "windsign/windsign/",
-			min: "windsign/windsign/min_windsign",
-			wav: "effect/wh_wind_sign"
-		}],
-		ef_wh_hawkrush: [{
-			type: "STR",
-			file: "hawkrush/hawkrush/hawkrush",
-			texturePath: "hawkrush/hawkrush/",
-			wav: "effect/wh_hawkrush"
-		}],
-		ef_wh_calamitygale_cast: [{
-			type: "STR",
-			file: "windhawk/calamitygale/calumitygale_cast/calumitygale_cast",
-			texturePath: "windhawk/calamitygale/calumitygale_cast/",
-			min: "windhawk/calamitygale/calumitygale_cast/min_calumitygale_cast",
-			wav: "effect/wh_calamitygale"
-		}],
-		ef_wh_hawkboomerang: [{
-			wav: "effect/wh_hawkboomerang",
-			attachedEntity: true
-		}],
-		ef_wh_galestorm: [{
-			type: "STR",
-			file: "galestorm/galestorm/galestorm",
-			texturePath: "galestorm/galestorm/",
-			min: "galestorm/galestorm/min_galestorm",
-			wav: "effect/wh_galestorm"
-		}],
-		ef_wh_galestorm_cast: [{
-			type: "STR",
-			file: "galestorm/galestorm_cast/galestorm_cast",
-			texturePath: "galestorm/galestorm_cast/",
-			min: "galestorm/galestorm_cast/min_galestorm_cast"
-		}],
-		ef_wh_galestorm_hit: [{
-			type: "STR",
-			file: "galestorm/galestorm_hit/galestorm_hit",
-			texturePath: "galestorm/galestorm_hit/",
-			min: "galestorm/galestorm_hit/min_galestorm_hit"
-		}],
-		ef_wh_deepblindtrap: [{
-			type: "STR",
-			file: "deepblindtrap/deepblindtrap/deepblindtrap",
-			texturePath: "deepblindtrap/deepblindtrap/",
-			min: "deepblindtrap/deepblindtrap/min_deepblindtrap"
-		}, {
-			type: "STR",
-			file: "deepblindtrap/deepblindtrap_bottom/deepblindtrap_bottom",
-			texturePath: "deepblindtrap/deepblindtrap_bottom/",
-			min: "deepblindtrap/deepblindtrap_bottom/min_deepblindtrap_bottom",
-			renderBeforeEntities: true
-		}],
-		ef_wh_deepblindtrap_cast: [{
-			type: "STR",
-			file: "deepblindtrap/deepblindtrap_cast/deepblindtrap_cast",
-			texturePath: "deepblindtrap/deepblindtrap_cast/",
-			min: "deepblindtrap/deepblindtrap_cast/min_deepblindtrap_cast"
-		}],
-		ef_wh_deepblindtrap_hit: [{
-			type: "STR",
-			file: "deepblindtrap/deepblindtrap_hit/deepblindtrap_hit",
-			texturePath: "deepblindtrap/deepblindtrap_hit/",
-			min: "deepblindtrap/deepblindtrap_hit/min_deepblindtrap_hit"
-		}],
-		ef_wh_solidtrap: [{
-			type: "STR",
-			file: "solidtrap/solidtrap/solidtrap",
-			texturePath: "solidtrap/solidtrap/",
-			min: "solidtrap/solidtrap/min_solidtrap"
-		}, {
-			type: "STR",
-			file: "solidtrap/solidtrap_bottom/solidtrap_bottom",
-			texturePath: "solidtrap/solidtrap_bottom/",
-			min: "solidtrap/solidtrap_bottom/min_solidtrap_bottom",
-			renderBeforeEntities: true
-		}],
-		ef_wh_solidtrap_cast: [{
-			type: "STR",
-			file: "solidtrap/solidtrap_cast/solidtrap_cast",
-			texturePath: "solidtrap/solidtrap_cast/",
-			min: "solidtrap/solidtrap_cast/min_solidtrap_cast"
-		}, {
-			type: "STR",
-			file: "solidtrap/solidtrap_cast_bottom/solidtrap_cast_bottom",
-			texturePath: "solidtrap/solidtrap_cast_bottom/",
-			min: "solidtrap/solidtrap_cast_bottom/min_solidtrap_cast_bottom",
-			renderBeforeEntities: true
-		}],
-		ef_wh_solidtrap_hit: [{
-			type: "STR",
-			file: "solidtrap/solidtrap_hit/solidtrap_hit",
-			texturePath: "solidtrap/solidtrap_hit/",
-			min: "solidtrap/solidtrap_hit/min_solidtrap_hit"
-		}],
-		ef_wh_swifttrap: [{
-			type: "STR",
-			file: "swifttrap/swifttrap/swifttrap",
-			texturePath: "swifttrap/swifttrap/",
-			min: "swifttrap/swifttrap/min_swifttrap"
-		}, {
-			type: "STR",
-			file: "swifttrap/swifttrap_bottom/swifttrap_bottom",
-			texturePath: "swifttrap/swifttrap_bottom/",
-			min: "swifttrap/swifttrap_bottom/min_swifttrap_bottom",
-			renderBeforeEntities: true
-		}],
-		ef_wh_swifttrap_cast: [{
-			type: "STR",
-			file: "swifttrap/swifttrap_cast/swifttrap_cast",
-			texturePath: "swifttrap/swifttrap_cast/",
-			min: "swifttrap/swifttrap_cast/min_swifttrap_cast"
-		}],
-		ef_wh_swifttrap_hit: [{
-			type: "STR",
-			file: "swifttrap/swifttrap_hit/swifttrap_hit",
-			texturePath: "swifttrap/swifttrap_hit/",
-			min: "swifttrap/swifttrap_hit/min_swifttrap_hit"
-		}],
-		ef_wh_crescive_bolt: [{
-			type: "STR",
-			file: "crescivebolt/crescivebolt/crescivebolt",
-			texturePath: "crescivebolt/crescivebolt/",
-			min: "crescivebolt/crescivebolt/min_crescivebolt",
-			wav: "effect/wh_crescive_bolt"
-		}],
-		ef_wh_crescive_bolt_cast: [{
-			type: "STR",
-			file: "crescivebolt/crescivebolt_cast/crescivebolt_cast",
-			texturePath: "crescivebolt/crescivebolt_cast/",
-			min: "crescivebolt/crescivebolt_cast/min_crescivebolt_cast"
-		}],
-		ef_wh_crescive_bolt_hit: [{
-			type: "STR",
-			file: "crescivebolt/crescivebolt_hit/crescivebolt_hit",
-			texturePath: "crescivebolt/crescivebolt_hit/",
-			min: "crescivebolt/crescivebolt_hit/min_crescivebolt_hit"
-		}],
-		ef_wh_flametrap: [{
-			type: "STR",
-			file: "flametrap/flametrap/flametrap",
-			texturePath: "flametrap/flametrap/",
-			min: "flametrap/flametrap/min_flametrap"
-		}, {
-			type: "STR",
-			file: "flametrap/flametrap_bottom/flametrap_bottom",
-			texturePath: "flametrap/flametrap_bottom/",
-			min: "flametrap/flametrap_bottom/min_flametrap_bottom",
-			renderBeforeEntities: true
-		}],
-		ef_wh_flametrap_cast: [{
-			type: "STR",
-			file: "flametrap/flametrap_cast/flametrap_cast",
-			texturePath: "flametrap/flametrap_cast/",
-			min: "flametrap/flametrap_cast/min_flametrap_cast"
-		}],
-		ef_wh_flametrap_hit: [{
-			type: "STR",
-			file: "flametrap/flametrap_hit/flametrap_hit",
-			texturePath: "flametrap/flametrap_hit/",
-			min: "flametrap/flametrap_hit/min_flametrap_hit"
-		}],
-		ef_wh_wild_walk: [{
-			type: "STR",
-			file: "windhawk/wh_wild_walk/wild_walk/wild_walk",
-			texturePath: "windhawk/wh_wild_walk/wild_walk/",
-			min: "windhawk/wh_wild_walk/wild_walk/min_wild_walk",
-			wav: "effect/wh_wild_walk"
-		}],
-		ef_wh_wild_walk_cast: [{
-			type: "STR",
-			file: "windhawk/wh_wild_walk/wild_walk_cast/wild_walk_cast",
-			texturePath: "windhawk/wh_wild_walk/wild_walk_cast/",
-			min: "windhawk/wh_wild_walk/wild_walk_cast/min_wild_walk_cast"
-		}, {
-			type: "STR",
-			file: "windhawk/wh_wild_walk/wild_walk_cast_bottom/wild_walk_cast_bottom",
-			texturePath: "windhawk/wh_wild_walk/wild_walk_cast_bottom/",
-			min: "windhawk/wh_wild_walk/wild_walk_cast_bottom/min_wild_walk_cast_bottom",
-			renderBeforeEntities: true
-		}],
-		ef_wh_wild_walk_hit: [{
-			type: "STR",
-			file: "windhawk/wh_wild_walk/wild_walk_hit/wild_walk_hit",
-			texturePath: "windhawk/wh_wild_walk/wild_walk_hit/",
-			min: "windhawk/wh_wild_walk/wild_walk_hit/min_wild_walk_hit"
-		}],
 		ef_abc_abyss_dagger: [{
 			type: "STR",
 			file: "abyss_dagger/abyss_dagger/abyss_dagger",
@@ -279889,6 +281688,196 @@ var init_EffectTable = __esmMin((() => {
 			zIndex: 1,
 			posxEndRand: 1.5,
 			posyEndRand: 1.5
+		}],
+		ef_wh_wind_sign: [{
+			type: "STR",
+			file: "windsign/windsign/windsign",
+			texturePath: "windsign/windsign/",
+			min: "windsign/windsign/min_windsign",
+			wav: "effect/wh_wind_sign"
+		}],
+		ef_wh_hawkrush: [{
+			type: "STR",
+			file: "hawkrush/hawkrush/hawkrush",
+			texturePath: "hawkrush/hawkrush/",
+			wav: "effect/wh_hawkrush"
+		}],
+		ef_wh_calamitygale_cast: [{
+			type: "STR",
+			file: "windhawk/calamitygale/calumitygale_cast/calumitygale_cast",
+			texturePath: "windhawk/calamitygale/calumitygale_cast/",
+			min: "windhawk/calamitygale/calumitygale_cast/min_calumitygale_cast",
+			fallback: ["4wh_calumitygale/calumitygale_cast/calumitygale_cast"],
+			wav: "effect/wh_calamitygale"
+		}],
+		ef_wh_hawkboomerang: [{
+			wav: "effect/wh_hawkboomerang",
+			attachedEntity: true
+		}],
+		ef_wh_galestorm: [{
+			type: "STR",
+			file: "galestorm/galestorm/galestorm",
+			texturePath: "galestorm/galestorm/",
+			min: "galestorm/galestorm/min_galestorm",
+			wav: "effect/wh_galestorm"
+		}],
+		ef_wh_galestorm_cast: [{
+			type: "STR",
+			file: "galestorm/galestorm_cast/galestorm_cast",
+			texturePath: "galestorm/galestorm_cast/",
+			min: "galestorm/galestorm_cast/min_galestorm_cast"
+		}],
+		ef_wh_galestorm_hit: [{
+			type: "STR",
+			file: "galestorm/galestorm_hit/galestorm_hit",
+			texturePath: "galestorm/galestorm_hit/",
+			min: "galestorm/galestorm_hit/min_galestorm_hit"
+		}],
+		ef_wh_deepblindtrap: [{
+			type: "STR",
+			file: "deepblindtrap/deepblindtrap/deepblindtrap",
+			texturePath: "deepblindtrap/deepblindtrap/",
+			min: "deepblindtrap/deepblindtrap/min_deepblindtrap"
+		}, {
+			type: "STR",
+			file: "deepblindtrap/deepblindtrap_bottom/deepblindtrap_bottom",
+			texturePath: "deepblindtrap/deepblindtrap_bottom/",
+			min: "deepblindtrap/deepblindtrap_bottom/min_deepblindtrap_bottom",
+			renderBeforeEntities: true
+		}],
+		ef_wh_deepblindtrap_cast: [{
+			type: "STR",
+			file: "deepblindtrap/deepblindtrap_cast/deepblindtrap_cast",
+			texturePath: "deepblindtrap/deepblindtrap_cast/",
+			min: "deepblindtrap/deepblindtrap_cast/min_deepblindtrap_cast"
+		}],
+		ef_wh_deepblindtrap_hit: [{
+			type: "STR",
+			file: "deepblindtrap/deepblindtrap_hit/deepblindtrap_hit",
+			texturePath: "deepblindtrap/deepblindtrap_hit/",
+			min: "deepblindtrap/deepblindtrap_hit/min_deepblindtrap_hit"
+		}],
+		ef_wh_solidtrap: [{
+			type: "STR",
+			file: "solidtrap/solidtrap/solidtrap",
+			texturePath: "solidtrap/solidtrap/",
+			min: "solidtrap/solidtrap/min_solidtrap"
+		}, {
+			type: "STR",
+			file: "solidtrap/solidtrap_bottom/solidtrap_bottom",
+			texturePath: "solidtrap/solidtrap_bottom/",
+			min: "solidtrap/solidtrap_bottom/min_solidtrap_bottom",
+			renderBeforeEntities: true
+		}],
+		ef_wh_solidtrap_cast: [{
+			type: "STR",
+			file: "solidtrap/solidtrap_cast/solidtrap_cast",
+			texturePath: "solidtrap/solidtrap_cast/",
+			min: "solidtrap/solidtrap_cast/min_solidtrap_cast"
+		}, {
+			type: "STR",
+			file: "solidtrap/solidtrap_cast_bottom/solidtrap_cast_bottom",
+			texturePath: "solidtrap/solidtrap_cast_bottom/",
+			min: "solidtrap/solidtrap_cast_bottom/min_solidtrap_cast_bottom",
+			renderBeforeEntities: true
+		}],
+		ef_wh_solidtrap_hit: [{
+			type: "STR",
+			file: "solidtrap/solidtrap_hit/solidtrap_hit",
+			texturePath: "solidtrap/solidtrap_hit/",
+			min: "solidtrap/solidtrap_hit/min_solidtrap_hit"
+		}],
+		ef_wh_swifttrap: [{
+			type: "STR",
+			file: "swifttrap/swifttrap/swifttrap",
+			texturePath: "swifttrap/swifttrap/",
+			min: "swifttrap/swifttrap/min_swifttrap"
+		}, {
+			type: "STR",
+			file: "swifttrap/swifttrap_bottom/swifttrap_bottom",
+			texturePath: "swifttrap/swifttrap_bottom/",
+			min: "swifttrap/swifttrap_bottom/min_swifttrap_bottom",
+			renderBeforeEntities: true
+		}],
+		ef_wh_swifttrap_cast: [{
+			type: "STR",
+			file: "swifttrap/swifttrap_cast/swifttrap_cast",
+			texturePath: "swifttrap/swifttrap_cast/",
+			min: "swifttrap/swifttrap_cast/min_swifttrap_cast"
+		}],
+		ef_wh_swifttrap_hit: [{
+			type: "STR",
+			file: "swifttrap/swifttrap_hit/swifttrap_hit",
+			texturePath: "swifttrap/swifttrap_hit/",
+			min: "swifttrap/swifttrap_hit/min_swifttrap_hit"
+		}],
+		ef_wh_crescive_bolt: [{
+			type: "STR",
+			file: "crescivebolt/crescivebolt/crescivebolt",
+			texturePath: "crescivebolt/crescivebolt/",
+			min: "crescivebolt/crescivebolt/min_crescivebolt",
+			wav: "effect/wh_crescive_bolt"
+		}],
+		ef_wh_crescive_bolt_cast: [{
+			type: "STR",
+			file: "crescivebolt/crescivebolt_cast/crescivebolt_cast",
+			texturePath: "crescivebolt/crescivebolt_cast/",
+			min: "crescivebolt/crescivebolt_cast/min_crescivebolt_cast"
+		}],
+		ef_wh_crescive_bolt_hit: [{
+			type: "STR",
+			file: "crescivebolt/crescivebolt_hit/crescivebolt_hit",
+			texturePath: "crescivebolt/crescivebolt_hit/",
+			min: "crescivebolt/crescivebolt_hit/min_crescivebolt_hit"
+		}],
+		ef_wh_flametrap: [{
+			type: "STR",
+			file: "flametrap/flametrap/flametrap",
+			texturePath: "flametrap/flametrap/",
+			min: "flametrap/flametrap/min_flametrap"
+		}, {
+			type: "STR",
+			file: "flametrap/flametrap_bottom/flametrap_bottom",
+			texturePath: "flametrap/flametrap_bottom/",
+			min: "flametrap/flametrap_bottom/min_flametrap_bottom",
+			renderBeforeEntities: true
+		}],
+		ef_wh_flametrap_cast: [{
+			type: "STR",
+			file: "flametrap/flametrap_cast/flametrap_cast",
+			texturePath: "flametrap/flametrap_cast/",
+			min: "flametrap/flametrap_cast/min_flametrap_cast"
+		}],
+		ef_wh_flametrap_hit: [{
+			type: "STR",
+			file: "flametrap/flametrap_hit/flametrap_hit",
+			texturePath: "flametrap/flametrap_hit/",
+			min: "flametrap/flametrap_hit/min_flametrap_hit"
+		}],
+		ef_wh_wild_walk: [{
+			type: "STR",
+			file: "windhawk/wh_wild_walk/wild_walk/wild_walk",
+			texturePath: "windhawk/wh_wild_walk/wild_walk/",
+			min: "windhawk/wh_wild_walk/wild_walk/min_wild_walk",
+			wav: "effect/wh_wild_walk"
+		}],
+		ef_wh_wild_walk_cast: [{
+			type: "STR",
+			file: "windhawk/wh_wild_walk/wild_walk_cast/wild_walk_cast",
+			texturePath: "windhawk/wh_wild_walk/wild_walk_cast/",
+			min: "windhawk/wh_wild_walk/wild_walk_cast/min_wild_walk_cast"
+		}, {
+			type: "STR",
+			file: "windhawk/wh_wild_walk/wild_walk_cast_bottom/wild_walk_cast_bottom",
+			texturePath: "windhawk/wh_wild_walk/wild_walk_cast_bottom/",
+			min: "windhawk/wh_wild_walk/wild_walk_cast_bottom/min_wild_walk_cast_bottom",
+			renderBeforeEntities: true
+		}],
+		ef_wh_wild_walk_hit: [{
+			type: "STR",
+			file: "windhawk/wh_wild_walk/wild_walk_hit/wild_walk_hit",
+			texturePath: "windhawk/wh_wild_walk/wild_walk_hit/",
+			min: "windhawk/wh_wild_walk/wild_walk_hit/min_wild_walk_hit"
 		}],
 		ef_spear_projectile: [{
 			type: "3D",
@@ -302574,6 +304563,7 @@ function loadSignBoardList(filename, callback, onEnd) {
 				return 1;
 			};
 			lua.mountFile("SignBoardList.lub", buffer);
+			lua.doStringSync("SignBoardList = nil");
 			await lua.doFile("SignBoardList.lub");
 			lua.doStringSync(`
 						function main_SignBoardList()
@@ -302594,7 +304584,7 @@ function loadSignBoardList(filename, callback, onEnd) {
 						end
                         main_SignBoardList()
 					`);
-			SignBoardTable = preprocessSignboardData(signBoardList);
+			mergeSignboards(signBoardList, SignBoardTable);
 		} catch (error) {
 			console.error("[loadSignBoardList] Error: ", error);
 		} finally {
@@ -302602,22 +304592,6 @@ function loadSignBoardList(filename, callback, onEnd) {
 			onEnd();
 		}
 	}, onEnd);
-}
-/**
-* Preprocesses an array of signboard objects and organizes them into a nested dictionary.
-*
-* @param {Array} signboardArray - The array of signboard objects.
-* @return {Object} The nested dictionary containing the preprocessed signboard data.
-*/
-function preprocessSignboardData(signboardArray) {
-	const signboardDict = {};
-	for (const signboard of signboardArray) {
-		const { mapname, x, y } = signboard;
-		if (!signboardDict[mapname]) signboardDict[mapname] = {};
-		if (!signboardDict[mapname][x]) signboardDict[mapname][x] = {};
-		signboardDict[mapname][x][y] = signboard;
-	}
-	return signboardDict;
 }
 /**
 * Load weapontable.lub to WeaponTable and WeaponHitSoundTable
@@ -302744,6 +304718,10 @@ function loadSkillInfoList(filename, callback, onEnd) {
 				SkillInfo[skillId]._NeedSkillList.push([requiredSkillId, requiredLevel]);
 				return 1;
 			};
+			ctx.AddJobSkillRequirementList = (skillId, jobId) => {
+				if (!SkillInfo[skillId].NeedSkillList[jobId]) SkillInfo[skillId].NeedSkillList[jobId] = [];
+				return 1;
+			};
 			ctx.AddJobSkillRequirement = (skillId, jobId, requiredSkillId, requiredLevel) => {
 				if (!SkillInfo[skillId].NeedSkillList[jobId]) SkillInfo[skillId].NeedSkillList[jobId] = [];
 				SkillInfo[skillId].NeedSkillList[jobId].push([requiredSkillId, requiredLevel]);
@@ -302795,6 +304773,7 @@ function loadSkillInfoList(filename, callback, onEnd) {
 								if skillData.NeedSkillList then  
 									for jobId, reqList in pairs(skillData.NeedSkillList) do  
 										if reqList then  
+											AddJobSkillRequirementList(skillId, jobId)
 											for _, req in ipairs(reqList) do  
 												if req[1] and req[2] then  
 													AddJobSkillRequirement(skillId, jobId, req[1], req[2])  
@@ -302840,7 +304819,8 @@ function loadSkillTreeView(filename, callback, onEnd) {
 	}, onEnd);
 }
 function loadSkillTreeViewData(filename, callback, onEnd) {
-	const builtInTree = {};
+	resetSkillTree(SkillTreeView);
+	const fileJobs = /* @__PURE__ */ new Set();
 	Client.loadFile(filename, async function(file) {
 		try {
 			console.log("Loading file \"" + filename + "\"...");
@@ -302866,7 +304846,7 @@ function loadSkillTreeViewData(filename, callback, onEnd) {
 					list,
 					beforeJob
 				};
-				if (SkillTreeView[jobId] && !(jobId in builtInTree)) builtInTree[jobId] = SkillTreeView[jobId];
+				fileJobs.add(jobId);
 				SkillTreeView[jobId] = entry;
 				return 1;
 			};
@@ -302929,7 +304909,7 @@ function loadSkillTreeViewData(filename, callback, onEnd) {
 						
 						main_skillTreeView()    
 					`);
-			keepBuiltInSkills(builtInTree);
+			keepBuiltInSkills(SkillTreeView, fileJobs);
 		} catch (error) {
 			console.error("[loadSkillTreeView] Error: ", error);
 		} finally {
@@ -302938,31 +304918,6 @@ function loadSkillTreeViewData(filename, callback, onEnd) {
 			onEnd();
 		}
 	}, onEnd);
-}
-/**
-* Put back the built-in SkillTreeView positions of skills a loaded
-* skilltreeview.lub leaves out, keeping every position the file set.
-*
-* @param {object} builtInTree - jobId -> the built-in entry the file replaced
-*/
-function keepBuiltInSkills(builtInTree) {
-	for (const [jobId, builtIn] of Object.entries(builtInTree)) {
-		const entry = SkillTreeView[jobId];
-		if (!entry) continue;
-		const skillOf = (key) => /^\d+$/.test(key);
-		const taken = new Set(Object.keys(entry).filter(skillOf).map((key) => entry[key]));
-		let next = Math.max(-1, ...taken) + 1;
-		for (const [skillId, pos] of Object.entries(builtIn)) {
-			if (!skillOf(skillId) || skillId in entry) continue;
-			let slot = pos;
-			if (taken.has(slot)) {
-				while (taken.has(next)) next++;
-				slot = next;
-			}
-			entry[skillId] = slot;
-			taken.add(slot);
-		}
-	}
 }
 /**
 * Load State Icon Info (StatusInfo) from Lua files
@@ -303116,9 +305071,69 @@ function loadStateIconInfo(basePath, callback, onEnd) {
 	}
 	loadNext(0);
 }
-function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isResourceTable = false) {
+/**
+* customLuaTables: tables a mod adds rows to, instead of replacing the whole
+* file. `Configs.get('customLuaTables')` is an object of lists:
+*
+*   accessory: [[idfile, namefile], ...]   headgear looks   (accessoryid / accname)
+*   robe:      [[idfile, namefile], ...]   garment looks    (spriterobeid / spriterobename)
+*   monster:   [[idfile, namefile], ...]   monster sprites  (npcidentity / jobname)
+*   weapon:    [file, ...]                 weapon looks     (weapontable)
+*
+* Each is loaded after the base table, in order, and merged over it by id --
+* the counterpart of customItemInfo and customQuestInfo for the view tables.
+*
+* @param {string} key
+* @return {Array}
+*/
+function customLuaTables(key) {
+	const all = Configs.get("customLuaTables", {});
+	const list = all && typeof all === "object" ? all[key] : null;
+	return Array.isArray(list) ? list : [];
+}
+/**
+* loadLuaTable, then each customLuaTables[key] pair after it.
+*
+* A mod's rows must land after the base's, or the base would overwrite them,
+* so each table starts when the one before it has been parsed or has failed.
+* `onEnd` waits for the whole chain: loadLuaTable on its own calls onEnd as
+* soon as it has *started*, which let the game place the player before a
+* mod's headgear row existed -- the look was looked up, not found, and never
+* shown. A table that fails says so in the console and the chain goes on.
+*/
+function loadLuaTableWithCustom(file_list, table_name, key, callback, onEnd, contextFunc, isResourceTable = false) {
+	const custom = customLuaTables(key);
+	const next = (index) => {
+		if (index >= custom.length) {
+			onEnd.call();
+			return;
+		}
+		const advance = once(() => next(index + 1));
+		loadLuaTable(custom[index], table_name, function(json) {
+			callback.call(null, json);
+			advance();
+		}, function() {}, null, isResourceTable, advance);
+	};
+	const start = once(() => next(0));
+	loadLuaTable(file_list, table_name, function(json) {
+		callback.call(null, json);
+		start();
+	}, function() {}, contextFunc, isResourceTable, start);
+}
+/** fn, callable once; later calls do nothing. */
+function once(fn) {
+	let called = false;
+	return (...args) => {
+		if (!called) {
+			called = true;
+			fn(...args);
+		}
+	};
+}
+function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isResourceTable = false, onError = null) {
 	const id_filename = file_list[0];
 	const value_table_filename = file_list[1];
+	const fail = typeof onError === "function" ? onError : function() {};
 	try {
 		console.log("Loading file \"" + id_filename + "\"...");
 		Client.loadFile(id_filename, async function(file) {
@@ -303129,8 +305144,9 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 				loadValueTable();
 			} catch (hException) {
 				console.error(`(${id_filename}) error: `, hException);
+				fail(hException);
 			}
-		});
+		}, () => fail(/* @__PURE__ */ new Error(`${id_filename} not found`)));
 		function loadValueTable() {
 			console.log("Loading file \"" + value_table_filename + "\"...");
 			Client.loadFile(value_table_filename, async function(file) {
@@ -303141,8 +305157,9 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 					parseTable();
 				} catch (hException) {
 					console.error(`(${value_table_filename}) error: `, hException);
+					fail(hException);
 				}
-			});
+			}, () => fail(/* @__PURE__ */ new Error(`${value_table_filename} not found`)));
 		}
 		function parseTable() {
 			const table = {};
@@ -303181,6 +305198,7 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 		}
 	} catch (e) {
 		console.error("error: ", e);
+		fail(e);
 	} finally {
 		onEnd.call();
 	}
@@ -303584,6 +305602,7 @@ var init_DBManager = __esmMin((() => {
 	init_SkillConst();
 	init_SkillInfo();
 	init_SkillTreeView();
+	init_SkillTreeMerge();
 	init_JobHitSoundTable();
 	init_WeaponTrailTable();
 	init_TownInfo();
@@ -303597,6 +305616,7 @@ var init_DBManager = __esmMin((() => {
 	init_PetFriendlyState();
 	init_PetMessageConst();
 	init_MapTable();
+	init_SignboardMerge();
 	init_NetworkManager();
 	init_PacketStructure();
 	init_PacketVerManager();
@@ -303742,27 +305762,30 @@ var init_DBManager = __esmMin((() => {
 					iteminfoNames = iteminfoNames.concat(getSystemAliases("System/itemInfo.lub"));
 					tryLoadLuaAliases(loadItemInfo, iteminfoNames, null, onLoad());
 				}
-				loadLuaTable([DB.LUA_PATH + "datainfo/accessoryid.lub", DB.LUA_PATH + "datainfo/accname.lub"], "AccNameTable", function(json) {
+				loadLuaTableWithCustom([DB.LUA_PATH + "datainfo/accessoryid.lub", DB.LUA_PATH + "datainfo/accname.lub"], "AccNameTable", "accessory", function(json) {
 					Object.assign(HatTable_default, json);
 				}, onLoad(), null, true);
-				loadLuaTable([DB.LUA_PATH + "datainfo/spriterobeid.lub", DB.LUA_PATH + "datainfo/spriterobename.lub"], "RobeNameTable", function(json) {
+				loadLuaTableWithCustom([DB.LUA_PATH + "datainfo/spriterobeid.lub", DB.LUA_PATH + "datainfo/spriterobename.lub"], "RobeNameTable", "robe", function(json) {
 					Object.assign(RobeTable_default, json);
 				}, onLoad(), null, true);
-				if (PacketVerManager_default.value >= 20141008) loadLuaTable([DB.LUA_PATH + "datainfo/npcidentity.lub", DB.LUA_PATH + "datainfo/jobname.lub"], "JobNameTable", function(json) {
+				if (PacketVerManager_default.value >= 20141008) loadLuaTableWithCustom([DB.LUA_PATH + "datainfo/npcidentity.lub", DB.LUA_PATH + "datainfo/jobname.lub"], "JobNameTable", "monster", function(json) {
 					Object.assign(MonsterTable_default, json);
 				}, onLoad(), function() {
 					loadPetInfo(DB.LUA_PATH + "datainfo/petinfo.lub", null, function() {
 						tryLoadLuaAliases(loadPetEvolution, getSystemAliases("System/PetEvolutionCln.lub"), null, onLoad());
 					});
 				});
-				else loadLuaTable([DB.LUA_PATH + "datainfo/npcidentity.lub", DB.LUA_PATH + "datainfo/jobname.lub"], "JobNameTable", function(json) {
+				else loadLuaTableWithCustom([DB.LUA_PATH + "datainfo/npcidentity.lub", DB.LUA_PATH + "datainfo/jobname.lub"], "JobNameTable", "monster", function(json) {
 					Object.assign(MonsterTable_default, json);
 				}, onLoad());
 				loadLuaTable([DB.LUA_PATH + "datainfo/enumvar.lub", DB.LUA_PATH + "datainfo/addrandomoptionnametable.lub"], "NameTable_VAR", function(json) {
 					Object.assign(ItemRandomOptionTable_default, json);
 				}, onLoad());
 				loadItemDBTable(DB.LUA_PATH + "ItemDBNameTbl.lub", null, onLoad());
-				loadWeaponTable(DB.LUA_PATH + "datainfo/weapontable.lub", null, onLoad());
+				const onWeaponEnd = onLoad();
+				const customWeapons = customLuaTables("weapon");
+				const loadCustomWeapon = (index = 0) => index < customWeapons.length ? loadWeaponTable(customWeapons[index], null, () => loadCustomWeapon(index + 1)) : onWeaponEnd();
+				loadWeaponTable(DB.LUA_PATH + "datainfo/weapontable.lub", null, () => loadCustomWeapon());
 				if (PacketVerManager_default.value >= 20170208) loadTitleTable(DB.LUA_PATH + "datainfo/titletable.lub", null, onLoad());
 				const onSkillEnd = onLoad();
 				loadLuaValue(DB.LUA_PATH + "skillinfoz/skillid.lub", "SKID", (json) => {
@@ -303822,9 +305845,10 @@ var init_DBManager = __esmMin((() => {
 					updateMapTable();
 				}, onLoad());
 				const onSignBoardEnd = onLoad();
-				loadSignBoardList(DB.LUA_PATH + "SignBoardList.lub", null, () => {
-					loadSignBoardData("SystemEN/Sign_Data.lub", null, onSignBoardEnd);
-				});
+				const customSignBoardList = Configs.get("customSignBoardList", []);
+				SignBoardTable = {};
+				const loadCustomSignBoardList = (index = 0) => index < customSignBoardList.length ? loadSignBoardList(customSignBoardList[index], null, () => loadCustomSignBoardList(index + 1)) : loadSignBoardData("SystemEN/Sign_Data.lub", null, onSignBoardEnd);
+				loadSignBoardList(DB.LUA_PATH + "SignBoardList.lub", null, () => loadCustomSignBoardList());
 				if (Configs.get("enableCheckAttendance") && PacketVerManager_default.value >= 20180307) loadAttendanceFile("System/CheckAttendance.lub", null, onLoad());
 				const onQuestEnd = onLoad();
 				const customQuestInfo = Configs.get("customQuestInfo", []);
@@ -304232,7 +306256,8 @@ var init_DBManager = __esmMin((() => {
 		*/
 		static getBodyPalPath(id, pal, sex) {
 			if (id === 0 || !(id in PalNameTable)) return null;
-			return "data/palette/¸ö/" + PalNameTable[id] + "_" + SexTable[sex] + "_" + pal + ".pal";
+			const costume = String(PalNameTable[id]).startsWith("costume_1/") ? "_1" : "";
+			return "data/palette/¸ö/" + PalNameTable[id] + "_" + SexTable[sex] + "_" + pal + costume + ".pal";
 		}
 		/**
 		* @return {string} path to head sprite/action
@@ -304853,7 +306878,7 @@ var init_DBManager = __esmMin((() => {
 		static getWeaponPath(id, job, sex, leftid = false) {
 			if (id === 0) return null;
 			const baseClass = WeaponJobTable[job] || WeaponJobTable[0];
-			id = DB.getWeaponType(id);
+			id = id >= WeaponType_default.MAX && WeaponName[id] !== void 0 ? id : DB.getWeaponType(id);
 			if (leftid) {
 				if (leftid in ItemTable_default && "ClassNum" in ItemTable_default[leftid]) leftid = ItemTable_default[leftid].ClassNum;
 				const right = Object.keys(WeaponType_default).find((key) => WeaponType_default[key] === id);
@@ -307250,7 +309275,7 @@ var init_EntityControl = __esmMin((() => {
 						Trade_default.reqExchange(entity.GID, entity.display.name);
 					});
 					if (SessionStorage_default.hasGuild) {
-						if (SessionStorage_default.guildRight & 1 && !this.GUID) ContextMenu_default.addElement(DB.getMessage(382).replace("%s", this.display.name), () => {
+						if (SessionStorage_default.guildPermission & 1 && !this.GUID) ContextMenu_default.addElement(DB.getMessage(382).replace("%s", this.display.name), () => {
 							GuildEngine.requestPlayerInvitation(entity.GID);
 						});
 						if (SessionStorage_default.isGuildMaster && this.GUID && SessionStorage_default.Entity.GUID !== this.GUID) {
@@ -307827,6 +309852,7 @@ var init_EntityDisplay = __esmMin((() => {
 	init_gl_matrix();
 	init_Map();
 	init_EntityOverlay();
+	init_SessionStorage();
 	vec4$3 = gl_matrix_default.vec4;
 	_pos$3 = /* @__PURE__ */ new Float32Array(4);
 	_size$3 = /* @__PURE__ */ new Float32Array(2);
@@ -307887,6 +309913,7 @@ var init_EntityDisplay = __esmMin((() => {
 			this.title_name = "";
 			this.emblem = null;
 			this.gifEmblem = null;
+			this.emblemY = 0;
 			this.display = false;
 			this.canvas = document.createElement("canvas");
 			this.canvas.className = "entity-display";
@@ -307925,14 +309952,15 @@ var init_EntityDisplay = __esmMin((() => {
 		/**
 		* Update the display
 		* @param {string} color
+		* @see docs/reference/guild/nameplate-emblem.md
 		*/
 		update(style) {
 			style = style || this.STYLE.DEFAULT;
 			const lines = new Array(2);
 			const fontSize = 12 * dpr;
 			const ctx = this.ctx;
-			const start_x = (this.emblem && (style === this.STYLE.DEFAULT || style === this.STYLE.ADMIN || style === this.STYLE.MOB || style === this.STYLE.NPC) ? 26 : 0) + 5;
-			const paddingTop = 5;
+			const start_x = ((this.emblem && (style === this.STYLE.DEFAULT || style === this.STYLE.ADMIN || style === this.STYLE.MOB || style === this.STYLE.NPC) ? 26 : 0) + 5) * dpr;
+			const paddingTop = 5 * dpr;
 			lines[0] = this.fakename ? this.fakename.split("#")[0] : this.name.split("#")[0];
 			lines[1] = "";
 			if (this.party_name.length && (style === this.STYLE.DEFAULT || style === this.STYLE.ADMIN || style === this.STYLE.MOB || style === this.STYLE.NPC)) lines[0] += " (" + this.party_name + ")";
@@ -307942,16 +309970,18 @@ var init_EntityDisplay = __esmMin((() => {
 			} else if (this.guild_rank.length && (style === this.STYLE.DEFAULT || style === this.STYLE.ADMIN || style === this.STYLE.MOB || style === this.STYLE.NPC)) lines[1] = this.guild_rank;
 			if (Map_default.showname && this.title_name.length && (style === this.STYLE.DEFAULT || style === this.STYLE.ADMIN || style === this.STYLE.MOB || style === this.STYLE.NPC)) lines[0] = "[" + this.title_name + "] " + lines[0];
 			ctx.font = (Map_default.showname ? "bold " : "") + fontSize + "px Arial";
-			const width = Math.max(ctx.measureText(lines[0]).width, ctx.measureText(lines[1]).width) + start_x + 5;
+			const width = Math.max(ctx.measureText(lines[0]).width, ctx.measureText(lines[1]).width) + start_x + 5 * dpr;
 			const height = fontSize * 3 * (lines[1].length ? 2 : 1) + paddingTop;
 			ctx.canvas.width = width;
 			ctx.canvas.height = height;
+			const plateHeight = Math.max((fontSize + 2 * dpr) * (lines[1].length ? 2 : 1) + 6 * dpr, 24 * dpr);
+			this.emblemY = (plateHeight - 24 * dpr) / 2 + paddingTop - 4 * dpr;
 			if (this.emblem && (style === this.STYLE.DEFAULT || style === this.STYLE.ADMIN || style === this.STYLE.MOB || style === this.STYLE.NPC)) {
 				if (this.gifEmblem) {
 					const fw = this.gifEmblem.frameWidth;
 					const fh = this.gifEmblem.frameHeight;
-					ctx.drawImage(this.gifEmblem, 0, 0, fw, fh, 0, paddingTop, 24, 24);
-				} else ctx.drawImage(this.emblem, 0, paddingTop, 24, 24);
+					ctx.drawImage(this.gifEmblem, 0, 0, fw, fh, 0, this.emblemY, 24 * dpr, 24 * dpr);
+				} else ctx.drawImage(this.emblem, 0, this.emblemY, 24 * dpr, 24 * dpr);
 			}
 			let color = "white";
 			switch (style) {
@@ -307979,7 +310009,7 @@ var init_EntityDisplay = __esmMin((() => {
 				multiShadow(ctx, lines[1], start_x, fontSize * 1.2 + paddingTop, 1, 0, 0);
 				ctx.fillStyle = color;
 				ctx.strokeStyle = "black";
-				ctx.strokeText(lines[0], start_x, 5);
+				ctx.strokeText(lines[0], start_x, 0 + paddingTop);
 				ctx.fillText(lines[0], start_x, paddingTop);
 				ctx.strokeText(lines[1], start_x, fontSize * 1.2 + paddingTop);
 				ctx.fillText(lines[1], start_x, fontSize * 1.2 + paddingTop);
@@ -307997,14 +310027,14 @@ var init_EntityDisplay = __esmMin((() => {
 		* Refreshes the display (when player uses /showname)
 		*/
 		refresh(entity) {
-			this.update(entity.objecttype === entity.constructor.TYPE_MOB ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC_ABR ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC_BIONIC ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_DISGUISED ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC ? entity.display.STYLE.NPC : entity.objecttype === entity.constructor.TYPE_NPC2 ? entity.display.STYLE.NPC : entity.objecttype === entity.constructor.TYPE_ITEM ? entity.display.STYLE.ITEM : entity.objecttype === entity.constructor.TYPE_PC && entity.isAdmin ? entity.display.STYLE.ADMIN : entity.display.STYLE.DEFAULT);
+			this.update(entity.objecttype === entity.constructor.TYPE_MOB ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC_ABR ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC_BIONIC ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_DISGUISED ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC ? entity.display.STYLE.NPC : entity.objecttype === entity.constructor.TYPE_NPC2 ? entity.display.STYLE.NPC : entity.objecttype === entity.constructor.TYPE_ITEM ? entity.display.STYLE.ITEM : entity.objecttype === entity.constructor.TYPE_PC && SessionStorage_default.showsAdmin(entity, "name") ? entity.display.STYLE.ADMIN : entity.display.STYLE.DEFAULT);
 		}
 		/**
 		* Rendering GUI
+		* @see docs/reference/guild/nameplate-emblem.md
 		*/
 		render(matrix) {
 			if (this.gifEmblem) {
-				const paddingTop = 5;
 				const now = Date.now();
 				const currentFrameIndex = this.gifEmblem.currentFrame || 0;
 				const frameDelay = this.gifEmblem.frameDelays ? this.gifEmblem.frameDelays[currentFrameIndex] : 100;
@@ -308019,9 +310049,9 @@ var init_EntityDisplay = __esmMin((() => {
 					const row = Math.floor(this.gifEmblem.currentFrame / fpr);
 					this.ctx.save();
 					this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-					this.ctx.clearRect(0, paddingTop * dpr, 24 * dpr, 24 * dpr);
+					this.ctx.clearRect(0, this.emblemY, 24 * dpr, 24 * dpr);
 					this.ctx.restore();
-					this.ctx.drawImage(this.gifEmblem, col * fw, row * fh, fw, fh, 0, paddingTop, 24, 24);
+					this.ctx.drawImage(this.gifEmblem, col * fw, row * fh, fw, fh, 0, this.emblemY, 24 * dpr, 24 * dpr);
 				}
 			}
 			const canvas = this.canvas;
@@ -308912,6 +310942,7 @@ function UpdateBody(job) {
 	let baseJob;
 	const transformationSeq = this._transformationSeq || 0;
 	if (job < 0) return;
+	this._bodyStyleJob = null;
 	const isTransformation = hasTransformation.call(this);
 	for (baseJob in MountTable) if (MountTable[baseJob] === job) {
 		this.costume = job;
@@ -308928,7 +310959,7 @@ function UpdateBody(job) {
 	if (this.costume) job = this.costume;
 	this.xSize = this.ySize = DB.isBaby(job) ? 4 : 5;
 	this.files.shadow.size = job in ShadowTable_default ? ShadowTable_default[job] : 1;
-	let path = this.isAdmin && !shouldSuppressHead.call(this) ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex);
+	let path = SessionStorage_default.showsAdmin(this, "sprite") && !shouldSuppressHead.call(this) ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex);
 	const Entity = this.constructor;
 	if (this.objecttype === Entity.TYPE_UNKNOWN) {
 		let objecttype;
@@ -309143,7 +311174,9 @@ function UpdateBodyStyle(look) {
 				job = this.costume;
 			}
 		}
-		path = this.isAdmin ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex, look, cashMountCostume);
+		path = SessionStorage_default.showsAdmin(this, "sprite") ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex, look, cashMountCostume);
+		const styled = !SessionStorage_default.showsAdmin(this, "sprite") && PacketVerManager_default.value > 20141022 && look > 0 && look !== job && !cashMountCostume;
+		this._bodyStyleJob = styled ? look : null;
 		Entity = this.constructor;
 		Client.loadFile(path + ".act");
 		Client.loadFile(path + ".spr", function() {
@@ -309167,7 +311200,8 @@ function UpdateBodyPalette(pal) {
 		return;
 	}
 	if (this._job === -1) return;
-	this.files.body.pal = DB.getBodyPalPath(getEffectiveJob.call(this), this._bodypalette, this._sex);
+	const job = this._bodyStyleJob && !hasTransformation.call(this) ? this._bodyStyleJob : getEffectiveJob.call(this);
+	this.files.body.pal = DB.getBodyPalPath(job, this._bodypalette, this._sex);
 }
 /**
 * Update head
@@ -309394,6 +311428,7 @@ var init_EntityView = __esmMin((() => {
 	init_PacketVerManager();
 	init_JobConst();
 	init_GR2ModelRenderer();
+	init_SessionStorage();
 	GR2_MODEL_ROOT = "data/model/3dmob/";
 	GR2_FALLBACK_JOB = 1002;
 	HeadParts = [
@@ -310068,33 +312103,48 @@ function render$6(modelView, projection) {
 	this.boundingRect.y1 = -Infinity;
 	this.boundingRect.x2 = -Infinity;
 	this.boundingRect.y2 = Infinity;
+	this.waterDepthAttachments = this._waterDepthAttachments || (this._waterDepthAttachments = []);
+	this.waterDepthAttachments.length = 0;
 	if (this.effectColor[3]) {
 		this.renderEntity();
 		this.attachments.render(Date.now());
 	}
 	renderGUI(this, modelView, projection);
 }
-/**
-* Depth-only redraw of the body for entities standing in water, so the water
-* pass (drawn after entities, depth tested) covers only the submerged part.
-* Runs after every entity has been drawn, with colour writes disabled by the
-* caller, so the written depth cannot hide other sprites. Replays the exact
-* layers the colour pass drew this frame (`waterDepthFrame`), so no animation,
-* sound or trail state is touched. Only set for the non-player body pass;
-* entity types that already write depth never get a frame.
-*/
 function renderWaterDepth$1() {
 	const frame = this.waterDepthFrame;
-	if (!frame || this.hideEntity || !this.effectColor[3]) return;
+	const attachments = this.waterDepthAttachments;
+	if (this.hideEntity || !this.effectColor[3] || !frame && !(attachments && attachments.length)) return;
 	const self = this;
 	const rect = this.boundingRect;
 	const x1 = rect.x1, y1 = rect.y1, x2 = rect.x2, y2 = rect.y2;
-	SpriteRenderer.position.set(this.position);
-	SpriteRenderer.position[2] = SpriteRenderer.position[2] + .2;
-	SpriteRenderer.zIndex = 150;
-	SpriteRenderer.runWithDepth(true, true, false, function() {
-		for (let i = 0, count = frame.layers.length; i < count; ++i) self.renderLayer(frame.layers[i], frame.spr, frame.pal, frame.size, frame.position, "body", false);
-	});
+	if (frame) {
+		SpriteRenderer.position.set(this.position);
+		SpriteRenderer.position[2] = SpriteRenderer.position[2] + .2;
+		SpriteRenderer.zIndex = 150;
+		SpriteRenderer.runWithDepth(true, true, false, function() {
+			for (let i = 0, count = frame.layers.length; i < count; ++i) self.renderLayer(frame.layers[i], frame.spr, frame.pal, frame.size, frame.position, "body", false);
+		});
+	}
+	if (attachments && attachments.length) {
+		const alpha = this.effectColor[3];
+		for (let a = 0; a < attachments.length; ++a) {
+			const item = attachments[a];
+			SpriteRenderer.position[0] = item.position[0];
+			SpriteRenderer.position[1] = item.position[1];
+			SpriteRenderer.position[2] = item.position[2];
+			SpriteRenderer.depth = item.depth;
+			SpriteRenderer.zIndex = item.zIndex;
+			this.effectColor[3] = item.opacity;
+			_attachmentPosition[0] = item.x;
+			_attachmentPosition[1] = item.y;
+			SpriteRenderer.runWithDepth(true, true, false, function() {
+				for (let i = 0, count = item.layers.length; i < count; ++i) self.renderLayer(item.layers[i], item.spr, item.spr, 1, _attachmentPosition, false);
+			});
+		}
+		this.effectColor[3] = alpha;
+		SpriteRenderer.depth = 0;
+	}
 	SpriteRenderer.zIndex = 1;
 	rect.x1 = x1;
 	rect.y1 = y1;
@@ -310374,7 +312424,7 @@ function Init$3() {
 	this.waterDepthFrame = void 0;
 	this._waterDepthFrameBuffer = null;
 }
-var WALK_DIST_TO_MOTION, renderGUI, SPRITE_LIFT, calculateBoundingRect, renderEntity, renderElement;
+var WALK_DIST_TO_MOTION, renderGUI, SPRITE_LIFT, calculateBoundingRect, renderEntity, _attachmentPosition, renderElement;
 var init_EntityRender = __esmMin((() => {
 	init_gl_matrix();
 	init_Camera();
@@ -310644,6 +312694,7 @@ var init_EntityRender = __esmMin((() => {
 			SpriteRenderer.zIndex = 1;
 		};
 	})();
+	_attachmentPosition = /* @__PURE__ */ new Int32Array(2);
 	renderElement = (function renderElementClosure() {
 		const _position = /* @__PURE__ */ new Int32Array(2);
 		return function _renderElement(entity, files, type, position, is_main) {
@@ -310780,7 +312831,7 @@ var init_EntityRoom$1 = __esmMin((() => {
 			btn.addEventListener("dblclick", this._dblclickHandler);
 			btn.addEventListener("mousedown", this._mousedownHandler);
 		}
-		this._host.style.zIndex = "45";
+		this._host.style.zIndex = "30";
 	};
 	/**
 	* Remove data from UI
@@ -311407,9 +313458,9 @@ var init_EntityAttachments = __esmMin((() => {
 		*/
 		add(attachment) {
 			if (attachment.uid && !attachment.stackable) this.remove(attachment.uid);
-			attachment.startTick = Date.now();
+			attachment.startTick = attachment.startTick || Renderer.tick || Date.now();
 			attachment.opacity = !isNaN(attachment.opacity) ? attachment.opacity : 1;
-			attachment.direction = attachment.hasOwnProperty("frame") ? false : true;
+			if (typeof attachment.direction !== "boolean") attachment.direction = !attachment.hasOwnProperty("frame");
 			attachment.frame = attachment.frame || 0;
 			attachment.depth = attachment.depth || 0;
 			attachment.head = attachment.head || false;
@@ -311447,6 +313498,7 @@ var init_EntityAttachments = __esmMin((() => {
 				return;
 			}
 			Client.loadFile(attachment.spr, function onLoad() {
+				attachment.startTick = Renderer.tick || Date.now();
 				this.list.push(attachment);
 			}.bind(this), null, { to_rgba: true });
 		}
@@ -311534,6 +313586,7 @@ var init_EntityAttachments = __esmMin((() => {
 		*/
 		renderAttachment(attachment, tick) {
 			if (attachment.startTick > tick) return;
+			if (attachment.duration > 0 && tick - attachment.startTick >= attachment.duration) return true;
 			if (attachment.isStr && attachment.strEffect) {
 				const strEffect = attachment.strEffect;
 				const gl = Renderer.gl;
@@ -311571,20 +313624,38 @@ var init_EntityAttachments = __esmMin((() => {
 			}
 			frame = attachment.direction ? (Camera.direction + this.entity.direction + 8) % 8 : attachment.frame;
 			frame %= act.actions.length;
-			const animations = act.actions[frame].animations;
-			const delay = attachment.delay || act.actions[frame].delay;
+			const action = act.actions[frame];
+			const animations = action.animations;
+			const delay = Math.max(1, attachment.delay || action.delay || 100);
 			SpriteRenderer.depth = attachment.depth || 0;
+			const elapsed = Math.max(0, tick - attachment.startTick);
+			const animIndex = Math.floor(elapsed / delay);
 			if ("animationId" in attachment) layers = animations[attachment.animationId].layers;
 			else if (attachment.repeat) {
-				if (attachment.duration > 0 && tick - attachment.startTick >= attachment.duration) return true;
-				layers = animations[Math.floor((tick - attachment.startTick) / delay) % animations.length].layers;
+				if (attachment.duration > 0 && elapsed >= attachment.duration) return true;
+				layers = animations[animIndex % animations.length].layers;
 			} else {
-				animation = Math.min(Math.floor((tick - attachment.startTick) / delay), animations.length - 1);
+				animation = Math.min(animIndex, animations.length - 1);
 				layers = animations[animation].layers;
 				if (animation === animations.length - 1 && !attachment.stopAtEnd) clean = true;
 			}
 			const self = this;
 			const zIdx = attachment.renderBefore ? 1 : 500;
+			const recorded = this.entity.waterDepthAttachments;
+			if (recorded) recorded.push({
+				layers,
+				spr,
+				x: _position[0],
+				y: _position[1],
+				depth: SpriteRenderer.depth,
+				zIndex: zIdx,
+				opacity: attachment.opacity,
+				position: [
+					SpriteRenderer.position[0],
+					SpriteRenderer.position[1],
+					SpriteRenderer.position[2]
+				]
+			});
 			SpriteRenderer.runWithDepth(true, false, false, function() {
 				SpriteRenderer.zIndex = zIdx;
 				for (i = 0, count = layers.length; i < count; ++i) self.entity.renderLayer(layers[i], spr, spr, 1, _position, false);
@@ -313619,7 +315690,7 @@ function _ensureDeps() {
 	if (!_depsPromise) _depsPromise = _loadHeavyDeps();
 	return _depsPromise;
 }
-var _Cursor, _DB, _Client, _Renderer, _EntityManager, _ScrollBar, _depsPromise, _snapCache, MouseMode, CSS_NUMBER, GUIComponent;
+var _Cursor, _DB, _Client, _Renderer, _EntityManager, _ScrollBar, _depsPromise, _snapCache, MouseMode, DENIED_SELECTOR, CSS_NUMBER, _frozenBy, GUIComponent;
 var init_GUIComponent = __esmMin((() => {
 	init_Common$1();
 	init_MouseEventHandler();
@@ -313641,6 +315712,7 @@ var init_GUIComponent = __esmMin((() => {
 		STOP: 1,
 		FREEZE: 2
 	});
+	DENIED_SELECTOR = ".denied";
 	CSS_NUMBER = {
 		zIndex: true,
 		opacity: true,
@@ -313652,6 +315724,7 @@ var init_GUIComponent = __esmMin((() => {
 		widows: true,
 		zoom: true
 	};
+	_frozenBy = /* @__PURE__ */ new Set();
 	GUIComponent = class GUIComponent {
 		/**
 		* @param {string} name       - Unique component name
@@ -313751,6 +315824,7 @@ var init_GUIComponent = __esmMin((() => {
 			parent.appendChild(this._host);
 			if (this.onKeyDown) this._bindKeyDown();
 			if (this.mouseMode === MouseMode.FREEZE) {
+				_frozenBy.add(this);
 				Mouse.intersect = false;
 				SessionStorage_default.FreezeUI = true;
 				_Cursor?.setType(_Cursor?.ACTION?.DEFAULT ?? 0);
@@ -313789,8 +315863,11 @@ var init_GUIComponent = __esmMin((() => {
 				});
 				this._host.remove();
 				if (this.mouseMode === MouseMode.FREEZE) {
-					Mouse.intersect = true;
-					SessionStorage_default.FreezeUI = false;
+					_frozenBy.delete(this);
+					if (_frozenBy.size === 0) {
+						Mouse.intersect = true;
+						SessionStorage_default.FreezeUI = false;
+					}
 				}
 				if (this.__scrollbarObserver) {
 					this.__scrollbarObserver.disconnect();
@@ -314109,6 +316186,7 @@ var init_GUIComponent = __esmMin((() => {
 				"label",
 				"select",
 				"textarea",
+				".checkbox",
 				".item-link",
 				".draggable",
 				".ro-custom-scrollbar",
@@ -314116,6 +316194,7 @@ var init_GUIComponent = __esmMin((() => {
 			].join(",");
 			let _hovering = false;
 			let _savedType = _Cursor?.ACTION?.DEFAULT ?? 0;
+			const cursorFor = (target) => (target.closest(DENIED_SELECTOR) ? _Cursor?.ACTION?.NOWALK : _Cursor?.ACTION?.CLICK) ?? 0;
 			container.addEventListener("mouseover", (e) => {
 				const target = e.target;
 				if (target.closest && target.closest(CLICKABLE_SELECTOR)) {
@@ -314123,7 +316202,8 @@ var init_GUIComponent = __esmMin((() => {
 						_savedType = _Cursor?.getActualType() ?? 0;
 						_hovering = true;
 					}
-					if ((_Cursor?.getActualType() ?? 0) !== (_Cursor?.ACTION?.CLICK ?? 0)) _Cursor?.setType(_Cursor?.ACTION?.CLICK ?? 0);
+					const wanted = cursorFor(target);
+					if ((_Cursor?.getActualType() ?? 0) !== wanted) _Cursor?.setType(wanted);
 				}
 			});
 			container.addEventListener("mouseout", (e) => {
@@ -314140,13 +316220,15 @@ var init_GUIComponent = __esmMin((() => {
 						_savedType = _Cursor?.getActualType() ?? 0;
 						_hovering = true;
 					}
-					_Cursor?.setType(_Cursor?.ACTION?.CLICK ?? 0, true, 1);
+					if (target.closest(DENIED_SELECTOR)) _Cursor?.setType(_Cursor?.ACTION?.NOWALK ?? 0);
+					else _Cursor?.setType(_Cursor?.ACTION?.CLICK ?? 0, true, 1);
 				}
 			});
 			container.addEventListener("mouseup", (e) => {
 				const target = e.target;
 				if (target.closest && target.closest(CLICKABLE_SELECTOR)) {
-					if ((_Cursor?.getActualType() ?? 0) !== (_Cursor?.ACTION?.CLICK ?? 0)) _Cursor?.setType(_Cursor?.ACTION?.CLICK ?? 0);
+					const wanted = cursorFor(target);
+					if ((_Cursor?.getActualType() ?? 0) !== wanted) _Cursor?.setType(wanted);
 					return;
 				}
 				if (_hovering) {
@@ -314189,7 +316271,14 @@ var init_GUIComponent = __esmMin((() => {
 						}
 					}
 				});
-				element.addEventListener("mousedown", () => this.focus());
+				element.addEventListener("mousedown", () => {
+					this.focus();
+					const host = this._host;
+					if (host && !host.contains(document.activeElement)) {
+						host.tabIndex = -1;
+						host.focus({ preventScroll: true });
+					}
+				});
 			}
 			if (this.mouseMode !== GUIComponent.MouseMode.CROSS) element.addEventListener("touchstart", (e) => e.stopImmediatePropagation());
 			this._setupShadowCursorEvents();
@@ -326773,6 +328862,7 @@ function onEntitySpam(pkt) {
 			}
 		}
 		EntityManager.add(entity);
+		if (questEffects.has(entity.GID)) attachQuestEffect(entity, questEffects.get(entity.GID));
 		const cachedLife = EntityManager.getLife(entity.GID);
 		if (cachedLife && entity.life.hp <= -1) {
 			if (cachedLife.hp !== void 0) entity.life.hp = cachedLife.hp;
@@ -327315,7 +329405,7 @@ function onEntityTalk(pkt) {
 		});
 		entity.dialog.set(pkt.msg);
 		if (entity === SessionStorage_default.Entity) type |= ChatBox_default.TYPE.SELF;
-		else if (entity.isAdmin) type |= ChatBox_default.TYPE.ADMIN;
+		else if (SessionStorage_default.showsAdmin(entity, "chat")) type |= ChatBox_default.TYPE.ADMIN;
 	}
 }
 /**
@@ -327371,7 +329461,7 @@ function onEntityIdentity(pkt) {
 	}
 }
 function updateEntityStyle(entity) {
-	entity.display.update(entity.objecttype === Entity.TYPE_MOB ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC_ABR ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC_BIONIC ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_DISGUISED ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC ? entity.display.STYLE.NPC : entity.objecttype === Entity.TYPE_NPC2 ? entity.display.STYLE.NPC : entity.objecttype === Entity.TYPE_PC && entity.isAdmin ? entity.display.STYLE.ADMIN : entity.display.STYLE.DEFAULT);
+	entity.display.update(entity.objecttype === Entity.TYPE_MOB ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC_ABR ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC_BIONIC ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_DISGUISED ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC ? entity.display.STYLE.NPC : entity.objecttype === Entity.TYPE_NPC2 ? entity.display.STYLE.NPC : entity.objecttype === Entity.TYPE_PC && SessionStorage_default.showsAdmin(entity, "name") ? entity.display.STYLE.ADMIN : entity.display.STYLE.DEFAULT);
 }
 function onTitleChangeAck(pkt) {
 	if (pkt.result === 0) {
@@ -327423,34 +329513,41 @@ function onEntityLifeUpdateTiny(pkt) {
 */
 function onEntityQuestNotifyEffect(pkt) {
 	const entity = EntityManager.get(pkt.npcID);
-	let color = 0;
-	if (pkt.effect !== 9999) {
-		const emotionId = pkt.effect + 81;
-		if (entity && pkt.effect in Emotions_default.indexes) entity.attachments.add({
-			frame: Emotions_default.indexes[emotionId],
-			file: "emotion",
-			play: true,
-			head: true,
-			repeat: true,
-			depth: 5
-		});
+	const hide = pkt.effect === QUEST_EFFECT_NONE || PacketVerManager_default.value < 20120410 && pkt.effect === 0 && pkt.color === 0;
+	if (hide) questEffects.delete(pkt.npcID);
+	else questEffects.set(pkt.npcID, pkt.effect);
+	if (entity) attachQuestEffect(entity, hide ? QUEST_EFFECT_NONE : pkt.effect);
+	const color = hide ? void 0 : QuestMarkColors[pkt.color];
+	if (color === void 0) Controller$5.getUI().removeNpcMark(pkt.npcID);
+	else Controller$5.getUI().addNpcMark(pkt.npcID, pkt.xPos, pkt.yPos, color, Infinity);
+}
+/**
+* Draw a quest icon over an NPC's head, replacing the one it has
+*
+* @param {Entity} entity
+* @param {number} effect - e_questinfo_types, QUEST_EFFECT_NONE to remove the icon
+*/
+function attachQuestEffect(entity, effect) {
+	const emotionId = effect + 81;
+	if (effect === QUEST_EFFECT_NONE || !(emotionId in Emotions_default.indexes)) {
+		entity.attachments.remove("questinfo");
+		return;
 	}
-	switch (pkt.color + 1) {
-		case 1:
-			color = 16776960;
-			break;
-		case 2:
-			color = 16753920;
-			break;
-		case 3:
-			color = 57706;
-			break;
-		case 4:
-			color = 8388736;
-			break;
-		default: return;
-	}
-	Controller$5.getUI().addNpcMark(pkt.npcID, pkt.xPos, pkt.yPos, color, Infinity);
+	entity.attachments.add({
+		uid: "questinfo",
+		frame: Emotions_default.indexes[emotionId],
+		file: "emotion",
+		play: true,
+		head: true,
+		repeat: true,
+		depth: 5
+	});
+}
+/**
+* Forget the quest icons of the map being left
+*/
+function clearQuestEffects() {
+	questEffects.clear();
 }
 /**
 * Updating entity direction
@@ -328662,7 +330759,7 @@ function EntityEngine() {
 	Network.hookPacket(PACKET.ZC.ACK_CHANGE_TITLE, onTitleChangeAck);
 	Network.hookPacket(PACKET.ZC.HAT_EFFECT, onHatEffects);
 }
-var SkillNameDisplayExclude, SkillBlueCombo, C_MULTIHIT_DELAY, C_DEATH_SYNC_OFFSET, AVG_ATTACK_SPEED, AVG_ATTACKED_SPEED, MAX_ATTACKMT, clanEmblems;
+var SkillNameDisplayExclude, SkillBlueCombo, C_MULTIHIT_DELAY, C_DEATH_SYNC_OFFSET, AVG_ATTACK_SPEED, AVG_ATTACKED_SPEED, MAX_ATTACKMT, clanEmblems, questEffects, QUEST_EFFECT_NONE, QuestMarkColors;
 var init_Entity = __esmMin((() => {
 	init_DBManager();
 	init_SkillConst();
@@ -328744,6 +330841,13 @@ var init_Entity = __esmMin((() => {
 	AVG_ATTACKED_SPEED = 288;
 	MAX_ATTACKMT = AVG_ATTACK_SPEED * 2;
 	clanEmblems = {};
+	questEffects = /* @__PURE__ */ new Map();
+	QUEST_EFFECT_NONE = 9999;
+	QuestMarkColors = {
+		1: 16776960,
+		2: 57706,
+		3: 8388736
+	};
 }));
 //#endregion
 //#region src/Renderer/ItemObject.js
@@ -335101,6 +337205,15 @@ function onBuyCashResult(pkt) {
 	NpcStore_default.ui.find(".cashuser .cashpoints").text(pkt.KafraPoint);
 }
 /**
+* Sold to a buying store: the server takes the items without the usual
+* removal packet and sends this one instead (price is per item).
+*
+* @param {object} pkt - PACKET.ZC.ITEM_DELETE_BUYING_STORE
+*/
+function onSellToBuyingStoreDelete(pkt) {
+	InventoryController.getUI().removeItem(pkt.index, pkt.count);
+}
+/**
 * Received purchased informations
 *
 * @param {object} pkt - FAILED_TRADE_BUYING_STORE_TO_SELLER
@@ -335305,6 +337418,7 @@ function MainEngine$9() {
 	Network.hookPacket(PACKET.ZC.PC_PURCHASE_ITEMLIST_FROMMC3, onVendingStoreList);
 	Network.hookPacket(PACKET.ZC.ACK_ITEMLIST_BUYING_STORE, onBuyingStoreList);
 	Network.hookPacket(PACKET.ZC.FAILED_TRADE_BUYING_STORE_TO_SELLER, onSellToBuyingStoreResult);
+	Network.hookPacket(PACKET.ZC.ITEM_DELETE_BUYING_STORE, onSellToBuyingStoreDelete);
 	Network.hookPacket(PACKET.ZC.NPC_MARKET_OPEN2, onMarketShop);
 	Network.hookPacket(PACKET.ZC.NPC_MARKET_PURCHASE_RESULT, onMarketShopResult);
 	Network.hookPacket(PACKET.ZC.NPC_MARKET_PURCHASE_RESULT2, onMarketShopResult);
@@ -337013,7 +339127,8 @@ function onConnectionAccepted$2(pkt) {
 	SessionStorage_default.hasParty = false;
 	SessionStorage_default.isPartyLeader = false;
 	SessionStorage_default.hasGuild = false;
-	SessionStorage_default.guildRight = 0;
+	SessionStorage_default.guildPermission = 0;
+	GuildEngine.resetForNewCharacter();
 	SessionStorage_default.homunId = 0;
 	SessionStorage_default.mapState = {
 		property: 0,
@@ -337058,6 +339173,7 @@ function onConnectionRefused$2(pkt) {
 * @param {object} pkt - PACKET.ZC.NPCACK_MAPMOVE
 */
 function onMapChange(pkt) {
+	clearQuestEffects();
 	MapRenderer.onLoad = () => {
 		SessionStorage_default.Entity.set({
 			PosDir: [
@@ -338356,6 +340472,143 @@ var init_CharSelect$2 = __esmMin((() => {
 	CharSelect_default$1 = ":host {\r\n	width: 576px;\r\n	height: 342px;\r\n}\r\n\r\n#charselect {\r\n	position: absolute;\r\n	width: 576px;\r\n	height: 342px;\r\n}\r\n\r\n/** Box **/\r\n#charselect .box_select {\r\n	position: absolute;\r\n	width: 139px;\r\n	height: 144px;\r\n	top: 40px;\r\n	margin-left: -5px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n#charselect canvas {\r\n	position: absolute;\r\n	top: 44px;\r\n}\r\n#charselect .slot1 {\r\n	left: 60px;\r\n}\r\n#charselect .slot2 {\r\n	left: 224px;\r\n}\r\n#charselect .slot3 {\r\n	left: 386px;\r\n}\r\n\r\n/** Arrow **/\r\n#charselect .arrow {\r\n	position: absolute;\r\n	top: 105px;\r\n	width: 13px;\r\n	height: 13px;\r\n}\r\n#charselect .arrow.left {\r\n	left: 40px;\r\n}\r\n#charselect .arrow.right {\r\n	right: 40px;\r\n}\r\n\r\n/** Slot info **/\r\n#charselect .slotinfo {\r\n	position: absolute;\r\n	top: 195px;\r\n	right: 10px;\r\n	height: 20px;\r\n	display: block;\r\n	border: 1px solid #c6cee7;\r\n	border-radius: 4px;\r\n	padding-left: 10px;\r\n	padding-right: 10px;\r\n}\r\n#charselect .slotinfo .number {\r\n	color: #58709e;\r\n	font-weight: bold;\r\n	margin-right: 10px;\r\n}\r\n#charselect .slotinfo .content {\r\n	color: #555;\r\n	top: 6px;\r\n	right: 8px;\r\n}\r\n\r\n/** Page info **/\r\n#charselect .pageinfo {\r\n	position: absolute;\r\n	left: 275px;\r\n	top: 185px;\r\n	font-weight: bold;\r\n	color: #646464;\r\n}\r\n#charselect .pageinfo .current {\r\n	color: #fe3b7d;\r\n}\r\n\r\n/** Characters infos **/\r\n#charselect .charinfo {\r\n	position: absolute;\r\n	width: 285px;\r\n	top: 204px;\r\n	left: 16px;\r\n}\r\n#charselect .charinfo div {\r\n	position: absolute;\r\n	width: 90px;\r\n	height: 13px;\r\n}\r\n#charselect .charinfo .name {\r\n	left: 52px;\r\n	top: 2px;\r\n	white-space: nowrap;\r\n}\r\n#charselect .charinfo .job {\r\n	left: 52px;\r\n	top: 18px;\r\n}\r\n#charselect .charinfo .lvl {\r\n	left: 52px;\r\n	top: 34px;\r\n}\r\n#charselect .charinfo .exp {\r\n	left: 52px;\r\n	top: 50px;\r\n}\r\n#charselect .charinfo .hp {\r\n	left: 52px;\r\n	top: 66px;\r\n}\r\n#charselect .charinfo .sp {\r\n	left: 52px;\r\n	top: 82px;\r\n}\r\n#charselect .charinfo .map {\r\n	left: 52px;\r\n	top: 98px;\r\n	width: 238px;\r\n}\r\n#charselect .charinfo .str {\r\n	left: 200px;\r\n	top: 2px;\r\n}\r\n#charselect .charinfo .agi {\r\n	left: 200px;\r\n	top: 18px;\r\n}\r\n#charselect .charinfo .vit {\r\n	left: 200px;\r\n	top: 34px;\r\n}\r\n#charselect .charinfo .int {\r\n	left: 200px;\r\n	top: 50px;\r\n}\r\n#charselect .charinfo .dex {\r\n	left: 200px;\r\n	top: 66px;\r\n}\r\n#charselect .charinfo .luk {\r\n	left: 200px;\r\n	top: 82px;\r\n}\r\n\r\n/** Buttons **/\r\n#charselect .btns {\r\n	position: absolute;\r\n	bottom: 4px;\r\n	width: 100%;\r\n	height: 20px;\r\n}\r\n#charselect .btn {\r\n	position: absolute;\r\n	width: 42px;\r\n	height: 20px;\r\n}\r\n\r\n#charselect .ok,\r\n#charselect .make {\r\n	right: 50px;\r\n}\r\n#charselect .cancel {\r\n	right: 4px;\r\n}\r\n#charselect .delete {\r\n	left: 4px;\r\n}\r\n";
 }));
 //#endregion
+//#region src/UI/ScreenHooks.js
+function check(screen) {
+	if (!SCREENS.includes(screen)) throw new Error(`ScreenHooks: unknown screen '${screen}'`);
+}
+function current(screen) {
+	const list = _hooks[screen];
+	return list && list.length ? list[list.length - 1] : null;
+}
+function setHidden(host, hidden) {
+	if (host && host.style) host.style.display = hidden ? "none" : "";
+}
+/** Take a hook out after it threw, and give the screen back. */
+function fail(screen, hook, what, error) {
+	console.error(`[ScreenHooks] ${hook.name || "a hook"} failed in ${what} for ${screen}, and is switched off:`, error);
+	const list = _hooks[screen] || [];
+	const index = list.indexOf(hook);
+	if (index > -1) list.splice(index, 1);
+	const open = _open[screen];
+	if (open && open.hook === hook) {
+		open.hook = null;
+		if (what !== "hide") quietHide(screen, hook);
+		take(screen);
+	}
+}
+function quietHide(screen, hook) {
+	if (typeof hook.hide !== "function") return;
+	try {
+		hook.hide();
+	} catch (error) {
+		console.error(`[ScreenHooks] ${hook.name || "a hook"} failed to hide ${screen}:`, error);
+	}
+}
+/** Give an open screen to its current hook, or to the client's window. */
+function take(screen) {
+	const open = _open[screen];
+	if (!open) return;
+	const hook = current(screen);
+	open.hook = hook;
+	setHidden(open.host, Boolean(hook));
+	if (hook && typeof hook.show === "function") try {
+		hook.show(open.ctx);
+	} catch (error) {
+		fail(screen, hook, "show", error);
+	}
+}
+/**
+* Add a hook for a screen. If that screen is open, the hook takes it now.
+* Returns a function that takes the hook out again.
+*/
+function register(screen, hook) {
+	check(screen);
+	if (!hook || typeof hook !== "object") throw new Error("ScreenHooks.register takes a screen name and an object");
+	(_hooks[screen] = _hooks[screen] || []).push(hook);
+	const open = _open[screen];
+	if (open) {
+		if (open.hook) quietHide(screen, open.hook);
+		take(screen);
+	}
+	return () => unregister(screen, hook);
+}
+function unregister(screen, hook) {
+	const list = _hooks[screen] || [];
+	const index = list.indexOf(hook);
+	if (index < 0) return;
+	list.splice(index, 1);
+	const open = _open[screen];
+	if (open && open.hook === hook) {
+		open.hook = null;
+		quietHide(screen, hook);
+		take(screen);
+	}
+}
+/**
+* A window opened. Returns whether a hook draws it (the window is then
+* hidden). `host` is the element to hide.
+*/
+function show(screen, ctx, host) {
+	check(screen);
+	if (_open[screen]) hide(screen);
+	_open[screen] = {
+		ctx,
+		host,
+		hook: null
+	};
+	take(screen);
+	return Boolean(_open[screen] && _open[screen].hook);
+}
+/** Something the screen's ctx reports changed. */
+function update(screen) {
+	const open = _open[screen];
+	if (!open || !open.hook || typeof open.hook.update !== "function") return;
+	const hook = open.hook;
+	try {
+		hook.update(open.ctx);
+	} catch (error) {
+		fail(screen, hook, "update", error);
+	}
+}
+/** A window closed. */
+function hide(screen) {
+	const open = _open[screen];
+	if (!open) return;
+	delete _open[screen];
+	setHidden(open.host, false);
+	if (open.hook) {
+		const hook = open.hook;
+		if (typeof hook.hide === "function") try {
+			hook.hide();
+		} catch (error) {
+			fail(screen, hook, "hide", error);
+		}
+	}
+}
+/** Whether a hook is drawing this screen now. */
+function active(screen) {
+	return Boolean(_open[screen] && _open[screen].hook);
+}
+var SCREENS, _hooks, _open, ScreenHooks_default;
+var init_ScreenHooks = __esmMin((() => {
+	SCREENS = [
+		"login",
+		"serverList",
+		"charSelect",
+		"charCreate"
+	];
+	_hooks = {};
+	_open = {};
+	ScreenHooks_default = {
+		SCREENS,
+		register,
+		show,
+		update,
+		hide,
+		active
+	};
+}));
+//#endregion
 //#region src/UI/Components/CharSelect/CharSelectCommon.js
 function createCharSelect(config) {
 	const { name, htmlText, cssText, gridLayout = false, hostHeight = 342, defaultMaxSlots = 27, deleteReservation = false, packetverGatedDelete = false, pageBalls = false } = config;
@@ -338406,7 +340659,39 @@ function createCharSelect(config) {
 	let countdownInterval;
 	let _bgInterval = null;
 	const render = gridLayout ? renderGrid : renderPaginated;
-	const moveCursorTo = gridLayout ? moveCursorToGrid : moveCursorToPaginated;
+	const moveCursorTo = (index) => {
+		(gridLayout ? moveCursorToGrid : moveCursorToPaginated)(index);
+		ScreenHooks_default.update("charSelect");
+	};
+	/**
+	* What a plugin drawing this screen sees (UI/ScreenHooks.js). The
+	* actions are the window's own buttons, acting on the selected slot.
+	*/
+	const _screen = {
+		get characters() {
+			return _list.slice();
+		},
+		get maxSlots() {
+			return _maxSlots;
+		},
+		get index() {
+			return _index;
+		},
+		get sex() {
+			return _sex;
+		},
+		get enabled() {
+			return !_disable_UI;
+		},
+		deleteReservation: deleteReservation && (!packetverGatedDelete || PacketVerManager_default.value >= 20100803),
+		select: (slot) => moveCursorTo(slot),
+		play: () => connect(),
+		create: () => create(),
+		requestDelete: () => _screen.deleteReservation ? reserve() : suppress(),
+		cancelDelete: () => _screen.deleteReservation && removedelete(),
+		confirmDelete: () => suppress(),
+		exit: () => cancel()
+	};
 	/**
 	* Initialize UI
 	*/
@@ -338487,6 +340772,7 @@ function createCharSelect(config) {
 			moveCursorTo(_index);
 			_bgInterval = setInterval(changeBackgroundEverySecond, 250);
 			Renderer.render(render);
+			ScreenHooks_default.show("charSelect", _screen, this._host);
 			return;
 		}
 		const root = this.getRoot();
@@ -338497,11 +340783,13 @@ function createCharSelect(config) {
 		if (!pageBalls) root.querySelector(".pageinfo .count").textContent = _maxSlots / 3;
 		moveCursorTo(_index);
 		Renderer.render(render);
+		ScreenHooks_default.show("charSelect", _screen, this._host);
 	};
 	/**
 	* Stop rendering
 	*/
 	Component.onRemove = function onRemove() {
+		ScreenHooks_default.hide("charSelect");
 		if (gridLayout) {
 			if (_bgInterval) {
 				clearInterval(_bgInterval);
@@ -338696,6 +340984,7 @@ function createCharSelect(config) {
 			_entitySlots[character.CharNum].effectState = _entitySlots[character.CharNum]._effectState & ~StatusState_default.EffectState.INVISIBLE;
 			_entitySlots[character.CharNum].hideShadow = true;
 			Component.updateCharSlot(character.CharNum);
+			ScreenHooks_default.update("charSelect");
 			return;
 		}
 		if (deleteReservation && character.DeleteDate) {
@@ -338726,6 +341015,7 @@ function createCharSelect(config) {
 				});
 			}
 		}
+		ScreenHooks_default.update("charSelect");
 	};
 	/**
 	* Disable or Enable the UI.
@@ -338734,6 +341024,7 @@ function createCharSelect(config) {
 	*/
 	Component.setUIEnabled = function setUIEnabled(value) {
 		_disable_UI = !value;
+		ScreenHooks_default.update("charSelect");
 	};
 	/**
 	* Callback to use
@@ -338778,11 +341069,13 @@ function createCharSelect(config) {
 		if (_disable_UI === false) {
 			if (gridLayout) {
 				UIManager.showPromptBox(DB.getMessage(17), "ok", "cancel", () => {
+					ExitHooks_default.emit("login", "charSelect");
 					Component.onExitRequest();
 					Component.clearAllSlots();
 				}, null);
 				stopCountdownInterval();
 			} else UIManager.showPromptBox(DB.getMessage(17), "ok", "cancel", () => {
+				ExitHooks_default.emit("login", "charSelect");
 				Component.onExitRequest();
 			}, null);
 		}
@@ -338889,6 +341182,7 @@ function createCharSelect(config) {
 	*/
 	function requestdelete(index, timer) {
 		const root = Component.getRoot();
+		ScreenHooks_default.update("charSelect");
 		if (gridLayout) {
 			_entitySlots[index].action = 2;
 			const countdown = root.querySelector(`.timedelete.slot${index}`);
@@ -338933,6 +341227,7 @@ function createCharSelect(config) {
 		if (_slots[_index]) {
 			const root = Component.getRoot();
 			_slots[_index].DeleteDate = 0;
+			ScreenHooks_default.update("charSelect");
 			if (gridLayout) {
 				_entitySlots[_index].action = 0;
 				render();
@@ -339343,6 +341638,8 @@ var init_CharSelectCommon = __esmMin((() => {
 	init_Camera();
 	init_UIManager();
 	init_GUIComponent();
+	init_ScreenHooks();
+	init_ExitHooks();
 	init_Elements();
 	init_PacketVerManager();
 }));
@@ -339532,6 +341829,76 @@ function createCharCreate(config) {
 	let _curcolor = 0;
 	const render = hasRace ? renderRace : renderLegacy;
 	/**
+	* What a plugin drawing this screen sees (UI/ScreenHooks.js).
+	* create() goes the way the Make button does.
+	*/
+	const _screen = {
+		get sex() {
+			return _accountSex;
+		},
+		get races() {
+			return raceOptions();
+		},
+		chooseSex: hasRace,
+		hasStats,
+		create(look) {
+			const stats = look && look.stats || {};
+			const stat = (key) => hasStats ? parseInt(stats[key], 10) || 1 : 1;
+			const args = [
+				String(look && look.name || ""),
+				stat("str"),
+				stat("agi"),
+				stat("vit"),
+				stat("int"),
+				stat("dex"),
+				stat("luk"),
+				look.hair,
+				look.hairColor
+			];
+			if (hasRace) args.push(look.job, look.sex);
+			Component.onCharCreationRequest(...args);
+		},
+		exit: () => cancel()
+	};
+	/**
+	* The jobs a character can start as, and the hair each can have.
+	*/
+	function raceOptions() {
+		if (!hasRace) return [{
+			job: 0,
+			hair: {
+				min: 2,
+				max: 26
+			},
+			hairColor: {
+				min: 0,
+				max: 9
+			}
+		}];
+		const root = Component.getRoot && Component.__loaded ? Component.getRoot() : null;
+		return [["human", RACE.HUMAN], ["doram", RACE.DORAM]].map(([race, job]) => {
+			const cap = CAP[job];
+			let hairMax = cap.HEAD.MAX;
+			let colorMax = cap.HEADPALETTE.MAX;
+			if (gridHairstyle && root) {
+				hairMax = root.querySelectorAll(`[id$="_${race}_male"]`).length || hairMax;
+				colorMax = root.querySelectorAll("[id$=\"_color\"]").length - 1;
+				if (colorMax < 0) colorMax = cap.HEADPALETTE.MAX;
+			}
+			return {
+				job,
+				hair: {
+					min: cap.HEAD.MIN,
+					max: hairMax
+				},
+				hairColor: {
+					min: cap.HEADPALETTE.MIN,
+					max: colorMax
+				}
+			};
+		});
+	}
+	/**
 	* Initialize UI
 	*/
 	Component.init = function init() {
@@ -339637,12 +342004,14 @@ function createCharCreate(config) {
 		}
 		Renderer.render(render);
 		if (hasStats) updateGraphic();
+		ScreenHooks_default.show("charCreate", _screen, this._host);
 	};
 	/**
 	* Remove component from HTML
 	* Stop rendering
 	*/
 	Component.onRemove = function onRemove() {
+		ScreenHooks_default.hide("charCreate");
 		Renderer.stop(render);
 	};
 	/**
@@ -340177,6 +342546,7 @@ var init_CharCreateCommon = __esmMin((() => {
 	init_Client();
 	init_UIManager();
 	init_GUIComponent();
+	init_ScreenHooks();
 	init_Elements();
 	TYPE = {
 		RACE: 1,
@@ -341032,17 +343402,37 @@ var init_WinList$1 = __esmMin((() => {
 }));
 //#endregion
 //#region src/UI/Components/WinList/WinList.js
-var WinList, WinList_default;
+var WinList, _screen, WinList_default;
 var init_WinList = __esmMin((() => {
 	init_Renderer();
 	init_KeyEventHandler();
 	init_UIManager();
 	init_GUIComponent();
+	init_ScreenHooks();
 	init_Elements();
 	init_WinList$2();
 	init_WinList$1();
 	WinList = new GUIComponent("WinList", WinList_default$1);
 	WinList.render = () => WinList_default$2;
+	_screen = {
+		get servers() {
+			return WinList.list ? WinList.list.slice() : [];
+		},
+		get index() {
+			return WinList.index;
+		},
+		select(index) {
+			WinList.setIndex(index);
+			WinList.selectIndex();
+		},
+		exit: () => WinList.exit()
+	};
+	/**
+	* Once in the page: a plugin may draw this screen instead
+	*/
+	WinList.onAppend = function onAppend() {
+		ScreenHooks_default.show("serverList", _screen, this._host);
+	};
 	/**
 	* Initialize UI
 	*/
@@ -341080,6 +343470,7 @@ var init_WinList = __esmMin((() => {
 			this._listEl.appendChild(node);
 		}
 		this.setIndex(0);
+		ScreenHooks_default.update("serverList");
 	};
 	/**
 	*  Cancel window
@@ -341103,6 +343494,7 @@ var init_WinList = __esmMin((() => {
 			if (nodes[this.index]) nodes[this.index].style.backgroundColor = "transparent";
 			if (nodes[id]) nodes[id].style.backgroundColor = "#cde0ff";
 			this.index = id;
+			ScreenHooks_default.update("serverList");
 		}
 	};
 	/**
@@ -341137,6 +343529,7 @@ var init_WinList = __esmMin((() => {
 	* Free variables once removed from HTML
 	*/
 	WinList.onRemove = function onRemove() {
+		ScreenHooks_default.hide("serverList");
 		this._listEl.innerHTML = "";
 		this.list = null;
 		this.index = 0;
@@ -345354,6 +347747,25 @@ function createWinLogin({ name, htmlText, cssText }) {
 	let _inputUsername;
 	let _inputPassword;
 	let _buttonSave;
+	/**
+	* What a plugin drawing this screen sees (UI/ScreenHooks.js). login()
+	* goes the way the Connect button does, so a different sign-in -- a
+	* token in place of a password -- reaches the server the same way.
+	*/
+	const _screen = {
+		get savedId() {
+			return _preferences.saveID ? _preferences.ID : "";
+		},
+		get saveId() {
+			return Boolean(_preferences.saveID);
+		},
+		login(user, pass, saveId) {
+			if (typeof saveId === "boolean") _preferences.saveID = saveId;
+			submit(String(user), String(pass));
+		},
+		signup: () => signup(),
+		exit: () => exit()
+	};
 	Component.init = function init() {
 		this.draggable();
 		const root = this.getRoot();
@@ -345403,6 +347815,10 @@ function createWinLogin({ name, htmlText, cssText }) {
 		if (_preferences.ID.length) _inputPassword.focus();
 		else _inputUsername.focus();
 		Component.placeOnTop();
+		ScreenHooks_default.show("login", _screen, this._host);
+	};
+	Component.onRemove = function onRemove() {
+		ScreenHooks_default.hide("login");
 	};
 	Component.onKeyDown = function onKeyDown(event) {
 		if (this._host.style.display === "none") return true;
@@ -345436,8 +347852,10 @@ function createWinLogin({ name, htmlText, cssText }) {
 		return false;
 	}
 	function connect() {
-		const user = _inputUsername.value;
-		const pass = _inputPassword.value;
+		submit(_inputUsername.value, _inputPassword.value);
+		return false;
+	}
+	function submit(user, pass) {
 		if (_preferences.saveID) {
 			_preferences.saveID = true;
 			_preferences.ID = user;
@@ -345447,7 +347865,6 @@ function createWinLogin({ name, htmlText, cssText }) {
 		}
 		_preferences.save();
 		Component.onConnectionRequest(user, pass);
-		return false;
 	}
 	async function loadReplay(file) {
 		try {
@@ -345483,6 +347900,7 @@ var init_WinLoginCommon = __esmMin((() => {
 	init_KeyEventHandler();
 	init_UIManager();
 	init_GUIComponent();
+	init_ScreenHooks();
 	init_Elements();
 	init_preload_helper();
 }));
@@ -345539,12 +347957,14 @@ var init_WinLoginV3 = __esmMin((() => {
 }));
 //#endregion
 //#region src/UI/Components/WinLogin/WinLogin.js
-var publicName, versionInfo, Controller;
+var publicName, versionInfo, Controller, REDESIGN_BACKGROUND, _hasRedesignArt;
 var init_WinLogin = __esmMin((() => {
 	init_WinLogin$1();
 	init_WinLoginV2();
 	init_WinLoginV3();
 	init_UIVersionManager();
+	init_Client();
+	init_DBManager();
 	publicName = "WinLogin";
 	versionInfo = {
 		default: WinLogin_default,
@@ -345556,6 +347976,38 @@ var init_WinLogin = __esmMin((() => {
 		prere: {}
 	};
 	Controller = UIVersionManager.getUIController(publicName, versionInfo);
+	REDESIGN_BACKGROUND = "login_interface/bg_login.tga";
+	_hasRedesignArt = null;
+	/**
+	* Settle on a login window the client data can draw, then call back.
+	*
+	* Call after selectUIVersion(). The result is remembered: a file that failed
+	* to load does not always report the failure to a second listener.
+	*
+	* @param {function} callback
+	*/
+	Controller.selectUIVersionForData = function selectUIVersionForData(callback) {
+		const useClassic = () => {
+			Controller.selectSpecificUIVersion(0);
+			callback();
+		};
+		if (Controller.getUI() === WinLogin_default || _hasRedesignArt === true) {
+			callback();
+			return;
+		}
+		if (_hasRedesignArt === false) {
+			useClassic();
+			return;
+		}
+		Client.loadFile(DB.INTERFACE_PATH + REDESIGN_BACKGROUND, () => {
+			_hasRedesignArt = true;
+			callback();
+		}, () => {
+			_hasRedesignArt = false;
+			console.warn("%c[UIVersion] WinLogin: " + REDESIGN_BACKGROUND + " is not in the client data, using the classic window", "color:#007000");
+			useClassic();
+		});
+	};
 }));
 //#endregion
 //#region src/Engine/LoginEngine.js
@@ -346258,7 +348710,11 @@ var init_LoginEngine = __esmMin((() => {
 				onConnectionRequest.apply(null, autoLogin);
 				Configs.set("autoLogin", null);
 			} else q.add(function() {
-				Controller.getUI().append();
+				Controller.selectUIVersionForData(() => {
+					Controller.getUI().onConnectionRequest = onConnectionRequest;
+					Controller.getUI().onExitRequest = onExitRequest;
+					Controller.getUI().append();
+				});
 			});
 			if (PacketVerManager_default.value < 20170315) Network.hookPacket(PACKET.AC.ACCEPT_LOGIN, onConnectionAccepted);
 			else Network.hookPacket(PACKET.AC.ACCEPT_LOGIN3, onConnectionAccepted);

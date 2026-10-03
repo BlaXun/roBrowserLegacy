@@ -16322,6 +16322,7 @@ var RSW = class RSW {
 		return {
 			water: this.water,
 			light: this.light,
+			lights: this.lights,
 			sound: this.sounds,
 			effect: this.effects
 		};
@@ -16724,10 +16725,52 @@ var GND = class {
 				mesh.push((x + 1) * 2, h_a[1], (y + 0) * 2, 1, 0, 0, tile.u2, tile.v2, l.u2, l.v1, 0, 0, (x + 1) * 2, h_a[3], (y + 1) * 2, 1, 0, 0, tile.u1, tile.v1, l.u1, l.v1, 0, 0, (x + 1) * 2, h_b[0], (y + 0) * 2, 1, 0, 0, tile.u4, tile.v4, l.u2, l.v2, 0, 0, (x + 1) * 2, h_b[0], (y + 0) * 2, 1, 0, 0, tile.u4, tile.v4, l.u2, l.v2, 0, 0, (x + 1) * 2, h_b[2], (y + 1) * 2, 1, 0, 0, tile.u3, tile.v3, l.u1, l.v2, 0, 0, (x + 1) * 2, h_a[3], (y + 1) * 2, 1, 0, 0, tile.u1, tile.v1, l.u1, l.v1, 0, 0);
 			}
 		}
+		const cells = width * height;
+		const cellTexture = new Int16Array(cells).fill(-1);
+		const cellHeights = new Float32Array(cells * 4);
+		const cellUv = new Float32Array(cells * 4);
+		const cellAtlas = new Float32Array(cells * 8);
+		const cellLight = new Float32Array(cells * 4);
+		for (let i = 0; i < cells; ++i) {
+			const cell = surfaces[i];
+			cellHeights.set(cell.height, i * 4);
+			if (cell.tile_up > -1) {
+				const top = tiles[cell.tile_up];
+				if (top && top.texture > -1) {
+					cellTexture[i] = top.texture;
+					lightmap_atlas(top.light);
+					cellUv[i * 4] = (top.u1 + top.u2 + top.u3 + top.u4) / 4;
+					cellUv[i * 4 + 1] = (top.v1 + top.v2 + top.v3 + top.v4) / 4;
+					cellUv[i * 4 + 2] = (l.u1 + l.u2) / 2;
+					cellUv[i * 4 + 3] = (l.v1 + l.v2) / 2;
+					cellAtlas.set([
+						top.u1,
+						top.v1,
+						top.u2,
+						top.v2,
+						top.u3,
+						top.v3,
+						top.u4,
+						top.v4
+					], i * 8);
+					cellLight.set([
+						l.u1,
+						l.v1,
+						l.u2,
+						l.v2
+					], i * 4);
+				}
+			}
+		}
 		return {
 			width: this.width,
 			height: this.height,
 			textures: this.textures,
+			cellTexture,
+			cellHeights,
+			cellUv,
+			cellAtlas,
+			cellLight,
 			lightmap,
 			lightmapSize: this.lightmap.count,
 			tileColor: this.createTilesColorImage(),
@@ -19011,6 +19054,18 @@ var Loader = class Loader {
 	}
 };
 /**
+* A file name as read from a map: CP949 bytes in a binary string. As text,
+* for comparing with the names mods give (MapHooks).
+*/
+function decodeName(name) {
+	const text = String(name || "");
+	try {
+		return new TextDecoder("euc-kr").decode(Uint8Array.from(text, (c) => c.charCodeAt(0) & 255));
+	} catch {
+		return text;
+	}
+}
+/**
 * MapLoader constructor
 *
 * @param {string} mapname
@@ -19087,6 +19142,7 @@ var MapLoader = class {
 			const compiledGround = ground.compile(world.water.level, world.water.waveHeight);
 			loader.fileCount = ground.textures.length + world.models.length * 3;
 			if (compiledGround.waterVertCount) loader.fileCount += 32;
+			compiledGround.textureNames = compiledGround.textures.slice();
 			loader.loadGroundTextures(world, compiledGround, function onLoaded(waters, textures) {
 				world.water.images = waters;
 				compiledGround.textures = textures;
@@ -19168,8 +19224,23 @@ var MapLoader = class {
 		const progress = this.progress;
 		const models = [];
 		const animatedModels = [];
+		const replaced = [];
+		const replace = this.replaceModels;
 		bufferSize = 0;
 		for (i = 0, count = objects.length; i < count; ++i) {
+			const name = decodeName(objects[i].filename).replace(/^data\\model\\/i, "").replace(/\\/g, "/").toLowerCase();
+			if (replace && replace.has(name)) {
+				const box = objects[i].box;
+				replaced.push({
+					name,
+					instances: objects[i].instances.map((matrix) => Array.from(matrix)),
+					height: box.max[1] - box.min[1],
+					width: box.range[0] * 2,
+					depth: box.range[2] * 2
+				});
+				this.setProgress(progress + (100 - progress) / count * (i + 1) / 2);
+				continue;
+			}
 			if (objects[i].hasAnimation && objects[i].hasAnimation()) {
 				animatedModels.push(objects[i]);
 				this.setProgress(progress + (100 - progress) / count * (i + 1) / 2);
@@ -19191,6 +19262,7 @@ var MapLoader = class {
 			this.setProgress(progress + (100 - progress) / count * (i + 1) / 2);
 		}
 		this._animatedModels = animatedModels;
+		if (replaced.length) this.ondata("MAP_REPLACED_MODELS", replaced);
 		this.mergeMeshes(models, bufferSize);
 	}
 	/**
@@ -19350,6 +19422,11 @@ function sendLog() {
 *
 * @param {object} event - EventHandler
 */
+/**
+* Map models a hook draws in the client's place (MapHooks), for the next map:
+* lower-case names under data/model/, with forward slashes.
+*/
+var _replaceModels = /* @__PURE__ */ new Set();
 onmessage = function receive(event) {
 	const msg = event.data;
 	switch (msg.type) {
@@ -19426,8 +19503,12 @@ onmessage = function receive(event) {
 				]
 			});
 			break;
+		case "MAP_REPLACE_MODELS":
+			_replaceModels = new Set(Array.isArray(msg.data) ? msg.data : []);
+			break;
 		case "LOAD_MAP": {
 			const map = new MapLoader();
+			map.replaceModels = _replaceModels;
 			map.onprogress = function(progress) {
 				postMessage({
 					type: "MAP_PROGRESS",
