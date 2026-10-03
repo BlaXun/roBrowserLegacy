@@ -18,6 +18,7 @@ import ItemType from 'DB/Items/ItemType.js';
 import JoystickShortcutMapper from './JoystickShortcutMapper.js';
 import JoystickInputService from './JoystickInputService.js';
 import SkillInfo from 'DB/Skills/SkillInfo.js';
+import ButtonMap from './JoystickButtonMap.js';
 
 let ui = null;
 
@@ -149,10 +150,49 @@ function updateByIndex(index) {
 	}
 }
 
+/**
+ * Write the current physical button names into the HUD: group headers
+ * (LB, LT, ...) and the face-button labels on each slot cross.
+ */
+function relabel() {
+	const shadow = _getShadow();
+	if (!shadow) return;
+
+	const B = ButtonMap.BUTTON;
+	const groups = {
+		L1: ButtonMap.nameOf(B.LB),
+		L2: ButtonMap.nameOf(B.LT),
+		R1: ButtonMap.nameOf(B.RB),
+		R2: ButtonMap.nameOf(B.RT),
+		L1R1: ButtonMap.nameOf(B.LB) + '+' + ButtonMap.nameOf(B.RB)
+	};
+	const faces = {
+		top: ButtonMap.nameOf(B.Y),
+		left: ButtonMap.nameOf(B.X),
+		right: ButtonMap.nameOf(B.B),
+		bottom: ButtonMap.nameOf(B.A)
+	};
+
+	shadow.querySelectorAll('.group-container').forEach(group => {
+		const header = group.querySelector('.group-header');
+		if (header && groups[group.dataset.group]) {
+			header.textContent = groups[group.dataset.group];
+		}
+		Object.keys(faces).forEach(position => {
+			const label = group.querySelector('.slot.' + position + ' .key-label');
+			if (label) {
+				label.textContent = faces[position];
+			}
+		});
+	});
+}
+
 function sync() {
 	if (!ui) {
 		return;
 	}
+
+	relabel();
 
 	const startIdx = SetManager.getCurrentSet() === 1 ? 0 : 20;
 	for (let i = 0; i < 20; i++) {
@@ -218,6 +258,7 @@ export default {
 	updateByIndex,
 	updateSetIndicator,
 	updateVisuals,
+	relabel,
 	show,
 	hide
 };

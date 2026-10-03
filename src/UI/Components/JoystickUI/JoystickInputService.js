@@ -12,12 +12,16 @@ import ButtonInput from './JoystickButtonInput.js';
 import AxisInput from './JoystickAxisInput.js';
 import JoystickUIRenderer from './JoystickUIRenderer.js';
 import ControlsSettings from 'Preferences/Controls.js';
+import ButtonMap from './JoystickButtonMap.js';
 
 let hideTimeout = false;
 let hideTimeoutHandle = null;
 export default {
 	active: false,
+	// Logical button states (after remapping), as the last poll saw them
 	buttonStates: {},
+	// Physical button states, for press/hold edge detection
+	_rawStates: [],
 	_listening: false,
 
 	prepare: function () {
@@ -46,6 +50,7 @@ export default {
 
 		this.active = false;
 		this.buttonStates = {};
+		this._rawStates = [];
 	},
 
 	getStates: function (gp) {
@@ -54,21 +59,27 @@ export default {
 		}
 		const states = {
 			buttons: [],
+			raw: [],
 			axes: []
 		};
 		const self = this;
 
-		// Process Buttons with 3-state logic
+		// Process Buttons with 3-state logic, per physical button
 		gp.buttons.forEach(function (btn, index) {
 			const isPressed = btn.pressed;
-			const prevState = self.buttonStates[index] || 'unpressed';
+			const prevState = self._rawStates[index] || 'unpressed';
 			let newState = 'unpressed';
 			if (isPressed) {
 				newState = prevState === 'unpressed' ? 'pressed' : 'holding';
 			}
-			self.buttonStates[index] = newState;
-			states.buttons[index] = newState;
+			self._rawStates[index] = newState;
+			states.raw[index] = newState;
 		});
+
+		// Everything downstream works with roles, not physical buttons
+		states.buttons = ButtonMap.toLogical(states.raw);
+		self.buttonStates = states.buttons;
+
 		// Process Axes
 		gp.axes.forEach(function (axis, index) {
 			states.axes[index] = Math.abs(axis) > ControlsSettings.joyDeadline ? axis : 0;
@@ -102,7 +113,8 @@ export default {
 			return false;
 		}
 
-		const buttonsActive = ButtonInput.update(states.buttons);
+		// A remap capture in the options window takes the buttons this poll
+		const buttonsActive = ButtonMap.consume(states.raw) || ButtonInput.update(states.buttons);
 		const axisActive = AxisInput.update(states.axes);
 
 		if (buttonsActive || axisActive) {
@@ -139,6 +151,7 @@ export default {
 	_onDisconnect: function () {
 		this.active = false;
 		this.buttonStates = {};
+		this._rawStates = [];
 		JoystickUIRenderer.hide();
 	}
 };

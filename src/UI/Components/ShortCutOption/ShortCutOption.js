@@ -17,6 +17,8 @@ import BattleMode from 'Controls/BattleMode.js';
 import htmlText from './ShortCutOption.html?raw';
 import cssText from './ShortCutOption.css?raw';
 import Controls from 'Preferences/Controls.js';
+import ButtonMap from 'UI/Components/JoystickUI/JoystickButtonMap.js';
+import JoystickUIRenderer from 'UI/Components/JoystickUI/JoystickUIRenderer.js';
 
 const ShortCutOption = new GUIComponent('ShortCutOption', cssText);
 
@@ -101,6 +103,23 @@ ShortCutOption.init = function () {
 
 	bindChange('.attackTargetMode', onUpdateTargetOption);
 	bindChange('.joyCycleMode', onUpdateCycleMode);
+
+	// Gamepad button mapping panel
+	const gamepadTab = root.querySelector('.content.t_gamepad');
+	root.querySelector('.joyMappingOpen').addEventListener('click', function () {
+		renderMapping(root);
+		gamepadTab.classList.add('mapping-open');
+	});
+	root.querySelector('.joyMappingBack').addEventListener('click', function () {
+		ButtonMap.cancelCapture();
+		gamepadTab.classList.remove('mapping-open');
+	});
+	root.querySelector('.joyMappingReset').addEventListener('click', function () {
+		ButtonMap.cancelCapture();
+		ButtonMap.reset();
+		JoystickUIRenderer.relabel();
+		renderMapping(root);
+	});
 	bindChange('.joySense', onUpdateSense);
 	bindChange('.joyQuick', onUpdateJoyQuick);
 	bindChange('.joyDeadline', onUpdateJoyDeadline);
@@ -152,6 +171,7 @@ ShortCutOption.onAppend = function () {
  * Remove from window (and so clean up)
  */
 ShortCutOption.onRemove = function () {
+	ButtonMap.cancelCapture();
 	_preferences.x = parseInt(this._host.style.left, 10);
 	_preferences.y = parseInt(this._host.style.top, 10);
 	_preferences.save();
@@ -447,6 +467,124 @@ function getShift(sc) {
 function onUpdateTargetOption() {
 	Controls.attackTargetMode = parseInt(this.value, 10);
 	Controls.save();
+}
+
+/**
+ * Roles a single button plays, in the order the mapping panel lists them.
+ */
+const MAPPING_ROLES = [
+	[ButtonMap.BUTTON.A, 'Click / confirm'],
+	[ButtonMap.BUTTON.B, 'Right click (hold on item/skill: options)'],
+	[ButtonMap.BUTTON.X, 'Attack target'],
+	[ButtonMap.BUTTON.Y, 'Pick up item'],
+	[ButtonMap.BUTTON.LEFT, 'Previous target (grid left on items)'],
+	[ButtonMap.BUTTON.RIGHT, 'Next target (grid right on items)'],
+	[ButtonMap.BUTTON.UP, 'Up (arrow key, item grids)'],
+	[ButtonMap.BUTTON.DOWN, 'Down (arrow key, item grids)'],
+	[ButtonMap.BUTTON.LS, 'Target cycle: mobs / items / both'],
+	[ButtonMap.BUTTON.RS, 'Clear target, recenter cursor'],
+	[ButtonMap.BUTTON.MENU, 'Enter'],
+	[ButtonMap.BUTTON.VIEW, 'Camera & menu modifier'],
+	[ButtonMap.BUTTON.LB, 'Shortcuts: skill bar 1, slots 1-4'],
+	[ButtonMap.BUTTON.LT, 'Shortcuts: skill bar 1, slots 5-8'],
+	[ButtonMap.BUTTON.RB, 'Shortcuts: skill bar 2, slots 1-4'],
+	[ButtonMap.BUTTON.RT, 'Shortcuts: skill bar 2, slots 5-8']
+];
+
+/**
+ * Combinations, worded with the current button names.
+ */
+function getMappingCombos() {
+	const B = ButtonMap.BUTTON;
+	const n = ButtonMap.nameOf;
+	const faces = [n(B.Y), n(B.X), n(B.B), n(B.A)].join(' / ');
+	const sticks = Controls.joyReverseStick ? ['Right stick', 'Left stick'] : ['Left stick', 'Right stick'];
+
+	return [
+		[
+			n(B.LB) + ' / ' + n(B.RB) + ' / ' + n(B.LT) + ' / ' + n(B.RT) + ' + ' + faces,
+			'Shortcut slot 1 / 2 / 3 / 4 of that group'
+		],
+		[n(B.LB) + ' + ' + n(B.RB) + ' + ' + faces, 'Slot 9 of skill bar 1 / 2 / 3 / 4'],
+		[n(B.LT) + ' + ' + n(B.RT), 'Switch shortcut set (bars 1-2 / 3-4)'],
+		[n(B.VIEW) + ' + ' + n(B.UP) + ' / ' + n(B.DOWN), 'Camera zoom'],
+		[n(B.VIEW) + ' + ' + n(B.LEFT) + ' / ' + n(B.RIGHT), 'Camera rotate'],
+		[n(B.VIEW) + ' + ' + n(B.MENU), 'Escape'],
+		[n(B.VIEW) + ' (cursor on item/skill)', 'Context menu'],
+		[sticks[0], 'Move'],
+		[sticks[1], 'Cursor']
+	];
+}
+
+/**
+ * Fill the mapping panel's tables from the current map.
+ */
+function renderMapping(root) {
+	const status = root.querySelector('.joyMappingStatus');
+	status.classList.remove('capturing');
+	status.textContent = 'Remap: press Remap, then a button on the gamepad. The two buttons trade places.';
+
+	const roles = root.querySelector('.joyMappingRoles tbody');
+	roles.textContent = '';
+	MAPPING_ROLES.forEach(function ([logical, label]) {
+		const tr = document.createElement('tr');
+		const name = document.createElement('td');
+		const button = document.createElement('td');
+		const action = document.createElement('td');
+		const remap = document.createElement('button');
+
+		name.textContent = label;
+		button.textContent = ButtonMap.nameOf(logical);
+		remap.type = 'button';
+		remap.className = 'joyBtn';
+		remap.textContent = 'Remap';
+		remap.addEventListener('click', function () {
+			startRemap(root, logical, label, remap);
+		});
+
+		action.appendChild(remap);
+		tr.append(name, button, action);
+		roles.appendChild(tr);
+	});
+
+	const combos = root.querySelector('.joyMappingCombos tbody');
+	combos.textContent = '';
+	getMappingCombos().forEach(function ([buttons, label]) {
+		const tr = document.createElement('tr');
+		const keys = document.createElement('td');
+		const what = document.createElement('td');
+		keys.textContent = buttons;
+		what.textContent = label;
+		tr.append(keys, what);
+		combos.appendChild(tr);
+	});
+}
+
+/**
+ * Wait for a gamepad button for one role. Pressing Remap again cancels.
+ */
+function startRemap(root, logical, label, remapButton) {
+	const wasThisOne = remapButton.classList.contains('capturing');
+	ButtonMap.cancelCapture();
+	root.querySelectorAll('.joyMappingRoles .joyBtn.capturing').forEach(function (el) {
+		el.classList.remove('capturing');
+	});
+
+	const status = root.querySelector('.joyMappingStatus');
+	if (wasThisOne) {
+		renderMapping(root);
+		return;
+	}
+
+	remapButton.classList.add('capturing');
+	status.classList.add('capturing');
+	status.textContent = 'Press a gamepad button for "' + label + '"... (press Remap again to cancel)';
+
+	ButtonMap.startCapture(function (physical) {
+		ButtonMap.assign(logical, physical);
+		JoystickUIRenderer.relabel();
+		renderMapping(root);
+	});
 }
 
 function onUpdateCycleMode() {

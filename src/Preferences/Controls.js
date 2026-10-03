@@ -23,6 +23,7 @@ export default Preferences.get(
 		/* Joystick */
 		attackTargetMode: 0,
 		joyCycleMode: 0, // D-pad cycle: 0 mobs, 1 ground items, 2 both
+		joyButtonMap: null, // remapped buttons, map[role] = physical; null = default
 		joyQuick: 0,
 		joyDeadline: 0.1,
 		joyDisableVirtualMouse: false,
