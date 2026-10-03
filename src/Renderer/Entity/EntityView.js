@@ -46,6 +46,49 @@ const GR2_MODEL_ROOT = 'data/model/3dmob/';
 const GR2_FALLBACK_JOB = 1002;
 
 /**
+ * Load the first body in `paths` whose .spr and .act both load, and call onload
+ * with that path (no extension). A body missing either file moves on to the
+ * next path; a late answer about a path already given up on is ignored.
+ *
+ * @param {Array<string>} paths - body paths without extension, in order of preference
+ * @param {function} onload - called once, with the path that loaded
+ * @param {object} args - Client.loadFile arguments for the .spr
+ */
+function loadBody(paths, onload, args) {
+	let index = 0;
+
+	const attempt = () => {
+		const current = index;
+		const path = paths[current];
+		let pending = 2;
+
+		const done = () => {
+			if (current === index && --pending === 0) {
+				onload(path);
+			}
+		};
+
+		const fail = () => {
+			if (current !== index) {
+				return;
+			}
+			index++;
+			if (index < paths.length) {
+				attempt();
+			}
+		};
+
+		Client.loadFile(path + '.act', done, fail);
+		// A failure already known (the .act) answers at once: skip the .spr then.
+		if (current === index) {
+			Client.loadFile(path + '.spr', done, fail, args);
+		}
+	};
+
+	attempt();
+}
+
+/**
  * Files to display a view
  *
  * @param {optional|string} sprite path
@@ -371,11 +414,13 @@ function UpdateBody(job) {
 		this.gr2 = null;
 	}
 
-	// Loading
-	Client.loadFile(path + '.act');
-	Client.loadFile(
-		path + '.spr',
-		function () {
+	// Loading: the body the tables name, then -- when the client's data lacks it -- the
+	// stand-ins DB.getBodyFallbackPaths names, so an NPC is never drawn as nothing.
+	// The GM sprite is chosen on purpose and gets none.
+	const paths = [path].concat(showAdminSprite ? [] : DB.getBodyFallbackPaths(job, this._sex) || []);
+	loadBody(
+		paths,
+		function (loaded) {
 			// Check if callback is stale (transformation changed while callback was pending)
 			const isStaleCallback = this._transformationSeq && this._transformationSeq > transformationSeq;
 
@@ -384,8 +429,8 @@ function UpdateBody(job) {
 
 			// Only update if callback is valid
 			if (!isStaleCallback && job === currentJob) {
-				this.files.body.spr = path + '.spr';
-				this.files.body.act = path + '.act';
+				this.files.body.spr = loaded + '.spr';
+				this.files.body.act = loaded + '.act';
 
 				// Apply head suppression/restoration
 				// Apply head suppression/restoration
@@ -397,7 +442,6 @@ function UpdateBody(job) {
 			this.weapon = this._weapon;
 			this.shield = this._shield;
 		}.bind(this),
-		null,
 		{
 			to_rgba: this.objecttype !== Entity.TYPE_PC
 		}
