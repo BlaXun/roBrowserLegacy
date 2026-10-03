@@ -65,12 +65,26 @@ function releaseItem() {
  * Mark a ground item as the cycle target: drop any combat lock-on and show
  * the same lock-on arrow mobs get, so the player sees which item Y will pick.
  */
-function focusItem(item) {
+/**
+ * Drop the current focus without telling the server to stop attacking.
+ *
+ * onFocusEnd() sends CZ_CANCEL_LOCKON (rAthena: clif_parse_StopAttack) only
+ * while the entity is still the focus. Clearing the focus first skips it,
+ * the same trick MapControl.onMouseUp uses. Switching focus on the gamepad
+ * (D-pad cycle, X picking a new target) must not stop a running attack:
+ * cycling only moves the arrow, and X's REQUEST_ACT replaces the attack
+ * on the server anyway.
+ */
+function dropFocusQuietly() {
 	const focus = EntityManager.getFocusEntity();
 	if (focus) {
-		focus.onFocusEnd();
 		EntityManager.setFocusEntity(null);
+		focus.onFocusEnd();
 	}
+}
+
+function focusItem(item) {
+	dropFocusQuietly();
 	releaseItem();
 
 	item.attachments.add({
@@ -158,8 +172,7 @@ function focusTarget(entity) {
 
 	const focus = EntityManager.getFocusEntity();
 	if (focus && entity.GID !== focus.GID) {
-		focus.onFocusEnd();
-		EntityManager.setFocusEntity(null);
+		dropFocusQuietly();
 		focusEntity(entity);
 	} else if (!focus) {
 		focusEntity(entity);
@@ -278,5 +291,11 @@ export default {
 	cycle: cycle,
 	clear: clearFocus,
 	getItem: getCycledItem,
+	snapCursorToFocus: function () {
+		const focus = EntityManager.getFocusEntity();
+		if (focus) {
+			Cursor.moveMouseToEntity(focus);
+		}
+	},
 	nextCycleMode: nextCycleMode
 };

@@ -132,7 +132,15 @@ export default {
 	 * @return {boolean} whether an attack was sent
 	 */
 	attackTargeted: function (repeat) {
-		return Character.attack(repeat);
+		const sent = Character.attack(repeat);
+
+		// Park the virtual cursor on the target, as a D-pad cycle does, so a
+		// following A press (a real left click at the cursor) lands on the
+		// mob instead of the ground, which would cancel the attack and walk.
+		if (sent) {
+			Target.snapCursorToFocus();
+		}
+		return sent;
 	},
 
 	releaseStick: function () {
