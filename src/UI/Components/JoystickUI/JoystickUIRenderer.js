@@ -196,7 +196,9 @@ function updateStickMode() {
 
 	const el = shadow.querySelector('.stick-mode');
 	if (el) {
-		const aim = ControlsSettings.joyRightStickMode === 1;
+		// Only worth showing when aiming is switched on in the settings
+		const aim = ControlsSettings.joyAimEnabled && ControlsSettings.joyRightStickMode === 1;
+		el.style.display = ControlsSettings.joyAimEnabled ? '' : 'none';
 		el.textContent = aim ? 'Aim' : 'Cursor';
 		el.classList.toggle('aim', aim);
 	}

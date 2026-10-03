@@ -57,8 +57,12 @@ let _aimDrawn = false;
 const _aimWorld = glMatrix.vec4.create();
 const _aimView = glMatrix.vec4.create();
 
+function isEnabled() {
+	return !!ControlsSettings.joyAimEnabled;
+}
+
 function isActive() {
-	return ControlsSettings.joyRightStickMode === MODE.AIM;
+	return isEnabled() && ControlsSettings.joyRightStickMode === MODE.AIM;
 }
 
 /**
@@ -284,6 +288,9 @@ function update(x, y, held) {
  * Switch the right stick between aim and cursor (tap RS click).
  */
 function toggle() {
+	if (!isEnabled()) {
+		return;
+	}
 	ControlsSettings.joyRightStickMode = isActive() ? MODE.CURSOR : MODE.AIM;
 	ControlsSettings.save();
 	release();
@@ -291,9 +298,23 @@ function toggle() {
 	ChatBox.addText('Right stick: ' + (isActive() ? 'aim' : 'cursor'), ChatBox.TYPE.INFO, ChatBox.FILTER.PUBLIC_LOG);
 }
 
+/**
+ * Settings checkbox. Turning aiming on puts the right stick in aim mode
+ * straight away; turning it off returns it to the cursor for good.
+ */
+function setEnabled(enabled) {
+	ControlsSettings.joyAimEnabled = !!enabled;
+	ControlsSettings.joyRightStickMode = enabled ? MODE.AIM : MODE.CURSOR;
+	ControlsSettings.save();
+	release();
+	JoystickUIRenderer.updateStickMode();
+}
+
 export default {
 	MODE,
+	isEnabled,
 	isActive,
+	setEnabled,
 	update,
 	release,
 	toggle,

@@ -14,6 +14,7 @@ import Interaction from './JoystickInteractionService.js';
 import SetManager from './JoystickSetManager.js';
 import JoystickUIRenderer from './JoystickUIRenderer.js';
 import SelectionUI from './JoystickSelectionUI.js';
+import ControlsSettings from 'Preferences/Controls.js';
 
 let clickLock = false;
 const lockTimeout = 200;
@@ -117,6 +118,16 @@ const ButtonInput = {
 	_handleRightStickButton: function (btn) {
 		const state = btn[11];
 
+		// Aiming switched off in the settings: RS click clears the target as
+		// soon as it is pressed, as it did before aiming existed.
+		if (!ControlsSettings.joyAimEnabled) {
+			rsDownAt = 0;
+			if (state === 'pressed') {
+				Interaction.resetFocus();
+			}
+			return state !== 'unpressed';
+		}
+
 		if (state !== 'unpressed') {
 			if (!rsDownAt) {
 				rsDownAt = Date.now();
@@ -131,7 +142,7 @@ const ButtonInput = {
 
 		if (rsDownAt) {
 			if (!rsHoldFired && !SelectionUI.active()) {
-				// Tap: right stick aim line <-> cursor
+				// Tap: right stick aim <-> cursor
 				Interaction.toggleStickMode();
 			}
 			rsDownAt = 0;

@@ -19,6 +19,7 @@ import cssText from './ShortCutOption.css?raw';
 import Controls from 'Preferences/Controls.js';
 import ButtonMap from 'UI/Components/JoystickUI/JoystickButtonMap.js';
 import JoystickUIRenderer from 'UI/Components/JoystickUI/JoystickUIRenderer.js';
+import JoystickAim from 'UI/Components/JoystickUI/JoystickAimMode.js';
 
 const ShortCutOption = new GUIComponent('ShortCutOption', cssText);
 
@@ -103,7 +104,7 @@ ShortCutOption.init = function () {
 
 	bindChange('.attackTargetMode', onUpdateTargetOption);
 	bindChange('.joyCycleMode', onUpdateCycleMode);
-	bindChange('.joyRightStickMode', onUpdateRightStickMode);
+	bindChange('.joyAimEnabled', onUpdateAimEnabled);
 
 	// Gamepad button mapping panel
 	const gamepadTab = root.querySelector('.content.t_gamepad');
@@ -162,9 +163,9 @@ ShortCutOption.onAppend = function () {
 	if (cycleMode) {
 		cycleMode.value = String(Controls.joyCycleMode | 0);
 	}
-	const stickMode = this.getRoot().querySelector('.joyRightStickMode');
-	if (stickMode) {
-		stickMode.value = String(Controls.joyRightStickMode | 0);
+	const aimEnabled = this.getRoot().querySelector('.joyAimEnabled');
+	if (aimEnabled) {
+		aimEnabled.checked = !!Controls.joyAimEnabled;
 	}
 
 	this._host.style.left = _preferences.x + 'px';
@@ -487,7 +488,13 @@ const MAPPING_ROLES = [
 	[ButtonMap.BUTTON.UP, 'Up (arrow key, item grids)'],
 	[ButtonMap.BUTTON.DOWN, 'Down (arrow key, item grids)'],
 	[ButtonMap.BUTTON.LS, 'Target cycle: mobs / items / both'],
-	[ButtonMap.BUTTON.RS, 'Tap: right stick aim/cursor - Hold: clear target'],
+	[
+		ButtonMap.BUTTON.RS,
+		() =>
+			Controls.joyAimEnabled
+				? 'Tap: right stick aim/cursor - Hold: clear target'
+				: 'Clear target, recenter cursor'
+	],
 	[ButtonMap.BUTTON.MENU, 'Enter'],
 	[ButtonMap.BUTTON.VIEW, 'Camera & menu modifier'],
 	[ButtonMap.BUTTON.LB, 'Shortcuts: skill bar 1, slots 1-4'],
@@ -517,7 +524,7 @@ function getMappingCombos() {
 		[n(B.VIEW) + ' + ' + n(B.MENU), 'Escape'],
 		[n(B.VIEW) + ' (cursor on item/skill)', 'Context menu'],
 		[sticks[0], 'Move'],
-		[sticks[1], Controls.joyRightStickMode === 1 ? 'Aim (selects target)' : 'Cursor']
+		[sticks[1], Controls.joyAimEnabled ? 'Cursor, or aim (tap ' + n(B.RS) + ')' : 'Cursor']
 	];
 }
 
@@ -531,7 +538,8 @@ function renderMapping(root) {
 
 	const roles = root.querySelector('.joyMappingRoles tbody');
 	roles.textContent = '';
-	MAPPING_ROLES.forEach(function ([logical, label]) {
+	MAPPING_ROLES.forEach(function ([logical, roleLabel]) {
+		const label = typeof roleLabel === 'function' ? roleLabel() : roleLabel;
 		const tr = document.createElement('tr');
 		const name = document.createElement('td');
 		const button = document.createElement('td');
@@ -592,10 +600,8 @@ function startRemap(root, logical, label, remapButton) {
 	});
 }
 
-function onUpdateRightStickMode() {
-	Controls.joyRightStickMode = parseInt(this.value, 10);
-	Controls.save();
-	JoystickUIRenderer.updateStickMode();
+function onUpdateAimEnabled() {
+	JoystickAim.setEnabled(this.checked);
 }
 
 function onUpdateCycleMode() {

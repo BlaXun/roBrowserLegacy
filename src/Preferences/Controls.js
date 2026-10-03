@@ -24,7 +24,8 @@ export default Preferences.get(
 		attackTargetMode: 0,
 		joyCycleMode: 0, // D-pad cycle: 0 mobs, 1 ground items, 2 both
 		joyButtonMap: null, // remapped buttons, map[role] = physical; null = default
-		joyRightStickMode: 0, // right stick: 0 virtual cursor, 1 aim line (tap RS click)
+		joyAimEnabled: false, // right-stick aiming available (Settings > Gamepad)
+		joyRightStickMode: 0, // right stick: 0 virtual cursor, 1 aim (tap RS click)
 		joyQuick: 0,
 		joyDeadline: 0.1,
 		joyDisableVirtualMouse: false,

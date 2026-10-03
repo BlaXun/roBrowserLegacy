@@ -6,11 +6,12 @@ vi.mock('Renderer/EntityManager.js', () => ({ default: {} }));
 vi.mock('Renderer/Renderer.js', () => ({ default: {} }));
 vi.mock('Renderer/Camera.js', () => ({ default: { angle: [0, 0] } }));
 vi.mock('Renderer/Map/Altitude.js', () => ({ default: { getCellHeight: () => 0 } }));
-vi.mock('Preferences/Controls.js', () => ({ default: { joyRightStickMode: 0, save: () => {} } }));
+const controls = vi.hoisted(() => ({ joyAimEnabled: false, joyRightStickMode: 0, save: () => {} }));
+vi.mock('Preferences/Controls.js', () => ({ default: controls }));
 vi.mock('UI/Components/ChatBox/ChatBox.js', () => ({ default: {} }));
 vi.mock('UI/Components/JoystickUI/JoystickTargetService.js', () => ({ default: {} }));
 vi.mock('UI/Components/JoystickUI/JoystickMouseCursorAdapter.js', () => ({ default: {} }));
-vi.mock('UI/Components/JoystickUI/JoystickUIRenderer.js', () => ({ default: {} }));
+vi.mock('UI/Components/JoystickUI/JoystickUIRenderer.js', () => ({ default: { updateStickMode: () => {} } }));
 
 const { default: Aim } = await import('UI/Components/JoystickUI/JoystickAimMode.js');
 
@@ -48,6 +49,24 @@ describe('JoystickAimMode.stickToMapDirection', () => {
 		const [dx, dy] = Aim.stickToMapDirection(0, -1, 0);
 		expect(dx).toBeCloseTo(0, 6);
 		expect(dy).toBeCloseTo(1, 6);
+	});
+});
+
+describe('JoystickAimMode enable switch', () => {
+	it('is off by default and stays off even with the aim mode remembered', () => {
+		controls.joyAimEnabled = false;
+		controls.joyRightStickMode = Aim.MODE.AIM;
+		expect(Aim.isActive()).toBe(false);
+	});
+
+	it('turning it on aims straight away; turning it off returns to the cursor', () => {
+		Aim.setEnabled(true);
+		expect(controls.joyRightStickMode).toBe(Aim.MODE.AIM);
+		expect(Aim.isActive()).toBe(true);
+
+		Aim.setEnabled(false);
+		expect(controls.joyRightStickMode).toBe(Aim.MODE.CURSOR);
+		expect(Aim.isActive()).toBe(false);
 	});
 });
 
