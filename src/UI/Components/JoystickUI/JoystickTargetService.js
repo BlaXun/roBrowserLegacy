@@ -62,10 +62,6 @@ function releaseItem() {
 }
 
 /**
- * Mark a ground item as the cycle target: drop any combat lock-on and show
- * the same lock-on arrow mobs get, so the player sees which item Y will pick.
- */
-/**
  * Drop the current focus without telling the server to stop attacking.
  *
  * onFocusEnd() sends CZ_CANCEL_LOCKON (rAthena: clif_parse_StopAttack) only
@@ -83,6 +79,10 @@ function dropFocusQuietly() {
 	}
 }
 
+/**
+ * Mark a ground item as the cycle target: drop any combat lock-on and show
+ * the same lock-on arrow mobs get, so the player sees which item Y will pick.
+ */
 function focusItem(item) {
 	dropFocusQuietly();
 	releaseItem();
@@ -98,14 +98,54 @@ function focusItem(item) {
 	_cycledItem = item;
 }
 
+/**
+ * Whether the entity is something X may attack: alive, still in the current
+ * map's entity list, and a mob, or a player the map state lets us attack
+ * (PvP / GvG, the same rule as the mouse's attack cursor).
+ *
+ * The EntityManager.get() check matters: EntityManager.free() on a warp
+ * cleans entities (remove_tick back to 0) but never clears the focus, so a
+ * focus from the previous map would otherwise still look alive.
+ *
+ * @param {Entity} entity
+ * @return {boolean}
+ */
+function isAttackable(entity) {
+	if (!entity || entity === Session.Entity) {
+		return false;
+	}
+	if (entity.action === entity.ACTION.DIE || entity.remove_tick !== 0) {
+		return false;
+	}
+	if (EntityManager.get(entity.GID) !== entity) {
+		return false;
+	}
+
+	const Entity = entity.constructor;
+	if (entity.objecttype === Entity.TYPE_MOB) {
+		return true;
+	}
+	return entity.objecttype === Entity.TYPE_PC && !!entity.canAttackEntity && entity.canAttackEntity();
+}
+
+/**
+ * The focused entity if it is still an attackable target, else null.
+ * A click on an NPC or a friendly player also focuses it (MapControl), and
+ * that must not turn X into an attack on it.
+ *
+ * @return {Entity|null}
+ */
+function getAttackableFocus() {
+	const focus = EntityManager.getFocusEntity();
+	return isAttackable(focus) ? focus : null;
+}
+
 function getEntityInContext() {
 	// If the player has cycled onto a specific target with D-pad, X-button
 	// attacks and attackTargetMode skills should respect that choice instead
-	// of re-picking by HP or distance. Only honour a focus that is still a
-	// valid attack target (not dying, not being removed, same filters as
-	// getEntitiesSortedByDistance keeps alive).
-	const focus = EntityManager.getFocusEntity();
-	if (focus && focus.action !== focus.ACTION.DIE && focus.remove_tick === 0) {
+	// of re-picking by HP or distance, as long as it is still attackable.
+	const focus = getAttackableFocus();
+	if (focus) {
 		return focus;
 	}
 
@@ -248,6 +288,8 @@ function nextCycleMode() {
 
 export default {
 	getEntity: getEntityInContext,
+	getAttackableFocus: getAttackableFocus,
+	isAttackable: isAttackable,
 	focus: focusTarget,
 	cycle: cycle,
 	clear: clearFocus,

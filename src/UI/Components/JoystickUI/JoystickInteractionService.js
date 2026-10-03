@@ -22,7 +22,6 @@ import DB from 'DB/DBManager.js';
 import SkillInfo from 'DB/Skills/SkillInfo.js';
 import ShortcutMapper from './JoystickShortcutMapper.js';
 import Mouse from 'Controls/MouseEventHandler.js';
-import EntityManager from 'Renderer/EntityManager.js';
 import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTargetSelection.js';
 
 export default {
@@ -84,6 +83,11 @@ export default {
 	 * enemy target. Goes through SkillTargetSelection's own entity check, as
 	 * the party window does for its members.
 	 *
+	 * A focus that is not an attackable target (an NPC or friendly player
+	 * the player clicked, or a stale focus from the previous map) is left
+	 * alone and false returned, so the caller's quick-cast click runs
+	 * instead of the skill being cancelled on a target it refuses.
+	 *
 	 * @return {boolean} whether the skill was cast
 	 */
 	castAtFocus: function () {
@@ -92,8 +96,8 @@ export default {
 			return false;
 		}
 
-		const focus = EntityManager.getFocusEntity();
-		if (!focus || focus.action === focus.ACTION.DIE || focus.remove_tick !== 0) {
+		const focus = Target.getAttackableFocus();
+		if (!focus) {
 			return false;
 		}
 
