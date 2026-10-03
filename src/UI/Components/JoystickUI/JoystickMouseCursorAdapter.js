@@ -344,8 +344,23 @@ function navigateDraggableItems(direction) {
 	}
 }
 
-function quickCastClick() {
+/**
+ * Click the map for Quick-Cast, but only while a skill is still waiting for
+ * a target. Items, self skills and skills already cast leave the game in
+ * normal mode, where this click would be a plain left click on the ground:
+ * it cancelled the running attack and walked to the cursor.
+ *
+ * @param {function} [beforeClick] runs just before the click, e.g. to put
+ *   the cursor on the selected target
+ */
+function quickCastClick(beforeClick) {
 	setTimeout(function () {
+		if (Mouse.state !== Mouse.MOUSE_STATE.USESKILL) {
+			return;
+		}
+		if (beforeClick) {
+			beforeClick();
+		}
 		_dispatchMouseEvent(Renderer.canvas, 'mousedown', 1);
 		setTimeout(function () {
 			_dispatchMouseEvent(Renderer.canvas, 'mouseup', 1);

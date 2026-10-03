@@ -22,6 +22,8 @@ import DB from 'DB/DBManager.js';
 import SkillInfo from 'DB/Skills/SkillInfo.js';
 import ShortcutMapper from './JoystickShortcutMapper.js';
 import Mouse from 'Controls/MouseEventHandler.js';
+import EntityManager from 'Renderer/EntityManager.js';
+import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTargetSelection.js';
 
 export default {
 	prepare: function () {},
@@ -52,7 +54,14 @@ export default {
 		});
 
 		if (ControlsSettings.joyQuick === 2) {
-			Cursor.quickCastClick();
+			// Instant: a selected mob gets the skill wherever the cursor is
+			// (it may have walked away from where the cycle left it); ground
+			// skills land where the mob stands at the moment of the click.
+			if (!this.castAtFocus()) {
+				Cursor.quickCastClick(function () {
+					Target.snapCursorToFocus();
+				});
+			}
 		} else if (ControlsSettings.joyQuick === 1) {
 			this.cancelQuick = false;
 
@@ -68,6 +77,29 @@ export default {
 			};
 			waitforRelease();
 		}
+	},
+
+	/**
+	 * Cast the skill waiting for a target on the focused mob, if it takes an
+	 * enemy target. Goes through SkillTargetSelection's own entity check, as
+	 * the party window does for its members.
+	 *
+	 * @return {boolean} whether the skill was cast
+	 */
+	castAtFocus: function () {
+		const flag = SkillTargetSelection.getFlag();
+		if (!(flag & SkillTargetSelection.TYPE.ENEMY) || flag & SkillTargetSelection.TYPE.PLACE) {
+			return false;
+		}
+
+		const focus = EntityManager.getFocusEntity();
+		if (!focus || focus.action === focus.ACTION.DIE || focus.remove_tick !== 0) {
+			return false;
+		}
+
+		SkillTargetSelection.intersectEntityId(focus.GID);
+		SkillTargetSelection.remove();
+		return true;
 	},
 
 	openSelectionWindow: function (draggableElement) {
