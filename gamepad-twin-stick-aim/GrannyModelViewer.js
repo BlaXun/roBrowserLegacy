@@ -206331,7 +206331,7 @@ var init_HtmlHelper = __esmMin((() => {
 * Render background (or a black background if no image is loaded yet)
 */
 function render$16() {
-	_ctx$7.clearRect(0, 0, _canvas.width, _canvas.height);
+	_ctx$6.clearRect(0, 0, _canvas.width, _canvas.height);
 	if (_progress > -1) Background.setPercent(_progress);
 }
 /**
@@ -206342,24 +206342,24 @@ function render$16() {
 function transition(callback) {
 	const transitionDuration = Configs.get("transitionDuration") ? Configs.get("transitionDuration") : 500;
 	if (_overlayAnim) _overlayAnim.stop();
-	_overlay$1.style.opacity = "0.01";
-	document.body.appendChild(_overlay$1);
-	_overlayAnim = animateElement(_overlay$1, { opacity: 1 }, transitionDuration, () => {
+	_overlay.style.opacity = "0.01";
+	document.body.appendChild(_overlay);
+	_overlayAnim = animateElement(_overlay, { opacity: 1 }, transitionDuration, () => {
 		callback();
-		_overlayAnim = animateElement(_overlay$1, { opacity: .01 }, transitionDuration, () => {
-			if (_overlay$1.parentNode) _overlay$1.parentNode.removeChild(_overlay$1);
+		_overlayAnim = animateElement(_overlay, { opacity: .01 }, transitionDuration, () => {
+			if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
 		});
 	});
 }
-var _overlay$1, _container, _canvas, _ctx$7, _progress, _overlayAnim, _loading, Background;
+var _overlay, _container, _canvas, _ctx$6, _progress, _overlayAnim, _loading, Background;
 var init_Background = __esmMin((() => {
 	init_DBManager();
 	init_Client();
 	init_Configs();
 	init_PacketVerManager();
 	init_HtmlHelper();
-	_overlay$1 = document.createElement("div");
-	Object.assign(_overlay$1.style, {
+	_overlay = document.createElement("div");
+	Object.assign(_overlay.style, {
 		position: "absolute",
 		top: "0",
 		left: "0",
@@ -206384,7 +206384,7 @@ var init_Background = __esmMin((() => {
 		left: "0",
 		zIndex: "2"
 	});
-	_ctx$7 = _canvas.getContext("2d");
+	_ctx$6 = _canvas.getContext("2d");
 	_progress = -1;
 	_overlayAnim = null;
 	_loading = [];
@@ -206412,7 +206412,7 @@ var init_Background = __esmMin((() => {
 		static resize(width, height) {
 			_canvas.width = width;
 			_canvas.height = height;
-			Object.assign(_overlay$1.style, {
+			Object.assign(_overlay.style, {
 				width: width + "px",
 				height: height + "px"
 			});
@@ -206420,7 +206420,7 @@ var init_Background = __esmMin((() => {
 				width: width + "px",
 				height: height + "px"
 			});
-			_ctx$7.clearRect(0, 0, width, height);
+			_ctx$6.clearRect(0, 0, width, height);
 			render$16();
 		}
 		/**
@@ -206556,14 +206556,14 @@ var init_Background = __esmMin((() => {
 			const height = 15;
 			const x = Math.floor((_canvas.width - width) * .5);
 			const y = Math.floor(_canvas.height * .75);
-			_ctx$7.fillStyle = "rgb(0,255,255)";
-			_ctx$7.fillRect(x, y, width, height);
-			_ctx$7.fillStyle = "rgb(140,140,140)";
-			_ctx$7.fillRect(x + 1, y + 1, 238, 13);
-			_ctx$7.fillStyle = "rgb(66,99,165)";
-			_ctx$7.fillRect(x + 2, y + 2, Math.floor(percent * 236 * .01), 11);
-			_ctx$7.fillStyle = "rgb(255,255,0)";
-			_ctx$7.fillText(percent + "%", Math.floor((_canvas.width - _ctx$7.measureText(percent + "%").width) * .5), y + 11);
+			_ctx$6.fillStyle = "rgb(0,255,255)";
+			_ctx$6.fillRect(x, y, width, height);
+			_ctx$6.fillStyle = "rgb(140,140,140)";
+			_ctx$6.fillRect(x + 1, y + 1, 238, 13);
+			_ctx$6.fillStyle = "rgb(66,99,165)";
+			_ctx$6.fillRect(x + 2, y + 2, Math.floor(percent * 236 * .01), 11);
+			_ctx$6.fillStyle = "rgb(255,255,0)";
+			_ctx$6.fillText(percent + "%", Math.floor((_canvas.width - _ctx$6.measureText(percent + "%").width) * .5), y + 11);
 		}
 	};
 }));
@@ -207837,7 +207837,7 @@ function fillImageData(imageData, frame, pal, color) {
 		}
 	}
 }
-var mat4$24, RenderCanvas2D, _program$26, _buffer$18, _ctx$6, _gl$2, _groupId, _lastGroupId, _shadow, _angle, _depth, _disableDepthCorrection, _depthMask, _depthTest, _texture$4, _usepal, _pos$8, _matrix$7, _size$7, _offset, SpriteRenderer;
+var mat4$24, RenderCanvas2D, _program$26, _buffer$18, _ctx$5, _gl$2, _groupId, _lastGroupId, _shadow, _angle, _depth, _disableDepthCorrection, _depthMask, _depthTest, _texture$4, _usepal, _pos$8, _matrix$7, _size$7, _offset, SpriteRenderer;
 var init_SpriteRenderer = __esmMin((() => {
 	init_WebGL();
 	init_gl_matrix();
@@ -207902,17 +207902,17 @@ var init_SpriteRenderer = __esmMin((() => {
 				_size$7[1] *= -1;
 			}
 			const canvas = getFrameCanvas(frame, pal, this.color);
-			_ctx$6.save();
-			_ctx$6.translate(_x | 0, _y | 0);
-			_ctx$6.rotate(this.angle / 180 * Math.PI);
-			_ctx$6.scale(scale_x, scale_y);
-			_ctx$6.drawImage(canvas, 0, 0, width, height, -_size$7[0] >> 1, -_size$7[1] >> 1, _size$7[0] | 0, _size$7[1] | 0);
-			_ctx$6.restore();
+			_ctx$5.save();
+			_ctx$5.translate(_x | 0, _y | 0);
+			_ctx$5.rotate(this.angle / 180 * Math.PI);
+			_ctx$5.scale(scale_x, scale_y);
+			_ctx$5.drawImage(canvas, 0, 0, width, height, -_size$7[0] >> 1, -_size$7[1] >> 1, _size$7[0] | 0, _size$7[1] | 0);
+			_ctx$5.restore();
 		};
 	})();
 	_program$26 = null;
 	_buffer$18 = null;
-	_ctx$6 = null;
+	_ctx$5 = null;
 	_gl$2 = null;
 	_groupId = 0;
 	_lastGroupId = 0;
@@ -208078,7 +208078,7 @@ var init_SpriteRenderer = __esmMin((() => {
 		* @param {number} y position
 		*/
 		static bind2DContext(ctx, x, y) {
-			_ctx$6 = ctx;
+			_ctx$5 = ctx;
 			_pos$8[0] = x;
 			_pos$8[1] = y;
 			this.render = RenderCanvas2D;
@@ -221914,7 +221914,7 @@ function eventsBooks$1() {
 		readCanvas.height = 15;
 		readCanvas.className = "book_read event_add_cursor";
 		event.appendChild(readCanvas);
-		_ctx$5 = readCanvas.getContext("2d");
+		_ctx$4 = readCanvas.getContext("2d");
 		const bookRead = root.querySelector(".book_read");
 		if (bookRead) {
 			bookRead.addEventListener("mouseover", (e) => {
@@ -221947,7 +221947,7 @@ function validateFieldsExist$1(event) {
 	if (!event.querySelector("button")) event.insertAdjacentHTML("beforeend", "<button class=\"view\" data-background=\"btn_view.bmp\" data-down=\"btn_view_a.bmp\" data-hover=\"btn_view_b.bmp\"></button>");
 	return true;
 }
-var _sprite$4, _action$4, _ctx$5, _type$7, _start$2, ItemCompare, rendering$3, ItemCompare_default;
+var _sprite$4, _action$4, _ctx$4, _type$7, _start$2, ItemCompare, rendering$3, ItemCompare_default;
 var init_ItemCompare = __esmMin((() => {
 	init_DBManager();
 	init_ItemType();
@@ -222090,8 +222090,8 @@ var init_ItemCompare = __esmMin((() => {
 			const animation = action.animations[anim % action.animations.length];
 			let i, count;
 			count = animation.layers.length;
-			SpriteRenderer.bind2DContext(_ctx$5, 10, 25);
-			_ctx$5.clearRect(0, 0, _ctx$5.canvas.width, _ctx$5.canvas.height);
+			SpriteRenderer.bind2DContext(_ctx$4, 10, 25);
+			_ctx$4.clearRect(0, 0, _ctx$4.canvas.width, _ctx$4.canvas.height);
 			for (i = 0, count = animation.layers.length; i < count; ++i) _entity.renderLayer(animation.layers[i], _sprite$4, _sprite$4, 1, position, false);
 		};
 	})();
@@ -222165,7 +222165,7 @@ function applyPreviewItem(entity) {
 	if (_previewLocation & EquipmentLocation_default.COSTUME_HEAD_TOP) entity.accessory2 = _previewSpriteId;
 	if (_previewLocation & EquipmentLocation_default.COSTUME_ROBE) entity.robe = _previewSpriteId;
 }
-var ItemPreview, _ctx$4, _direction, _previewLocation, _previewSpriteId, _rendering, _remove, renderPreview, ItemPreview_default;
+var ItemPreview, _ctx$3, _direction, _previewLocation, _previewSpriteId, _rendering, _remove, renderPreview, ItemPreview_default;
 var init_ItemPreview = __esmMin((() => {
 	init_DBManager();
 	init_EquipmentLocation();
@@ -222199,7 +222199,7 @@ var init_ItemPreview = __esmMin((() => {
 	*/
 	ItemPreview.init = function init() {
 		const root = this.getRoot();
-		_ctx$4 = root.querySelector("canvas").getContext("2d");
+		_ctx$3 = root.querySelector("canvas").getContext("2d");
 		root.querySelector(".close").addEventListener("click", () => {
 			ItemPreview.remove();
 		});
@@ -222283,8 +222283,8 @@ var init_ItemPreview = __esmMin((() => {
 			save: false
 		};
 		return function render() {
-			if (!_ctx$4) return;
-			_ctx$4.clearRect(0, 0, _ctx$4.canvas.width, _ctx$4.canvas.height);
+			if (!_ctx$3) return;
+			_ctx$3.clearRect(0, 0, _ctx$3.canvas.width, _ctx$3.canvas.height);
 			if (!_previewSpriteId || !_previewLocation || !SessionStorage_default.Entity) return;
 			const previewCharacter = new Entity();
 			previewCharacter.set({
@@ -222310,8 +222310,8 @@ var init_ItemPreview = __esmMin((() => {
 			previewCharacter.headDir = 0;
 			previewCharacter.action = previewCharacter.ACTION.IDLE;
 			previewCharacter.animation = _animation;
-			SpriteRenderer.bind2DContext(_ctx$4, Math.floor(_ctx$4.canvas.width / 2), _ctx$4.canvas.height);
-			previewCharacter.renderEntity(_ctx$4);
+			SpriteRenderer.bind2DContext(_ctx$3, Math.floor(_ctx$3.canvas.width / 2), _ctx$3.canvas.height);
+			previewCharacter.renderEntity(_ctx$3);
 			previewCharacter.effectColor.set(_savedColor);
 		};
 	})();
@@ -223928,7 +223928,7 @@ function resetPathFindingWorker() {
 	terminatePathFindingWorker();
 	initializePathFindingWorker();
 }
-var Navigation, _arrow, _toolDealer, _weaponDealer, _armorDealer, _blacksmith, _guide, _inn, _kafra, _map, _ctx$3, _towninfo, _markers, _path, _lastPathUpdate, _pathUpdateThrottle, _pathUpdateLock, _pathFindingWorker, _mapData, _targetData, _finalTargetData, _isMapClickTarget, _blinking, _fadeInterval, _originalColor, _documentClickHandler, Navigation_default;
+var Navigation, _arrow, _toolDealer, _weaponDealer, _armorDealer, _blacksmith, _guide, _inn, _kafra, _map, _ctx$2, _towninfo, _markers, _path, _lastPathUpdate, _pathUpdateThrottle, _pathUpdateLock, _pathFindingWorker, _mapData, _targetData, _finalTargetData, _isMapClickTarget, _blinking, _fadeInterval, _originalColor, _documentClickHandler, Navigation_default;
 var init_Navigation = __esmMin((() => {
 	init_KeyEventHandler();
 	init_Renderer();
@@ -223954,7 +223954,7 @@ var init_Navigation = __esmMin((() => {
 	_inn = createAsyncImage();
 	_kafra = createAsyncImage();
 	_map = createAsyncImage();
-	_ctx$3 = null;
+	_ctx$2 = null;
 	_towninfo = [];
 	_markers = [];
 	_path = [];
@@ -224003,7 +224003,7 @@ var init_Navigation = __esmMin((() => {
 		const canvas = document.createElement("canvas");
 		canvas.width = 280;
 		canvas.height = 230;
-		_ctx$3 = canvas.getContext("2d");
+		_ctx$2 = canvas.getContext("2d");
 		const mapDisplay = root.querySelector(".map-display");
 		if (mapDisplay) mapDisplay.appendChild(canvas);
 		Client.loadFile(`${DB.INTERFACE_PATH}map/map_arrow.bmp`, (dataURI) => {
@@ -224282,7 +224282,7 @@ var init_Navigation = __esmMin((() => {
 		if ((this._host ? getComputedStyle(this._host).display : "none") === "none") return;
 		const width = 280;
 		const height = 230;
-		const ctx = _ctx$3;
+		const ctx = _ctx$2;
 		if (!ctx) return;
 		const currentMap = getCurrentMap();
 		const currentPos = getPlayerPosition();
@@ -235963,48 +235963,48 @@ function findFirstHit(origin, dir, length, entities) {
 function getContext() {
 	const scene = Renderer.canvas;
 	if (!scene || !scene.parentNode) return null;
-	if (!_overlay) {
-		_overlay = document.createElement("canvas");
-		_overlay.className = "joystick-aim";
-		_overlay.style.position = "absolute";
-		_overlay.style.top = "0px";
-		_overlay.style.left = "0px";
-		_overlay.style.zIndex = 1;
-		_overlay.style.pointerEvents = "none";
-		scene.parentNode.insertBefore(_overlay, scene.nextSibling);
-		_ctx$2 = _overlay.getContext("2d");
+	if (!_aimOverlay) {
+		_aimOverlay = document.createElement("canvas");
+		_aimOverlay.className = "joystick-aim";
+		_aimOverlay.style.position = "absolute";
+		_aimOverlay.style.top = "0px";
+		_aimOverlay.style.left = "0px";
+		_aimOverlay.style.zIndex = 1;
+		_aimOverlay.style.pointerEvents = "none";
+		scene.parentNode.insertBefore(_aimOverlay, scene.nextSibling);
+		_aimCtx = _aimOverlay.getContext("2d");
 	}
 	const dpr = window.devicePixelRatio || 1;
 	const width = Math.round(Renderer.width * dpr);
 	const height = Math.round(Renderer.height * dpr);
-	if (_overlay.width !== width || _overlay.height !== height) {
-		_overlay.width = width;
-		_overlay.height = height;
-		_overlay.style.width = Renderer.width + "px";
-		_overlay.style.height = Renderer.height + "px";
+	if (_aimOverlay.width !== width || _aimOverlay.height !== height) {
+		_aimOverlay.width = width;
+		_aimOverlay.height = height;
+		_aimOverlay.style.width = Renderer.width + "px";
+		_aimOverlay.style.height = Renderer.height + "px";
 	}
-	_ctx$2.setTransform(dpr, 0, 0, dpr, 0, 0);
-	return _ctx$2;
+	_aimCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	return _aimCtx;
 }
 function clearLine() {
-	if (_drawn && _ctx$2) {
-		_ctx$2.setTransform(1, 0, 0, 1, 0, 0);
-		_ctx$2.clearRect(0, 0, _overlay.width, _overlay.height);
-		_drawn = false;
+	if (_aimDrawn && _aimCtx) {
+		_aimCtx.setTransform(1, 0, 0, 1, 0, 0);
+		_aimCtx.clearRect(0, 0, _aimOverlay.width, _aimOverlay.height);
+		_aimDrawn = false;
 	}
 }
 /**
 * Screen position of a ground point, or null behind the camera.
 */
 function project(x, y) {
-	_world$1[0] = x + .5;
-	_world$1[1] = -Altitude.getCellHeight(x, y);
-	_world$1[2] = y + .5;
-	_world$1[3] = 1;
-	exports$3.vec4.transformMat4(_view$1, _world$1, Camera.modelView);
-	exports$3.vec4.transformMat4(_view$1, _view$1, Camera.projection);
-	if (_view$1[3] <= 0) return null;
-	return [Renderer.width / 2 + Renderer.width / 2 * (_view$1[0] / _view$1[3]), Renderer.height / 2 - Renderer.height / 2 * (_view$1[1] / _view$1[3])];
+	_aimWorld[0] = x + .5;
+	_aimWorld[1] = -Altitude.getCellHeight(x, y);
+	_aimWorld[2] = y + .5;
+	_aimWorld[3] = 1;
+	exports$3.vec4.transformMat4(_aimView, _aimWorld, Camera.modelView);
+	exports$3.vec4.transformMat4(_aimView, _aimView, Camera.projection);
+	if (_aimView[3] <= 0) return null;
+	return [Renderer.width / 2 + Renderer.width / 2 * (_aimView[0] / _aimView[3]), Renderer.height / 2 - Renderer.height / 2 * (_aimView[1] / _aimView[3])];
 }
 function drawLine(origin, dir, length, hit) {
 	const ctx = getContext();
@@ -236035,15 +236035,15 @@ function drawLine(origin, dir, length, hit) {
 	ctx.beginPath();
 	ctx.arc(tip[0], tip[1], hit ? 6 : 4, 0, Math.PI * 2);
 	ctx.fill();
-	_drawn = true;
+	_aimDrawn = true;
 }
 /**
 * Stick back in the deadzone, or aim mode left: hide the line and start
 * the next aim short again. The target stays selected.
 */
 function release() {
-	_length = 0;
-	_lastHit = null;
+	_aimLength = 0;
+	_aimLastHit = null;
 	clearLine();
 }
 /**
@@ -236060,16 +236060,16 @@ function update$1(x, y, held, dt) {
 		release();
 		return;
 	}
-	_length = _length === 0 ? START_LENGTH : Math.min(MAX_LENGTH, _length + GROW_PER_SEC * dt);
+	_aimLength = _aimLength === 0 ? START_LENGTH : Math.min(MAX_LENGTH, _aimLength + GROW_PER_SEC * dt);
 	const origin = [player.position[0], player.position[1]];
 	const dir = stickToMapDirection(x, y, Camera.angle[1]);
 	const candidates = EntityManager.getEntitiesSortedByDistance(player, JoystickTargetService_default.getCycleTypes(player.constructor));
-	const hit = findFirstHit(origin, dir, _length, candidates);
-	if (hit && hit.entity !== _lastHit) JoystickTargetService_default.aimAt(hit.entity);
-	_lastHit = hit ? hit.entity : _lastHit;
+	const hit = findFirstHit(origin, dir, _aimLength, candidates);
+	if (hit && hit.entity !== _aimLastHit) JoystickTargetService_default.aimAt(hit.entity);
+	_aimLastHit = hit ? hit.entity : _aimLastHit;
 	const focus = JoystickTargetService_default.getItem() || EntityManager.getFocusEntity();
 	if (focus) JoystickMouseCursorAdapter_default.moveMouseToEntity(focus);
-	drawLine(origin, dir, hit ? Math.min(_length, hit.along) : _length, !!hit);
+	drawLine(origin, dir, hit ? Math.min(_aimLength, hit.along) : _aimLength, !!hit);
 }
 /**
 * Switch the right stick between aim and cursor (tap RS click).
@@ -236081,7 +236081,7 @@ function toggle() {
 	JoystickUIRenderer_default.updateStickMode();
 	ChatBox_default.addText("Right stick: " + (isActive() ? "aim line" : "cursor"), ChatBox_default.TYPE.INFO, ChatBox_default.FILTER.PUBLIC_LOG);
 }
-var MODE, START_LENGTH, MAX_LENGTH, GROW_PER_SEC, HIT_RADIUS, SAMPLE_STEP, _length, _lastHit, _overlay, _ctx$2, _drawn, _world$1, _view$1, JoystickAimMode_default;
+var MODE, START_LENGTH, MAX_LENGTH, GROW_PER_SEC, HIT_RADIUS, SAMPLE_STEP, _aimLength, _aimLastHit, _aimOverlay, _aimCtx, _aimDrawn, _aimWorld, _aimView, JoystickAimMode_default;
 var init_JoystickAimMode = __esmMin((() => {
 	init_gl_matrix$1();
 	init_SessionStorage();
@@ -236103,13 +236103,13 @@ var init_JoystickAimMode = __esmMin((() => {
 	GROW_PER_SEC = 18;
 	HIT_RADIUS = .9;
 	SAMPLE_STEP = .5;
-	_length = 0;
-	_lastHit = null;
-	_overlay = null;
-	_ctx$2 = null;
-	_drawn = false;
-	_world$1 = exports$3.vec4.create();
-	_view$1 = exports$3.vec4.create();
+	_aimLength = 0;
+	_aimLastHit = null;
+	_aimOverlay = null;
+	_aimCtx = null;
+	_aimDrawn = false;
+	_aimWorld = exports$3.vec4.create();
+	_aimView = exports$3.vec4.create();
 	JoystickAimMode_default = {
 		MODE,
 		isActive,
