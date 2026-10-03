@@ -8,6 +8,7 @@
  */
 
 import InputService from './JoystickInputService.js';
+import CursorMotion from './JoystickCursorMotion.js';
 
 let timeoutHandle = null;
 const POLL_RATE_ACTIVE = 100; // 10 FPS
@@ -21,6 +22,11 @@ export default {
 	},
 	run: function () {
 		const isConnected = InputService.update();
+		if (isConnected) {
+			// Starts the per-frame cursor loop if a pad appeared without a
+			// 'gamepadconnected' event; a no-op while it is already running.
+			CursorMotion.wake();
+		}
 
 		const nextDelay = isConnected ? POLL_RATE_ACTIVE : POLL_RATE_IDLE;
 		const self = this;
