@@ -487,7 +487,7 @@ const MAPPING_ROLES = [
 	[ButtonMap.BUTTON.RIGHT, 'Next target (grid right on items)'],
 	[ButtonMap.BUTTON.UP, 'Up (arrow key, item grids)'],
 	[ButtonMap.BUTTON.DOWN, 'Down (arrow key, item grids)'],
-	[ButtonMap.BUTTON.LS, 'Target cycle: mobs / items / both'],
+	[ButtonMap.BUTTON.LS, 'Target cycle: mobs / items / both / NPCs'],
 	[
 		ButtonMap.BUTTON.RS,
 		() =>
@@ -522,6 +522,7 @@ function getMappingCombos() {
 		[n(B.VIEW) + ' + ' + n(B.UP) + ' / ' + n(B.DOWN), 'Camera zoom'],
 		[n(B.VIEW) + ' + ' + n(B.LEFT) + ' / ' + n(B.RIGHT), 'Camera rotate'],
 		[n(B.VIEW) + ' + ' + n(B.MENU), 'Escape'],
+		[n(B.VIEW) + ' + ' + [n(B.A), n(B.B), n(B.X), n(B.Y)].join(' / '), 'Inventory / equipment / skills / status'],
 		[n(B.VIEW) + ' (cursor on item/skill)', 'Context menu'],
 		[sticks[0], 'Move'],
 		[sticks[1], Controls.joyAimEnabled ? 'Cursor, or aim (tap ' + n(B.RS) + ')' : 'Cursor']

@@ -190,6 +190,19 @@ const ButtonInput = {
 				// Start button
 				Interaction.escape();
 				pressed = true;
+			} else if (buttons[0] === 'pressed') {
+				// View + A/B/X/Y: windows, as Alt+E / Alt+Q / Alt+S / Alt+A
+				Interaction.toggleWindow('Inventory');
+				pressed = true;
+			} else if (buttons[1] === 'pressed') {
+				Interaction.toggleWindow('Equipment');
+				pressed = true;
+			} else if (buttons[2] === 'pressed') {
+				Interaction.toggleWindow('SkillList');
+				pressed = true;
+			} else if (buttons[3] === 'pressed') {
+				Interaction.toggleWindow('WinStats');
+				pressed = true;
 			} else {
 				pressed = Interaction.showinfo();
 			}

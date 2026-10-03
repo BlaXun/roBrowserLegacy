@@ -96,8 +96,48 @@ function moveMouseToEntity(entity) {
 	}
 }
 
-function leftClick(click = false) {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+/**
+ * The element under the virtual cursor, looking inside shadow roots.
+ *
+ * Windows built on GUIComponent live in a shadow root, and
+ * document.elementFromPoint only returns their host element. Events
+ * dispatched there never reached the buttons inside, so A could not press
+ * them, and the item/skill grid checks never matched.
+ */
+function elementAtCursor() {
+	let el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	while (el && el.shadowRoot) {
+		const inner = el.shadowRoot.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+		if (!inner || inner === el) {
+			break;
+		}
+		el = inner;
+	}
+	return el;
+}
+
+/**
+ * Put the virtual cursor at a screen position.
+ */
+function moveTo(x, y) {
+	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, x));
+	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, y));
+
+	const cursor = document.querySelector('.cursor');
+	if (cursor) {
+		cursor.style.left = Mouse.screen.x + 'px';
+		cursor.style.top = Mouse.screen.y + 'px';
+	}
+}
+
+/**
+ * A: a full click at the cursor -- mousedown, mouseup and click, as a real
+ * mouse sends. A tap used to send only mousedown and mouseup, so buttons
+ * that listen for click (the escape and death menus among them) ignored it.
+ * Events are composed so they bubble out of a window's shadow root.
+ */
+function leftClick() {
+	const el = elementAtCursor();
 	if (!el) {
 		handleWorldLeftClick();
 		return;
@@ -110,6 +150,7 @@ function leftClick(click = false) {
 	const eventOptions = {
 		bubbles: true,
 		cancelable: true,
+		composed: true,
 		view: window,
 		clientX: Mouse.screen.x,
 		clientY: Mouse.screen.y,
@@ -118,14 +159,12 @@ function leftClick(click = false) {
 	el.dispatchEvent(new MouseEvent('mousedown', eventOptions));
 	setTimeout(function () {
 		el.dispatchEvent(new MouseEvent('mouseup', eventOptions));
-		if (click) {
-			el.dispatchEvent(new MouseEvent('click', eventOptions));
-		}
+		el.dispatchEvent(new MouseEvent('click', eventOptions));
 	}, 50);
 }
 
 function rightClick(holding = false) {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	const el = elementAtCursor();
 	const isCanvas = el && el.tagName.toLowerCase() === 'canvas';
 	if (!el || isCanvas) {
 		handleWorldRightClick();
@@ -222,7 +261,7 @@ function enter() {
 }
 
 function contextMenu() {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	const el = elementAtCursor();
 	const draggableElement = el.closest('.item, .skill');
 
 	if (el && draggableElement) {
@@ -242,7 +281,7 @@ function contextMenu() {
 }
 
 function navigateDraggableItems(direction) {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	const el = elementAtCursor();
 
 	const container = el.closest('.item, .skill');
 
@@ -394,5 +433,7 @@ export default {
 	moveBy: moveBy,
 	leftClick: leftClick,
 	rightClick: rightClick,
+	elementAtCursor: elementAtCursor,
+	moveTo: moveTo,
 	recenter: recenter
 };

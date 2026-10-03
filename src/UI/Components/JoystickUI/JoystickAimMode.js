@@ -225,7 +225,7 @@ function drawRing(entity) {
  * still alive and in the scene.
  */
 function getTarget() {
-	const target = Target.getItem() || EntityManager.getFocusEntity();
+	const target = Target.getMarked() || EntityManager.getFocusEntity();
 	if (!target || target.remove_tick !== 0 || target.action === target.ACTION.DIE) {
 		return null;
 	}
@@ -257,10 +257,7 @@ function update(x, y, held) {
 	if (held) {
 		const origin = [player.position[0], player.position[1]];
 		const dir = stickToMapDirection(x, y, Camera.angle[1]);
-		const candidates = EntityManager.getEntitiesSortedByDistance(
-			player,
-			Target.getCycleTypes(player.constructor)
-		).filter(isOnScreen);
+		const candidates = Target.getCycleCandidates(player).filter(isOnScreen);
 		const hit = findFirstHit(origin, dir, candidates);
 
 		if (hit && hit.entity !== _aimLastHit) {
