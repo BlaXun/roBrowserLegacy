@@ -172,7 +172,7 @@ class MapEngine {
 				// enters it, and sends a fresh achievement list to go with it.
 				if (Session.Achievement) {
 					Session.Achievement.titles = [];
-					Session.Achievement.loginListReceived = false;
+					Session.Achievement.loginListPending = true;
 				}
 
 				// Fail to connect...

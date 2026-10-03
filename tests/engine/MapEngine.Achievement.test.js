@@ -70,21 +70,46 @@ describe('Achievement engine: owned titles', () => {
 		expect(Session.Achievement.titles).toEqual([1001]);
 	});
 
-	it('owns a title once a reward claim succeeds', () => {
+	it('owns a title when the update after a claim marks its reward, not on the claim ACK', () => {
 		deliver(PACKET.ZC.ALL_ACH_LIST, { ach_list: [ach(4, 0)] });
 		deliver(PACKET.ZC.ACH_UPDATE, { ach_list: [ach(4, 1)] });
 
+		// rAthena answers a refused claim with 0
 		mocks.hooks.get(PACKET.ZC.REQ_ACH_REWARD_ACK)({ failed: 0, ach_id: 4 });
+		expect(Session.Achievement.list[4].reward).toBe(0);
+		expect(Session.Achievement.titles).toEqual([]);
+
+		deliver(PACKET.ZC.ALL_ACH_LIST, { ach_list: [ach(4, 1, 1)] });
 		expect(Session.Achievement.titles).toEqual([1004]);
 	});
 
-	it('treats the next list as a new login once the map-server connection is reset', () => {
+	it('takes the list after the empty update as the login list', () => {
+		deliver(PACKET.ZC.ALL_ACH_LIST, { ach_list: [ach(1, 0)] });
+		deliver(PACKET.ZC.ACH_UPDATE, { ach_list: [ach(1, 1)] });
+
+		// Entering another map-server: the empty update, then the full list
+		deliver(PACKET.ZC.ACH_UPDATE, { ach_list: [] });
+		deliver(PACKET.ZC.ALL_ACH_LIST, { ach_list: [ach(1, 1)] });
+		expect(Session.Achievement.titles).toEqual([1001]);
+	});
+
+	it('does not take a claim re-send as the login list when none was sent on login', () => {
+		// No achievements yet, so rAthena sends no list after the empty update
+		deliver(PACKET.ZC.ACH_UPDATE, { ach_list: [] });
+
+		deliver(PACKET.ZC.ACH_UPDATE, { ach_list: [ach(1, 1)] });
+		deliver(PACKET.ZC.ACH_UPDATE, { ach_list: [ach(2, 1)] });
+		deliver(PACKET.ZC.ALL_ACH_LIST, { ach_list: [ach(1, 1), ach(2, 1, 1)] });
+		expect(Session.Achievement.titles).toEqual([1002]);
+	});
+
+	it('takes the first list after connecting to a map-server as the login list', () => {
 		deliver(PACKET.ZC.ALL_ACH_LIST, { ach_list: [ach(1, 0)] });
 		deliver(PACKET.ZC.ACH_UPDATE, { ach_list: [ach(1, 1)] });
 
 		// What MapEngine.init does when connecting to a map-server
 		Session.Achievement.titles = [];
-		Session.Achievement.loginListReceived = false;
+		Session.Achievement.loginListPending = true;
 
 		deliver(PACKET.ZC.ALL_ACH_LIST, { ach_list: [ach(1, 1)] });
 		expect(Session.Achievement.titles).toEqual([1001]);

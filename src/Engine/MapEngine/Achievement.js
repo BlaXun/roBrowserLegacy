@@ -30,7 +30,9 @@ function initSessionAchievement() {
 			rank: 0,
 			current_rank_points: 0,
 			next_rank_points: 0,
-			list: {}
+			list: {},
+			titles: [],
+			loginListPending: true
 		};
 	}
 	if (!Session.Achievement.titles) {
@@ -70,13 +72,13 @@ function onAllAchievementList(pkt) {
 
 	const achTable = DB.getAchievementTable();
 
-	// The map-server sends the full list once when the character enters it
-	// (rAthena intif_parse_achievements), right after it gives every completed
+	// The map-server sends the full list when the character enters it (rAthena
+	// intif_parse_achievements), right after it gives every completed
 	// achievement's title (achievement_get_titles). It sends the list again only
 	// after a title reward is claimed, and by then an achievement completed
 	// during play still has no title unless its reward was claimed.
-	const isLoginList = !Session.Achievement.loginListReceived;
-	Session.Achievement.loginListReceived = true;
+	const isLoginList = Session.Achievement.loginListPending;
+	Session.Achievement.loginListPending = false;
 
 	pkt.ach_list.forEach(ach => {
 		// Attach the static information from the DB (e.g. title, summary, reward, score)
@@ -101,6 +103,18 @@ function onAchievementUpdate(pkt) {
 	Session.Achievement.rank = pkt.rank;
 	Session.Achievement.current_rank_points = pkt.current_rank_points;
 	Session.Achievement.next_rank_points = pkt.next_rank_points;
+
+	// On entering the map-server, rAthena sends an update naming no achievement
+	// just before the full list. The list isn't sent at all when the character
+	// has no achievements, so any real update means the login list has passed.
+	// It can't be the claim's re-send either: an achievement has to complete,
+	// with an update, before its reward can be claimed.
+	if (pkt.ach_list.length === 0) {
+		Session.Achievement.titles = [];
+		Session.Achievement.loginListPending = true;
+	} else {
+		Session.Achievement.loginListPending = false;
+	}
 
 	const achTable = DB.getAchievementTable();
 
@@ -144,13 +158,10 @@ function onAchievementUpdate(pkt) {
 }
 
 function onRequestAchievementRewardACK(pkt) {
-	// If the reward request was successful (failed === 0), mark it as claimed
-	if (pkt.failed === 0 && Session.Achievement && Session.Achievement.list[pkt.ach_id]) {
-		Session.Achievement.list[pkt.ach_id].reward = 1;
-		grantTitle(Session.Achievement.list[pkt.ach_id]);
-		refreshEquipmentTitles();
-	}
-
+	// Nothing is marked claimed here. rAthena sends 0 for a refused claim and 1
+	// for a granted one, the opposite of what the field name says, and a granted
+	// claim is followed by ZC_ACH_UPDATE (or ZC_ALL_ACH_LIST for a title) with
+	// the reward marked, which is what updates the list and the titles.
 	const ui = UIManager.components.Achievement;
 	if (ui) ui.updateHeaderAndView();
 }
