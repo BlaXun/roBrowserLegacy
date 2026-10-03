@@ -55,25 +55,32 @@ describe('JoystickAimMode.findFirstHit', () => {
 	const origin = [10, 10];
 	const east = [1, 0];
 
-	it('picks the nearest entity on the line, not the nearest overall', () => {
+	it('picks the nearest entity on the ray, not the nearest overall', () => {
 		const behind = entity(8, 10);
 		const offLine = entity(11, 12);
 		const far = entity(16, 10.3);
 		const near = entity(13, 9.5);
-		const hit = Aim.findFirstHit(origin, east, 10, [behind, offLine, far, near]);
+		const hit = Aim.findFirstHit(origin, east, [behind, offLine, far, near]);
 		expect(hit.entity).toBe(near);
 		expect(hit.along).toBeCloseTo(3, 6);
 	});
 
-	it('ignores entities beyond the current line length', () => {
-		expect(Aim.findFirstHit(origin, east, 4, [entity(16, 10)])).toBeNull();
+	it('reaches far along the ray with no length limit', () => {
+		const hit = Aim.findFirstHit(origin, east, [entity(40, 10)]);
+		expect(hit.along).toBeCloseTo(30, 6);
 	});
 
-	it('ignores entities further than the hit radius from the line', () => {
-		expect(Aim.findFirstHit(origin, east, 10, [entity(14, 11.5)])).toBeNull();
+	it('ignores entities too far from the ray next to the character', () => {
+		expect(Aim.findFirstHit(origin, east, [entity(12, 11.5)])).toBeNull();
+	});
+
+	it('widens the hit zone with distance, so an off-centre far mob still counts', () => {
+		// 1.5 cells off the ray: too far at 2 cells away, close enough at 15
+		expect(Aim.findFirstHit(origin, east, [entity(12, 11.5)])).toBeNull();
+		expect(Aim.findFirstHit(origin, east, [entity(25, 11.5)])).not.toBeNull();
 	});
 
 	it('returns null with no candidates', () => {
-		expect(Aim.findFirstHit(origin, east, 10, [])).toBeNull();
+		expect(Aim.findFirstHit(origin, east, [])).toBeNull();
 	});
 });

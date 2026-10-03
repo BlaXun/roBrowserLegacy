@@ -58,9 +58,9 @@ function frame(time) {
 	const magnitude = Math.hypot(x, y);
 	const deadzone = ControlsSettings.joyDeadline;
 
-	// Aim mode: the right stick draws the target line instead
+	// Aim mode: the right stick picks a target instead
 	if (Aim.isActive()) {
-		Aim.update(x, y, magnitude > deadzone, dt);
+		Aim.update(x, y, magnitude > deadzone);
 		return;
 	}
 	Aim.release();

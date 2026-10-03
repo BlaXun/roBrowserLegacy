@@ -517,7 +517,7 @@ function getMappingCombos() {
 		[n(B.VIEW) + ' + ' + n(B.MENU), 'Escape'],
 		[n(B.VIEW) + ' (cursor on item/skill)', 'Context menu'],
 		[sticks[0], 'Move'],
-		[sticks[1], Controls.joyRightStickMode === 1 ? 'Aim line (selects target)' : 'Cursor']
+		[sticks[1], Controls.joyRightStickMode === 1 ? 'Aim (selects target)' : 'Cursor']
 	];
 }
 
