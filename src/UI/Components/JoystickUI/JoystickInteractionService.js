@@ -22,6 +22,7 @@ import DB from 'DB/DBManager.js';
 import SkillInfo from 'DB/Skills/SkillInfo.js';
 import ShortcutMapper from './JoystickShortcutMapper.js';
 import Mouse from 'Controls/MouseEventHandler.js';
+import Aim from './JoystickAimMode.js';
 import EntityManager from 'Renderer/EntityManager.js';
 import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTargetSelection.js';
 
@@ -230,6 +231,13 @@ export default {
 	 */
 	resetFocus: function () {
 		Target.clear();
+	},
+
+	/**
+	 * Right stick: aim line <-> virtual cursor.
+	 */
+	toggleStickMode: function () {
+		Aim.toggle();
 	},
 
 	/**

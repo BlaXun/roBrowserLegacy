@@ -103,6 +103,7 @@ ShortCutOption.init = function () {
 
 	bindChange('.attackTargetMode', onUpdateTargetOption);
 	bindChange('.joyCycleMode', onUpdateCycleMode);
+	bindChange('.joyRightStickMode', onUpdateRightStickMode);
 
 	// Gamepad button mapping panel
 	const gamepadTab = root.querySelector('.content.t_gamepad');
@@ -160,6 +161,10 @@ ShortCutOption.onAppend = function () {
 	const cycleMode = this.getRoot().querySelector('.joyCycleMode');
 	if (cycleMode) {
 		cycleMode.value = String(Controls.joyCycleMode | 0);
+	}
+	const stickMode = this.getRoot().querySelector('.joyRightStickMode');
+	if (stickMode) {
+		stickMode.value = String(Controls.joyRightStickMode | 0);
 	}
 
 	this._host.style.left = _preferences.x + 'px';
@@ -482,7 +487,7 @@ const MAPPING_ROLES = [
 	[ButtonMap.BUTTON.UP, 'Up (arrow key, item grids)'],
 	[ButtonMap.BUTTON.DOWN, 'Down (arrow key, item grids)'],
 	[ButtonMap.BUTTON.LS, 'Target cycle: mobs / items / both'],
-	[ButtonMap.BUTTON.RS, 'Clear target, recenter cursor'],
+	[ButtonMap.BUTTON.RS, 'Tap: right stick aim/cursor - Hold: clear target'],
 	[ButtonMap.BUTTON.MENU, 'Enter'],
 	[ButtonMap.BUTTON.VIEW, 'Camera & menu modifier'],
 	[ButtonMap.BUTTON.LB, 'Shortcuts: skill bar 1, slots 1-4'],
@@ -512,7 +517,7 @@ function getMappingCombos() {
 		[n(B.VIEW) + ' + ' + n(B.MENU), 'Escape'],
 		[n(B.VIEW) + ' (cursor on item/skill)', 'Context menu'],
 		[sticks[0], 'Move'],
-		[sticks[1], 'Cursor']
+		[sticks[1], Controls.joyRightStickMode === 1 ? 'Aim line (selects target)' : 'Cursor']
 	];
 }
 
@@ -585,6 +590,12 @@ function startRemap(root, logical, label, remapButton) {
 		JoystickUIRenderer.relabel();
 		renderMapping(root);
 	});
+}
+
+function onUpdateRightStickMode() {
+	Controls.joyRightStickMode = parseInt(this.value, 10);
+	Controls.save();
+	JoystickUIRenderer.updateStickMode();
 }
 
 function onUpdateCycleMode() {

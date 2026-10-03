@@ -252,6 +252,18 @@ export default {
 	cycle: cycle,
 	clear: clearFocus,
 	getItem: getCycledItem,
+	getCycleTypes: getCycleTypes,
+	/**
+	 * Select an entity the aim line hit: a ground item gets the item mark, a
+	 * mob the focus. Never attacks and never stops a running attack.
+	 */
+	aimAt: function (entity) {
+		if (entity.objecttype === entity.constructor.TYPE_ITEM) {
+			focusItem(entity);
+		} else {
+			focusTarget(entity);
+		}
+	},
 	snapCursorToFocus: function () {
 		const focus = EntityManager.getFocusEntity();
 		if (focus) {

@@ -13,6 +13,7 @@
 
 import ControlsSettings from 'Preferences/Controls.js';
 import Cursor from './JoystickMouseCursorAdapter.js';
+import Aim from './JoystickAimMode.js';
 
 // Old behaviour moved joySense px per 100 ms poll at full deflection.
 const SENSE_TO_PX_PER_SEC = 10;
@@ -42,6 +43,7 @@ function frame(time) {
 
 	const gp = getGamepad();
 	if (!gp || gp.axes.length < 4 || dt <= 0) {
+		Aim.release();
 		return;
 	}
 
@@ -55,6 +57,14 @@ function frame(time) {
 	// Radial deadzone, then rescale so speed starts at 0 just past it
 	const magnitude = Math.hypot(x, y);
 	const deadzone = ControlsSettings.joyDeadline;
+
+	// Aim mode: the right stick draws the target line instead
+	if (Aim.isActive()) {
+		Aim.update(x, y, magnitude > deadzone, dt);
+		return;
+	}
+	Aim.release();
+
 	if (magnitude <= deadzone) {
 		return;
 	}
