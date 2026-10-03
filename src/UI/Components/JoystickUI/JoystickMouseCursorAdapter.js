@@ -16,8 +16,15 @@ import ControlsSettings from 'Preferences/Controls.js';
 import Interaction from './JoystickInteractionService.js';
 
 function move(dx, dy) {
-	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, Mouse.screen.x + dx * ControlsSettings.joySense));
-	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, Mouse.screen.y + dy * ControlsSettings.joySense));
+	moveBy(dx * ControlsSettings.joySense, dy * ControlsSettings.joySense);
+}
+
+/**
+ * Move the virtual cursor by a pixel offset, clamped to the viewport.
+ */
+function moveBy(dx, dy) {
+	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, Mouse.screen.x + dx));
+	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, Mouse.screen.y + dy));
 
 	const cursor = document.querySelector('.cursor');
 	if (cursor) {
@@ -369,6 +376,7 @@ export default {
 	changeCameraZoom: changeCameraZoom,
 	changeCameraAngle: changeCameraAngle,
 	move: move,
+	moveBy: moveBy,
 	leftClick: leftClick,
 	rightClick: rightClick,
 	recenter: recenter

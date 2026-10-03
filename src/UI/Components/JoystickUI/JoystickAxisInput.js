@@ -44,8 +44,9 @@ export default {
 				ry = axes[1];
 			}
 
+			// The cursor itself moves per frame in JoystickCursorMotion; here
+			// the right stick only counts as activity (keeps the UI shown).
 			if (Math.abs(rx) > ControlsSettings.joyDeadline || Math.abs(ry) > ControlsSettings.joyDeadline) {
-				Interaction.moveCursor(rx, ry);
 				active = true;
 			}
 		}
