@@ -105,25 +105,8 @@ function getEntityInContext() {
 	// valid attack target (not dying, not being removed, same filters as
 	// getEntitiesSortedByDistance keeps alive).
 	const focus = EntityManager.getFocusEntity();
-	if (typeof window !== 'undefined') {
-		window.__dpadAttackPick = {
-			at: Date.now(),
-			hasFocus: !!focus,
-			focusGid: focus ? focus.GID : null,
-			focusType: focus ? focus.objecttype : null,
-			focusAction: focus ? focus.action : null,
-			dieConst: focus && focus.ACTION ? focus.ACTION.DIE : null,
-			focusRemoveTick: focus ? focus.remove_tick : null
-		};
-	}
 	if (focus && focus.action !== focus.ACTION.DIE && focus.remove_tick === 0) {
-		if (typeof window !== 'undefined') {
-			window.__dpadAttackPick.chosen = 'focus';
-		}
 		return focus;
-	}
-	if (typeof window !== 'undefined') {
-		window.__dpadAttackPick.chosen = 'fallback';
 	}
 
 	let target = null;
@@ -226,25 +209,6 @@ function cycle(direction) {
 
 	focusTarget(target);
 	Cursor.moveMouseToEntity(target);
-
-	// Debug hook: inspect the sort in DevTools via window.__dpadLastSort to
-	// diagnose "closest mob isn't first" reports. Remove once settled.
-	if (typeof window !== 'undefined') {
-		window.__dpadLastSort = sorted.map((e, i) => ({
-			i: i,
-			gid: e.GID,
-			type: e.objecttype,
-			pos: [e.position[0], e.position[1]],
-			dsq:
-				Math.round(
-					((e.position[0] - player.position[0]) ** 2 + (e.position[1] - player.position[1]) ** 2) * 100
-				) / 100
-		}));
-		window.__dpadLastPlayer = [player.position[0], player.position[1]];
-		window.__dpadLastSetFocusGid = target.GID;
-		const after = EntityManager.getFocusEntity();
-		window.__dpadFocusAfterCycle = after ? after.GID : null;
-	}
 }
 
 /**
@@ -253,9 +217,6 @@ function cycle(direction) {
  * starts from the closest mob again.
  */
 function clearFocus() {
-	if (typeof window !== 'undefined') {
-		window.__dpadResetCalls = (window.__dpadResetCalls || 0) + 1;
-	}
 	releaseItem();
 	const focus = EntityManager.getFocusEntity();
 	if (focus) {

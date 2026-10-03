@@ -19,7 +19,6 @@ import PathFinding from 'Utils/PathFinding.js';
 import Target from './JoystickTargetService.js';
 
 const direction = glMatrix.vec2.create();
-const rotate = glMatrix.mat2.create();
 
 // Set when X sends an attack; the left stick is ignored until it returns to
 // centre. Players usually still hold the stick toward the mob as they press
@@ -50,12 +49,16 @@ function move(x, y) {
 	Session.moveAction = null;
 	_lastAttackGid = null;
 
-	direction[0] = x;
-	direction[1] = y;
-
-	glMatrix.mat2.identity(rotate);
-	glMatrix.mat2.rotate(rotate, rotate, ((-Camera.direction * 45) / 180) * Math.PI);
-	glMatrix.vec2.transformMat2(direction, direction, rotate);
+	// The camera's modelView is Rx(angle[0]) . Ry(angle[1]), so a map step
+	// lands on screen rotated by -angle[1]; an on-screen push therefore
+	// becomes a map step through R(+angle[1]). This used to rotate by
+	// Camera.direction, a 45 degree sprite bucket, so on maps that leave the
+	// camera at a partial angle the walk was off by up to 22.5 degrees.
+	// (The old mat2.rotate(-direction * 45) did turn the right way: this
+	// gl-matrix's mat2.rotate is clockwise.)
+	const angle = (Camera.angle[1] * Math.PI) / 180;
+	direction[0] = x * Math.cos(angle) - y * Math.sin(angle);
+	direction[1] = x * Math.sin(angle) + y * Math.cos(angle);
 
 	const nx = Math.round(player.position[0] + direction[0] * 3);
 	const ny = Math.round(player.position[1] + direction[1] * 3);
