@@ -14,11 +14,29 @@ import GraphicsSettings from 'Preferences/Graphics.js';
 let _effects = [];
 let _activeEffects = [];
 
+// Passes a client plugin added (addExternal). They outlive map changes, so
+// registerExternal puts them back each time the built-ins are registered.
+let _external = [];
+let _externalAt = -1;
+let _gl = null;
+
+// The scene's depth, as a texture, while the passes run; and whether they are
+// running, so a pass's beforeRenderPass leaves that depth alone.
+let _sceneDepth = null;
+let _inPasses = false;
+
 // Ping-Pong Buffers (Full Resolution)
 let _readFbo = null;
 let _writeFbo = null;
 
 class PostProcess {
+	/**
+	 * What the frame being drawn looks like, for passes that need more than
+	 * the image: { modelView, projection, light, lights, tick, near, far }.
+	 * Set by MapRenderer before render().
+	 */
+	static scene = null;
+
 	/**
 	 * Register module in pass priority order and init
 	 * @param {ShaderModule} module - Post Process Modular effect.
@@ -29,8 +47,67 @@ class PostProcess {
 			console.error('[PostProcess] Incorrect modular Post-Process format registered - please Fix');
 			return;
 		}
+		_gl = gl;
 		_effects.push(module);
 		module.init(gl);
+	}
+
+	/**
+	 * Register the external passes here, in the order they were added.
+	 * @param {WebGLRenderingContext} gl - The WebGL context.
+	 */
+	static registerExternal(gl) {
+		_gl = gl;
+		_externalAt = _effects.length;
+		_external.forEach(module => {
+			_effects.push(module);
+			module.init(gl);
+		});
+	}
+
+	/**
+	 * Add a pass from outside the renderer -- a client plugin. Same module
+	 * format as register(); it runs where registerExternal was called, and
+	 * stays across map changes until removeExternal.
+	 * @param {ShaderModule} module
+	 */
+	static addExternal(module) {
+		if (!module || !module.program || !module.isActive || !module.init || !module.render || !module.clean) {
+			console.error('[PostProcess] Incorrect modular Post-Process format added - please Fix');
+			return;
+		}
+		if (_external.includes(module)) {
+			return;
+		}
+		_external.push(module);
+		if (_gl && _externalAt >= 0) {
+			_effects.splice(_externalAt + _external.length - 1, 0, module);
+			module.init(_gl);
+		}
+	}
+
+	/**
+	 * Remove a pass added with addExternal.
+	 * @param {ShaderModule} module
+	 */
+	static removeExternal(module) {
+		_external = _external.filter(m => m !== module);
+		const index = _effects.indexOf(module);
+		if (index >= 0) {
+			_effects.splice(index, 1);
+			if (_gl) {
+				module.clean(_gl);
+			}
+		}
+	}
+
+	/**
+	 * The scene's depth buffer as a texture, for a pass that needs distance
+	 * (fog, depth of field). Null outside the passes, or on WebGL 1.
+	 * @return {WebGLTexture|null}
+	 */
+	static sceneDepth() {
+		return _sceneDepth;
 	}
 
 	/**
@@ -65,6 +142,14 @@ class PostProcess {
 		// The buffer we just drew the 3D scene into (_writeFbo) becomes the source (_readFbo)
 		this.swapBuffers();
 
+		// The passes draw full-screen quads. With the depth test off and depth
+		// left uncleared (beforeRenderPass), the scene's depth survives them
+		// all, for any pass that reads it.
+		_sceneDepth = _readFbo ? _readFbo.depthTexture || null : null;
+		_inPasses = true;
+		const depthTest = gl.isEnabled(gl.DEPTH_TEST);
+		gl.disable(gl.DEPTH_TEST);
+
 		for (let i = 0; i < _activeEffects.length; i++) {
 			const effect = _activeEffects[i];
 			const isLast = i === _activeEffects.length - 1;
@@ -80,6 +165,12 @@ class PostProcess {
 				this.swapBuffers();
 			}
 		}
+
+		_inPasses = false;
+		_sceneDepth = null;
+		if (depthTest) {
+			gl.enable(gl.DEPTH_TEST);
+		}
 	}
 	/**
 	 * Set up the FBO and viewport for the next render pass
@@ -94,7 +185,7 @@ class PostProcess {
 			gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 			gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 		}
-		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+		gl.clear(_inPasses ? gl.COLOR_BUFFER_BIT : gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 	}
 
 	/**
@@ -148,6 +239,9 @@ class PostProcess {
 			if (gl.isRenderbuffer(_readFbo.rbo)) {
 				gl.deleteRenderbuffer(_readFbo.rbo);
 			}
+			if (_readFbo.depthTexture && gl.isTexture(_readFbo.depthTexture)) {
+				gl.deleteTexture(_readFbo.depthTexture);
+			}
 			if (gl.isFramebuffer(_readFbo.framebuffer)) {
 				gl.deleteFramebuffer(_readFbo.framebuffer);
 			}
@@ -159,6 +253,9 @@ class PostProcess {
 			}
 			if (gl.isRenderbuffer(_writeFbo.rbo)) {
 				gl.deleteRenderbuffer(_writeFbo.rbo);
+			}
+			if (_writeFbo.depthTexture && gl.isTexture(_writeFbo.depthTexture)) {
+				gl.deleteTexture(_writeFbo.depthTexture);
 			}
 			if (gl.isFramebuffer(_writeFbo.framebuffer)) {
 				gl.deleteFramebuffer(_writeFbo.framebuffer);
@@ -196,6 +293,7 @@ class PostProcess {
 		_effects.forEach(module => module.clean(gl));
 		_effects = [];
 		_activeEffects = [];
+		_externalAt = -1;
 
 		// Physically delete Ping-Pong buffers from GPU memory
 		if (_readFbo) {
@@ -204,6 +302,9 @@ class PostProcess {
 			}
 			if (gl.isRenderbuffer(_readFbo.rbo)) {
 				gl.deleteRenderbuffer(_readFbo.rbo);
+			}
+			if (_readFbo.depthTexture && gl.isTexture(_readFbo.depthTexture)) {
+				gl.deleteTexture(_readFbo.depthTexture);
 			}
 			if (gl.isFramebuffer(_readFbo.framebuffer)) {
 				gl.deleteFramebuffer(_readFbo.framebuffer);
@@ -216,6 +317,9 @@ class PostProcess {
 			}
 			if (gl.isRenderbuffer(_writeFbo.rbo)) {
 				gl.deleteRenderbuffer(_writeFbo.rbo);
+			}
+			if (_writeFbo.depthTexture && gl.isTexture(_writeFbo.depthTexture)) {
+				gl.deleteTexture(_writeFbo.depthTexture);
 			}
 			if (gl.isFramebuffer(_writeFbo.framebuffer)) {
 				gl.deleteFramebuffer(_writeFbo.framebuffer);
@@ -268,6 +372,9 @@ class PostProcess {
 				if (gl.isRenderbuffer(oldfbo.rbo)) {
 					gl.deleteRenderbuffer(oldfbo.rbo);
 				}
+				if (oldfbo.depthTexture && gl.isTexture(oldfbo.depthTexture)) {
+					gl.deleteTexture(oldfbo.depthTexture);
+				}
 				if (gl.isFramebuffer(oldfbo.framebuffer)) {
 					gl.deleteFramebuffer(oldfbo.framebuffer);
 				}
@@ -289,11 +396,25 @@ class PostProcess {
 
 			gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
 
-			// Setup Renderbuffer for depth testing (Z-buffer)
-			const rbo = gl.createRenderbuffer();
-			gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
-			gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
-			gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
+			// Depth (Z-buffer). On WebGL 2 a texture, so a pass can read the
+			// scene's depth (sceneDepth); on WebGL 1 a renderbuffer, as before.
+			let rbo = null;
+			let depthTexture = null;
+			if (typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext) {
+				depthTexture = gl.createTexture();
+				gl.bindTexture(gl.TEXTURE_2D, depthTexture);
+				gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+				gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depthTexture, 0);
+			} else {
+				rbo = gl.createRenderbuffer();
+				gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+				gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
+				gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
+			}
 
 			// Validate Framebuffer state
 			const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
@@ -310,6 +431,7 @@ class PostProcess {
 				framebuffer: fbo,
 				texture: texture,
 				rbo: rbo,
+				depthTexture: depthTexture,
 				width: width,
 				height: height
 			};

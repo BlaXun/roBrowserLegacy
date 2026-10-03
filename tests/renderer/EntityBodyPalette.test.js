@@ -9,14 +9,15 @@ import AllMountTable from 'DB/Jobs/AllMountTable.js';
 // EntityView asks for, so the stub only needs to name the table entry.
 vi.mock('DB/DBManager.js', async () => {
 	const Pal = (await import('DB/Jobs/PalNameTable.js')).default;
-	return {
-		default: {
-			getCartPath: id => `cart${id}`,
-			getBodyPalPath: (id, pal, sex) => (id in Pal ? `${Pal[id]}_${sex}_${pal}.pal` : null)
-		}
+	const DB = {
+		getBodyPath: (id, sex, alt) => `body${id}_${alt}`,
+		getBodyPalPath: (id, pal, sex) => (id in Pal ? `${Pal[id]}_${sex}_${pal}.pal` : null)
 	};
+	// Anything else the view asks for is not under test.
+	return { default: new Proxy(DB, { get: (t, k) => (k in t ? t[k] : () => null) }) };
 });
-vi.mock('Core/Client.js', () => ({ default: { loadFile: vi.fn() } }));
+// Answers every load at once, so a body that loads sets its dye again as it does in game.
+vi.mock('Core/Client.js', () => ({ default: { loadFile: vi.fn((path, onLoad) => onLoad && onLoad()) } }));
 vi.mock('DB/Monsters/ShadowTable.js', () => ({ default: {} }));
 vi.mock('Network/PacketVerManager.js', () => ({ default: { value: 20221005 } }));
 vi.mock('Renderer/GR2/GR2ModelRenderer.js', () => ({ default: {} }));
@@ -25,7 +26,7 @@ vi.mock('Renderer/Entity/EntityAction.js', () => ({ default: vi.fn() }));
 const { default: EntityViewInit } = await import('Renderer/Entity/EntityView.js');
 
 function entity(job, costume) {
-	const e = { _job: job, _sex: 1, _bodypalette: 0, costume };
+	const e = { _job: job, _sex: 1, _bodypalette: 0, costume, sound: {} };
 	EntityViewInit.call(e);
 	return e;
 }
@@ -60,5 +61,64 @@ describe('EntityView body palette', () => {
 			}
 		}
 		expect(missing).toEqual([]);
+	});
+
+	// PACKETVER is 20221005 here, so a body style value is read through
+	// getBodyVal: a Rune Knight's style draws the RUNE_KNIGHT_2ND costume body.
+	// Once that body loads, UpdateBodyStyle sets the dye again.
+	function styled(e, look) {
+		vi.useFakeTimers();
+		e.body = look;
+		vi.advanceTimersByTime(50);
+		vi.useRealTimers();
+		return e;
+	}
+
+	it("uses the costume body's palette for a body style on foot", () => {
+		const rk = entity(JobId.RUNE_KNIGHT, 0);
+		rk.bodypalette = 3;
+		styled(rk, 1);
+		expect(rk.files.body.pal).toBe(`${PalNameTable[JobId.RUNE_KNIGHT_2ND]}_1_3.pal`);
+	});
+
+	it("uses the costume mount's palette for a body style on a mount", () => {
+		const rk = entity(JobId.RUNE_KNIGHT, JobId.RUNE_KNIGHT2);
+		rk.bodypalette = 3;
+		styled(rk, 1);
+		expect(MountTable[JobId.RUNE_KNIGHT_2ND]).toBe(JobId.RUNE_KNIGHT2_2ND);
+		expect(rk.files.body.pal).toBe(`${PalNameTable[JobId.RUNE_KNIGHT2_2ND]}_1_3.pal`);
+	});
+
+	it("goes back to the mount's own palette when the body style is removed", () => {
+		const rk = styled(entity(JobId.RUNE_KNIGHT, JobId.RUNE_KNIGHT2), 1);
+		rk.bodypalette = 3;
+		styled(rk, 0);
+		expect(rk.files.body.pal).toBe(`${PalNameTable[JobId.RUNE_KNIGHT2]}_1_3.pal`);
+	});
+
+	it("keeps an admin's palette when a body style leaves the admin sprite as it is", () => {
+		const rk = entity(JobId.RUNE_KNIGHT, 0);
+		rk.isAdmin = true;
+		rk.bodypalette = 3;
+		styled(rk, 1);
+		expect(rk.files.body.pal).toBe(`${PalNameTable[JobId.RUNE_KNIGHT]}_1_3.pal`);
+	});
+
+	it('draws an admin as their class when the GM sprite is turned off', async () => {
+		const { default: Session } = await import('Engine/SessionStorage.js');
+		Session.AdminLook.sprite = false;
+		try {
+			const rk = entity(JobId.RUNE_KNIGHT, 0);
+			rk.isAdmin = true;
+			rk.bodypalette = 3;
+			styled(rk, 1);
+			// The body style's palette, as for anyone: not the admin sprite's.
+			expect(rk.files.body.pal).toBe(`${PalNameTable[JobId.RUNE_KNIGHT_2ND]}_1_3.pal`);
+			expect(Session.showsAdmin(rk, 'sprite')).toBe(false);
+			expect(Session.showsAdmin(rk, 'name')).toBe(true);
+			expect(Session.showsAdmin({ isAdmin: false }, 'name')).toBe(false);
+		} finally {
+			Session.AdminLook.sprite = true;
+		}
 	});
 });

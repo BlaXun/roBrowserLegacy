@@ -204,22 +204,38 @@ function calculateAnimation(layer, keyIndex, result) {
  * @param {Array} effect position
  * @param {string} start tick
  * @param {string} texturePath
+ * @param {Array<{filename: string, texturePath: string}>} fallbacks - tried in order when the file is missing
  */
 class StrEffect {
-	constructor(filename, position, startTick, texturePath) {
+	constructor(filename, position, startTick, texturePath, fallbacks = []) {
 		this.filename = filename;
 		this.startTick = startTick;
 		this.position = position;
 		this.texturePath = texturePath;
+		this.fallbacks = fallbacks.slice();
+		this.load();
+	}
 
-		// If can't render it, just remove it.
+	/**
+	 * Load the file. Clients keep the same art under different folders from one
+	 * release to the next, so a missing file moves on to the next candidate;
+	 * when none is left the effect is removed.
+	 */
+	load() {
 		Client.loadFile(
 			this.filename,
 			null,
 			() => {
-				this.needCleanUp = true;
+				const next = this.fallbacks.shift();
+				if (!next) {
+					this.needCleanUp = true;
+					return;
+				}
+				this.filename = next.filename;
+				this.texturePath = next.texturePath;
+				this.load();
 			},
-			{ texturePath }
+			{ texturePath: this.texturePath }
 		);
 	}
 
@@ -241,6 +257,22 @@ class StrEffect {
 		this.ready = false;
 	}
 
+	/** Advance expiration even when distance culling skips drawing. */
+	updateLifetime(tick) {
+		if (this.needCleanUp || this.persistent || tick < this.startTick) {
+			return;
+		}
+		const endTick = this._Params?.Inst?.endTick;
+		if (endTick > 0 && tick >= endTick) {
+			this.needCleanUp = true;
+			return;
+		}
+		const strFile = Client.loadFile(this.filename, null, null, { texturePath: this.texturePath });
+		if (strFile && tick >= this.startTick + (strFile.maxKey / strFile.fps) * 1000) {
+			this.needCleanUp = true;
+		}
+	}
+
 	/**
 	 * Render in 3D effect
 	 *
@@ -248,6 +280,10 @@ class StrEffect {
 	 * @param {number} tick
 	 */
 	render(gl, tick) {
+		this.updateLifetime(tick);
+		if (this.needCleanUp || tick < this.startTick) {
+			return;
+		}
 		let layer;
 		let i, keyIndex;
 

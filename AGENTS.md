@@ -1,5 +1,7 @@
 # AI Agent Instructions for roBrowserLegacy
 
+> **This fork:** pull requests go to the `ragnarokoffline` branch, never `master`. Read [CLAUDE.md](CLAUDE.md) first for the fork's rules; what follows is upstream's guide to the codebase.
+
 ## Project Overview
 
 roBrowserLegacy is a web-based Ragnarok Online client built with ES6 modules and WebGL. It supports multiple platforms (browser, PWA, Electron desktop) and provides a complete game client experience.

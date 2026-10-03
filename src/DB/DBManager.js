@@ -36,6 +36,7 @@ import WorldMap from './Map/WorldMap.js';
 import SKID from './Skills/SkillConst.js';
 import SkillInfo from './Skills/SkillInfo.js';
 import SkillTreeView from './Skills/SkillTreeView.js';
+import { resetSkillTree, keepBuiltInSkills } from './Skills/SkillTreeMerge.js';
 import JobHitSoundTable from './Jobs/JobHitSoundTable.js';
 import WeaponTrailTable from './Items/WeaponTrailTable.js';
 import TownInfo from './TownInfo.js';
@@ -49,6 +50,7 @@ import PetHungryState from './Pets/PetHungryState.js';
 import PetFriendlyState from './Pets/PetFriendlyState.js';
 import PetMessageConst from './Pets/PetMessageConst.js';
 import MapInfo from './Map/MapTable.js';
+import { mergeSignboards } from './Map/SignboardMerge.js';
 import Network from 'Network/NetworkManager.js';
 import PACKET from 'Network/PacketStructure.js';
 import PACKETVER from 'Network/PacketVerManager.js';
@@ -407,9 +409,10 @@ class DB {
 				tryLoadLuaAliases(loadItemInfo, iteminfoNames, null, onLoad());
 			}
 
-			loadLuaTable(
+			loadLuaTableWithCustom(
 				[DB.LUA_PATH + 'datainfo/accessoryid.lub', DB.LUA_PATH + 'datainfo/accname.lub'],
 				'AccNameTable',
+				'accessory',
 				function (json) {
 					Object.assign(HatTable, json);
 				},
@@ -417,9 +420,10 @@ class DB {
 				null,
 				true
 			);
-			loadLuaTable(
+			loadLuaTableWithCustom(
 				[DB.LUA_PATH + 'datainfo/spriterobeid.lub', DB.LUA_PATH + 'datainfo/spriterobename.lub'],
 				'RobeNameTable',
+				'robe',
 				function (json) {
 					Object.assign(RobeTable, json);
 				},
@@ -429,9 +433,10 @@ class DB {
 			);
 
 			if (PACKETVER.value >= 20141008) {
-				loadLuaTable(
+				loadLuaTableWithCustom(
 					[DB.LUA_PATH + 'datainfo/npcidentity.lub', DB.LUA_PATH + 'datainfo/jobname.lub'],
 					'JobNameTable',
+					'monster',
 					function (json) {
 						Object.assign(MonsterTable, json);
 					},
@@ -448,9 +453,10 @@ class DB {
 					}
 				);
 			} else {
-				loadLuaTable(
+				loadLuaTableWithCustom(
 					[DB.LUA_PATH + 'datainfo/npcidentity.lub', DB.LUA_PATH + 'datainfo/jobname.lub'],
 					'JobNameTable',
+					'monster',
 					function (json) {
 						Object.assign(MonsterTable, json);
 					},
@@ -469,7 +475,14 @@ class DB {
 			loadItemDBTable(DB.LUA_PATH + 'ItemDBNameTbl.lub', null, onLoad());
 
 			// Weapon tables
-			loadWeaponTable(DB.LUA_PATH + 'datainfo/weapontable.lub', null, onLoad());
+			// customLuaTables.weapon: further weapon tables, after the base, in order.
+			const onWeaponEnd = onLoad();
+			const customWeapons = customLuaTables('weapon');
+			const loadCustomWeapon = (index = 0) =>
+				index < customWeapons.length
+					? loadWeaponTable(customWeapons[index], null, () => loadCustomWeapon(index + 1))
+					: onWeaponEnd();
+			loadWeaponTable(DB.LUA_PATH + 'datainfo/weapontable.lub', null, () => loadCustomWeapon());
 
 			// Title tables
 			if (PACKETVER.value >= 20170208) {
@@ -622,10 +635,19 @@ class DB {
 
 			// EntitySignBoard
 			const onSignBoardEnd = onLoad();
-			loadSignBoardList(DB.LUA_PATH + 'SignBoardList.lub', null, () => {
-				// this is not official, its a translation file
-				loadSignBoardData('SystemEN/Sign_Data.lub', null, onSignBoardEnd);
-			});
+			// customSignBoardList: further signboard tables, loaded after the base
+			// in the order given. Each adds its signs to what came before, and a
+			// sign on a cell that already has one replaces it, so a mod can put an
+			// icon over its own NPC without carrying the whole table.
+			const customSignBoardList = Configs.get('customSignBoardList', []);
+			// Emptied first, because the tables are merged: a second load (another
+			// server) must not keep the first one's signs.
+			SignBoardTable = {};
+			const loadCustomSignBoardList = (index = 0) =>
+				index < customSignBoardList.length
+					? loadSignBoardList(customSignBoardList[index], null, () => loadCustomSignBoardList(index + 1))
+					: loadSignBoardData('SystemEN/Sign_Data.lub', null, onSignBoardEnd); // this is not official, its a translation file
+			loadSignBoardList(DB.LUA_PATH + 'SignBoardList.lub', null, () => loadCustomSignBoardList());
 
 			// CheckAttendance
 			if (Configs.get('enableCheckAttendance') && PACKETVER.value >= 20180307) {
@@ -1328,7 +1350,11 @@ class DB {
 			return null;
 		}
 
-		return 'data/palette/\xb8\xf6/' + PaletteTable[id] + '_' + SexTable[sex] + '_' + pal + '.pal';
+		// A `costume_1` body's palettes carry the body's own `_1` after the
+		// palette number: costume_1/<job>_<sex>_<pal>_1.pal.
+		const costume = String(PaletteTable[id]).startsWith('costume_1/') ? '_1' : '';
+
+		return 'data/palette/\xb8\xf6/' + PaletteTable[id] + '_' + SexTable[sex] + '_' + pal + costume + '.pal';
 	}
 
 	/**
@@ -2080,7 +2106,13 @@ class DB {
 
 		const baseClass = WeaponJobTable[job] || WeaponJobTable[0];
 
-		id = DB.getWeaponType(id);
+		// A look id that weapontable.lub names is drawn under that name. The
+		// official ones are all below WeaponType.MAX, which getWeaponType passes
+		// through; a mod's own look needs a higher id, which getWeaponType would
+		// turn into its base weapon type (or an unrelated item's ClassNum), so
+		// the mod's sprite was never asked for. Attack motions still come from
+		// the base type, through getWeaponType(id, true) and Expansion_Weapon_IDs.
+		id = id >= WeaponType.MAX && WeaponTable[id] !== undefined ? id : DB.getWeaponType(id);
 
 		// TODO: CHECK IF THIS IS CORRECT
 		if (leftid) {
@@ -6351,6 +6383,11 @@ function loadSignBoardList(filename, callback, onEnd) {
 				// mount file
 				lua.mountFile('SignBoardList.lub', buffer);
 
+				// Cleared first: the tables share one Lua state, and a file that
+				// failed to define its own would otherwise add the previous
+				// file's signs a second time.
+				lua.doStringSync('SignBoardList = nil');
+
 				// execute file
 				await lua.doFile('SignBoardList.lub');
 
@@ -6375,7 +6412,9 @@ function loadSignBoardList(filename, callback, onEnd) {
                         main_SignBoardList()
 					`);
 
-				SignBoardTable = preprocessSignboardData(signBoardList);
+				// Merged over what earlier tables loaded rather than replacing it,
+				// so customSignBoardList can add to the base.
+				mergeSignboards(signBoardList, SignBoardTable);
 			} catch (error) {
 				console.error('[loadSignBoardList] Error: ', error);
 			} finally {
@@ -6387,29 +6426,6 @@ function loadSignBoardList(filename, callback, onEnd) {
 		},
 		onEnd
 	);
-}
-
-/**
- * Preprocesses an array of signboard objects and organizes them into a nested dictionary.
- *
- * @param {Array} signboardArray - The array of signboard objects.
- * @return {Object} The nested dictionary containing the preprocessed signboard data.
- */
-function preprocessSignboardData(signboardArray) {
-	const signboardDict = {};
-
-	for (const signboard of signboardArray) {
-		const { mapname, x, y } = signboard;
-		if (!signboardDict[mapname]) {
-			signboardDict[mapname] = {};
-		}
-		if (!signboardDict[mapname][x]) {
-			signboardDict[mapname][x] = {};
-		}
-		signboardDict[mapname][x][y] = signboard;
-	}
-
-	return signboardDict;
 }
 
 /**
@@ -6593,6 +6609,17 @@ function loadSkillInfoList(filename, callback, onEnd) {
 					return 1;
 				};
 
+				// A job's own list replaces the generic one, even when it is empty:
+				// Rogue learns Vulture's Eye without Archer's Owl's Eye 3
+				// (`NeedSkillList = { [JOBID.JT_ROGUE] = {} }`). Declared before its
+				// entries are added, so an empty list is still there.
+				ctx.AddJobSkillRequirementList = (skillId, jobId) => {
+					if (!SkillInfo[skillId].NeedSkillList[jobId]) {
+						SkillInfo[skillId].NeedSkillList[jobId] = [];
+					}
+					return 1;
+				};
+
 				ctx.AddJobSkillRequirement = (skillId, jobId, requiredSkillId, requiredLevel) => {
 					if (!SkillInfo[skillId].NeedSkillList[jobId]) {
 						SkillInfo[skillId].NeedSkillList[jobId] = [];
@@ -6653,6 +6680,7 @@ function loadSkillInfoList(filename, callback, onEnd) {
 								if skillData.NeedSkillList then  
 									for jobId, reqList in pairs(skillData.NeedSkillList) do  
 										if reqList then  
+											AddJobSkillRequirementList(skillId, jobId)
 											for _, req in ipairs(reqList) do  
 												if req[1] and req[2] then  
 													AddJobSkillRequirement(skillId, jobId, req[1], req[2])  
@@ -6713,7 +6741,10 @@ function loadSkillTreeView(filename, callback, onEnd) {
 }
 
 function loadSkillTreeViewData(filename, callback, onEnd) {
-	const builtInTree = {};
+	// Start from the built-in layout every time, so a second client loaded
+	// after a server switch never inherits the first one's placements.
+	resetSkillTree(SkillTreeView);
+	const fileJobs = new Set();
 	Client.loadFile(
 		filename,
 		async function (file) {
@@ -6790,11 +6821,9 @@ function loadSkillTreeViewData(filename, callback, onEnd) {
 						beforeJob: beforeJob
 					};
 
-					// Keep the built-in layout so skills this file leaves out
-					// can be put back once it has been read (see below).
-					if (SkillTreeView[jobId] && !(jobId in builtInTree)) {
-						builtInTree[jobId] = SkillTreeView[jobId];
-					}
+					// Remember the job, so skills this file leaves out can be
+					// put back once it has been read (see below).
+					fileJobs.add(jobId);
 					SkillTreeView[jobId] = entry;
 					return 1;
 				};
@@ -6871,7 +6900,7 @@ function loadSkillTreeViewData(filename, callback, onEnd) {
 				// fall to the Etc tab, where it cannot be learned. Keep the
 				// built-in position for any skill the file does not place, or
 				// the next free slot when the file has taken that one.
-				keepBuiltInSkills(builtInTree);
+				keepBuiltInSkills(SkillTreeView, fileJobs);
 			} catch (error) {
 				console.error('[loadSkillTreeView] Error: ', error);
 			} finally {
@@ -6882,38 +6911,6 @@ function loadSkillTreeViewData(filename, callback, onEnd) {
 		},
 		onEnd
 	);
-}
-
-/**
- * Put back the built-in SkillTreeView positions of skills a loaded
- * skilltreeview.lub leaves out, keeping every position the file set.
- *
- * @param {object} builtInTree - jobId -> the built-in entry the file replaced
- */
-function keepBuiltInSkills(builtInTree) {
-	for (const [jobId, builtIn] of Object.entries(builtInTree)) {
-		const entry = SkillTreeView[jobId];
-		if (!entry) {
-			continue;
-		}
-		const skillOf = key => /^\d+$/.test(key);
-		const taken = new Set(Object.keys(entry).filter(skillOf).map(key => entry[key]));
-		let next = Math.max(-1, ...taken) + 1;
-		for (const [skillId, pos] of Object.entries(builtIn)) {
-			if (!skillOf(skillId) || skillId in entry) {
-				continue;
-			}
-			let slot = pos;
-			if (taken.has(slot)) {
-				while (taken.has(next)) {
-					next++;
-				}
-				slot = next;
-			}
-			entry[skillId] = slot;
-			taken.add(slot);
-		}
-	}
 }
 
 /**
@@ -7118,9 +7115,89 @@ function loadStateIconInfo(basePath, callback, onEnd) {
  *
  * @author alisonrag
  */
-function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isResourceTable = false) {
+/**
+ * customLuaTables: tables a mod adds rows to, instead of replacing the whole
+ * file. `Configs.get('customLuaTables')` is an object of lists:
+ *
+ *   accessory: [[idfile, namefile], ...]   headgear looks   (accessoryid / accname)
+ *   robe:      [[idfile, namefile], ...]   garment looks    (spriterobeid / spriterobename)
+ *   monster:   [[idfile, namefile], ...]   monster sprites  (npcidentity / jobname)
+ *   weapon:    [file, ...]                 weapon looks     (weapontable)
+ *
+ * Each is loaded after the base table, in order, and merged over it by id --
+ * the counterpart of customItemInfo and customQuestInfo for the view tables.
+ *
+ * @param {string} key
+ * @return {Array}
+ */
+function customLuaTables(key) {
+	const all = Configs.get('customLuaTables', {});
+	const list = all && typeof all === 'object' ? all[key] : null;
+	return Array.isArray(list) ? list : [];
+}
+
+/**
+ * loadLuaTable, then each customLuaTables[key] pair after it.
+ *
+ * A mod's rows must land after the base's, or the base would overwrite them,
+ * so each table starts when the one before it has been parsed or has failed.
+ * `onEnd` waits for the whole chain: loadLuaTable on its own calls onEnd as
+ * soon as it has *started*, which let the game place the player before a
+ * mod's headgear row existed -- the look was looked up, not found, and never
+ * shown. A table that fails says so in the console and the chain goes on.
+ */
+function loadLuaTableWithCustom(file_list, table_name, key, callback, onEnd, contextFunc, isResourceTable = false) {
+	const custom = customLuaTables(key);
+	const next = index => {
+		if (index >= custom.length) {
+			onEnd.call();
+			return;
+		}
+		const advance = once(() => next(index + 1));
+		loadLuaTable(
+			custom[index],
+			table_name,
+			function (json) {
+				callback.call(null, json);
+				advance();
+			},
+			function () {},
+			null,
+			isResourceTable,
+			advance
+		);
+	};
+	const start = once(() => next(0));
+	loadLuaTable(
+		file_list,
+		table_name,
+		function (json) {
+			callback.call(null, json);
+			start();
+		},
+		function () {},
+		contextFunc,
+		isResourceTable,
+		start
+	);
+}
+
+/** fn, callable once; later calls do nothing. */
+function once(fn) {
+	let called = false;
+	return (...args) => {
+		if (!called) {
+			called = true;
+			fn(...args);
+		}
+	};
+}
+
+function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isResourceTable = false, onError = null) {
 	const id_filename = file_list[0];
 	const value_table_filename = file_list[1];
+	// Told when the table will not arrive: a file missing, or a Lua error.
+	const fail = typeof onError === 'function' ? onError : function () {};
 
 	try {
 		console.log('Loading file "' + id_filename + '"...');
@@ -7135,8 +7212,9 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 				loadValueTable();
 			} catch (hException) {
 				console.error(`(${id_filename}) error: `, hException);
+				fail(hException);
 			}
-		});
+		}, () => fail(new Error(`${id_filename} not found`)));
 
 		function loadValueTable() {
 			console.log('Loading file "' + value_table_filename + '"...');
@@ -7151,8 +7229,9 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 					parseTable();
 				} catch (hException) {
 					console.error(`(${value_table_filename}) error: `, hException);
+					fail(hException);
 				}
-			});
+			}, () => fail(new Error(`${value_table_filename} not found`)));
 		}
 
 		function parseTable() {
@@ -7216,6 +7295,7 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 		}
 	} catch (e) {
 		console.error('error: ', e);
+		fail(e);
 	} finally {
 		onEnd.call();
 	}

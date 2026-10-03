@@ -50,9 +50,16 @@ class AttachmentManager {
 			this.remove(attachment.uid);
 		}
 
-		attachment.startTick = Date.now();
+		attachment.startTick = attachment.startTick || Renderer.tick || Date.now();
 		attachment.opacity = !isNaN(attachment.opacity) ? attachment.opacity : 1.0;
-		attachment.direction = attachment.hasOwnProperty('frame') ? false : true;
+		// An explicit `direction` decides: spamSprite passes the EffectTable flag
+		// ("the sprite will inherit character's direction"), which used to be
+		// overwritten here. Without one, a caller that names a frame wants that
+		// fixed action -- even when its lookup came back undefined, as an unknown
+		// emotion or quest icon does, which must not start following the camera.
+		if (typeof attachment.direction !== 'boolean') {
+			attachment.direction = !attachment.hasOwnProperty('frame');
+		}
 		attachment.frame = attachment.frame || 0;
 		attachment.depth = attachment.depth || 0.0;
 		attachment.head = attachment.head || false;
@@ -111,6 +118,7 @@ class AttachmentManager {
 		Client.loadFile(
 			attachment.spr,
 			function onLoad() {
+				attachment.startTick = Renderer.tick || Date.now();
 				this.list.push(attachment);
 			}.bind(this),
 			null,
@@ -242,6 +250,11 @@ class AttachmentManager {
 		}
 
 		// Render STR attachment
+		// Duration applies to STR and sprite attachments, including looping ones.
+		if (attachment.duration > 0 && tick - attachment.startTick >= attachment.duration) {
+			return true;
+		}
+
 		if (attachment.isStr && attachment.strEffect) {
 			const strEffect = attachment.strEffect;
 			// dynamic access to Renderer to avoid cycle
@@ -303,9 +316,13 @@ class AttachmentManager {
 
 		frame = attachment.direction ? (Camera.direction + this.entity.direction + 8) % 8 : attachment.frame;
 		frame %= act.actions.length;
-		const animations = act.actions[frame].animations;
-		const delay = attachment.delay || act.actions[frame].delay;
+		const action = act.actions[frame];
+		const animations = action.animations;
+		const delay = Math.max(1, attachment.delay || action.delay || 100);
 		SpriteRenderer.depth = attachment.depth || 0;
+
+		const elapsed = Math.max(0, tick - attachment.startTick);
+		const animIndex = Math.floor(elapsed / delay);
 
 		// pause
 		if ('animationId' in attachment) {
@@ -314,15 +331,15 @@ class AttachmentManager {
 
 		// repeat animation
 		else if (attachment.repeat) {
-			if (attachment.duration > 0 && tick - attachment.startTick >= attachment.duration) {
+			if (attachment.duration > 0 && elapsed >= attachment.duration) {
 				return true; // duration expired, remove attachment
 			}
-			layers = animations[Math.floor((tick - attachment.startTick) / delay) % animations.length].layers;
+			layers = animations[animIndex % animations.length].layers;
 		}
 
 		// stop at end
 		else {
-			animation = Math.min(Math.floor((tick - attachment.startTick) / delay), animations.length - 1);
+			animation = Math.min(animIndex, animations.length - 1);
 			layers = animations[animation].layers;
 
 			if (animation === animations.length - 1 && !attachment.stopAtEnd) {
@@ -333,6 +350,23 @@ class AttachmentManager {
 		// Render layers with depth ordering (renderBefore behind, normal in front)
 		const self = this;
 		const zIdx = attachment.renderBefore ? 1 : 500;
+
+		// Kept for the depth-only pass before the water (renderWaterDepth):
+		// attachments write no depth here either, so an emotion or quest icon
+		// above a head with water behind it was painted over by the water.
+		const recorded = this.entity.waterDepthAttachments;
+		if (recorded) {
+			recorded.push({
+				layers,
+				spr,
+				x: _position[0],
+				y: _position[1],
+				depth: SpriteRenderer.depth,
+				zIndex: zIdx,
+				opacity: attachment.opacity,
+				position: [SpriteRenderer.position[0], SpriteRenderer.position[1], SpriteRenderer.position[2]]
+			});
+		}
 
 		SpriteRenderer.runWithDepth(true, false, false, function () {
 			SpriteRenderer.zIndex = zIdx;

@@ -58,7 +58,10 @@ EntitySignboard.onAppend = function onAppend() {
 		btn.addEventListener('mousedown', this._mousedownHandler);
 	}
 
-	this._host.style.zIndex = '45';
+	// Over the map and its chat bubbles (z-index 1), under an NPC's illustration
+	// (the cutin, 40, in MapEngine/NPC.js) and every window (50 and up).
+	// At 45 a signboard covered the picture an NPC was showing.
+	this._host.style.zIndex = '30';
 };
 
 /**
