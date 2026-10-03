@@ -78929,6 +78929,7 @@ var init_Controls = __esmMin((() => {
 		attackTargetMode: 0,
 		joyCycleMode: 0,
 		joyButtonMap: null,
+		joyAimEnabled: false,
 		joyRightStickMode: 0,
 		joyQuick: 0,
 		joyDeadline: .1,
@@ -232595,7 +232596,7 @@ var init_GraphicsOption = __esmMin((() => {
 //#region src/UI/Components/ShortCutOption/ShortCutOption.html?raw
 var ShortCutOption_default$2;
 var init_ShortCutOption$2 = __esmMin((() => {
-	ShortCutOption_default$2 = "<div id=\"ShortCutOption\" class=\"pt-page-fadeIn1\">\r\n	<div class=\"border\">\r\n		<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n			<div class=\"left\"><span class=\"text\">Shortcut key setting window</span></div>\r\n\r\n			<div class=\"right\">\r\n				<button\r\n					class=\"base close\"\r\n					data-background=\"basic_interface/sys_close_off.bmp\"\r\n					data-hover=\"basic_interface/sys_close_on.bmp\"\r\n				></button>\r\n			</div>\r\n\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n\r\n		<div class=\"tabs\">\r\n			<button class=\"t_skillbar selectedtab\" data-index=\"t_skillbar\">Skill Bar</button\r\n			><button class=\"t_ui\" data-index=\"t_ui\">Interface</button\r\n			><button class=\"t_macro\" data-index=\"t_macro\">Macros</button\r\n			><button class=\"t_gamepad\" data-index=\"t_gamepad\">Gamepad</button>\r\n		</div>\r\n		<div class=\"panel\">\r\n			<div class=\"content t_skillbar selectedtab\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Skill bar 1-1</td>\r\n							<td data-button=\"F1_1\" class=\"customize\"></td>\r\n							<td>Skill bar 2-1</td>\r\n							<td data-button=\"F2_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-2</td>\r\n							<td data-button=\"F1_2\" class=\"customize\"></td>\r\n							<td>Skill bar 2-2</td>\r\n							<td data-button=\"F2_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-3</td>\r\n							<td data-button=\"F1_3\" class=\"customize\"></td>\r\n							<td>Skill bar 2-3</td>\r\n							<td data-button=\"F2_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-4</td>\r\n							<td data-button=\"F1_4\" class=\"customize\"></td>\r\n							<td>Skill bar 2-4</td>\r\n							<td data-button=\"F2_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-5</td>\r\n							<td data-button=\"F1_5\" class=\"customize\"></td>\r\n							<td>Skill bar 2-5</td>\r\n							<td data-button=\"F2_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-6</td>\r\n							<td data-button=\"F1_6\" class=\"customize\"></td>\r\n							<td>Skill bar 2-6</td>\r\n							<td data-button=\"F2_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-7</td>\r\n							<td data-button=\"F1_7\" class=\"customize\"></td>\r\n							<td>Skill bar 2-7</td>\r\n							<td data-button=\"F2_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-8</td>\r\n							<td data-button=\"F1_8\" class=\"customize\"></td>\r\n							<td>Skill bar 2-8</td>\r\n							<td data-button=\"F2_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-9</td>\r\n							<td data-button=\"F1_9\" class=\"customize\"></td>\r\n							<td>Skill bar 2-9</td>\r\n							<td data-button=\"F2_9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-1</td>\r\n							<td data-button=\"F3_1\" class=\"customize\"></td>\r\n							<td>Skill bar 4-1</td>\r\n							<td data-button=\"F4_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-2</td>\r\n							<td data-button=\"F3_2\" class=\"customize\"></td>\r\n							<td>Skill bar 4-2</td>\r\n							<td data-button=\"F4_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-3</td>\r\n							<td data-button=\"F3_3\" class=\"customize\"></td>\r\n							<td>Skill bar 4-3</td>\r\n							<td data-button=\"F4_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-4</td>\r\n							<td data-button=\"F3_4\" class=\"customize\"></td>\r\n							<td>Skill bar 4-4</td>\r\n							<td data-button=\"F4_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-5</td>\r\n							<td data-button=\"F3_5\" class=\"customize\"></td>\r\n							<td>Skill bar 4-5</td>\r\n							<td data-button=\"F4_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-6</td>\r\n							<td data-button=\"F3_6\" class=\"customize\"></td>\r\n							<td>Skill bar 4-6</td>\r\n							<td data-button=\"F4_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-7</td>\r\n							<td data-button=\"F3_7\" class=\"customize\"></td>\r\n							<td>Skill bar 4-7</td>\r\n							<td data-button=\"F4_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-8</td>\r\n							<td data-button=\"F3_8\" class=\"customize\"></td>\r\n							<td>Skill bar 4-8</td>\r\n							<td data-button=\"F4_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-9</td>\r\n							<td data-button=\"F3_9\" class=\"customize\"></td>\r\n							<td>Skill bar 4-9</td>\r\n							<td data-button=\"F4_9\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_ui\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Basic Info</td>\r\n							<td data-button=\"BasicInfo\" class=\"customize\"></td>\r\n							<td>Character Info</td>\r\n							<td data-button=\"Equipment\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill List</td>\r\n							<td data-button=\"SkillList\" class=\"customize\"></td>\r\n							<td>Emotion List</td>\r\n							<td data-button=\"Emotions\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Friends List</td>\r\n							<td data-button=\"Friends\" class=\"customize\"></td>\r\n							<td>Party Window</td>\r\n							<td data-button=\"Party\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Pet Info</td>\r\n							<td data-button=\"PetInfo\" class=\"customize\"></td>\r\n							<td>Chat Room</td>\r\n							<td data-button=\"ChatRoom\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Cart Window</td>\r\n							<td data-button=\"PushCart\" class=\"customize\"></td>\r\n							<td>Item Window</td>\r\n							<td data-button=\"Inventory\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>World Map</td>\r\n							<td data-button=\"WorldMap\" class=\"customize\"></td>\r\n							<td>Guild Info</td>\r\n							<td data-button=\"Guild\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus Info</td>\r\n							<td data-button=\"HomunInfo\" class=\"customize\"></td>\r\n							<td>Mercenary Info</td>\r\n							<td data-button=\"MercInfo\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus State</td>\r\n							<td data-button=\"HomunState\" class=\"customize\"></td>\r\n							<td>Mercenary State</td>\r\n							<td data-button=\"MercState\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Sit/Stand</td>\r\n							<td data-button=\"Sit\" class=\"customize\"></td>\r\n							<td>Short Cuts</td>\r\n							<td data-button=\"ShortCuts\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Chat Bar Size</td>\r\n							<td data-button=\"ChatSize\" class=\"customize\"></td>\r\n							<td>Skill Bar Size</td>\r\n							<td data-button=\"SkillBarSize\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Quest</td>\r\n							<td data-button=\"Quest\" class=\"customize\"></td>\r\n							<td>Bank</td>\r\n							<td data-button=\"Bank\" class=\"customize\"></td>\r\n						</tr>\r\n						<!--<tr>\r\n                     <td>MobileUI</td>\r\n                     <td data-button=\"M_UI\" class=\"customize\"></td>\r\n                     <td>MUi-Toggle</td>\r\n                     <td data-button=\"M_Toggle\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-TG</td>\r\n                     <td data-button=\"M_Targeting\" class=\"customize\"></td>\r\n                     <td>MUi-AT</td>\r\n                     <td data-button=\"M_AutoTarget\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-ATK</td>\r\n                     <td data-button=\"M_Attack\" class=\"customize\"></td>\r\n                  </tr>-->\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_macro\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Macro 1</td>\r\n							<td data-button=\"Macro1\" class=\"customize\"></td>\r\n							<td>Flag 1</td>\r\n							<td data-button=\"Flag1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 2</td>\r\n							<td data-button=\"Macro2\" class=\"customize\"></td>\r\n							<td>Flag 2</td>\r\n							<td data-button=\"Flag2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 3</td>\r\n							<td data-button=\"Macro3\" class=\"customize\"></td>\r\n							<td>Flag 3</td>\r\n							<td data-button=\"Flag3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 4</td>\r\n							<td data-button=\"Macro4\" class=\"customize\"></td>\r\n							<td>Flag 4</td>\r\n							<td data-button=\"Flag4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 5</td>\r\n							<td data-button=\"Macro5\" class=\"customize\"></td>\r\n							<td>Flag 5</td>\r\n							<td data-button=\"Flag5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 6</td>\r\n							<td data-button=\"Macro6\" class=\"customize\"></td>\r\n							<td>Flag 6</td>\r\n							<td data-button=\"Flag6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 7</td>\r\n							<td data-button=\"Macro7\" class=\"customize\"></td>\r\n							<td>Flag 7</td>\r\n							<td data-button=\"Flag7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 8</td>\r\n							<td data-button=\"Macro8\" class=\"customize\"></td>\r\n							<td>Flag 8</td>\r\n							<td data-button=\"Flag8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 9</td>\r\n							<td data-button=\"Macro9\" class=\"customize\"></td>\r\n							<td>Flag 9</td>\r\n							<td data-button=\"Flag9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 10</td>\r\n							<td data-button=\"Macro10\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_gamepad\">\r\n				<table class=\"joySettings\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr title=\"Show which button does what, and remap them\">\r\n							<td>Button Mapping</td>\r\n							<td>\r\n								<button type=\"button\" class=\"joyBtn joyMappingOpen\">Mapping</button>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Define how targets are selected in combat\">\r\n							<td>Attack Target Mode</td>\r\n							<td>\r\n								<select class=\"attackTargetMode\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Lowest HP</option>\r\n									<option value=\"2\">Closest</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"What the D-pad left/right cycles through (L3 switches in game)\">\r\n							<td>D-pad Cycle Targets</td>\r\n							<td>\r\n								<select class=\"joyCycleMode\">\r\n									<option value=\"0\">Mobs</option>\r\n									<option value=\"1\">Items</option>\r\n									<option value=\"2\">Both</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Right stick moves the cursor, or aims: push it toward a target to select it (tap RS click switches in game)\">\r\n							<td>Right Stick</td>\r\n							<td>\r\n								<select class=\"joyRightStickMode\">\r\n									<option value=\"0\">Cursor</option>\r\n									<option value=\"1\">Aim</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Choose how skills are cast with gamepad\">\r\n							<td>Quick-Cast Mode</td>\r\n							<td>\r\n								<select class=\"joyQuick\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Release Mode</option>\r\n									<option value=\"2\">Instant Mode</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Adjust mouse movement sensitivity for R3 stick\">\r\n							<td>Mouse Move</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Sensitivity:\r\n									<input\r\n										class=\"joySense\"\r\n										type=\"range\"\r\n										value=\"25.0\"\r\n										min=\"1.0\"\r\n										max=\"100.0\"\r\n										step=\"1.0\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Disable mouse input from gamepad for UI interaction\">\r\n							<td>Disable Virtual Mouse</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyDisableVirtualMouse\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Swap L3 and R3 stick functions\">\r\n							<td>Swap L3-R3 Sticks</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyReverseStick\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Automatically hide UI during gameplay mouse movement\">\r\n							<td>Auto Hide UI</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyAutoHide\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Set deadzone threshold for analog sticks\">\r\n							<td>Axis Threshold</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Deadline:\r\n									<input\r\n										class=\"joyDeadline\"\r\n										type=\"range\"\r\n										value=\"0.10\"\r\n										min=\"0.0\"\r\n										max=\"1.0\"\r\n										step=\"0.1\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n				<div class=\"joyMapping\">\r\n					<div class=\"joyMappingHeader\">\r\n						<button type=\"button\" class=\"joyBtn joyMappingBack\">&#9664; Back</button>\r\n						<span class=\"joyMappingTitle\">Button mapping</span>\r\n						<button type=\"button\" class=\"joyBtn joyMappingReset\">Reset to defaults</button>\r\n					</div>\r\n					<div class=\"joyMappingStatus\">Remap: press Remap, then a button on the gamepad. The two buttons trade places.</div>\r\n					<div class=\"joyMappingScroll\">\r\n						<table class=\"joyMappingRoles\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n							<tbody></tbody>\r\n						</table>\r\n						<div class=\"joyMappingSub\">Combinations (follow the buttons above)</div>\r\n						<table class=\"joyMappingCombos\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n							<tbody></tbody>\r\n						</table>\r\n					</div>\r\n				</div>\r\n			</div>\r\n			<button\r\n				class=\"button reset left\"\r\n				data-background=\"btn_reset.bmp\"\r\n				data-hover=\"btn_reset_a.bmp\"\r\n				data-down=\"btn_reset_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button ok right\"\r\n				data-background=\"btn_ok.bmp\"\r\n				data-hover=\"btn_ok_a.bmp\"\r\n				data-down=\"btn_ok_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button cancel right\"\r\n				data-background=\"btn_cancel.bmp\"\r\n				data-hover=\"btn_cancel_a.bmp\"\r\n				data-down=\"btn_cancel_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button close right\"\r\n				data-background=\"btn_close.bmp\"\r\n				data-hover=\"btn_close_a.bmp\"\r\n				data-down=\"btn_close_b.bmp\"\r\n			></button>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
+	ShortCutOption_default$2 = "<div id=\"ShortCutOption\" class=\"pt-page-fadeIn1\">\r\n	<div class=\"border\">\r\n		<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n			<div class=\"left\"><span class=\"text\">Shortcut key setting window</span></div>\r\n\r\n			<div class=\"right\">\r\n				<button\r\n					class=\"base close\"\r\n					data-background=\"basic_interface/sys_close_off.bmp\"\r\n					data-hover=\"basic_interface/sys_close_on.bmp\"\r\n				></button>\r\n			</div>\r\n\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n\r\n		<div class=\"tabs\">\r\n			<button class=\"t_skillbar selectedtab\" data-index=\"t_skillbar\">Skill Bar</button\r\n			><button class=\"t_ui\" data-index=\"t_ui\">Interface</button\r\n			><button class=\"t_macro\" data-index=\"t_macro\">Macros</button\r\n			><button class=\"t_gamepad\" data-index=\"t_gamepad\">Gamepad</button>\r\n		</div>\r\n		<div class=\"panel\">\r\n			<div class=\"content t_skillbar selectedtab\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Skill bar 1-1</td>\r\n							<td data-button=\"F1_1\" class=\"customize\"></td>\r\n							<td>Skill bar 2-1</td>\r\n							<td data-button=\"F2_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-2</td>\r\n							<td data-button=\"F1_2\" class=\"customize\"></td>\r\n							<td>Skill bar 2-2</td>\r\n							<td data-button=\"F2_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-3</td>\r\n							<td data-button=\"F1_3\" class=\"customize\"></td>\r\n							<td>Skill bar 2-3</td>\r\n							<td data-button=\"F2_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-4</td>\r\n							<td data-button=\"F1_4\" class=\"customize\"></td>\r\n							<td>Skill bar 2-4</td>\r\n							<td data-button=\"F2_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-5</td>\r\n							<td data-button=\"F1_5\" class=\"customize\"></td>\r\n							<td>Skill bar 2-5</td>\r\n							<td data-button=\"F2_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-6</td>\r\n							<td data-button=\"F1_6\" class=\"customize\"></td>\r\n							<td>Skill bar 2-6</td>\r\n							<td data-button=\"F2_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-7</td>\r\n							<td data-button=\"F1_7\" class=\"customize\"></td>\r\n							<td>Skill bar 2-7</td>\r\n							<td data-button=\"F2_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-8</td>\r\n							<td data-button=\"F1_8\" class=\"customize\"></td>\r\n							<td>Skill bar 2-8</td>\r\n							<td data-button=\"F2_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-9</td>\r\n							<td data-button=\"F1_9\" class=\"customize\"></td>\r\n							<td>Skill bar 2-9</td>\r\n							<td data-button=\"F2_9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-1</td>\r\n							<td data-button=\"F3_1\" class=\"customize\"></td>\r\n							<td>Skill bar 4-1</td>\r\n							<td data-button=\"F4_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-2</td>\r\n							<td data-button=\"F3_2\" class=\"customize\"></td>\r\n							<td>Skill bar 4-2</td>\r\n							<td data-button=\"F4_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-3</td>\r\n							<td data-button=\"F3_3\" class=\"customize\"></td>\r\n							<td>Skill bar 4-3</td>\r\n							<td data-button=\"F4_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-4</td>\r\n							<td data-button=\"F3_4\" class=\"customize\"></td>\r\n							<td>Skill bar 4-4</td>\r\n							<td data-button=\"F4_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-5</td>\r\n							<td data-button=\"F3_5\" class=\"customize\"></td>\r\n							<td>Skill bar 4-5</td>\r\n							<td data-button=\"F4_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-6</td>\r\n							<td data-button=\"F3_6\" class=\"customize\"></td>\r\n							<td>Skill bar 4-6</td>\r\n							<td data-button=\"F4_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-7</td>\r\n							<td data-button=\"F3_7\" class=\"customize\"></td>\r\n							<td>Skill bar 4-7</td>\r\n							<td data-button=\"F4_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-8</td>\r\n							<td data-button=\"F3_8\" class=\"customize\"></td>\r\n							<td>Skill bar 4-8</td>\r\n							<td data-button=\"F4_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-9</td>\r\n							<td data-button=\"F3_9\" class=\"customize\"></td>\r\n							<td>Skill bar 4-9</td>\r\n							<td data-button=\"F4_9\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_ui\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Basic Info</td>\r\n							<td data-button=\"BasicInfo\" class=\"customize\"></td>\r\n							<td>Character Info</td>\r\n							<td data-button=\"Equipment\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill List</td>\r\n							<td data-button=\"SkillList\" class=\"customize\"></td>\r\n							<td>Emotion List</td>\r\n							<td data-button=\"Emotions\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Friends List</td>\r\n							<td data-button=\"Friends\" class=\"customize\"></td>\r\n							<td>Party Window</td>\r\n							<td data-button=\"Party\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Pet Info</td>\r\n							<td data-button=\"PetInfo\" class=\"customize\"></td>\r\n							<td>Chat Room</td>\r\n							<td data-button=\"ChatRoom\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Cart Window</td>\r\n							<td data-button=\"PushCart\" class=\"customize\"></td>\r\n							<td>Item Window</td>\r\n							<td data-button=\"Inventory\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>World Map</td>\r\n							<td data-button=\"WorldMap\" class=\"customize\"></td>\r\n							<td>Guild Info</td>\r\n							<td data-button=\"Guild\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus Info</td>\r\n							<td data-button=\"HomunInfo\" class=\"customize\"></td>\r\n							<td>Mercenary Info</td>\r\n							<td data-button=\"MercInfo\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus State</td>\r\n							<td data-button=\"HomunState\" class=\"customize\"></td>\r\n							<td>Mercenary State</td>\r\n							<td data-button=\"MercState\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Sit/Stand</td>\r\n							<td data-button=\"Sit\" class=\"customize\"></td>\r\n							<td>Short Cuts</td>\r\n							<td data-button=\"ShortCuts\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Chat Bar Size</td>\r\n							<td data-button=\"ChatSize\" class=\"customize\"></td>\r\n							<td>Skill Bar Size</td>\r\n							<td data-button=\"SkillBarSize\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Quest</td>\r\n							<td data-button=\"Quest\" class=\"customize\"></td>\r\n							<td>Bank</td>\r\n							<td data-button=\"Bank\" class=\"customize\"></td>\r\n						</tr>\r\n						<!--<tr>\r\n                     <td>MobileUI</td>\r\n                     <td data-button=\"M_UI\" class=\"customize\"></td>\r\n                     <td>MUi-Toggle</td>\r\n                     <td data-button=\"M_Toggle\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-TG</td>\r\n                     <td data-button=\"M_Targeting\" class=\"customize\"></td>\r\n                     <td>MUi-AT</td>\r\n                     <td data-button=\"M_AutoTarget\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-ATK</td>\r\n                     <td data-button=\"M_Attack\" class=\"customize\"></td>\r\n                  </tr>-->\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_macro\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Macro 1</td>\r\n							<td data-button=\"Macro1\" class=\"customize\"></td>\r\n							<td>Flag 1</td>\r\n							<td data-button=\"Flag1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 2</td>\r\n							<td data-button=\"Macro2\" class=\"customize\"></td>\r\n							<td>Flag 2</td>\r\n							<td data-button=\"Flag2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 3</td>\r\n							<td data-button=\"Macro3\" class=\"customize\"></td>\r\n							<td>Flag 3</td>\r\n							<td data-button=\"Flag3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 4</td>\r\n							<td data-button=\"Macro4\" class=\"customize\"></td>\r\n							<td>Flag 4</td>\r\n							<td data-button=\"Flag4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 5</td>\r\n							<td data-button=\"Macro5\" class=\"customize\"></td>\r\n							<td>Flag 5</td>\r\n							<td data-button=\"Flag5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 6</td>\r\n							<td data-button=\"Macro6\" class=\"customize\"></td>\r\n							<td>Flag 6</td>\r\n							<td data-button=\"Flag6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 7</td>\r\n							<td data-button=\"Macro7\" class=\"customize\"></td>\r\n							<td>Flag 7</td>\r\n							<td data-button=\"Flag7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 8</td>\r\n							<td data-button=\"Macro8\" class=\"customize\"></td>\r\n							<td>Flag 8</td>\r\n							<td data-button=\"Flag8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 9</td>\r\n							<td data-button=\"Macro9\" class=\"customize\"></td>\r\n							<td>Flag 9</td>\r\n							<td data-button=\"Flag9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 10</td>\r\n							<td data-button=\"Macro10\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_gamepad\">\r\n				<table class=\"joySettings\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr title=\"Show which button does what, and remap them\">\r\n							<td>Button Mapping</td>\r\n							<td>\r\n								<button type=\"button\" class=\"joyBtn joyMappingOpen\">Mapping</button>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Define how targets are selected in combat\">\r\n							<td>Attack Target Mode</td>\r\n							<td>\r\n								<select class=\"attackTargetMode\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Lowest HP</option>\r\n									<option value=\"2\">Closest</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"What the D-pad left/right cycles through (L3 switches in game)\">\r\n							<td>D-pad Cycle Targets</td>\r\n							<td>\r\n								<select class=\"joyCycleMode\">\r\n									<option value=\"0\">Mobs</option>\r\n									<option value=\"1\">Items</option>\r\n									<option value=\"2\">Both</option>\r\n									<option value=\"3\">NPCs &amp; portals</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Push the right stick toward a monster or item to target the first one in that direction. In game, tap RS click to switch the right stick between aiming and the cursor; hold it to clear the target\">\r\n							<td>Right-Stick Aiming</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyAimEnabled\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Choose how skills are cast with gamepad\">\r\n							<td>Quick-Cast Mode</td>\r\n							<td>\r\n								<select class=\"joyQuick\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Release Mode</option>\r\n									<option value=\"2\">Instant Mode</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Adjust mouse movement sensitivity for R3 stick\">\r\n							<td>Mouse Move</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Sensitivity:\r\n									<input\r\n										class=\"joySense\"\r\n										type=\"range\"\r\n										value=\"25.0\"\r\n										min=\"1.0\"\r\n										max=\"100.0\"\r\n										step=\"1.0\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Disable mouse input from gamepad for UI interaction\">\r\n							<td>Disable Virtual Mouse</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyDisableVirtualMouse\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Swap L3 and R3 stick functions\">\r\n							<td>Swap L3-R3 Sticks</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyReverseStick\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Automatically hide UI during gameplay mouse movement\">\r\n							<td>Auto Hide UI</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyAutoHide\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Set deadzone threshold for analog sticks\">\r\n							<td>Axis Threshold</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Deadline:\r\n									<input\r\n										class=\"joyDeadline\"\r\n										type=\"range\"\r\n										value=\"0.10\"\r\n										min=\"0.0\"\r\n										max=\"1.0\"\r\n										step=\"0.1\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n				<div class=\"joyMapping\">\r\n					<div class=\"joyMappingHeader\">\r\n						<button type=\"button\" class=\"joyBtn joyMappingBack\">&#9664; Back</button>\r\n						<span class=\"joyMappingTitle\">Button mapping</span>\r\n						<button type=\"button\" class=\"joyBtn joyMappingReset\">Reset to defaults</button>\r\n					</div>\r\n					<div class=\"joyMappingStatus\">Remap: press Remap, then a button on the gamepad. The two buttons trade places.</div>\r\n					<div class=\"joyMappingScroll\">\r\n						<table class=\"joyMappingRoles\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n							<tbody></tbody>\r\n						</table>\r\n						<div class=\"joyMappingSub\">Combinations (follow the buttons above)</div>\r\n						<table class=\"joyMappingCombos\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n							<tbody></tbody>\r\n						</table>\r\n					</div>\r\n				</div>\r\n			</div>\r\n			<button\r\n				class=\"button reset left\"\r\n				data-background=\"btn_reset.bmp\"\r\n				data-hover=\"btn_reset_a.bmp\"\r\n				data-down=\"btn_reset_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button ok right\"\r\n				data-background=\"btn_ok.bmp\"\r\n				data-hover=\"btn_ok_a.bmp\"\r\n				data-down=\"btn_ok_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button cancel right\"\r\n				data-background=\"btn_cancel.bmp\"\r\n				data-hover=\"btn_cancel_a.bmp\"\r\n				data-down=\"btn_cancel_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button close right\"\r\n				data-background=\"btn_close.bmp\"\r\n				data-hover=\"btn_close_a.bmp\"\r\n				data-down=\"btn_close_b.bmp\"\r\n			></button>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/ShortCutOption/ShortCutOption.css?raw
@@ -235159,8 +235160,43 @@ function moveMouseToEntity(entity) {
 		_selector.style.top = screenY + "px";
 	}
 }
-function leftClick(click = false) {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+/**
+* The element under the virtual cursor, looking inside shadow roots.
+*
+* Windows built on GUIComponent live in a shadow root, and
+* document.elementFromPoint only returns their host element. Events
+* dispatched there never reached the buttons inside, so A could not press
+* them, and the item/skill grid checks never matched.
+*/
+function elementAtCursor() {
+	let el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	while (el && el.shadowRoot) {
+		const inner = el.shadowRoot.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+		if (!inner || inner === el) break;
+		el = inner;
+	}
+	return el;
+}
+/**
+* Put the virtual cursor at a screen position.
+*/
+function moveTo(x, y) {
+	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, x));
+	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, y));
+	const cursor = document.querySelector(".cursor");
+	if (cursor) {
+		cursor.style.left = Mouse.screen.x + "px";
+		cursor.style.top = Mouse.screen.y + "px";
+	}
+}
+/**
+* A: a full click at the cursor -- mousedown, mouseup and click, as a real
+* mouse sends. A tap used to send only mousedown and mouseup, so buttons
+* that listen for click (the escape and death menus among them) ignored it.
+* Events are composed so they bubble out of a window's shadow root.
+*/
+function leftClick() {
+	const el = elementAtCursor();
 	if (!el) {
 		handleWorldLeftClick();
 		return;
@@ -235169,6 +235205,7 @@ function leftClick(click = false) {
 	const eventOptions = {
 		bubbles: true,
 		cancelable: true,
+		composed: true,
 		view: window,
 		clientX: Mouse.screen.x,
 		clientY: Mouse.screen.y,
@@ -235177,11 +235214,11 @@ function leftClick(click = false) {
 	el.dispatchEvent(new MouseEvent("mousedown", eventOptions));
 	setTimeout(function() {
 		el.dispatchEvent(new MouseEvent("mouseup", eventOptions));
-		if (click) el.dispatchEvent(new MouseEvent("click", eventOptions));
+		el.dispatchEvent(new MouseEvent("click", eventOptions));
 	}, 50);
 }
 function rightClick(holding = false) {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	const el = elementAtCursor();
 	const isCanvas = el && el.tagName.toLowerCase() === "canvas";
 	if (!el || isCanvas) {
 		handleWorldRightClick();
@@ -235245,7 +235282,7 @@ function enter() {
 	_dispatchKeyEvent(document, "keydown", 13);
 }
 function contextMenu() {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	const el = elementAtCursor();
 	const draggableElement = el.closest(".item, .skill");
 	if (el && draggableElement) {
 		const contextMenuEvent = new MouseEvent("contextmenu", {
@@ -235262,7 +235299,7 @@ function contextMenu() {
 	return false;
 }
 function navigateDraggableItems(direction) {
-	const container = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y).closest(".item, .skill");
+	const container = elementAtCursor().closest(".item, .skill");
 	if (!container) {
 		let keyCode;
 		switch (direction) {
@@ -235374,6 +235411,8 @@ var init_JoystickMouseCursorAdapter = __esmMin((() => {
 		moveBy,
 		leftClick,
 		rightClick,
+		elementAtCursor,
+		moveTo,
 		recenter
 	};
 }));
@@ -235383,27 +235422,50 @@ function getCycleTypes(Entity) {
 	switch (Controls_default.joyCycleMode) {
 		case CYCLE_MODE.ITEMS: return [Entity.TYPE_ITEM];
 		case CYCLE_MODE.BOTH: return [Entity.TYPE_MOB, Entity.TYPE_ITEM];
+		case CYCLE_MODE.INTERACT: return [
+			Entity.TYPE_NPC,
+			Entity.TYPE_NPC2,
+			Entity.TYPE_WARP
+		];
 		default: return [Entity.TYPE_MOB];
 	}
 }
-/**
-* The cycled ground item, or null once it was picked up, expired or left
-* the entity list.
-*/
-function getCycledItem() {
-	if (_cycledItem && (_cycledItem.remove_tick !== 0 || EntityManager.get(_cycledItem.GID) !== _cycledItem)) _cycledItem = null;
-	return _cycledItem;
+function isInteractable(entity) {
+	const Entity = entity.constructor;
+	return [
+		Entity.TYPE_NPC,
+		Entity.TYPE_NPC2,
+		Entity.TYPE_WARP
+	].includes(entity.objecttype);
 }
-function releaseItem() {
-	if (_cycledItem) {
-		_cycledItem.attachments.remove("lockon");
-		_cycledItem = null;
+/**
+* What the cycle and aim may select for the current mode, nearest first.
+*/
+function getCycleCandidates(player) {
+	return EntityManager.getEntitiesSortedByDistance(player, getCycleTypes(player.constructor)).filter((entity) => !(isInteractable(entity) && HIDDEN_NPC_JOBS.includes(entity.job)));
+}
+/**
+* The marked entity, or null once it was picked up, expired or left the
+* entity list.
+*/
+function getMarked() {
+	if (_marked && (_marked.remove_tick !== 0 || EntityManager.get(_marked.GID) !== _marked)) _marked = null;
+	return _marked;
+}
+function getCycledItem() {
+	const marked = getMarked();
+	return marked && marked.objecttype === marked.constructor.TYPE_ITEM ? marked : null;
+}
+function getInteractTarget() {
+	const marked = getMarked();
+	return marked && isInteractable(marked) ? marked : null;
+}
+function releaseMark() {
+	if (_marked) {
+		_marked.attachments.remove("lockon");
+		_marked = null;
 	}
 }
-/**
-* Mark a ground item as the cycle target: drop any combat lock-on and show
-* the same lock-on arrow mobs get, so the player sees which item Y will pick.
-*/
 /**
 * Drop the current focus without telling the server to stop attacking.
 *
@@ -235421,9 +235483,13 @@ function dropFocusQuietly() {
 		focus.onFocusEnd();
 	}
 }
-function focusItem(item) {
+/**
+* Mark an item, NPC or portal: drop any combat lock-on and show the same
+* lock-on arrow mobs get, so the player sees what Y or A will act on.
+*/
+function markEntity(item) {
 	dropFocusQuietly();
-	releaseItem();
+	releaseMark();
 	item.attachments.add({
 		uid: "lockon",
 		spr: "data/sprite/cursors.spr",
@@ -235432,7 +235498,7 @@ function focusItem(item) {
 		repeat: true,
 		depth: 10
 	});
-	_cycledItem = item;
+	_marked = item;
 }
 function getEntityInContext() {
 	const focus = EntityManager.getFocusEntity();
@@ -235469,7 +235535,7 @@ function focusEntity(entity) {
 	EntityManager.setFocusEntity(entity);
 }
 function focusTarget(entity) {
-	releaseItem();
+	releaseMark();
 	const focus = EntityManager.getFocusEntity();
 	if (focus && entity.GID !== focus.GID) {
 		dropFocusQuietly();
@@ -235493,17 +235559,17 @@ function cycle(direction) {
 	const player = SessionStorage_default.Entity;
 	if (!player) return;
 	const Entity = player.constructor;
-	const sorted = EntityManager.getEntitiesSortedByDistance(player, getCycleTypes(Entity));
+	const sorted = getCycleCandidates(player);
 	if (sorted.length === 0) return;
-	const current = getCycledItem() || EntityManager.getFocusEntity();
+	const current = getMarked() || EntityManager.getFocusEntity();
 	const index = current ? sorted.indexOf(current) : -1;
 	let newIndex;
 	if (index === -1) newIndex = direction === "next" ? 0 : sorted.length - 1;
 	else if (direction === "next") newIndex = (index + 1) % sorted.length;
 	else newIndex = (index - 1 + sorted.length) % sorted.length;
 	const target = sorted[newIndex];
-	if (target.objecttype === Entity.TYPE_ITEM) {
-		focusItem(target);
+	if (target.objecttype !== Entity.TYPE_MOB) {
+		markEntity(target);
 		JoystickMouseCursorAdapter_default.moveMouseToEntity(target);
 		return;
 	}
@@ -235516,7 +235582,7 @@ function cycle(direction) {
 * starts from the closest mob again.
 */
 function clearFocus() {
-	releaseItem();
+	releaseMark();
 	const focus = EntityManager.getFocusEntity();
 	if (focus) {
 		focus.onFocusEnd();
@@ -235532,10 +235598,11 @@ function clearFocus() {
 function nextCycleMode() {
 	Controls_default.joyCycleMode = ((Controls_default.joyCycleMode | 0) + 1) % CYCLE_MODE_NAMES.length;
 	Controls_default.save();
-	if (Controls_default.joyCycleMode === CYCLE_MODE.MOBS) releaseItem();
+	const marked = getMarked();
+	if (marked && !getCycleTypes(marked.constructor).includes(marked.objecttype)) releaseMark();
 	ChatBox_default.addText("D-pad target cycle: " + CYCLE_MODE_NAMES[Controls_default.joyCycleMode], ChatBox_default.TYPE.INFO, ChatBox_default.FILTER.PUBLIC_LOG);
 }
-var CYCLE_MODE, CYCLE_MODE_NAMES, _cycledItem, JoystickTargetService_default;
+var CYCLE_MODE, CYCLE_MODE_NAMES, HIDDEN_NPC_JOBS, _marked, JoystickTargetService_default;
 var init_JoystickTargetService = __esmMin((() => {
 	init_SessionStorage();
 	init_EntityManager();
@@ -235546,27 +235613,38 @@ var init_JoystickTargetService = __esmMin((() => {
 	CYCLE_MODE = {
 		MOBS: 0,
 		ITEMS: 1,
-		BOTH: 2
+		BOTH: 2,
+		INTERACT: 3
 	};
 	CYCLE_MODE_NAMES = [
 		"mobs",
 		"items",
-		"mobs and items"
+		"mobs and items",
+		"NPCs and portals"
 	];
-	_cycledItem = null;
+	HIDDEN_NPC_JOBS = [
+		111,
+		139,
+		2337
+	];
+	_marked = null;
 	JoystickTargetService_default = {
 		getEntity: getEntityInContext,
 		focus: focusTarget,
 		cycle,
 		clear: clearFocus,
 		getItem: getCycledItem,
+		getMarked,
+		getInteractTarget,
+		releaseMark,
 		getCycleTypes,
+		getCycleCandidates,
 		/**
-		* Select an entity the aim line hit: a ground item gets the item mark, a
+		* Select an entity the aim hit: an item, NPC or portal gets the mark, a
 		* mob the focus. Never attacks and never stops a running attack.
 		*/
 		aimAt: function(entity) {
-			if (entity.objecttype === entity.constructor.TYPE_ITEM) focusItem(entity);
+			if (entity.objecttype !== entity.constructor.TYPE_MOB) markEntity(entity);
 			else focusTarget(entity);
 		},
 		snapCursorToFocus: function() {
@@ -235704,45 +235782,30 @@ function setClickInterval() {
 function isLocked() {
 	return clickLock$1 !== null;
 }
+/**
+* Button combination for a shortcut slot, worded with the current button
+* mapping. Mirrors JoystickShortcutMapper: bar 1 is LB (slots 1-4) and LT
+* (5-8), bar 2 RB and RT, bars 3 and 4 the same in set 2, and slot 9 of
+* bar 1-4 is LB+RB with Y / X / B / A.
+*
+* @param {number} slotIndex 0-35, bar * 9 + slot
+* @return {string}
+*/
 function getJoystickComboForSlot(slotIndex) {
-	return {
-		0: "L1+Y",
-		1: "L1+X",
-		2: "L1+B",
-		3: "L1+A",
-		4: "L2+Y",
-		5: "L2+X",
-		6: "L2+B",
-		7: "L2+A",
-		8: "L1+R1+Y",
-		9: "R1+Y",
-		10: "R1+X",
-		11: "R1+B",
-		12: "R1+A",
-		13: "R2+Y",
-		14: "R2+X",
-		15: "R2+B",
-		16: "R2+A",
-		17: "L1+R1+X",
-		18: "L1+Y (Set2)",
-		19: "L1+X (Set2)",
-		20: "L1+B (Set2)",
-		21: "L1+A (Set2)",
-		22: "L2+Y (Set2)",
-		23: "L2+X (Set2)",
-		24: "L2+B (Set2)",
-		25: "L2+A (Set2)",
-		26: "L1+R1+B",
-		27: "R1+Y (Set2)",
-		28: "R1+X (Set2)",
-		29: "R1+B (Set2)",
-		30: "R1+A (Set2)",
-		31: "R2+Y (Set2)",
-		32: "R2+X (Set2)",
-		33: "R2+B (Set2)",
-		34: "R2+A (Set2)",
-		35: "L1+R1+A"
-	}[slotIndex];
+	const B = JoystickButtonMap_default.BUTTON;
+	const n = JoystickButtonMap_default.nameOf;
+	const bar = Math.floor(slotIndex / 9);
+	const slot = slotIndex % 9;
+	const faces = [
+		n(B.Y),
+		n(B.X),
+		n(B.B),
+		n(B.A)
+	];
+	if (slot === 8) return n(B.LB) + "+" + n(B.RB) + "+" + faces[bar];
+	const left = bar === 0 || bar === 2;
+	const combo = (slot < 4 ? left ? n(B.LB) : n(B.RB) : left ? n(B.LT) : n(B.RT)) + "+" + faces[slot % 4];
+	return bar >= 2 ? combo + " (Set2)" : combo;
 }
 function updateGrid() {
 	const grid = JoystickSelectionUI.getRoot().querySelector(".shortcut-grid");
@@ -235804,6 +235867,7 @@ var init_JoystickSelectionUI = __esmMin((() => {
 	init_UIManager();
 	init_ShortCut();
 	init_JoystickSelectionUI$2();
+	init_JoystickButtonMap();
 	init_JoystickSelectionUI$1();
 	JoystickSelectionUI = new GUIComponent("JoystickSelectionUI", JoystickSelectionUI_default$1);
 	JoystickSelectionUI.render = () => JoystickSelectionUI_default$2;
@@ -235892,6 +235956,10 @@ var init_JoystickSelectionUI = __esmMin((() => {
 		slotInTab = 0;
 		updateGrid();
 		updateTabButtons();
+		const B = JoystickButtonMap_default.BUTTON;
+		const n = JoystickButtonMap_default.nameOf;
+		const footer = this.getRoot().querySelector(".footer-instructions");
+		if (footer) footer.textContent = "Use " + n(B.LT) + "/" + n(B.RT) + " to change tab, D-pad to navigate slot, " + n(B.A) + " to select, " + n(B.VIEW) + " to cancel";
 		this.focus();
 		this._host.style.display = "block";
 		this._fixPositionOverflow();
@@ -235907,8 +235975,11 @@ var init_JoystickSelectionUI = __esmMin((() => {
 }));
 //#endregion
 //#region src/UI/Components/JoystickUI/JoystickAimMode.js
+function isEnabled() {
+	return !!Controls_default.joyAimEnabled;
+}
 function isActive() {
-	return Controls_default.joyRightStickMode === MODE.AIM;
+	return isEnabled() && Controls_default.joyRightStickMode === MODE.AIM;
 }
 /**
 * Turn a stick vector into a map direction.
@@ -236041,7 +236112,7 @@ function drawRing(entity) {
 * still alive and in the scene.
 */
 function getTarget() {
-	const target = JoystickTargetService_default.getItem() || EntityManager.getFocusEntity();
+	const target = JoystickTargetService_default.getMarked() || EntityManager.getFocusEntity();
 	if (!target || target.remove_tick !== 0 || target.action === target.ACTION.DIE) return null;
 	return target;
 }
@@ -236066,7 +236137,7 @@ function update$1(x, y, held) {
 		return;
 	}
 	if (held) {
-		const hit = findFirstHit([player.position[0], player.position[1]], stickToMapDirection(x, y, Camera.angle[1]), EntityManager.getEntitiesSortedByDistance(player, JoystickTargetService_default.getCycleTypes(player.constructor)).filter(isOnScreen));
+		const hit = findFirstHit([player.position[0], player.position[1]], stickToMapDirection(x, y, Camera.angle[1]), JoystickTargetService_default.getCycleCandidates(player).filter(isOnScreen));
 		if (hit && hit.entity !== _aimLastHit) {
 			JoystickTargetService_default.aimAt(hit.entity);
 			_aimLastHit = hit.entity;
@@ -236084,11 +236155,23 @@ function update$1(x, y, held) {
 * Switch the right stick between aim and cursor (tap RS click).
 */
 function toggle() {
+	if (!isEnabled()) return;
 	Controls_default.joyRightStickMode = isActive() ? MODE.CURSOR : MODE.AIM;
 	Controls_default.save();
 	release();
 	JoystickUIRenderer_default.updateStickMode();
 	ChatBox_default.addText("Right stick: " + (isActive() ? "aim" : "cursor"), ChatBox_default.TYPE.INFO, ChatBox_default.FILTER.PUBLIC_LOG);
+}
+/**
+* Settings checkbox. Turning aiming on puts the right stick in aim mode
+* straight away; turning it off returns it to the cursor for good.
+*/
+function setEnabled(enabled) {
+	Controls_default.joyAimEnabled = !!enabled;
+	Controls_default.joyRightStickMode = enabled ? MODE.AIM : MODE.CURSOR;
+	Controls_default.save();
+	release();
+	JoystickUIRenderer_default.updateStickMode();
 }
 var MODE, HIT_RADIUS, HIT_SPREAD, RING_RADIUS, RING_POINTS, _aimLastHit, _aimOverlay, _aimCtx, _aimDrawn, _aimWorld, _aimView, JoystickAimMode_default;
 var init_JoystickAimMode = __esmMin((() => {
@@ -236119,13 +236202,85 @@ var init_JoystickAimMode = __esmMin((() => {
 	_aimView = exports$3.vec4.create();
 	JoystickAimMode_default = {
 		MODE,
+		isEnabled,
 		isActive,
+		setEnabled,
 		update: update$1,
 		release,
 		toggle,
 		stickToMapDirection,
 		findFirstHit
 	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickMenuNavigation.js
+function getComponent(name) {
+	try {
+		return UIManager.getComponent(name);
+	} catch {
+		return null;
+	}
+}
+function isShown(component) {
+	const host = component && component._host;
+	return !!host && !!host.parentNode && host.style.display !== "none";
+}
+function isVisible$1(el) {
+	return el.style.display !== "none" && el.getClientRects().length > 0;
+}
+function hover(el, on) {
+	el.dispatchEvent(new MouseEvent(on ? "mouseover" : "mouseout", {
+		bubbles: true,
+		composed: true
+	}));
+}
+/**
+* Step the highlight through the open menu's buttons. Wraps at both ends;
+* the first press selects the first (or last) button.
+*
+* @param {string} direction 'up', 'down', 'left' or 'right'
+* @return {boolean} true when a menu was open and took the press
+*/
+function navigate(direction) {
+	let open = null;
+	let component = null;
+	for (let i = 0; i < MENUS.length; i++) {
+		component = getComponent(MENUS[i].component);
+		if (isShown(component)) {
+			open = MENUS[i];
+			break;
+		}
+	}
+	if (!open) {
+		_menuCurrent = null;
+		_menuButton = null;
+		return false;
+	}
+	const buttons = Array.from(component.getRoot().querySelectorAll(open.buttons)).filter(isVisible$1);
+	if (buttons.length === 0) return false;
+	const forward = direction === "down" || direction === "right";
+	let index = open === _menuCurrent && _menuButton ? buttons.indexOf(_menuButton) : -1;
+	if (index === -1) index = forward ? 0 : buttons.length - 1;
+	else index = (index + (forward ? 1 : -1) + buttons.length) % buttons.length;
+	if (_menuButton && _menuButton !== buttons[index]) hover(_menuButton, false);
+	_menuCurrent = open;
+	_menuButton = buttons[index];
+	hover(_menuButton, true);
+	const rect = _menuButton.getBoundingClientRect();
+	JoystickMouseCursorAdapter_default.moveTo(rect.left + rect.width / 2, rect.top + rect.height / 2);
+	return true;
+}
+var MENUS, _menuCurrent, _menuButton, JoystickMenuNavigation_default;
+var init_JoystickMenuNavigation = __esmMin((() => {
+	init_UIManager();
+	init_JoystickMouseCursorAdapter();
+	MENUS = [{
+		component: "Escape",
+		buttons: ".container button"
+	}];
+	_menuCurrent = null;
+	_menuButton = null;
+	JoystickMenuNavigation_default = { navigate };
 }));
 //#endregion
 //#region src/UI/Components/JoystickUI/JoystickInteractionService.js
@@ -236143,8 +236298,10 @@ var init_JoystickInteractionService = __esmMin((() => {
 	init_DBManager();
 	init_SkillInfo();
 	init_JoystickShortcutMapper();
-	init_MouseEventHandler();
 	init_JoystickAimMode();
+	init_UIManager();
+	init_JoystickMenuNavigation();
+	init_SessionStorage();
 	init_EntityManager();
 	init_SkillTargetSelection();
 	JoystickInteractionService_default = {
@@ -236224,8 +236381,38 @@ var init_JoystickInteractionService = __esmMin((() => {
 			}
 			return false;
 		},
-		leftClick: function(click) {
-			JoystickMouseCursorAdapter_default.leftClick(click);
+		/**
+		* A. With an NPC or portal selected (D-pad cycle / aim in the "NPCs and
+		* portals" mode) and the cursor over the map, a press talks to the NPC
+		* or walks into the portal, wherever the cursor is, and clears the
+		* selection so the next A is an ordinary click again (NPC dialogue
+		* buttons, for one). Otherwise A is a left click at the cursor.
+		*
+		* @param {boolean} holding A held rather than freshly pressed
+		*/
+		leftClick: function(holding) {
+			const target = JoystickTargetService_default.getInteractTarget();
+			if (target && !holding) {
+				const el = JoystickMouseCursorAdapter_default.elementAtCursor();
+				if (!el || el.tagName.toLowerCase() === "canvas") {
+					SessionStorage_default.moveAction = null;
+					JoystickTargetService_default.releaseMark();
+					target.onMouseDown();
+					return;
+				}
+			}
+			JoystickMouseCursorAdapter_default.leftClick(holding);
+		},
+		/**
+		* Open or close a window, as its keyboard shortcut does (Alt+E, ...).
+		*
+		* @param {string} name UIManager component name
+		*/
+		toggleWindow: function(name) {
+			try {
+				const component = UIManager.getComponent(name);
+				if (component && component.onShortCut) component.onShortCut({ cmd: "TOGGLE" });
+			} catch {}
 		},
 		rightClick: function(holding) {
 			JoystickMouseCursorAdapter_default.rightClick(holding);
@@ -236264,6 +236451,7 @@ var init_JoystickInteractionService = __esmMin((() => {
 			return JoystickMouseCursorAdapter_default.contextMenu();
 		},
 		navigateDpad: function(direction) {
+			if (JoystickMenuNavigation_default.navigate(direction)) return true;
 			return JoystickMouseCursorAdapter_default.navigateDraggableItems(direction);
 		},
 		/**
@@ -236274,7 +236462,8 @@ var init_JoystickInteractionService = __esmMin((() => {
 		* @param {string} direction 'next' or 'prev'
 		*/
 		cycleTarget: function(direction) {
-			const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+			if (JoystickMenuNavigation_default.navigate(direction === "next" ? "right" : "left")) return;
+			const el = JoystickMouseCursorAdapter_default.elementAtCursor();
 			if (el && el.closest(".item, .skill")) {
 				this.navigateDpad(direction === "next" ? "right" : "left");
 				return;
@@ -236321,6 +236510,7 @@ var init_JoystickButtonInput = __esmMin((() => {
 	init_JoystickSetManager();
 	init_JoystickUIRenderer();
 	init_JoystickSelectionUI();
+	init_Controls();
 	clickLock = false;
 	lockTimeout = 200;
 	RS_HOLD_MS = 400;
@@ -236368,7 +236558,13 @@ var init_JoystickButtonInput = __esmMin((() => {
 			return pressed;
 		},
 		_handleRightStickButton: function(btn) {
-			if (btn[11] !== "unpressed") {
+			const state = btn[11];
+			if (!Controls_default.joyAimEnabled) {
+				rsDownAt = 0;
+				if (state === "pressed") JoystickInteractionService_default.resetFocus();
+				return state !== "unpressed";
+			}
+			if (state !== "unpressed") {
 				if (!rsDownAt) {
 					rsDownAt = Date.now();
 					rsHoldFired = false;
@@ -236414,6 +236610,18 @@ var init_JoystickButtonInput = __esmMin((() => {
 					pressed = true;
 				} else if (buttons[9] !== "unpressed") {
 					JoystickInteractionService_default.escape();
+					pressed = true;
+				} else if (buttons[0] === "pressed") {
+					JoystickInteractionService_default.toggleWindow("Inventory");
+					pressed = true;
+				} else if (buttons[1] === "pressed") {
+					JoystickInteractionService_default.toggleWindow("Equipment");
+					pressed = true;
+				} else if (buttons[2] === "pressed") {
+					JoystickInteractionService_default.toggleWindow("SkillList");
+					pressed = true;
+				} else if (buttons[3] === "pressed") {
+					JoystickInteractionService_default.toggleWindow("WinStats");
 					pressed = true;
 				} else pressed = JoystickInteractionService_default.showinfo();
 				if (pressed) {
@@ -236735,7 +236943,8 @@ function updateStickMode() {
 	if (!shadow) return;
 	const el = shadow.querySelector(".stick-mode");
 	if (el) {
-		const aim = Controls_default.joyRightStickMode === 1;
+		const aim = Controls_default.joyAimEnabled && Controls_default.joyRightStickMode === 1;
+		el.style.display = Controls_default.joyAimEnabled ? "" : "none";
 		el.textContent = aim ? "Aim" : "Cursor";
 		el.classList.toggle("aim", aim);
 	}
@@ -236976,9 +237185,15 @@ function getMappingCombos() {
 		[n(B.VIEW) + " + " + n(B.UP) + " / " + n(B.DOWN), "Camera zoom"],
 		[n(B.VIEW) + " + " + n(B.LEFT) + " / " + n(B.RIGHT), "Camera rotate"],
 		[n(B.VIEW) + " + " + n(B.MENU), "Escape"],
+		[n(B.VIEW) + " + " + [
+			n(B.A),
+			n(B.B),
+			n(B.X),
+			n(B.Y)
+		].join(" / "), "Inventory / equipment / skills / status"],
 		[n(B.VIEW) + " (cursor on item/skill)", "Context menu"],
 		[sticks[0], "Move"],
-		[sticks[1], Controls_default.joyRightStickMode === 1 ? "Aim (selects target)" : "Cursor"]
+		[sticks[1], Controls_default.joyAimEnabled ? "Cursor, or aim (tap " + n(B.RS) + ")" : "Cursor"]
 	];
 }
 /**
@@ -236990,7 +237205,8 @@ function renderMapping(root) {
 	status.textContent = "Remap: press Remap, then a button on the gamepad. The two buttons trade places.";
 	const roles = root.querySelector(".joyMappingRoles tbody");
 	roles.textContent = "";
-	MAPPING_ROLES.forEach(function([logical, label]) {
+	MAPPING_ROLES.forEach(function([logical, roleLabel]) {
+		const label = typeof roleLabel === "function" ? roleLabel() : roleLabel;
 		const tr = document.createElement("tr");
 		const name = document.createElement("td");
 		const button = document.createElement("td");
@@ -237043,10 +237259,8 @@ function startRemap(root, logical, label, remapButton) {
 		renderMapping(root);
 	});
 }
-function onUpdateRightStickMode() {
-	Controls_default.joyRightStickMode = parseInt(this.value, 10);
-	Controls_default.save();
-	JoystickUIRenderer_default.updateStickMode();
+function onUpdateAimEnabled() {
+	JoystickAimMode_default.setEnabled(this.checked);
 }
 function onUpdateCycleMode() {
 	Controls_default.joyCycleMode = parseInt(this.value, 10);
@@ -237090,6 +237304,7 @@ var init_ShortCutOption = __esmMin((() => {
 	init_Controls();
 	init_JoystickButtonMap();
 	init_JoystickUIRenderer();
+	init_JoystickAimMode();
 	ShortCutOption = new GUIComponent("ShortCutOption", ShortCutOption_default$1);
 	ShortCuts$1 = ShortCutControls_default.ShortCuts;
 	ShortCutsTemp = {};
@@ -237156,7 +237371,7 @@ var init_ShortCutOption = __esmMin((() => {
 		};
 		bindChange(".attackTargetMode", onUpdateTargetOption);
 		bindChange(".joyCycleMode", onUpdateCycleMode);
-		bindChange(".joyRightStickMode", onUpdateRightStickMode);
+		bindChange(".joyAimEnabled", onUpdateAimEnabled);
 		const gamepadTab = root.querySelector(".content.t_gamepad");
 		root.querySelector(".joyMappingOpen").addEventListener("click", function() {
 			renderMapping(root);
@@ -237199,8 +237414,8 @@ var init_ShortCutOption = __esmMin((() => {
 	ShortCutOption.onAppend = function() {
 		const cycleMode = this.getRoot().querySelector(".joyCycleMode");
 		if (cycleMode) cycleMode.value = String(Controls_default.joyCycleMode | 0);
-		const stickMode = this.getRoot().querySelector(".joyRightStickMode");
-		if (stickMode) stickMode.value = String(Controls_default.joyRightStickMode | 0);
+		const aimEnabled = this.getRoot().querySelector(".joyAimEnabled");
+		if (aimEnabled) aimEnabled.checked = !!Controls_default.joyAimEnabled;
 		this._host.style.left = _preferences$30.x + "px";
 		this._host.style.top = _preferences$30.y + "px";
 		this._host.style.zIndex = 100;
@@ -237289,8 +237504,8 @@ var init_ShortCutOption = __esmMin((() => {
 		[JoystickButtonMap_default.BUTTON.RIGHT, "Next target (grid right on items)"],
 		[JoystickButtonMap_default.BUTTON.UP, "Up (arrow key, item grids)"],
 		[JoystickButtonMap_default.BUTTON.DOWN, "Down (arrow key, item grids)"],
-		[JoystickButtonMap_default.BUTTON.LS, "Target cycle: mobs / items / both"],
-		[JoystickButtonMap_default.BUTTON.RS, "Tap: right stick aim/cursor - Hold: clear target"],
+		[JoystickButtonMap_default.BUTTON.LS, "Target cycle: mobs / items / both / NPCs"],
+		[JoystickButtonMap_default.BUTTON.RS, () => Controls_default.joyAimEnabled ? "Tap: right stick aim/cursor - Hold: clear target" : "Clear target, recenter cursor"],
 		[JoystickButtonMap_default.BUTTON.MENU, "Enter"],
 		[JoystickButtonMap_default.BUTTON.VIEW, "Camera & menu modifier"],
 		[JoystickButtonMap_default.BUTTON.LB, "Shortcuts: skill bar 1, slots 1-4"],
