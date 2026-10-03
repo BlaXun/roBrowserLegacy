@@ -226521,16 +226521,16 @@ var init_SkillTargetSelection = __esmMin((() => {
 		return !intersectEntities(event);
 	};
 	/**
-	* Intersect with an entity ID
-	* (used in party UI)
-	*/
-	/**
 	* Target types the pending skill accepts (SkillTargetSelection.TYPE bits),
 	* or 0 when no skill is waiting for a target.
 	*/
 	SkillTargetSelection.getFlag = function getFlag() {
 		return Mouse.state === Mouse.MOUSE_STATE.USESKILL ? _flag : 0;
 	};
+	/**
+	* Intersect with an entity ID
+	* (used in party UI)
+	*/
 	SkillTargetSelection.intersectEntityId = function intersectEntityId(id) {
 		const entity = EntityManager.get(id);
 		if (entity) intersectEntity(entity);
@@ -235524,9 +235524,40 @@ function markEntity(item) {
 	});
 	_marked = item;
 }
-function getEntityInContext() {
+/**
+* Whether the entity is something X may attack: alive, still in the current
+* map's entity list, and a mob, or a player the map state lets us attack
+* (PvP / GvG, the same rule as the mouse's attack cursor).
+*
+* The EntityManager.get() check matters: EntityManager.free() on a warp
+* cleans entities (remove_tick back to 0) but never clears the focus, so a
+* focus from the previous map would otherwise still look alive.
+*
+* @param {Entity} entity
+* @return {boolean}
+*/
+function isAttackable(entity) {
+	if (!entity || entity === SessionStorage_default.Entity) return false;
+	if (entity.action === entity.ACTION.DIE || entity.remove_tick !== 0) return false;
+	if (EntityManager.get(entity.GID) !== entity) return false;
+	const Entity = entity.constructor;
+	if (entity.objecttype === Entity.TYPE_MOB) return true;
+	return entity.objecttype === Entity.TYPE_PC && !!entity.canAttackEntity && entity.canAttackEntity();
+}
+/**
+* The focused entity if it is still an attackable target, else null.
+* A click on an NPC or a friendly player also focuses it (MapControl), and
+* that must not turn X into an attack on it.
+*
+* @return {Entity|null}
+*/
+function getAttackableFocus() {
 	const focus = EntityManager.getFocusEntity();
-	if (focus && focus.action !== focus.ACTION.DIE && focus.remove_tick === 0) return focus;
+	return isAttackable(focus) ? focus : null;
+}
+function getEntityInContext() {
+	const focus = getAttackableFocus();
+	if (focus) return focus;
 	let target = null;
 	if (Controls_default.attackTargetMode === 1) {
 		target = EntityManager.getLowestHpEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_MOB);
@@ -235654,6 +235685,8 @@ var init_JoystickTargetService = __esmMin((() => {
 	_marked = null;
 	JoystickTargetService_default = {
 		getEntity: getEntityInContext,
+		getAttackableFocus,
+		isAttackable,
 		focus: focusTarget,
 		cycle,
 		clear: clearFocus,
@@ -236166,13 +236199,13 @@ function drawAimLine(ctx, from, to, color) {
 	_aimDrawn = true;
 }
 /**
-* The entity aim mode marks: the cycled item, else the focused mob, if
-* still alive and in the scene.
+* The entity aim mode marks: the marked item, NPC or portal, else the
+* focus if it is still an attackable target on this map (not an NPC or
+* friendly player the player clicked, nor a focus left over from the
+* previous map).
 */
 function getTarget() {
-	const target = JoystickTargetService_default.getMarked() || EntityManager.getFocusEntity();
-	if (!target || target.remove_tick !== 0 || target.action === target.ACTION.DIE) return null;
-	return target;
+	return JoystickTargetService_default.getMarked() || JoystickTargetService_default.getAttackableFocus();
 }
 /**
 * Aim mode left: remove the ring and forget the last hit.
@@ -236256,7 +236289,6 @@ var MODE, HIT_RADIUS, HIT_SPREAD, RING_RADIUS, RING_POINTS, RING_FADE_MS, LINE_S
 var init_JoystickAimMode = __esmMin((() => {
 	init_gl_matrix$1();
 	init_SessionStorage();
-	init_EntityManager();
 	init_Renderer();
 	init_Camera();
 	init_Altitude();
@@ -236388,7 +236420,6 @@ var init_JoystickInteractionService = __esmMin((() => {
 	init_UIManager();
 	init_JoystickMenuNavigation();
 	init_SessionStorage();
-	init_EntityManager();
 	init_SkillTargetSelection();
 	JoystickInteractionService_default = {
 		prepare: function() {},
@@ -236426,13 +236457,18 @@ var init_JoystickInteractionService = __esmMin((() => {
 		* enemy target. Goes through SkillTargetSelection's own entity check, as
 		* the party window does for its members.
 		*
+		* A focus that is not an attackable target (an NPC or friendly player
+		* the player clicked, or a stale focus from the previous map) is left
+		* alone and false returned, so the caller's quick-cast click runs
+		* instead of the skill being cancelled on a target it refuses.
+		*
 		* @return {boolean} whether the skill was cast
 		*/
 		castAtFocus: function() {
 			const flag = SkillTargetSelection_default.getFlag();
 			if (!(flag & SkillTargetSelection_default.TYPE.ENEMY) || flag & SkillTargetSelection_default.TYPE.PLACE) return false;
-			const focus = EntityManager.getFocusEntity();
-			if (!focus || focus.action === focus.ACTION.DIE || focus.remove_tick !== 0) return false;
+			const focus = JoystickTargetService_default.getAttackableFocus();
+			if (!focus) return false;
 			SkillTargetSelection_default.intersectEntityId(focus.GID);
 			SkillTargetSelection_default.remove();
 			return true;
@@ -261009,34 +261045,6 @@ var init_Damage = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/UI/Components/JoystickUI/JoystickPollingLoop.js
-var timeoutHandle, POLL_RATE_ACTIVE, POLL_RATE_IDLE, JoystickPollingLoop_default;
-var init_JoystickPollingLoop = __esmMin((() => {
-	init_JoystickInputService();
-	timeoutHandle = null;
-	POLL_RATE_ACTIVE = 100;
-	POLL_RATE_IDLE = 1e3;
-	JoystickPollingLoop_default = {
-		start: function() {
-			if (timeoutHandle) return;
-			this.run();
-		},
-		run: function() {
-			const nextDelay = JoystickInputService_default.update() ? POLL_RATE_ACTIVE : POLL_RATE_IDLE;
-			const self = this;
-			timeoutHandle = setTimeout(function() {
-				self.run();
-			}, nextDelay);
-		},
-		stop: function() {
-			if (timeoutHandle) {
-				clearTimeout(timeoutHandle);
-				timeoutHandle = null;
-			}
-		}
-	};
-}));
-//#endregion
 //#region src/UI/Components/JoystickUI/JoystickCursorMotion.js
 function getGamepad() {
 	const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -261044,11 +261052,16 @@ function getGamepad() {
 	return null;
 }
 function frame(time) {
+	const gp = getGamepad();
+	if (!gp) {
+		JoystickAimMode_default.release();
+		frameHandle = null;
+		return;
+	}
 	frameHandle = requestAnimationFrame(frame);
 	const dt = Math.min(MAX_DT, (time - lastTime) / 1e3);
 	lastTime = time;
-	const gp = getGamepad();
-	if (!gp || gp.axes.length < 4 || dt <= 0) {
+	if (gp.axes.length < 4 || dt <= 0) {
 		JoystickAimMode_default.release();
 		return;
 	}
@@ -261070,7 +261083,22 @@ function frame(time) {
 	const step = scaled * scaled * Controls_default.joySense * SENSE_TO_PX_PER_SEC * dt / magnitude;
 	JoystickMouseCursorAdapter_default.moveBy(x * step, y * step);
 }
-var SENSE_TO_PX_PER_SEC, MAX_DT, frameHandle, lastTime, JoystickCursorMotion_default;
+/**
+* Begin the frame loop if it is armed, not already running, and a pad is
+* connected (or just announced itself).
+*
+* @param {boolean} [connected] skip the getGamepads() check
+*/
+function wake(connected) {
+	if (!enabled || frameHandle !== null || typeof requestAnimationFrame !== "function") return;
+	if (!connected && !getGamepad()) return;
+	lastTime = performance.now();
+	frameHandle = requestAnimationFrame(frame);
+}
+function onConnect() {
+	wake(true);
+}
+var SENSE_TO_PX_PER_SEC, MAX_DT, frameHandle, lastTime, enabled, JoystickCursorMotion_default;
 var init_JoystickCursorMotion = __esmMin((() => {
 	init_Controls();
 	init_JoystickMouseCursorAdapter();
@@ -261079,16 +261107,59 @@ var init_JoystickCursorMotion = __esmMin((() => {
 	MAX_DT = .05;
 	frameHandle = null;
 	lastTime = 0;
+	enabled = false;
 	JoystickCursorMotion_default = {
 		start: function() {
-			if (frameHandle !== null || typeof requestAnimationFrame !== "function") return;
-			lastTime = performance.now();
-			frameHandle = requestAnimationFrame(frame);
+			if (enabled) return;
+			enabled = true;
+			window.addEventListener("gamepadconnected", onConnect);
+			wake();
+		},
+		/**
+		* Called by the poll whenever it sees a pad: a backstop for a pad that
+		* shows up in getGamepads() without a 'gamepadconnected' reaching us
+		* (the event fires once per pad, not again after a map change).
+		*/
+		wake: function() {
+			wake();
 		},
 		stop: function() {
+			enabled = false;
+			window.removeEventListener("gamepadconnected", onConnect);
 			if (frameHandle !== null) {
 				cancelAnimationFrame(frameHandle);
 				frameHandle = null;
+			}
+		}
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickPollingLoop.js
+var timeoutHandle, POLL_RATE_ACTIVE, POLL_RATE_IDLE, JoystickPollingLoop_default;
+var init_JoystickPollingLoop = __esmMin((() => {
+	init_JoystickInputService();
+	init_JoystickCursorMotion();
+	timeoutHandle = null;
+	POLL_RATE_ACTIVE = 100;
+	POLL_RATE_IDLE = 1e3;
+	JoystickPollingLoop_default = {
+		start: function() {
+			if (timeoutHandle) return;
+			this.run();
+		},
+		run: function() {
+			const isConnected = JoystickInputService_default.update();
+			if (isConnected) JoystickCursorMotion_default.wake();
+			const nextDelay = isConnected ? POLL_RATE_ACTIVE : POLL_RATE_IDLE;
+			const self = this;
+			timeoutHandle = setTimeout(function() {
+				self.run();
+			}, nextDelay);
+		},
+		stop: function() {
+			if (timeoutHandle) {
+				clearTimeout(timeoutHandle);
+				timeoutHandle = null;
 			}
 		}
 	};
