@@ -1076,9 +1076,13 @@ class GUIComponent {
 				}
 			});
 
+			// Kept when the window is removed: remove() fires x_remove on every
+			// node, but a window reuses its nodes when it is appended again, and
+			// nothing processes them a second time. Disconnecting here froze each
+			// data-active image after the window's first removal, such as on a
+			// map change. The observer goes with the node when the node goes.
 			observer.observe(node, { attributes: true, attributeFilter: ['class'] });
 
-			node.addEventListener('x_remove', () => observer.disconnect(), { once: true });
 			if (!node._roActiveObserver) {
 				node._roActiveObserver = observer;
 			}

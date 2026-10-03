@@ -282,17 +282,9 @@ export function createEquipment({
 
 		if (damageSkin) {
 			// Damage Skin Settings
+			// Each button's images, the picked one as data-active, are in the
+			// HTML and set up once with the rest of the window.
 			const skinButtons = root.querySelectorAll('#damageskin .skin-option');
-			skinButtons.forEach(btn => {
-				btn.setAttribute('data-background', 'showdamage/btn_damage.bmp');
-				btn.setAttribute('data-hover', 'showdamage/btn_damage_press.bmp');
-				btn.setAttribute('data-down', 'showdamage/btn_damage_pick.bmp');
-			});
-			if (this.parseHTML) {
-				skinButtons.forEach(btn => {
-					this.parseHTML.call(btn);
-				});
-			}
 			skinButtons.forEach(btn => {
 				btn.addEventListener('mousedown', function () {
 					const skinId = parseInt(this.getAttribute('data-skin'), 10);
@@ -1099,38 +1091,17 @@ export function createEquipment({
 
 	if (damageSkin) {
 		Component.setDamageSkin = function setDamageSkin(skinId) {
-			const root = Component.getRoot();
-			const buttons = root.querySelectorAll('#damageskin .skin-option');
-			const buttonSelected = root.querySelector(`#damageskin .skin-option[data-skin="${skinId}"]`);
-
 			GraphicsSettings.damageSkin = skinId;
 			GraphicsSettings.save();
 
+			// The button's data-active image shows while it has the class
+			// "active", over its hover image, so the pick stays drawn when the
+			// pointer leaves it. Setting its background here instead raced the
+			// button's own image loads and was undone on mouseout.
+			const buttons = Component.getRoot().querySelectorAll('#damageskin .skin-option');
 			buttons.forEach(btn => {
-				btn.setAttribute('data-background', 'showdamage/btn_damage.bmp');
-				btn.setAttribute('data-hover', 'showdamage/btn_damage_press.bmp');
-				btn.setAttribute('data-down', 'showdamage/btn_damage_pick.bmp');
+				btn.classList.toggle('active', parseInt(btn.getAttribute('data-skin'), 10) === skinId);
 			});
-			if (this.parseHTML) {
-				buttons.forEach(btn => {
-					this.parseHTML.call(btn);
-				});
-			}
-
-			Client.loadFile(DB.INTERFACE_PATH + 'showdamage/btn_damage.bmp', data => {
-				buttons.forEach(btn => {
-					btn.style.backgroundImage = `url(${data})`;
-				});
-			});
-
-			if (buttonSelected) {
-				Client.loadFile(DB.INTERFACE_PATH + 'showdamage/btn_damage_pick.bmp', data => {
-					buttonSelected.style.backgroundImage = `url(${data})`;
-				});
-
-				buttonSelected.onmouseover = null;
-				buttonSelected.onmouseout = null;
-			}
 		};
 
 		Component.setDamageMotion = function setDamageMotion(motionId) {
