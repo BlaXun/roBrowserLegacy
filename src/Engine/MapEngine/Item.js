@@ -586,6 +586,21 @@ function onRecoverPenaltyOverweight(pkt) {
 }
 
 /**
+ * Open the storage window, unless it is open already.
+ *
+ * The server sends SPLIT_SEND_ITEMLIST_NORMAL only when the storage holds a
+ * stackable item, and SPLIT_SEND_ITEMLIST_EQUIP only when it holds equipment,
+ * so either one can be the first, or the only, list to arrive. A storage of
+ * nothing but equipment used to fill a window that was never built.
+ */
+function openStorage() {
+	const ui = Storage.getUI();
+	if (!(ui.__loaded && ui.__active)) {
+		ui.append();
+	}
+}
+
+/**
  * Result of Inventory Expansion
  *
  * @param {object} pkt - PACKET.ZC.SPLIT_SEND_ITEMLIST_NORMAL
@@ -599,7 +614,7 @@ function onItemListNormal(pkt) {
 			CartItems.setItems(pkt.itemInfo || pkt.ItemInfo);
 			break;
 		case 2:
-			Storage.getUI().append();
+			openStorage();
 			Storage.getUI().setItems(pkt.itemInfo || pkt.ItemInfo);
 			break;
 		default:
@@ -621,6 +636,7 @@ function onItemListEquip(pkt) {
 			CartItems.setItems(pkt.itemInfo || pkt.ItemInfo);
 			break;
 		case 2:
+			openStorage();
 			Storage.getUI().setItems(pkt.itemInfo || pkt.ItemInfo);
 			break;
 		default:
