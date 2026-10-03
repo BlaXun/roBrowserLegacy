@@ -236176,11 +236176,19 @@ var init_JoystickButtonInput = __esmMin((() => {
 }));
 //#endregion
 //#region src/UI/Components/JoystickUI/JoystickAxisInput.js
-var JoystickAxisInput_default;
+function isRebound(x, y) {
+	if (!lastMove || Date.now() - lastMoveAt > REBOUND_MS) return false;
+	return Math.hypot(x, y) < REBOUND_MAX && x * lastMove[0] + y * lastMove[1] < 0;
+}
+var REBOUND_MS, REBOUND_MAX, lastMove, lastMoveAt, JoystickAxisInput_default;
 var init_JoystickAxisInput = __esmMin((() => {
 	init_JoystickInteractionService();
 	init_Controls();
 	init_JoystickUIRenderer();
+	REBOUND_MS = 250;
+	REBOUND_MAX = .6;
+	lastMove = null;
+	lastMoveAt = 0;
 	JoystickAxisInput_default = { update: function(axes) {
 		let active = false;
 		let lx = axes[0];
@@ -236189,7 +236197,9 @@ var init_JoystickAxisInput = __esmMin((() => {
 			lx = axes[2];
 			ly = axes[3];
 		}
-		if (Math.abs(lx) > Controls_default.joyDeadline || Math.abs(ly) > Controls_default.joyDeadline) {
+		if ((Math.abs(lx) > Controls_default.joyDeadline || Math.abs(ly) > Controls_default.joyDeadline) && !isRebound(lx, ly)) {
+			lastMove = [lx, ly];
+			lastMoveAt = Date.now();
 			JoystickInteractionService_default.moveCharacter(lx, -ly);
 			JoystickInteractionService_default.cancelQuick = true;
 			active = true;
