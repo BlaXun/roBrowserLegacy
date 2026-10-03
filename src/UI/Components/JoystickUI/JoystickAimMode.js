@@ -40,14 +40,14 @@ const GROW_PER_SEC = 18; // cells per second while held
 const HIT_RADIUS = 0.9; // cells either side of the line that still count
 const SAMPLE_STEP = 0.5; // cells between projected points, so the line follows the ground
 
-let _length = 0;
-let _lastHit = null;
-let _overlay = null;
-let _ctx = null;
-let _drawn = false;
+let _aimLength = 0;
+let _aimLastHit = null;
+let _aimOverlay = null;
+let _aimCtx = null;
+let _aimDrawn = false;
 
-const _world = glMatrix.vec4.create();
-const _view = glMatrix.vec4.create();
+const _aimWorld = glMatrix.vec4.create();
+const _aimView = glMatrix.vec4.create();
 
 function isActive() {
 	return ControlsSettings.joyRightStickMode === MODE.AIM;
@@ -113,36 +113,36 @@ function getContext() {
 		return null;
 	}
 
-	if (!_overlay) {
-		_overlay = document.createElement('canvas');
-		_overlay.className = 'joystick-aim';
-		_overlay.style.position = 'absolute';
-		_overlay.style.top = '0px';
-		_overlay.style.left = '0px';
-		_overlay.style.zIndex = 1;
-		_overlay.style.pointerEvents = 'none';
-		scene.parentNode.insertBefore(_overlay, scene.nextSibling);
-		_ctx = _overlay.getContext('2d');
+	if (!_aimOverlay) {
+		_aimOverlay = document.createElement('canvas');
+		_aimOverlay.className = 'joystick-aim';
+		_aimOverlay.style.position = 'absolute';
+		_aimOverlay.style.top = '0px';
+		_aimOverlay.style.left = '0px';
+		_aimOverlay.style.zIndex = 1;
+		_aimOverlay.style.pointerEvents = 'none';
+		scene.parentNode.insertBefore(_aimOverlay, scene.nextSibling);
+		_aimCtx = _aimOverlay.getContext('2d');
 	}
 
 	const dpr = window.devicePixelRatio || 1;
 	const width = Math.round(Renderer.width * dpr);
 	const height = Math.round(Renderer.height * dpr);
-	if (_overlay.width !== width || _overlay.height !== height) {
-		_overlay.width = width;
-		_overlay.height = height;
-		_overlay.style.width = Renderer.width + 'px';
-		_overlay.style.height = Renderer.height + 'px';
+	if (_aimOverlay.width !== width || _aimOverlay.height !== height) {
+		_aimOverlay.width = width;
+		_aimOverlay.height = height;
+		_aimOverlay.style.width = Renderer.width + 'px';
+		_aimOverlay.style.height = Renderer.height + 'px';
 	}
-	_ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-	return _ctx;
+	_aimCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	return _aimCtx;
 }
 
 function clearLine() {
-	if (_drawn && _ctx) {
-		_ctx.setTransform(1, 0, 0, 1, 0, 0);
-		_ctx.clearRect(0, 0, _overlay.width, _overlay.height);
-		_drawn = false;
+	if (_aimDrawn && _aimCtx) {
+		_aimCtx.setTransform(1, 0, 0, 1, 0, 0);
+		_aimCtx.clearRect(0, 0, _aimOverlay.width, _aimOverlay.height);
+		_aimDrawn = false;
 	}
 }
 
@@ -150,18 +150,18 @@ function clearLine() {
  * Screen position of a ground point, or null behind the camera.
  */
 function project(x, y) {
-	_world[0] = x + 0.5;
-	_world[1] = -Altitude.getCellHeight(x, y);
-	_world[2] = y + 0.5;
-	_world[3] = 1.0;
-	glMatrix.vec4.transformMat4(_view, _world, Camera.modelView);
-	glMatrix.vec4.transformMat4(_view, _view, Camera.projection);
-	if (_view[3] <= 0) {
+	_aimWorld[0] = x + 0.5;
+	_aimWorld[1] = -Altitude.getCellHeight(x, y);
+	_aimWorld[2] = y + 0.5;
+	_aimWorld[3] = 1.0;
+	glMatrix.vec4.transformMat4(_aimView, _aimWorld, Camera.modelView);
+	glMatrix.vec4.transformMat4(_aimView, _aimView, Camera.projection);
+	if (_aimView[3] <= 0) {
 		return null;
 	}
 	return [
-		Renderer.width / 2 + (Renderer.width / 2) * (_view[0] / _view[3]),
-		Renderer.height / 2 - (Renderer.height / 2) * (_view[1] / _view[3])
+		Renderer.width / 2 + (Renderer.width / 2) * (_aimView[0] / _aimView[3]),
+		Renderer.height / 2 - (Renderer.height / 2) * (_aimView[1] / _aimView[3])
 	];
 }
 
@@ -210,7 +210,7 @@ function drawLine(origin, dir, length, hit) {
 	ctx.beginPath();
 	ctx.arc(tip[0], tip[1], hit ? 6 : 4, 0, Math.PI * 2);
 	ctx.fill();
-	_drawn = true;
+	_aimDrawn = true;
 }
 
 /**
@@ -218,8 +218,8 @@ function drawLine(origin, dir, length, hit) {
  * the next aim short again. The target stays selected.
  */
 function release() {
-	_length = 0;
-	_lastHit = null;
+	_aimLength = 0;
+	_aimLastHit = null;
 	clearLine();
 }
 
@@ -238,17 +238,17 @@ function update(x, y, held, dt) {
 		return;
 	}
 
-	_length = _length === 0 ? START_LENGTH : Math.min(MAX_LENGTH, _length + GROW_PER_SEC * dt);
+	_aimLength = _aimLength === 0 ? START_LENGTH : Math.min(MAX_LENGTH, _aimLength + GROW_PER_SEC * dt);
 
 	const origin = [player.position[0], player.position[1]];
 	const dir = stickToMapDirection(x, y, Camera.angle[1]);
 	const candidates = EntityManager.getEntitiesSortedByDistance(player, Target.getCycleTypes(player.constructor));
-	const hit = findFirstHit(origin, dir, _length, candidates);
+	const hit = findFirstHit(origin, dir, _aimLength, candidates);
 
-	if (hit && hit.entity !== _lastHit) {
+	if (hit && hit.entity !== _aimLastHit) {
 		Target.aimAt(hit.entity);
 	}
-	_lastHit = hit ? hit.entity : _lastHit;
+	_aimLastHit = hit ? hit.entity : _aimLastHit;
 
 	// Keep the virtual cursor on the target so A clicks it, as after a cycle
 	const focus = Target.getItem() || EntityManager.getFocusEntity();
@@ -256,7 +256,7 @@ function update(x, y, held, dt) {
 		Cursor.moveMouseToEntity(focus);
 	}
 
-	drawLine(origin, dir, hit ? Math.min(_length, hit.along) : _length, !!hit);
+	drawLine(origin, dir, hit ? Math.min(_aimLength, hit.along) : _aimLength, !!hit);
 }
 
 /**
