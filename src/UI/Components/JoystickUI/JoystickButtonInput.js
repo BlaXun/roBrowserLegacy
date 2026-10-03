@@ -76,13 +76,13 @@ const ButtonInput = {
 			pressed = true;
 		}
 
-		// X → attack. Fire only on initial press, not on 'holding': the server
-		// handles continuous attack via action=7 on REQUEST_ACT, so re-sending
-		// every poll keeps cancelling and restarting the walk path with new
-		// REQUEST_MOVE packets -- visible as zig-zag / stop-and-turn behaviour
-		// that mouse-click combat does not exhibit.
-		if (btn[2] === 'pressed') {
-			Interaction.attackTargeted();
+		// X → attack. A fresh press always attacks. While held, attack only
+		// when the target changes (previous one died, D-pad cycled): the
+		// server keeps attacking on its own (action 7), and re-sending every
+		// poll restarted the walk -- zig-zag that mouse combat does not have.
+		// Handling 'holding' too means a press that lands inside the click
+		// lock is not lost.
+		if (btn[2] !== 'unpressed' && Interaction.attackTargeted(btn[2] === 'holding')) {
 			pressed = true;
 		}
 

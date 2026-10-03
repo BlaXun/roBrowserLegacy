@@ -130,21 +130,39 @@ function getEntityInContext() {
 	return target || Session.Entity;
 }
 
+/**
+ * Make the entity the focus (lock-on arrow, name) without acting on it.
+ *
+ * EntityControl.onFocus() for TYPE_MOB sends REQUEST_ACT / REQUEST_MOVE when
+ * Session.TouchTargeting and Session.autoFollow are both off. That is right
+ * for a mouse click, wrong here: a cycle step must not attack, and X sends
+ * its own attack in JoystickCharacterControl.attack(), so letting onFocus
+ * act too sent every new-target attack twice, with two different in-range
+ * rules. Toggle TouchTargeting around the call so onFocus() takes the
+ * "focused, do not attack" branch. The call is synchronous; nothing else
+ * observes TouchTargeting in between.
+ */
+function focusEntity(entity) {
+	const prevTouch = Session.TouchTargeting;
+	Session.TouchTargeting = true;
+	try {
+		entity.onFocus();
+	} finally {
+		Session.TouchTargeting = prevTouch;
+	}
+	EntityManager.setFocusEntity(entity);
+}
+
 function focusTarget(entity) {
 	releaseItem();
 
-	let focus = EntityManager.getFocusEntity();
-	if (!focus || focus.action === focus.ACTION.DIE) {
-		focus = EntityManager.getFocusEntity();
-	}
+	const focus = EntityManager.getFocusEntity();
 	if (focus && entity.GID !== focus.GID) {
 		focus.onFocusEnd();
 		EntityManager.setFocusEntity(null);
-		entity.onFocus();
-		EntityManager.setFocusEntity(entity);
+		focusEntity(entity);
 	} else if (!focus) {
-		entity.onFocus();
-		EntityManager.setFocusEntity(entity);
+		focusEntity(entity);
 	}
 }
 
@@ -193,19 +211,7 @@ function cycle(direction) {
 		return;
 	}
 
-	// EntityControl.onFocus() for TYPE_MOB sends REQUEST_ACT (an attack packet)
-	// when Session.TouchTargeting and Session.autoFollow are both off. That is
-	// right for a mouse click, wrong for a cycle step. Toggle TouchTargeting
-	// around the call so onFocus() still attaches the lock-on sprite but takes
-	// the "focused, do not attack" branch. The call is synchronous; nothing
-	// else observes TouchTargeting in between.
-	const prevTouch = Session.TouchTargeting;
-	Session.TouchTargeting = true;
-	try {
-		focusTarget(target);
-	} finally {
-		Session.TouchTargeting = prevTouch;
-	}
+	focusTarget(target);
 	Cursor.moveMouseToEntity(target);
 
 	// Debug hook: inspect the sort in DevTools via window.__dpadLastSort to

@@ -127,8 +127,16 @@ export default {
 		Character.pickUp();
 	},
 
-	attackTargeted: function () {
-		Character.attack();
+	/**
+	 * @param {boolean} repeat true while X is held (see Character.attack)
+	 * @return {boolean} whether an attack was sent
+	 */
+	attackTargeted: function (repeat) {
+		return Character.attack(repeat);
+	},
+
+	releaseStick: function () {
+		Character.releaseStick();
 	},
 
 	moveCursor: function (dx, dy) {

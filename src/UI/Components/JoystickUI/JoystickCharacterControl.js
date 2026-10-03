@@ -21,11 +21,34 @@ import Target from './JoystickTargetService.js';
 const direction = glMatrix.vec2.create();
 const rotate = glMatrix.mat2.create();
 
+// Set when X sends an attack; the left stick is ignored until it returns to
+// centre. Players usually still hold the stick toward the mob as they press
+// X, and every stick move would cut the walk to the target short.
+let _stickHeld = false;
+
+// GID of the last target X sent an attack to. A held X re-sends only when
+// the target changes (e.g. the previous one died), not every poll.
+let _lastAttackGid = null;
+
+/**
+ * Left stick is back inside the deadzone: stick moves are allowed again.
+ */
+function releaseStick() {
+	_stickHeld = false;
+}
+
 function move(x, y) {
 	const player = Session.Entity;
-	if (!player) {
+	if (!player || _stickHeld) {
 		return;
 	}
+
+	// A stick move replaces whatever X queued for the end of its walk, like a
+	// mouse click on the ground does (MapControl). Otherwise every stick walk
+	// ends by sending the stale attack, the server answers "too far", the
+	// client paths back to the mob, and the stick overrides it again: zigzag.
+	Session.moveAction = null;
+	_lastAttackGid = null;
 
 	direction[0] = x;
 	direction[1] = y;
@@ -45,15 +68,27 @@ function move(x, y) {
 	Network.sendPacket(movePacket);
 }
 
-function attack() {
+/**
+ * Attack the context target (focused/cycled mob, else per attackTargetMode).
+ *
+ * @param {boolean} repeat true while X is held: only attack when the target
+ *   differs from the last one X attacked. The server keeps attacking on its
+ *   own (action 7), so re-sending would only restart the walk.
+ * @return {boolean} whether an attack was sent
+ */
+function attack(repeat) {
 	const Player = Session.Entity;
 	if (!Player) {
-		return;
+		return false;
 	}
 
 	const target = Target.getEntity();
-	if (!target) {
-		return;
+	if (!target || target === Player) {
+		return false;
+	}
+
+	if (repeat && target.GID === _lastAttackGid) {
+		return false;
 	}
 
 	Target.focus(target);
@@ -75,8 +110,11 @@ function attack() {
 	);
 
 	if (!count) {
-		return true;
+		return false;
 	}
+
+	_lastAttackGid = entityFocus.GID;
+	_stickHeld = true;
 
 	if (PACKETVER.value >= 20180307) {
 		pkt = new PACKET.CZ.REQUEST_ACT2();
@@ -86,7 +124,11 @@ function attack() {
 	pkt.action = 7;
 	pkt.targetGID = entityFocus.GID;
 
-	if (count < Player.attack_range + 1) {
+	// Already in range: same rule as EntityControl.onFocus() for a mouse
+	// click (search used attack_range + 1, so a zero-length path means the
+	// player is already close enough).
+	if (count < 2) {
+		Session.moveAction = null;
 		Network.sendPacket(pkt);
 		return true;
 	}
@@ -101,6 +143,7 @@ function attack() {
 	pkt.dest[0] = out[(count - 1) * 2];
 	pkt.dest[1] = out[(count - 1) * 2 + 1];
 	Network.sendPacket(pkt);
+	return true;
 }
 
 /**
@@ -137,5 +180,6 @@ function pickUp() {
 export default {
 	attack: attack,
 	pickUp: pickUp,
-	move: move
+	move: move,
+	releaseStick: releaseStick
 };

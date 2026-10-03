@@ -29,6 +29,9 @@ export default {
 			Interaction.moveCharacter(lx, -ly);
 			Interaction.cancelQuick = true;
 			active = true;
+		} else {
+			// Back at centre: re-arm stick movement after an X attack
+			Interaction.releaseStick();
 		}
 
 		// Right stick = cursor
