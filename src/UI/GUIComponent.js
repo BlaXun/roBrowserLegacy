@@ -89,6 +89,14 @@ const CSS_NUMBER = {
 	zoom: true
 };
 
+/**
+ * The FREEZE-mode components open now. The map gets its clicks back only when
+ * the last one closes, so a window opened over another (an InputBox over a
+ * shop) cannot unfreeze it.
+ * @type {Set<GUIComponent>}
+ */
+const _frozenBy = new Set();
+
 class GUIComponent {
 	/**
 	 * @param {string} name       - Unique component name
@@ -241,6 +249,7 @@ class GUIComponent {
 
 		// Freeze mode
 		if (this.mouseMode === MouseMode.FREEZE) {
+			_frozenBy.add(this);
 			Mouse.intersect = false;
 			Session.FreezeUI = true;
 			_Cursor?.setType(_Cursor?.ACTION?.DEFAULT ?? 0);
@@ -305,10 +314,16 @@ class GUIComponent {
 			// Detach from DOM
 			this._host.remove();
 
-			// Freeze mode cleanup
+			// Freeze mode cleanup: only once no frozen window is left. A shop
+			// asks for an amount in an InputBox, and both freeze; closing the
+			// InputBox used to hand the map its clicks back while the shop was
+			// still open, so pressing Buy also walked to where it was pressed.
 			if (this.mouseMode === MouseMode.FREEZE) {
-				Mouse.intersect = true;
-				Session.FreezeUI = false;
+				_frozenBy.delete(this);
+				if (_frozenBy.size === 0) {
+					Mouse.intersect = true;
+					Session.FreezeUI = false;
+				}
 			}
 
 			// Scrollbar observer cleanup
