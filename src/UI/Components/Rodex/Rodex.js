@@ -52,12 +52,36 @@ Rodex.currentTab = 0;
  */
 Rodex.searchType = 1;
 
-Rodex.attachmentType = {
-	0: '', // none
-	2: 'basic_interface/rodexsystem/renewal/icon_zeny.bmp', // zeny
-	4: 'basic_interface/rodexsystem/renewal/icon_item.bmp', // item
-	6: 'basic_interface/rodexsystem/renewal/icon_zeny_n_item.bmp', // zeny + item
-	12: 'basic_interface/rodexsystem/renewal/icon_zeny_n_item.bmp' // gift??
+/**
+ * A mail's type is a set of flags (rAthena enum mail_type), so a mail from an
+ * NPC or the server, such as an achievement reward, carries NPC on top of what
+ * it holds: 12 is an item sent by the server.
+ */
+Rodex.MAIL_TYPE = {
+	ZENY: 0x2,
+	ITEM: 0x4,
+	NPC: 0x8
+};
+
+/**
+ * Icon for what a mail holds
+ *
+ * @param {number} type - the mail's type flags
+ * @return {string} image path, or '' for a letter with nothing attached
+ */
+Rodex.getAttachmentIcon = function getAttachmentIcon(type) {
+	const zeny = type & Rodex.MAIL_TYPE.ZENY;
+	const item = type & Rodex.MAIL_TYPE.ITEM;
+	if (zeny && item) {
+		return 'basic_interface/rodexsystem/renewal/icon_zeny_n_item.bmp';
+	}
+	if (item) {
+		return 'basic_interface/rodexsystem/renewal/icon_item.bmp';
+	}
+	if (zeny) {
+		return 'basic_interface/rodexsystem/renewal/icon_zeny.bmp';
+	}
+	return '';
 };
 
 /**
@@ -172,7 +196,7 @@ Rodex.createRodexList = function createRodexList(tabID = 0, search = false, term
 		const title = mail.title.length > 18 ? mail.title.substring(0, 18) + '...' : mail.title;
 		const sender = mail.SenderName.length > 18 ? mail.SenderName.substring(0, 18) + '...' : mail.SenderName;
 		const mail_image = mail.Isread ? 'icon_status_mail_read' : 'icon_status_mail_received';
-		const mail_content = Rodex.attachmentType[mail.type];
+		const mail_content = Rodex.getAttachmentIcon(mail.type);
 		const remaining_days = parseInt(mail.expireDateTime / 60 / 60 / 24);
 		const openType = typeof mail.openType !== 'undefined' ? mail.openType : 0;
 		const mail_html = `<li class="mail-item">
@@ -226,10 +250,10 @@ Rodex.getMailByID = function getMailByID(mailID) {
 Rodex.getAll = function getAll() {
 	for (let i = 0; i < Rodex.list.length; i++) {
 		const mail = Rodex.list[i];
-		if (mail.type > 0 && (mail.type === 4 || mail.type === 6)) {
+		if (mail.type & Rodex.MAIL_TYPE.ITEM) {
 			Rodex.requestItemsFromRodex(mail.openType, mail.MailID);
 		}
-		if (mail.type > 0 && (mail.type === 2 || mail.type === 6)) {
+		if (mail.type & Rodex.MAIL_TYPE.ZENY) {
 			Rodex.requestZenyFromRodex(mail.openType, mail.MailID);
 		}
 	}
@@ -238,7 +262,7 @@ Rodex.getAll = function getAll() {
 Rodex.deleteAll = function deleteAll() {
 	for (let i = 0; i < Rodex.list.length; i++) {
 		const mail = Rodex.list[i];
-		if (mail.type === 0) {
+		if (!(mail.type & (Rodex.MAIL_TYPE.ZENY | Rodex.MAIL_TYPE.ITEM))) {
 			Rodex.requestDeleteRodex(mail.openType, mail.MailID);
 		} else {
 			ChatBox.addText(DB.getMessage(2612), ChatBox.TYPE.INFO_MAIL, ChatBox.FILTER.PUBLIC_LOG);
