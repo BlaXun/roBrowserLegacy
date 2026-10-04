@@ -19,6 +19,10 @@ import ControlsSettings from 'Preferences/Controls.js';
 let clickLock = false;
 const lockTimeout = 200;
 
+// View + LB/RB and View + LT/RT: one press turns the camera this far
+const CAMERA_STEP_SMALL = 45;
+const CAMERA_STEP_LARGE = 90;
+
 // RS click: a tap switches the right stick between aim and cursor, a hold
 // clears the target. Decided on release (tap) or after RS_HOLD_MS (hold).
 const RS_HOLD_MS = 400;
@@ -155,7 +159,8 @@ const ButtonInput = {
 		const l2 = btn[6] === 'holding';
 		const r2 = btn[7] === 'holding';
 
-		if (l2 && r2) {
+		// With View held the triggers turn the camera
+		if (l2 && r2 && btn[8] === 'unpressed') {
 			SetManager.toggle();
 			JoystickUIRenderer.updateSetIndicator();
 			JoystickUIRenderer.sync();
@@ -170,23 +175,27 @@ const ButtonInput = {
 		const selectPressed = buttons[8] === 'holding';
 
 		if (selectPressed) {
-			if (buttons[12] !== 'unpressed') {
-				// D-pad Up
-				Interaction.cameraZoom(-2);
-				pressed = true;
-			} else if (buttons[13] !== 'unpressed') {
-				// D-pad Down
-				Interaction.cameraZoom(2);
-				pressed = true;
-			} else if (buttons[14] !== 'unpressed') {
-				// D-pad Left
-				Interaction.cameraAngle(-5);
-				pressed = true;
-			} else if (buttons[15] !== 'unpressed') {
-				// D-pad Right
-				Interaction.cameraAngle(5);
-				pressed = true;
-			} else if (buttons[9] !== 'unpressed') {
+			if (
+				buttons[12] !== 'unpressed' ||
+				buttons[13] !== 'unpressed' ||
+				buttons[14] !== 'unpressed' ||
+				buttons[15] !== 'unpressed'
+			) {
+				// View + D-pad: zoom and turn, every frame in
+				// JoystickCameraMotion. No click lock, so other View combos
+				// still answer while the camera moves.
+				return true;
+			}
+
+			// View + LB / RB: a 45 degree turn, LT / RT: 90 degrees. Once per
+			// press, so no click lock: a quick second tap turns again.
+			const turn = this._cameraStep(buttons);
+			if (turn) {
+				Interaction.cameraAngle(turn);
+				return true;
+			}
+
+			if (buttons[9] !== 'unpressed') {
 				// Start button
 				Interaction.escape();
 				pressed = true;
@@ -241,6 +250,26 @@ const ButtonInput = {
 		}
 
 		return pressed;
+	},
+
+	/**
+	 * Degrees a fresh LB / RB / LT / RT press turns the camera (with View
+	 * held), or 0.
+	 */
+	_cameraStep: function (btn) {
+		if (btn[4] === 'pressed') {
+			return -CAMERA_STEP_SMALL;
+		}
+		if (btn[5] === 'pressed') {
+			return CAMERA_STEP_SMALL;
+		}
+		if (btn[6] === 'pressed') {
+			return -CAMERA_STEP_LARGE;
+		}
+		if (btn[7] === 'pressed') {
+			return CAMERA_STEP_LARGE;
+		}
+		return 0;
 	},
 
 	_handleShortcuts: function (btn) {

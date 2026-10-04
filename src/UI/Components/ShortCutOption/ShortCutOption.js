@@ -20,6 +20,32 @@ import Controls from 'Preferences/Controls.js';
 import ButtonMap from 'UI/Components/JoystickUI/JoystickButtonMap.js';
 import JoystickUIRenderer from 'UI/Components/JoystickUI/JoystickUIRenderer.js';
 import JoystickAim from 'UI/Components/JoystickUI/JoystickAimMode.js';
+import StickFilter from 'UI/Components/JoystickUI/JoystickStickFilter.js';
+
+/**
+ * Gamepad sliders that save as they move, with their value shown beside
+ * them: settings key -> decimals shown.
+ */
+const JOY_RANGES = {
+	joyCameraSpeed: 0,
+	joyDriftLX: 2,
+	joyDriftLY: 2,
+	joyDriftRX: 2,
+	joyDriftRY: 2
+};
+
+/**
+ * Gamepad checkboxes reflected from the settings when the window opens.
+ */
+const JOY_CHECKBOXES = [
+	'joyAimEnabled',
+	'joyAimRing',
+	'joyAimLine',
+	'joyAimHideCursor',
+	'joyReverseStick',
+	'joyAutoHide',
+	'joyDisableVirtualMouse'
+];
 
 const ShortCutOption = new GUIComponent('ShortCutOption', cssText);
 
@@ -107,6 +133,29 @@ ShortCutOption.init = function () {
 	bindChange('.joyAimEnabled', onUpdateAimEnabled);
 	bindChange('.joyAimRing', onUpdateAimRing);
 	bindChange('.joyAimLine', onUpdateAimLine);
+	bindChange('.joyAimHideCursor', onUpdateAimHideCursor);
+
+	Object.keys(JOY_RANGES).forEach(function (key) {
+		const input = root.querySelector('.' + key);
+		if (!input) {
+			return;
+		}
+		input.addEventListener('input', function () {
+			Controls[key] = parseFloat(this.value);
+			showRangeValue(root, key);
+		});
+		input.addEventListener('change', function () {
+			Controls.save();
+		});
+	});
+
+	root.querySelector('.joyCalibrate').addEventListener('click', function () {
+		onCalibrate(root);
+	});
+	root.querySelector('.joyCalibrateReset').addEventListener('click', function () {
+		StickFilter.resetCalibration();
+		showCalibration(root);
+	});
 
 	// Gamepad button mapping panel
 	const gamepadTab = root.querySelector('.content.t_gamepad');
@@ -165,18 +214,7 @@ ShortCutOption.onAppend = function () {
 	if (cycleMode) {
 		cycleMode.value = String(Controls.joyCycleMode | 0);
 	}
-	const aimEnabled = this.getRoot().querySelector('.joyAimEnabled');
-	const aimRing = this.getRoot().querySelector('.joyAimRing');
-	if (aimRing) {
-		aimRing.checked = !!Controls.joyAimRing;
-	}
-	const aimLine = this.getRoot().querySelector('.joyAimLine');
-	if (aimLine) {
-		aimLine.checked = !!Controls.joyAimLine;
-	}
-	if (aimEnabled) {
-		aimEnabled.checked = !!Controls.joyAimEnabled;
-	}
+	reflectGamepadSettings(this.getRoot());
 
 	this._host.style.left = _preferences.x + 'px';
 	this._host.style.top = _preferences.y + 'px';
@@ -188,6 +226,7 @@ ShortCutOption.onAppend = function () {
  */
 ShortCutOption.onRemove = function () {
 	ButtonMap.cancelCapture();
+	StickFilter.cancelCalibration();
 	_preferences.x = parseInt(this._host.style.left, 10);
 	_preferences.y = parseInt(this._host.style.top, 10);
 	_preferences.save();
@@ -531,6 +570,8 @@ function getMappingCombos() {
 		[n(B.LT) + ' + ' + n(B.RT), 'Switch shortcut set (bars 1-2 / 3-4)'],
 		[n(B.VIEW) + ' + ' + n(B.UP) + ' / ' + n(B.DOWN), 'Camera zoom'],
 		[n(B.VIEW) + ' + ' + n(B.LEFT) + ' / ' + n(B.RIGHT), 'Camera rotate'],
+		[n(B.VIEW) + ' + ' + n(B.LB) + ' / ' + n(B.RB), 'Turn camera 45 degrees left / right'],
+		[n(B.VIEW) + ' + ' + n(B.LT) + ' / ' + n(B.RT), 'Turn camera 90 degrees left / right'],
 		[n(B.VIEW) + ' + ' + n(B.MENU), 'Escape'],
 		[n(B.VIEW) + ' + ' + [n(B.A), n(B.B), n(B.X), n(B.Y)].join(' / '), 'Inventory / equipment / skills / status'],
 		[n(B.VIEW) + ' (cursor on item/skill)', 'Context menu'],
@@ -625,6 +666,92 @@ function onUpdateAimLine() {
 	Controls.save();
 }
 
+function onUpdateAimHideCursor() {
+	Controls.joyAimHideCursor = this.checked;
+	Controls.save();
+}
+
+/**
+ * Put the stored gamepad settings into the controls. The HTML only holds
+ * the defaults, and L3 or RS click change some settings while the window
+ * is closed.
+ */
+function reflectGamepadSettings(root) {
+	const setValue = function (selector, value) {
+		const el = root.querySelector(selector);
+		if (el) {
+			el.value = String(value);
+		}
+	};
+	setValue('.joyCycleMode', Controls.joyCycleMode | 0);
+	setValue('.attackTargetMode', Controls.attackTargetMode | 0);
+	setValue('.joyQuick', Controls.joyQuick | 0);
+	setValue('.joySense', Controls.joySense);
+	setValue('.joyDeadline', Controls.joyDeadline);
+
+	JOY_CHECKBOXES.forEach(function (key) {
+		const el = root.querySelector('.' + key);
+		if (el) {
+			el.checked = !!Controls[key];
+		}
+	});
+
+	Object.keys(JOY_RANGES).forEach(function (key) {
+		setValue('.' + key, Controls[key]);
+		showRangeValue(root, key);
+	});
+
+	showCalibration(root);
+}
+
+function showRangeValue(root, key) {
+	const label = root.querySelector('.joyValue[data-for="' + key + '"]');
+	if (label) {
+		label.textContent = (Number(Controls[key]) || 0).toFixed(JOY_RANGES[key]);
+	}
+}
+
+/**
+ * Calibration state under the Calibrate button.
+ *
+ * @param {Element} root
+ * @param {string} [message] shown instead of the stored state
+ */
+function showCalibration(root, message) {
+	const status = root.querySelector('.joyCalibrateStatus');
+	if (!status) {
+		return;
+	}
+	if (message) {
+		status.textContent = message;
+		return;
+	}
+	const center = StickFilter.getCenter();
+	status.textContent = center
+		? 'Rest offsets: L ' +
+			center[0].toFixed(2) +
+			' / ' +
+			center[1].toFixed(2) +
+			', R ' +
+			center[2].toFixed(2) +
+			' / ' +
+			center[3].toFixed(2)
+		: 'Not calibrated';
+}
+
+function onCalibrate(root) {
+	showCalibration(root, 'Leave both sticks alone...');
+	StickFilter.calibrate(function (result) {
+		if (result === 'ok') {
+			showCalibration(root);
+		} else if (result === 'moved') {
+			showCalibration(root, 'A stick moved, nothing saved. Try again without touching them.');
+		} else {
+			showCalibration(root, 'No gamepad found. Press a button on it, then try again.');
+		}
+	});
+}
+
 function onUpdateCycleMode() {
 	Controls.joyCycleMode = parseInt(this.value, 10);
 	Controls.save();
@@ -641,7 +768,8 @@ function onUpdateJoyQuick() {
 }
 
 function onUpdateJoyDeadline() {
-	Controls.joyDeadline = parseInt(this.value, 10);
+	// A fraction (0-1): parseInt turned every position but the last into 0
+	Controls.joyDeadline = parseFloat(this.value);
 	Controls.save();
 }
 

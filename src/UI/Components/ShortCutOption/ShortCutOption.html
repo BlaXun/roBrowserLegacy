@@ -379,6 +379,91 @@
 								</label>
 							</td>
 						</tr>
+						<tr title="How fast View + D-pad left/right turns the camera, in degrees per second">
+							<td>Camera Turn Speed</td>
+							<td>
+								<input
+									class="joyCameraSpeed joyRange"
+									type="range"
+									value="90"
+									min="30"
+									max="360"
+									step="10"
+								/>
+								<span class="joyValue" data-for="joyCameraSpeed"></span>
+							</td>
+						</tr>
+						<tr class="joySection">
+							<td colspan="2">Stick Drift</td>
+						</tr>
+						<tr
+							title="Measure where the sticks rest and treat that as centre. Leave both sticks alone while it runs (one second)"
+						>
+							<td>Calibrate Sticks</td>
+							<td>
+								<button type="button" class="joyBtn joyCalibrate">Calibrate</button>
+								<button type="button" class="joyBtn joyCalibrateReset">Reset</button>
+								<div class="joyCalibrateStatus"></div>
+							</td>
+						</tr>
+						<tr title="Left stick: movement on each axis below this value is ignored">
+							<td>Left Stick Drift</td>
+							<td>
+								<label class="joyAxis">
+									X
+									<input
+										class="joyDriftLX joyRange"
+										type="range"
+										value="0"
+										min="0"
+										max="0.5"
+										step="0.01"
+									/>
+									<span class="joyValue" data-for="joyDriftLX"></span>
+								</label>
+								<label class="joyAxis">
+									Y
+									<input
+										class="joyDriftLY joyRange"
+										type="range"
+										value="0"
+										min="0"
+										max="0.5"
+										step="0.01"
+									/>
+									<span class="joyValue" data-for="joyDriftLY"></span>
+								</label>
+							</td>
+						</tr>
+						<tr title="Right stick: movement on each axis below this value is ignored">
+							<td>Right Stick Drift</td>
+							<td>
+								<label class="joyAxis">
+									X
+									<input
+										class="joyDriftRX joyRange"
+										type="range"
+										value="0"
+										min="0"
+										max="0.5"
+										step="0.01"
+									/>
+									<span class="joyValue" data-for="joyDriftRX"></span>
+								</label>
+								<label class="joyAxis">
+									Y
+									<input
+										class="joyDriftRY joyRange"
+										type="range"
+										value="0"
+										min="0"
+										max="0.5"
+										step="0.01"
+									/>
+									<span class="joyValue" data-for="joyDriftRY"></span>
+								</label>
+							</td>
+						</tr>
 						<tr class="joySection">
 							<td colspan="2">Aim Settings</td>
 						</tr>
@@ -398,6 +483,14 @@
 							<td>Show Aim Line</td>
 							<td>
 								<input type="checkbox" class="joyAimLine" />
+							</td>
+						</tr>
+						<tr
+							title="While the right stick aims, hide the game's cursor. Moving the mouse shows it again; tap RS click for the cursor mode"
+						>
+							<td>Hide Cursor While Aiming</td>
+							<td>
+								<input type="checkbox" class="joyAimHideCursor" />
 							</td>
 						</tr>
 					</tbody>

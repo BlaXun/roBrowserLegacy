@@ -12,6 +12,7 @@ import Renderer from 'Renderer/Renderer.js';
 import Mouse from 'Controls/MouseEventHandler.js';
 import glMatrix from 'Vendors/gl-matrix.js';
 import Camera from 'Renderer/Camera.js';
+import DB from 'DB/DBManager.js';
 import ControlsSettings from 'Preferences/Controls.js';
 import Interaction from './JoystickInteractionService.js';
 
@@ -231,8 +232,35 @@ function handleWorldRightClick() {
 	}, 100);
 }
 
+/**
+ * Turn the camera by some degrees, under the rules the mouse turn follows
+ * (Camera.processMouseAction).
+ *
+ * The camera wraps its current angle to +-360 every frame but eases toward
+ * angleFinal; a target past a full turn would keep it spinning forever.
+ * So once the target passes +-180, both move a full turn back, which
+ * changes nothing on screen. Then the map's limits apply: indoor maps only
+ * turn a little.
+ *
+ * @param {number} angle degrees, positive turns right
+ */
 function changeCameraAngle(angle) {
-	Camera.angleFinal[1] += angle;
+	let target = Camera.angleFinal[1] + angle;
+	if (target > 180) {
+		target -= 360;
+		Camera.angle[1] -= 360;
+	} else if (target < -180) {
+		target += 360;
+		Camera.angle[1] += 360;
+	}
+
+	if (DB.isIndoor(Camera.currentMap)) {
+		target = Math.min(Math.max(target, Camera.indoorRotationFrom), Camera.indoorRotationTo);
+	} else {
+		target = Math.min(Math.max(target, Camera.rotationFrom), Camera.rotationTo);
+	}
+
+	Camera.angleFinal[1] = target;
 	Camera.updateState();
 	Camera.save();
 }
@@ -262,9 +290,9 @@ function enter() {
 
 function contextMenu() {
 	const el = elementAtCursor();
-	const draggableElement = el.closest('.item, .skill');
+	const draggableElement = el && el.closest('.item, .skill');
 
-	if (el && draggableElement) {
+	if (draggableElement) {
 		const contextMenuEvent = new MouseEvent('contextmenu', {
 			bubbles: true,
 			cancelable: true,
@@ -283,7 +311,8 @@ function contextMenu() {
 function navigateDraggableItems(direction) {
 	const el = elementAtCursor();
 
-	const container = el.closest('.item, .skill');
+	// The cursor can sit on the viewport's edge, where nothing is found
+	const container = el && el.closest('.item, .skill');
 
 	if (!container) {
 		// Fall back to regular arrow key navigation

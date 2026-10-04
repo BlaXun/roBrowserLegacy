@@ -56,6 +56,10 @@ let _aimDrawn = false;
 let _aimRingTarget = null; // the target the aim selected last
 let _aimRingAt = 0; // when, for the fade-out
 
+let _cursorHidden = false;
+let _mouseMoved = false; // the real mouse moved: cursor stays visible until the stick aims again
+let _mouseListening = false;
+
 const _aimWorld = glMatrix.vec4.create();
 const _aimView = glMatrix.vec4.create();
 
@@ -280,12 +284,42 @@ function getTarget() {
 }
 
 /**
- * Aim mode left: remove the ring and forget the last hit.
+ * Show or hide the game's cursor (CursorManager's .cursor element). Only
+ * its visibility changes: Mouse.screen still follows the target, so A
+ * clicks it as before.
+ */
+function setCursorHidden(hidden) {
+	if (hidden === _cursorHidden) {
+		return;
+	}
+	const cursor = document.querySelector('.cursor');
+	if (!cursor) {
+		return;
+	}
+	cursor.style.visibility = hidden ? 'hidden' : '';
+	_cursorHidden = hidden;
+}
+
+/**
+ * A real mouse move shows the cursor again, so the player taking the mouse
+ * is never left without one. Synthetic events (isTrusted false) do not
+ * count.
+ */
+function onMouseMove(event) {
+	if (event.isTrusted) {
+		_mouseMoved = true;
+		setCursorHidden(false);
+	}
+}
+
+/**
+ * Aim mode left: remove the ring, forget the last hit, show the cursor.
  */
 function release() {
 	_aimLastHit = null;
 	_aimRingTarget = null;
 	clearOverlay();
+	setCursorHidden(false);
 }
 
 /**
@@ -301,6 +335,16 @@ function update(x, y, held) {
 		release();
 		return;
 	}
+
+	// Settings > Gamepad > Aim Settings > Hide Cursor, off by default
+	if (held) {
+		_mouseMoved = false;
+	}
+	if (ControlsSettings.joyAimHideCursor && !_mouseListening) {
+		window.addEventListener('mousemove', onMouseMove);
+		_mouseListening = true;
+	}
+	setCursorHidden(!!ControlsSettings.joyAimHideCursor && !_mouseMoved);
 
 	const origin = [player.position[0], player.position[1]];
 	let hit = null;

@@ -13,6 +13,7 @@ import AxisInput from './JoystickAxisInput.js';
 import JoystickUIRenderer from './JoystickUIRenderer.js';
 import ControlsSettings from 'Preferences/Controls.js';
 import ButtonMap from './JoystickButtonMap.js';
+import StickFilter from './JoystickStickFilter.js';
 
 let hideTimeout = false;
 let hideTimeoutHandle = null;
@@ -80,8 +81,8 @@ export default {
 		states.buttons = ButtonMap.toLogical(states.raw);
 		self.buttonStates = states.buttons;
 
-		// Process Axes
-		gp.axes.forEach(function (axis, index) {
+		// Process Axes: drift correction first, then the deadzone
+		StickFilter.filterAxes(gp.axes).forEach(function (axis, index) {
 			states.axes[index] = Math.abs(axis) > ControlsSettings.joyDeadline ? axis : 0;
 		});
 		return states;
