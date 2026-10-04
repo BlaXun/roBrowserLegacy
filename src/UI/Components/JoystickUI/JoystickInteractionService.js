@@ -71,7 +71,9 @@ export default {
 				setTimeout(() => {
 					const buttons = Input.buttonStates;
 					if (ShortcutMapper.getGroup(buttons) !== group) {
-						Cursor.quickCastClick();
+						if (!this.castOnAim()) {
+							Cursor.quickCastClick();
+						}
 					} else if (!this.cancelQuick) {
 						waitforRelease();
 					}
@@ -107,6 +109,35 @@ export default {
 		SkillTargetSelection.intersectEntityId(focus.GID);
 		SkillTargetSelection.remove();
 		return true;
+	},
+
+	/**
+	 * A skill waits for a target while the right stick aims: cast it on the
+	 * aimed target. The aim only moves the cursor onto the target while the
+	 * stick is pushed, so a click at the cursor lands where the mob stood
+	 * when the stick was let go; it has usually walked on, the click hits
+	 * the ground, and the skill is dropped without a word.
+	 *
+	 * Enemy skills go straight to the target (castAtFocus). Anything else
+	 * (ground skills, a refused focus) gets the cursor put on the target,
+	 * and the caller's click follows. Over a window (a party member to
+	 * heal, say) nothing changes: the click is meant for the window.
+	 *
+	 * @return {boolean} whether the skill was cast; false: click as usual
+	 */
+	castOnAim: function () {
+		if (!Aim.isActive() || !SkillTargetSelection.getFlag()) {
+			return false;
+		}
+		const el = Cursor.elementAtCursor();
+		if (el && el.tagName.toLowerCase() !== 'canvas') {
+			return false;
+		}
+		if (this.castAtFocus()) {
+			return true;
+		}
+		Target.snapCursorToFocus();
+		return false;
 	},
 
 	openSelectionWindow: function (draggableElement) {
@@ -159,11 +190,17 @@ export default {
 	 * portals" mode) and the cursor over the map, a press talks to the NPC
 	 * or walks into the portal, wherever the cursor is, and clears the
 	 * selection so the next A is an ordinary click again (NPC dialogue
-	 * buttons, for one). Otherwise A is a left click at the cursor.
+	 * buttons, for one). Otherwise A is a left click at the cursor; with a
+	 * skill waiting for a target in aim mode, see castOnAim().
 	 *
 	 * @param {boolean} holding A held rather than freshly pressed
 	 */
 	leftClick: function (holding) {
+		// A skill waiting for a target: the aimed one, not the stale cursor
+		if (!holding && this.castOnAim()) {
+			return;
+		}
+
 		const target = Target.getInteractTarget();
 		if (target && !holding) {
 			const el = Cursor.elementAtCursor();
