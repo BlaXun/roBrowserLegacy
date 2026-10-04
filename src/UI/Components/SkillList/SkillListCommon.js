@@ -1050,8 +1050,10 @@ export function createSkillList({
 			const extraX = -6;
 			const extraY = 32;
 
-			let w = Math.floor((Mouse.screen.x - left - extraX) / 32);
-			let h = Math.floor((Mouse.screen.y - top - extraY) / 32);
+			// Screen distance to window distance (UI/UIScale.js)
+			const scale = comp.scale;
+			let w = Math.floor(((Mouse.screen.x - left) / scale - extraX) / 32);
+			let h = Math.floor(((Mouse.screen.y - top) / scale - extraY) / 32);
 
 			w = Math.min(Math.max(w, 8), 8);
 			h = Math.min(Math.max(h, 4), 10);

@@ -80,9 +80,10 @@ ItemCompare.onAppend = function onAppend() {
 	// Position ItemCompare next to ItemInfo
 	if (ItemInfo._host) {
 		const itemInfoRect = ItemInfo._host.getBoundingClientRect();
-		const itemInfoWidth = itemInfoRect.width;
+		// Its own on-screen width: the two windows may be drawn at different scales (UI/UIScale.js)
+		const width = this._host.getBoundingClientRect().width;
 		this._host.style.top = `${itemInfoRect.top ? itemInfoRect.top : 200}px`;
-		this._host.style.left = `${itemInfoRect.left ? itemInfoRect.left - itemInfoWidth : 200}px`;
+		this._host.style.left = `${itemInfoRect.left ? itemInfoRect.left - width : 200}px`;
 	}
 };
 
@@ -324,7 +325,8 @@ function onResize() {
 	let lastHeight = 0;
 
 	function resizing() {
-		const h = Math.floor(Mouse.screen.y - top);
+		// Screen distance to window distance (UI/UIScale.js)
+		const h = Math.floor((Mouse.screen.y - top) / ItemCompare.scale);
 		if (h === lastHeight) {
 			return;
 		}

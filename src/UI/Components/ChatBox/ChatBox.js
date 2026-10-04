@@ -181,8 +181,10 @@ ChatBox.init = function init() {
 	ChatBox.updateHeight();
 	ChatBox.applyFontScale();
 
-	this._host.style.top = `${Math.min(Math.max(0, _preferences.y - (this._host.offsetHeight || 0)), Renderer.height - (this._host.offsetHeight || 0))}px`;
-	this._host.style.left = `${Math.min(Math.max(0, _preferences.x), Renderer.width - (this._host.offsetWidth || 0))}px`;
+	// On-screen size: the window may be drawn scaled (UI/UIScale.js)
+	const hostRect = this._host.getBoundingClientRect();
+	this._host.style.top = `${Math.min(Math.max(0, _preferences.y - hostRect.height), Renderer.height - hostRect.height)}px`;
+	this._host.style.left = `${Math.min(Math.max(0, _preferences.x), Renderer.width - hostRect.width)}px`;
 
 	this.magnet.TOP = _preferences.magnet_top;
 	this.magnet.BOTTOM = _preferences.magnet_bottom;
@@ -872,7 +874,8 @@ ChatBox.onAppend = function OnAppend() {
  * Stop custom scroll
  */
 ChatBox.onRemove = function OnRemove() {
-	_preferences.y = (parseInt(this._host.style.top, 10) || 0) + (this._host.offsetHeight || 0);
+	// The bottom on screen: the window may be drawn scaled (UI/UIScale.js)
+	_preferences.y = (parseInt(this._host.style.top, 10) || 0) + this._host.getBoundingClientRect().height;
 	_preferences.x = parseInt(this._host.style.left, 10) || 0;
 	_preferences.height = _heightIndex;
 	_preferences.magnet_top = this.magnet.TOP;
@@ -1744,14 +1747,16 @@ function makeResizableDiv() {
 	let originalHeight = 0;
 	let originalAnchorY = 0;
 	let originalMouseY = 0;
+	let scale = 1;
 
 	const fixHeight = height => Math.floor(height / MAGIC_NUMBER) * MAGIC_NUMBER;
 
 	const resize = e => {
-		let height = fixHeight(originalHeight - (e.pageY - originalMouseY));
+		// Heights are in the window, the pointer and the anchor on screen (UI/UIScale.js)
+		let height = fixHeight(originalHeight - (e.pageY - originalMouseY) / scale);
 		height = Math.max(MAGIC_NUMBER, Math.min(MAGIC_NUMBER * 5, height));
 
-		ChatBox._host.style.top = `${originalAnchorY - height}px`;
+		ChatBox._host.style.top = `${originalAnchorY - height * scale}px`;
 		const contentWrapper = root.querySelector('.contentwrapper');
 		if (contentWrapper) contentWrapper.style.height = `${height}px`;
 		_heightIndex = Math.max(2, Math.min(6, height / MAGIC_NUMBER + 1));
@@ -1771,7 +1776,8 @@ function makeResizableDiv() {
 		e.preventDefault();
 		const contentWrapper = root.querySelector('.contentwrapper');
 		originalHeight = contentWrapper ? contentWrapper.offsetHeight : 0;
-		originalAnchorY = (parseInt(ChatBox._host.style.top, 10) || 0) + originalHeight;
+		scale = ChatBox.scale;
+		originalAnchorY = (parseInt(ChatBox._host.style.top, 10) || 0) + originalHeight * scale;
 		originalMouseY = e.pageY;
 
 		window.addEventListener('mousemove', resize);

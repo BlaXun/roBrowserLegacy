@@ -99,8 +99,10 @@ ItemPreview.onAppend = function onAppend() {
 	if (ItemInfo.ui) {
 		const itemInfoPosition = ItemInfo.ui.offset();
 		const itemInfoWidth = ItemInfo.ui.width();
-		const hostWidth = this._host.offsetWidth;
-		const hostHeight = this._host.offsetHeight;
+		// On-screen size: the window may be drawn scaled (UI/UIScale.js)
+		const hostRect = this._host.getBoundingClientRect();
+		const hostWidth = hostRect.width;
+		const hostHeight = hostRect.height;
 		let left = itemInfoPosition.left + itemInfoWidth + 10;
 		let top = itemInfoPosition.top;
 
