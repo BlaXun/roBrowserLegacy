@@ -78519,7 +78519,7 @@ function emit$1(name, scale) {
 		name,
 		scale
 	});
-	_listeners$1.slice().forEach((listener) => {
+	_listeners$2.slice().forEach((listener) => {
 		try {
 			listener(event);
 		} catch (error) {
@@ -78559,10 +78559,10 @@ function setGlobal(value) {
 */
 function on$2(listener) {
 	if (typeof listener !== "function") throw new Error("UIScale.on takes a function");
-	_listeners$1.push(listener);
+	_listeners$2.push(listener);
 	return () => {
-		const index = _listeners$1.indexOf(listener);
-		if (index > -1) _listeners$1.splice(index, 1);
+		const index = _listeners$2.indexOf(listener);
+		if (index > -1) _listeners$2.splice(index, 1);
 	};
 }
 /**
@@ -78580,7 +78580,7 @@ function attach$2(component) {
 function detach$1(component) {
 	if (component?._host) _mounted.delete(component._host);
 }
-var MIN, MAX, TOP_LEFT, TOP_RIGHT, TOP_CENTER, SCALABLE, _scales, _global, _mounted, _listeners$1, UIScale_default;
+var MIN, MAX, TOP_LEFT, TOP_RIGHT, TOP_CENTER, SCALABLE, _scales, _global, _mounted, _listeners$2, UIScale_default;
 var init_UIScale = __esmMin((() => {
 	MIN = .5;
 	MAX = 3;
@@ -78629,7 +78629,7 @@ var init_UIScale = __esmMin((() => {
 	_scales = /* @__PURE__ */ new Map();
 	_global = 1;
 	_mounted = /* @__PURE__ */ new Map();
-	_listeners$1 = [];
+	_listeners$2 = [];
 	UIScale_default = {
 		MIN,
 		MAX,
@@ -209245,7 +209245,7 @@ function isNodeStatic(node) {
 /**
 * Add an animated model
 */
-function add$2(gl, modelData) {
+function add$3(gl, modelData) {
 	if (!modelData || !modelData.nodes || modelData.nodes.length === 0) return;
 	if (!_program$22) init$9(gl);
 	const instances = [];
@@ -209690,7 +209690,7 @@ var init_AnimatedModels = __esmMin((() => {
 	AnimatedModels_default = {
 		init: init$9,
 		free: free$4,
-		add: add$2,
+		add: add$3,
 		render: render$10,
 		renderFaded,
 		hasAnimatedModels
@@ -214202,7 +214202,7 @@ var init_GR2ModelRenderer = __esmMin((() => {
 /**
 * Add 3D sound to the list
 */
-function add$1(sound) {
+function add$2(sound) {
 	_list$5.push(sound);
 }
 /**
@@ -214232,7 +214232,7 @@ var init_Sounds = __esmMin((() => {
 	vec2$3 = gl_matrix_default.vec2;
 	_list$5 = [];
 	Sounds_default = {
-		add: add$1,
+		add: add$2,
 		free: free$2,
 		render: render$8
 	};
@@ -218349,9 +218349,9 @@ var init_ItemEffect = __esmMin((() => {
 }));
 //#endregion
 //#region src/DB/Emotions.js
-var list, i, j, count, size, commands, names, indexes, order, Emotions_default;
+var list$1, i, j, count, size, commands, names, indexes, order, Emotions_default;
 var init_Emotions = __esmMin((() => {
-	list = [
+	list$1 = [
 		[
 			0,
 			0,
@@ -218798,12 +218798,12 @@ var init_Emotions = __esmMin((() => {
 	names = {};
 	indexes = {};
 	order = {};
-	for (i = 0, count = list.length; i < count; ++i) {
-		size = list[i].length;
-		for (j = 2; j < size; ++j) commands[list[i][j]] = i;
-		if (size > 0) indexes[i] = list[i][0];
-		if (size > 1 && list[i][1] > -1) order[list[i][1]] = list[i][0];
-		if (size > 2) names[list[i][0]] = list[i][2];
+	for (i = 0, count = list$1.length; i < count; ++i) {
+		size = list$1[i].length;
+		for (j = 2; j < size; ++j) commands[list$1[i][j]] = i;
+		if (size > 0) indexes[i] = list$1[i][0];
+		if (size > 1 && list$1[i][1] > -1) order[list$1[i][1]] = list$1[i][0];
+		if (size > 2) names[list$1[i][0]] = list$1[i][2];
 	}
 	Emotions_default = {
 		commands,
@@ -232401,10 +232401,10 @@ var init_Bank$1 = __esmMin((() => {
 */
 function on(listener) {
 	if (typeof listener !== "function") throw new Error("ExitHooks.on takes a function");
-	_listeners.push(listener);
+	_listeners$1.push(listener);
 	return () => {
-		const index = _listeners.indexOf(listener);
-		if (index > -1) _listeners.splice(index, 1);
+		const index = _listeners$1.indexOf(listener);
+		if (index > -1) _listeners$1.splice(index, 1);
 	};
 }
 /**
@@ -232416,7 +232416,7 @@ function emit(to, from) {
 		to,
 		from
 	});
-	_listeners.slice().forEach((listener) => {
+	_listeners$1.slice().forEach((listener) => {
 		try {
 			listener(event);
 		} catch (error) {
@@ -232424,12 +232424,104 @@ function emit(to, from) {
 		}
 	});
 }
-var _listeners, ExitHooks_default;
+var _listeners$1, ExitHooks_default;
 var init_ExitHooks = __esmMin((() => {
-	_listeners = [];
+	_listeners$1 = [];
 	ExitHooks_default = {
 		on,
 		emit
+	};
+}));
+//#endregion
+//#region src/UI/MenuHooks.js
+/**
+* Tell the listeners. A listener that throws is reported and the rest
+* still run.
+*/
+function changed() {
+	_listeners.slice().forEach((listener) => {
+		try {
+			listener();
+		} catch (error) {
+			console.error("[MenuHooks] a listener failed:", error);
+		}
+	});
+}
+/**
+* Add a button to the option menu. Returns a function that takes it out.
+*
+* @param {object} button
+* @param {string} button.background - picture at rest
+* @param {string} [button.hover] - picture under the pointer
+* @param {string} [button.down] - picture while pressed
+* @param {string} [button.title] - what the button does, for a tooltip and screen readers
+* @param {function} button.onClick - called when it is pressed
+* @return {function}
+*/
+function add$1({ background, hover, down, title, onClick } = {}) {
+	for (const [key, value] of Object.entries({
+		background,
+		hover,
+		down
+	})) if ((key === "background" || value !== void 0) && (typeof value !== "string" || !PICTURE.test(value))) throw new TypeError(`MenuHooks.add: ${key} must be a picture in the interface folder`);
+	if (typeof onClick !== "function") throw new TypeError("MenuHooks.add: onClick must be a function");
+	const button = Object.freeze({
+		background,
+		hover,
+		down,
+		title: typeof title === "string" ? title.slice(0, 80) : "",
+		onClick
+	});
+	_buttons.push(button);
+	changed();
+	return () => {
+		const index = _buttons.indexOf(button);
+		if (index > -1) {
+			_buttons.splice(index, 1);
+			changed();
+		}
+	};
+}
+/**
+* The buttons added, in order.
+*
+* @return {Array<object>}
+*/
+function list() {
+	return _buttons.slice();
+}
+/**
+* The button was pressed. Called by the menu.
+*/
+function press(button) {
+	try {
+		button.onClick();
+	} catch (error) {
+		console.error("[MenuHooks] a button failed:", error);
+	}
+}
+/**
+* Be told when buttons are added or taken out. Returns a function that
+* stops it.
+*/
+function onChange(listener) {
+	if (typeof listener !== "function") throw new Error("MenuHooks.onChange takes a function");
+	_listeners.push(listener);
+	return () => {
+		const index = _listeners.indexOf(listener);
+		if (index > -1) _listeners.splice(index, 1);
+	};
+}
+var PICTURE, _buttons, _listeners, MenuHooks_default;
+var init_MenuHooks = __esmMin((() => {
+	PICTURE = /^(?!.*\.\.)[A-Za-z0-9_][A-Za-z0-9_./-]*\.(bmp|tga|png|jpe?g)$/i;
+	_buttons = [];
+	_listeners = [];
+	MenuHooks_default = {
+		add: add$1,
+		list,
+		press,
+		onChange
 	};
 }));
 //#endregion
@@ -238515,6 +238607,33 @@ function onToggleShortcutUI() {
 	if (!ShortCutOption_default._host || !ShortCutOption_default._host.parentNode) ShortCutOption_default.append();
 	else ShortCutOption_default.remove();
 }
+/**
+* Draw the buttons plugins added (UI/MenuHooks.js) after the settings buttons,
+* from their own pictures, the way the menu's buttons are drawn. Hidden with
+* the settings buttons while the death menu shows.
+*/
+function renderHookedButtons() {
+	const root = Escape.getRoot();
+	const exit = root.querySelector(".exit");
+	if (!exit) return;
+	root.querySelectorAll(".hooked").forEach((el) => el.remove());
+	const settingsShown = root.querySelector(".graphics")?.style.display !== "none";
+	MenuHooks_default.list().forEach((button) => {
+		const el = document.createElement("button");
+		el.className = "hooked";
+		el.dataset.background = button.background;
+		if (button.hover) el.dataset.hover = button.hover;
+		if (button.down) el.dataset.down = button.down;
+		if (button.title) {
+			el.title = button.title;
+			el.setAttribute("aria-label", button.title);
+		}
+		el.style.display = settingsShown ? "" : "none";
+		el.addEventListener("click", () => MenuHooks_default.press(button));
+		GUIComponent.processDataAttrs(el);
+		exit.before(el);
+	});
+}
 var Escape, Escape_default;
 var init_Escape = __esmMin((() => {
 	init_KeyEventHandler();
@@ -238522,6 +238641,7 @@ var init_Escape = __esmMin((() => {
 	init_UIManager();
 	init_GUIComponent();
 	init_ExitHooks();
+	init_MenuHooks();
 	init_SoundOption();
 	init_GraphicsOption();
 	init_ShortCutOption();
@@ -238572,6 +238692,8 @@ var init_Escape = __esmMin((() => {
 		root.querySelector(".cancel").addEventListener("click", function() {
 			Escape._host.style.display = "none";
 		});
+		renderHookedButtons();
+		MenuHooks_default.onChange(renderHookedButtons);
 		this._host.style.display = "none";
 	};
 	/**
@@ -238590,7 +238712,7 @@ var init_Escape = __esmMin((() => {
 		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
 			el.style.display = "none";
 		});
-		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
+		root.querySelectorAll(".graphics, .sound, .hotkey, .hooked").forEach(function(el) {
 			el.style.display = "";
 		});
 	};
@@ -238616,7 +238738,7 @@ var init_Escape = __esmMin((() => {
 		this._host.style.display = "";
 		root.querySelector(".savepoint").style.display = "";
 		if (hasSiegfried) root.querySelector(".resurection").style.display = "";
-		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
+		root.querySelectorAll(".graphics, .sound, .hotkey, .hooked").forEach(function(el) {
 			el.style.display = "none";
 		});
 	};
@@ -238629,7 +238751,7 @@ var init_Escape = __esmMin((() => {
 		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
 			el.style.display = "none";
 		});
-		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
+		root.querySelectorAll(".graphics, .sound, .hotkey, .hooked").forEach(function(el) {
 			el.style.display = "";
 		});
 	};
