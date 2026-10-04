@@ -13,7 +13,11 @@ const mocks = vi.hoisted(() => ({
 		leftClick: vi.fn(),
 		elementAtCursor: vi.fn(() => null)
 	},
-	aim: { isActive: vi.fn(() => false) },
+	aim: {
+		QUICK_CAST: { OFF: 0, RELEASE: 1, INSTANT: 2 },
+		isActive: vi.fn(() => false),
+		quickCastMode: () => mocks.controls.joyQuick
+	},
 	input: { buttonStates: [] },
 	mapper: { getGroup: vi.fn(() => '') },
 	controls: { joyQuick: 2, attackTargetMode: 0 },

@@ -55,7 +55,8 @@ export default {
 			cmd: 'EXECUTE' + index
 		});
 
-		if (ControlsSettings.joyQuick === 2) {
+		const quickCast = Aim.quickCastMode();
+		if (quickCast === Aim.QUICK_CAST.INSTANT) {
 			// Instant: a selected mob gets the skill wherever the cursor is
 			// (it may have walked away from where the cycle left it); ground
 			// skills land where the mob stands at the moment of the click.
@@ -64,7 +65,7 @@ export default {
 					Target.snapCursorToFocus();
 				});
 			}
-		} else if (ControlsSettings.joyQuick === 1) {
+		} else if (quickCast === Aim.QUICK_CAST.RELEASE) {
 			this.cancelQuick = false;
 
 			const waitforRelease = () => {

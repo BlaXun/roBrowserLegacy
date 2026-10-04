@@ -654,6 +654,23 @@ function startRemap(root, logical, label, remapButton) {
 
 function onUpdateAimEnabled() {
 	JoystickAim.setEnabled(this.checked);
+	showQuickCast(ShortCutOption.getRoot());
+}
+
+/**
+ * Quick-Cast select: the mode in effect, with Off greyed out while aiming
+ * is on (JoystickAimMode.quickCastMode).
+ */
+function showQuickCast(root) {
+	const select = root.querySelector('.joyQuick');
+	if (!select) {
+		return;
+	}
+	const off = select.querySelector('option[value="' + JoystickAim.QUICK_CAST.OFF + '"]');
+	if (off) {
+		off.disabled = JoystickAim.isEnabled();
+	}
+	select.value = String(JoystickAim.quickCastMode());
 }
 
 function onUpdateAimRing() {
@@ -685,7 +702,7 @@ function reflectGamepadSettings(root) {
 	};
 	setValue('.joyCycleMode', Controls.joyCycleMode | 0);
 	setValue('.attackTargetMode', Controls.attackTargetMode | 0);
-	setValue('.joyQuick', Controls.joyQuick | 0);
+	showQuickCast(root);
 	setValue('.joySense', Controls.joySense);
 	setValue('.joyDeadline', Controls.joyDeadline);
 

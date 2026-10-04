@@ -34,6 +34,15 @@ const MODE = {
 	AIM: 1
 };
 
+/**
+ * Values of ControlsSettings.joyQuick.
+ */
+const QUICK_CAST = {
+	OFF: 0,
+	RELEASE: 1,
+	INSTANT: 2
+};
+
 // How far from the ray a target may stand and still count: HIT_RADIUS
 // cells next to the character, widening by HIT_SPREAD cells per cell of
 // distance (about 2 cells at 15 away), so a slightly-off stick still
@@ -69,6 +78,18 @@ function isEnabled() {
 
 function isActive() {
 	return isEnabled() && ControlsSettings.joyRightStickMode === MODE.AIM;
+}
+
+/**
+ * The Quick-Cast mode in effect. With aiming available, Off is not: it
+ * leaves a targeted skill waiting for an A click at the cursor, and the
+ * aim does not keep the cursor on the target, so Instant stands in for it.
+ *
+ * @return {number} QUICK_CAST value
+ */
+function quickCastMode() {
+	const mode = ControlsSettings.joyQuick | 0;
+	return mode === QUICK_CAST.OFF && isEnabled() ? QUICK_CAST.INSTANT : mode;
 }
 
 /**
@@ -425,6 +446,10 @@ function toggle() {
 function setEnabled(enabled) {
 	ControlsSettings.joyAimEnabled = !!enabled;
 	ControlsSettings.joyRightStickMode = enabled ? MODE.AIM : MODE.CURSOR;
+	// Quick-Cast Off is not available with aiming (quickCastMode)
+	if (enabled && (ControlsSettings.joyQuick | 0) === QUICK_CAST.OFF) {
+		ControlsSettings.joyQuick = QUICK_CAST.INSTANT;
+	}
 	ControlsSettings.save();
 	release();
 	JoystickUIRenderer.updateStickMode();
@@ -432,8 +457,10 @@ function setEnabled(enabled) {
 
 export default {
 	MODE,
+	QUICK_CAST,
 	isEnabled,
 	isActive,
+	quickCastMode,
 	setEnabled,
 	update,
 	release,

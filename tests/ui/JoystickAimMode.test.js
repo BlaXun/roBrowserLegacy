@@ -68,6 +68,33 @@ describe('JoystickAimMode enable switch', () => {
 		expect(controls.joyRightStickMode).toBe(Aim.MODE.CURSOR);
 		expect(Aim.isActive()).toBe(false);
 	});
+
+	it('turning it on moves Quick-Cast Off to Instant, and keeps Release', () => {
+		controls.joyQuick = Aim.QUICK_CAST.OFF;
+		Aim.setEnabled(true);
+		expect(controls.joyQuick).toBe(Aim.QUICK_CAST.INSTANT);
+
+		controls.joyQuick = Aim.QUICK_CAST.RELEASE;
+		Aim.setEnabled(true);
+		expect(controls.joyQuick).toBe(Aim.QUICK_CAST.RELEASE);
+
+		// Turning it off keeps the mode the player has
+		Aim.setEnabled(false);
+		expect(controls.joyQuick).toBe(Aim.QUICK_CAST.RELEASE);
+	});
+
+	it('treats a stored Off as Instant while aiming is on, and only then', () => {
+		controls.joyQuick = Aim.QUICK_CAST.OFF;
+		controls.joyAimEnabled = true;
+		expect(Aim.quickCastMode()).toBe(Aim.QUICK_CAST.INSTANT);
+
+		controls.joyAimEnabled = false;
+		expect(Aim.quickCastMode()).toBe(Aim.QUICK_CAST.OFF);
+
+		controls.joyQuick = Aim.QUICK_CAST.RELEASE;
+		controls.joyAimEnabled = true;
+		expect(Aim.quickCastMode()).toBe(Aim.QUICK_CAST.RELEASE);
+	});
 });
 
 describe('JoystickAimMode.findFirstHit', () => {
