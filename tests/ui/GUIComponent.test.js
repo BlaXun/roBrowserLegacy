@@ -5,7 +5,7 @@
  * replaces it with a stub, so the two behaviours below are held by nothing
  * else in the suite.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	cursor: {
@@ -34,6 +34,7 @@ vi.mock('Renderer/EntityManager.js', () => ({ default: { setOverEntity: vi.fn() 
 vi.mock('UI/Scrollbar.js', () => ({ default: {} }));
 
 const GUIComponent = (await import('UI/GUIComponent.js')).default;
+const UIScale = (await import('UI/UIScale.js')).default;
 
 let seq = 0;
 
@@ -156,5 +157,44 @@ describe('the cursor over a clickable a component has marked refused', () => {
 		component._container.querySelector('.plain').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
 
 		expect(mocks.cursor.setType).toHaveBeenCalledWith(mocks.cursor.ACTION.CLICK);
+	});
+});
+
+/**
+ * UI/UIScale.js draws a window larger or smaller once it is on screen, and a
+ * clone (a whisper window) is scaled as the window it was cloned from.
+ */
+describe('a scaled window', () => {
+	afterEach(() => {
+		UIScale.set('WhisperBox', 1);
+	});
+
+	it('is drawn at its factor when appended and forgotten when removed', () => {
+		UIScale.set('WhisperBox', 2);
+		const whisper = new GUIComponent('WhisperBox', '');
+		whisper.render = () => '<div></div>';
+		whisper.append();
+		expect(whisper.scale).toBe(2);
+		expect(whisper._host.style.getPropertyValue('scale')).toBe('2');
+
+		whisper.remove();
+		UIScale.set('WhisperBox', 1.5);
+		expect(whisper._host.style.getPropertyValue('scale')).toBe('2');
+	});
+
+	it('passes its scale name on to its clones', () => {
+		UIScale.set('WhisperBox', 1.5);
+		const whisper = new GUIComponent('WhisperBox', '');
+		const conversation = whisper.clone('SomePlayer');
+		expect(conversation.scaleName).toBe('WhisperBox');
+		expect(conversation.scale).toBe(1.5);
+	});
+
+	it('stays at 1 when it cannot be scaled', () => {
+		UIScale.setGlobal(2);
+		const component = mount('<div></div>');
+		expect(component.scale).toBe(1);
+		expect(component._host.style.getPropertyValue('scale')).toBe('');
+		UIScale.setGlobal(1);
 	});
 });

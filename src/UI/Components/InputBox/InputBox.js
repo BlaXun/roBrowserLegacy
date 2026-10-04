@@ -39,8 +39,10 @@ InputBox.captureKeyEvents = true;
  */
 InputBox.init = function init() {
 	this.draggable();
-	this._host.style.top = `${(Renderer.height - 120) / 1.5 - 49}px`;
-	this._host.style.left = `${(Renderer.width - 280) / 2 + 1}px`;
+	// Centered at its on-screen size (UI/UIScale.js)
+	const scale = this.scale;
+	this._host.style.top = `${(Renderer.height - 120 * scale) / 1.5 - 49}px`;
+	this._host.style.left = `${(Renderer.width - 280 * scale) / 2 + 1}px`;
 
 	const root = InputBox.getRoot();
 

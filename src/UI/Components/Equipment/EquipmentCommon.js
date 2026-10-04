@@ -974,8 +974,10 @@ export function createEquipment({
 		const rootEl = root.querySelector('#' + name) || root;
 		const btnRect = this.getBoundingClientRect();
 		const rootRect = rootEl.getBoundingClientRect();
-		const top = btnRect.top - rootRect.top;
-		const left = btnRect.left - rootRect.left;
+		// Screen distance to window distance (UI/UIScale.js)
+		const scale = Component.scale;
+		const top = (btnRect.top - rootRect.top) / scale;
+		const left = (btnRect.left - rootRect.left) / scale;
 		if (!top && !left) return;
 
 		if (overlay) {

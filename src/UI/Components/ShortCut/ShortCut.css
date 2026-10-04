@@ -106,6 +106,13 @@
 .shortcut-tooltip.show {
 	display: block;
 }
+/* In the top layer while the hotbar is scaled (ShortCut.js): undo the popover defaults */
+.shortcut-tooltip[popover] {
+	inset: auto;
+	margin: 0;
+	border: none;
+	overflow: visible;
+}
 
 #ShortCut .cooldown-overlay {
 	position: absolute;
