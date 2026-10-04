@@ -15,6 +15,7 @@ import UIPreferences from 'Preferences/UI.js';
 import Session from 'Engine/SessionStorage.js';
 import Targa from 'Loaders/Targa.js';
 import ClampToViewport from 'UI/ClampToViewport.js';
+import UIScale from 'UI/UIScale.js';
 
 /**
  * Heavy modules loaded lazily to keep viewer bundles lightweight.
@@ -255,6 +256,9 @@ class GUIComponent {
 			_Cursor?.setType(_Cursor?.ACTION?.DEFAULT ?? 0);
 		}
 
+		// Draw at its UI scale before it places itself
+		UIScale.attach(this);
+
 		// Hook
 		if (this.onAppend) {
 			this.onAppend();
@@ -313,6 +317,7 @@ class GUIComponent {
 
 			// Detach from DOM
 			this._host.remove();
+			UIScale.detach(this);
 
 			// Freeze mode cleanup: only once no frozen window is left. A shop
 			// asks for an amount in an InputBox, and both freeze; closing the
@@ -332,6 +337,16 @@ class GUIComponent {
 				this.__scrollbarObserver = null;
 			}
 		}
+	}
+
+	/**
+	 * The factor this window is drawn at (UI/UIScale.js); 1 unless a plugin
+	 * scaled it. Screen distances divided by it are distances in the window.
+	 *
+	 * @return {number}
+	 */
+	get scale() {
+		return UIScale.of(this);
 	}
 
 	// ─── Focus / zIndex management ─────────────────────────
@@ -415,6 +430,9 @@ class GUIComponent {
 		// Always inherit behavioral properties
 		cloned.mouseMode = this.mouseMode;
 		cloned.needFocus = this.needFocus;
+
+		// Scaled as the window it copies (UI/UIScale.js): every WhisperBox, whatever its name
+		cloned.scaleName = this.scaleName || this.name;
 
 		if (full) {
 			for (const key of Object.keys(this)) {
@@ -567,8 +585,10 @@ class GUIComponent {
 
 			const x = host.offsetLeft - Mouse.screen.x;
 			const y = host.offsetTop - Mouse.screen.y;
-			const width = host.offsetWidth;
-			const height = host.offsetHeight;
+			// On-screen size: a scaled window (UI/UIScale.js) is larger than its layout box
+			const hostRect = host.getBoundingClientRect();
+			const width = hostRect.width;
+			const height = hostRect.height;
 
 			// Build snap cache from other active components
 			_snapCache = [];
@@ -594,11 +614,13 @@ class GUIComponent {
 						continue;
 					}
 
+					// On-screen box: a scaled window (UI/UIScale.js) is larger than its layout box
+					const rect = el.getBoundingClientRect();
 					_snapCache.push({
-						left: el.offsetLeft,
-						top: el.offsetTop,
-						right: el.offsetLeft + el.offsetWidth,
-						bottom: el.offsetTop + el.offsetHeight
+						left: rect.left,
+						top: rect.top,
+						right: rect.right,
+						bottom: rect.bottom
 					});
 				}
 			}

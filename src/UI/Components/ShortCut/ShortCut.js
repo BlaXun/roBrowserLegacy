@@ -475,6 +475,16 @@ function onContainerMouseEnter(event) {
 		tooltip.textContent = tooltipText;
 		tooltip.classList.add('show');
 
+		// A scaled hotbar (UI/UIScale.js) clips its fixed children and moves
+		// them with it: show the tooltip in the top layer instead, at the same scale
+		const scale = ShortCut.scale;
+		if (scale !== 1 && typeof tooltip.showPopover === 'function') {
+			tooltip.setAttribute('popover', 'manual');
+			tooltip.showPopover();
+			tooltip.style.setProperty('scale', String(scale));
+			tooltip.style.setProperty('transform-origin', '0 0');
+		}
+
 		// Calculate tooltip dimensions
 		const tooltipRect = tooltip.getBoundingClientRect();
 
@@ -506,6 +516,12 @@ function onContainerMouseLeave() {
 	const tooltip = root.querySelector('.shortcut-tooltip');
 	if (tooltip) {
 		tooltip.classList.remove('show');
+		if (tooltip.hasAttribute('popover')) {
+			tooltip.hidePopover?.();
+			tooltip.removeAttribute('popover');
+			tooltip.style.removeProperty('scale');
+			tooltip.style.removeProperty('transform-origin');
+		}
 	}
 }
 
@@ -530,7 +546,7 @@ function onResize(event) {
 	let lastHeight = 0;
 
 	function resizing() {
-		let h = Math.floor((Mouse.screen.y - top) / 34 + 1);
+		let h = Math.floor((Mouse.screen.y - top) / ShortCut.scale / 34 + 1);
 
 		// Maximum and minimum window size
 		h = Math.min(Math.max(h, 1), _rowCount);

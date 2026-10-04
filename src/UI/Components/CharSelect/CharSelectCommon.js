@@ -271,8 +271,10 @@ export function createCharSelect(config) {
 
 		const root = this.getRoot();
 
-		this._host.style.top = `${(Renderer.height - hostHeight) / 2}px`;
-		this._host.style.left = `${(Renderer.width - 576) / 2}px`;
+		// Centered at its on-screen size (UI/UIScale.js)
+		const scale = this.scale;
+		this._host.style.top = `${(Renderer.height - hostHeight * scale) / 2}px`;
+		this._host.style.left = `${(Renderer.width - 576 * scale) / 2}px`;
 
 		_index = _preferences.index;
 

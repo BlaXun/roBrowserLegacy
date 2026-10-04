@@ -303,8 +303,10 @@ export function createCharCreate(config) {
 	 * Once add to HTML, start rendering
 	 */
 	Component.onAppend = function onAppend() {
-		this._host.style.top = `${(Renderer.height - hostHeight) / 2}px`;
-		this._host.style.left = `${(Renderer.width - hostWidth) / 2}px`;
+		// Centered at its on-screen size (UI/UIScale.js)
+		const scale = this.scale;
+		this._host.style.top = `${(Renderer.height - hostHeight * scale) / 2}px`;
+		this._host.style.left = `${(Renderer.width - hostWidth * scale) / 2}px`;
 
 		if (hasRace) {
 			_human.render = true;

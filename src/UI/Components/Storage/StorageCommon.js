@@ -226,7 +226,8 @@ export function createStorage(config) {
 
 		_preferences.y = parseInt(this._host.style.top, 10);
 		_preferences.x = parseInt(this._host.style.left, 10);
-		_preferences.height = Math.floor((this._host.getBoundingClientRect().height - (31 + 19 - 30)) / 32);
+		// Layout height: the window may be drawn scaled (UI/UIScale.js)
+		_preferences.height = Math.floor((this._host.offsetHeight - (31 + 19 - 30)) / 32);
 		_preferences.save();
 
 		if (hasFilters) {
@@ -447,7 +448,8 @@ export function createStorage(config) {
 
 		function resizing() {
 			const extraY = 31 + 19 - 30;
-			let h = Math.floor((Mouse.screen.y - top - extraY) / 32);
+			// Screen distance to window distance (UI/UIScale.js)
+			let h = Math.floor(((Mouse.screen.y - top) / Component.scale - extraY) / 32);
 			h = Math.min(Math.max(h, 8), 17);
 
 			if (h === lastHeight) {
@@ -631,7 +633,8 @@ export function createStorage(config) {
 		const overlay = root.querySelector('.overlay');
 		if (overlay) {
 			overlay.textContent = title;
-			const height = Component._host.getBoundingClientRect().height;
+			// Layout height: the window may be drawn scaled (UI/UIScale.js)
+			const height = Component._host.offsetHeight;
 			overlay.style.top = `${height - 50}px`;
 			overlay.style.left = `${button.offsetLeft}px`;
 			overlay.style.display = '';

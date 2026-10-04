@@ -190,9 +190,9 @@ ShortCuts.onRemove = function onRemove() {
 	_preferences.reduce = !!_realSize;
 	_preferences.y = parseInt(this._host.style.top, 10);
 	_preferences.x = parseInt(this._host.style.left, 10);
-	const hostRect = this._host.getBoundingClientRect();
-	_preferences.width = Math.floor((hostRect.width - (23 + 16 + 16 - 30)) / 32);
-	_preferences.height = Math.floor((hostRect.height - (31 + 19 - 30)) / 32);
+	// Layout size: the window may be drawn scaled (UI/UIScale.js)
+	_preferences.width = Math.floor((this._host.offsetWidth - (23 + 16 + 16 - 30)) / 32);
+	_preferences.height = Math.floor((this._host.offsetHeight - (31 + 19 - 30)) / 32);
 	_preferences.magnet_top = this.magnet.TOP;
 	_preferences.magnet_bottom = this.magnet.BOTTOM;
 	_preferences.magnet_left = this.magnet.LEFT;
@@ -331,8 +331,10 @@ function _onResize() {
 		const extraX = 23 + 16 + 16 - 30;
 		const extraY = 31 + 19 - 30;
 
-		let w = Math.floor((Mouse.screen.x - left - extraX) / 32);
-		let h = Math.floor((Mouse.screen.y - top - extraY) / 32);
+		// Screen distance to window distance (UI/UIScale.js)
+		const scale = ShortCuts.scale;
+		let w = Math.floor(((Mouse.screen.x - left) / scale - extraX) / 32);
+		let h = Math.floor(((Mouse.screen.y - top) / scale - extraY) / 32);
 
 		// Maximum and minimum window size
 		w = Math.min(Math.max(w, 6), 9);

@@ -11,6 +11,7 @@
 import Texture from 'Utils/Texture.js';
 import DB from 'DB/DBManager.js';
 import Client from 'Core/Client.js';
+import UIScale from 'UI/UIScale.js';
 
 /**
  * ScrollBar Namespace
@@ -436,7 +437,8 @@ class ScrollBar {
 			const maxScrollTop = sh - h;
 			const maxThumbTop = trackHeight - thumbHeight;
 
-			const deltaY = e.clientY - startY;
+			// Pointer moves on screen; the thumb moves inside a window that may be scaled
+			const deltaY = (e.clientY - startY) / UIScale.ofElement(thumb);
 			const newThumbTop = Math.max(0, Math.min(startThumbY + deltaY, maxThumbTop));
 
 			const percentage = newThumbTop / maxThumbTop;

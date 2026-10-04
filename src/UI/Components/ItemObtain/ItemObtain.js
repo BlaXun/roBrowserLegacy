@@ -72,7 +72,8 @@ ItemObtain.init = function init() {
 ItemObtain.onAppend = function onAppend() {
 	const root = this.getRoot();
 	const el = root.querySelector('#ItemObtain');
-	this._host.style.left = `${(Renderer.width - (el ? el.offsetWidth : 0)) >> 1}px`;
+	// On-screen width: the window may be drawn scaled (UI/UIScale.js)
+	this._host.style.left = `${(Renderer.width - (el ? el.getBoundingClientRect().width : 0)) >> 1}px`;
 };
 
 /**
@@ -113,7 +114,8 @@ ItemObtain.set = function set(item) {
 	}
 
 	const el = root.querySelector('#ItemObtain');
-	this._host.style.left = `${(Renderer.width - (el ? el.offsetWidth : 0)) >> 1}px`;
+	// On-screen width: the window may be drawn scaled (UI/UIScale.js)
+	this._host.style.left = `${(Renderer.width - (el ? el.getBoundingClientRect().width : 0)) >> 1}px`;
 
 	Client.loadFile(DB.INTERFACE_PATH + 'item/' + resource + '.bmp', url => {
 		const img = root.querySelector(`img.item-${item.ITID}`);
