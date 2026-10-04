@@ -880,6 +880,17 @@ class GUIComponent {
 		});
 	}
 
+	/**
+	 * Tell the window's mouse guard the pointer has left.
+	 *
+	 * Hiding is display:none, and a browser fires no mouseleave for an element
+	 * that disappears under the pointer. A STOP-mode window hidden while hovered
+	 * kept the map from taking clicks until it was shown and left again.
+	 */
+	_releaseMouse() {
+		(this.__mouseStopBlock || this._host).dispatchEvent(new Event('mouseleave'));
+	}
+
 	_setupMouseMode() {
 		const element = this.__mouseStopBlock || this._host;
 		if (this.mouseMode === GUIComponent.MouseMode.STOP) {
@@ -1292,6 +1303,7 @@ class GUIComponent {
 			},
 			hide() {
 				host.style.display = 'none';
+				component._releaseMouse();
 				return proxy;
 			},
 			toggle() {
@@ -1300,6 +1312,7 @@ class GUIComponent {
 					component._fixPositionOverflow();
 				} else {
 					host.style.display = 'none';
+					component._releaseMouse();
 				}
 				return proxy;
 			},
