@@ -25,7 +25,8 @@ How to work:
 Fixes to the client, and **hook points** that let code outside the client draw or take part:
 - `src/Renderer/MapHooks.js`: drawing inside the map renderer (passes, depth, lights, model replacement);
 - `src/UI/ScreenHooks.js`: replacing the login, server list, character select and character creation screens;
-- `src/UI/ExitHooks.js`: the Esc menu's character select and exit actions.
+- `src/UI/ExitHooks.js`: the Esc menu's character select and exit actions;
+- `src/UI/MenuHooks.js`: buttons of a plugin's own in the Esc menu, drawn from pictures it ships like the menu's own.
 
 Effects, screens and features themselves (Graphics+, autologin, the client API `api.*`) are **not** here. They live in the app repo, in its mods and its client patches (`patches/client/`, applied by `scripts/patch-client.sh`). Add a hook here, small and upstream-neutral, and keep the behaviour in a mod.
 
