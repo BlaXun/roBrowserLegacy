@@ -20,6 +20,7 @@ uniform vec3 uSpriteRendererPosition;
 uniform float uSpriteRendererDepth;
 uniform float uSpriteRendererZindex;
 uniform bool  uDisableDepthCorrection;
+uniform bool  uFullPlaneDepth;
 
 mat4 Project( mat4 mat, vec3 pos) {
 
@@ -68,8 +69,11 @@ void main(void) {
     if (!uDisableDepthCorrection) {
         // Vertical billboard depth correction (per-vertex), plane anchored at sprite center.
         // Plane normal uses camera forward (flattened Y) for stability.
-        // The whole quad takes the vertical plane depth so the part of the sprite below
-        // the water surface sorts behind the (later drawn) water pass.
+        // A pass that writes depth takes the vertical plane depth for the whole quad, so
+        // the part of the sprite below the water surface sorts behind the (later drawn)
+        // water pass. A pass that only tests depth keeps the nearer of the two: on the
+        // vertical plane, anything drawn below the feet (a magic circle, a shadow, a
+        // spread cape) lies under the ground and the ground would cut it off.
         vec3 planePoint = (uViewModelMat * viewCenter).xyz;
         vec3 planeNormal = normalize(vec3(cameraForward.x, 0.0, cameraForward.z));
         if (length(planeNormal) < 0.000001) {
@@ -84,7 +88,7 @@ void main(void) {
         vec4 planeClip       = uProjectionMat * (uModelViewMat * vec4(cameraPos + rayDir * dist, 1.0));
         float correctedZBase = planeClip.z * (gl_Position.w / max(planeClip.w, 0.000001));
 
-        gl_Position.z = correctedZBase;
+        gl_Position.z = uFullPlaneDepth ? correctedZBase : min(gl_Position.z, correctedZBase);
     }
     gl_Position.z -= (uSpriteRendererZindex * 0.01 + uSpriteRendererDepth) / max(uCameraZoom, 1.0);
 
