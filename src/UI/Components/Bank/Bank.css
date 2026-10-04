@@ -229,3 +229,64 @@
 	visibility: visible;
 	opacity: 1;
 }
+
+/*
+ * Without the bank/ textures (iRO's 2026 data has none), GUIComponent marks
+ * each untextured node .no-texture. Draw a plain window and labelled buttons
+ * so the window is not see-through.
+ */
+#Bank .container.no-texture {
+	background-color: #f7f7f7;
+	border: 1px solid #a4a4a4;
+	border-top: none;
+	border-radius: 0 0 3px 3px;
+	box-sizing: border-box;
+}
+
+/* The amount field was drawn by the background; give it its own edge. */
+#Bank .container.no-texture input.depo {
+	background-color: #ffffff;
+	outline: 1px solid #a4a4a4; /* an outline leaves the layout alone */
+}
+
+#Bank .buttons.no-texture {
+	background-color: #ececec;
+	background-image: linear-gradient(#fdfdfd, #dedede);
+	border: 1px solid #8f8f8f;
+	border-radius: 3px;
+	box-sizing: border-box;
+	padding: 0;
+	color: #333;
+	font-size: 9px;
+	line-height: 1;
+	text-align: center;
+	cursor: pointer;
+}
+#Bank .buttons.no-texture:hover {
+	background-image: linear-gradient(#ffffff, #e9eef7);
+	border-color: #6d84b4;
+}
+#Bank .buttons.no-texture:active {
+	background-image: linear-gradient(#d6d6d6, #f2f2f2);
+}
+
+/* Deposit and Withdraw show their own (translated) label. */
+#Bank .deposit.no-texture .name,
+#Bank .withdraw.no-texture .name {
+	position: static;
+	visibility: visible;
+	opacity: 1;
+	background: none;
+	text-shadow: none;
+	color: inherit;
+	padding: 0;
+	font-size: 9px;
+}
+
+/* The rest are too small for theirs, which stays the hover tooltip. */
+#Bank .plus.no-texture::before { content: '\25B2'; font-size: 6px; }
+#Bank .minus.no-texture::before { content: '\25BC'; font-size: 6px; }
+#Bank .max.no-texture::before { content: 'Max'; }
+#Bank .tenmil.no-texture::before { content: '+10M'; }
+#Bank .onemil.no-texture::before { content: '+1M'; }
+#Bank .hundtsn.no-texture::before { content: '+100K'; }

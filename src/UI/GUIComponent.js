@@ -1050,7 +1050,13 @@ class GUIComponent {
 						console.error(e.message);
 					}
 				}
+				node.classList.remove('no-texture');
 				updateBg();
+			}, () => {
+				// Not every client's data has every window's textures (iRO's
+				// 2026 data has no bank/ folder). Mark the node so a window's
+				// CSS can draw it without one instead of leaving it see-through.
+				node.classList.add('no-texture');
 			});
 		}
 
