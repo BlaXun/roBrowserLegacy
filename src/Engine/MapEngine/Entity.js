@@ -1331,15 +1331,45 @@ function onEntityViewChange(pkt) {
 				if (entity === Session.Entity) {
 					//Interchange UI depending on Job
 					if (PACKETVER.value >= 20200520) {
-						BasicInfo.getUI().remove();
+						// The server sends the new job's levels and experience before it
+						// sends the job itself, so they sit in the window being replaced.
+						// A different version of the window starts empty: carry them over.
+						const previous = BasicInfo.getUI();
+						previous.remove();
 						BasicInfo.selectUIVersionWithJob(DB.getJobClass(pkt.value));
-						BasicInfo.getUI().prepare();
-						BasicInfo.getUI().update('blvl', Session.Entity.clevel);
-						BasicInfo.getUI().update('jlvl', Session.Entity.joblevel);
-						BasicInfo.getUI().update('zeny', Session.Entity.money);
-						BasicInfo.getUI().update('name', Session.Entity.display.name);
-						BasicInfo.getUI().update('bexp', BasicInfo.getUI().base_exp, BasicInfo.getUI().base_exp_next);
-						BasicInfo.getUI().append();
+						const ui = BasicInfo.getUI();
+						if (ui !== previous) {
+							ui.base_exp = previous.base_exp;
+							ui.base_exp_next = previous.base_exp_next;
+							ui.job_exp = previous.job_exp;
+							ui.job_exp_next = previous.job_exp_next;
+						}
+						ui.prepare();
+						ui.update('blvl', Session.Entity.clevel);
+						ui.update('jlvl', Session.Entity.joblevel);
+						ui.update('zeny', Session.Entity.money);
+						ui.update('name', Session.Entity.display.name);
+						ui.update('bexp', ui.base_exp, ui.base_exp_next);
+						if (ui.job_exp_next > -1) {
+							ui.update('jexp', ui.job_exp, ui.job_exp_next);
+						}
+						// The bars too: a new window has none of them, and the server only sends
+						// one again when it changes -- AP, full after a job change, may not for a while.
+						const life = Session.Entity.life;
+						if (life.hp > -1 && life.hp_max > -1) {
+							ui.update('hp', life.hp, life.hp_max);
+						}
+						if (life.sp > -1 && life.sp_max > -1) {
+							ui.update('sp', life.sp, life.sp_max);
+						}
+						if (life.ap > -1 && life.ap_max > -1) {
+							ui.update('ap', life.ap, life.ap_max);
+						}
+						if (Session.Entity.max_weight) {
+							ui.weight_max = Session.Entity.max_weight;
+							ui.update('weight', Session.Entity.weight, ui.weight_max);
+						}
+						ui.append();
 					}
 					// Update UI for all client versions
 					BasicInfo.getUI().update('job', pkt.value);
