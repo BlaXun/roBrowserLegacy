@@ -52,8 +52,10 @@ WinList.onAppend = function onAppend() {
  * Initialize UI
  */
 WinList.init = function init() {
-	this._host.style.top = `${(Renderer.height - 280) / 1.5}px`;
-	this._host.style.left = `${(Renderer.width - 280) / 2}px`;
+	// Centered at its on-screen size (UI/UIScale.js)
+	const scale = this.scale;
+	this._host.style.top = `${(Renderer.height - 280 * scale) / 1.5}px`;
+	this._host.style.left = `${(Renderer.width - 280 * scale) / 2}px`;
 	this.draggable();
 
 	const root = this.getRoot();

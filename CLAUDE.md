@@ -25,7 +25,8 @@ How to work:
 Fixes to the client, and **hook points** that let code outside the client draw or take part:
 - `src/Renderer/MapHooks.js`: drawing inside the map renderer (passes, depth, lights, model replacement);
 - `src/UI/ScreenHooks.js`: replacing the login, server list, character select and character creation screens;
-- `src/UI/ExitHooks.js`: the Esc menu's character select and exit actions.
+- `src/UI/ExitHooks.js`: the Esc menu's character select and exit actions;
+- `src/UI/UIScale.js`: drawing chosen windows larger or smaller (a global factor times each window's own). Its `SCALABLE` list names the windows whose code has been checked to work scaled; window code turns screen distances into window distances with `component.scale`.
 
 Effects, screens and features themselves (Graphics+, autologin, the client API `api.*`) are **not** here. They live in the app repo, in its mods and its client patches (`patches/client/`, applied by `scripts/patch-client.sh`). Add a hook here, small and upstream-neutral, and keep the behaviour in a mod.
 

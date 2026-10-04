@@ -238,8 +238,10 @@ WhisperBox.show = function show(nickname, bHasMessage) {
 	const offset = (this._spawnCounter % 10) * 20;
 	this._spawnCounter++;
 
-	instance._host.style.top = `${Math.min(Math.max(0, _preferences.y + offset), Renderer.height - 156)}px`;
-	instance._host.style.left = `${Math.min(Math.max(0, _preferences.x + offset), Renderer.width - 280)}px`;
+	// On-screen size: the window may be drawn scaled (UI/UIScale.js)
+	const scale = instance.scale;
+	instance._host.style.top = `${Math.min(Math.max(0, _preferences.y + offset), Renderer.height - 156 * scale)}px`;
+	instance._host.style.left = `${Math.min(Math.max(0, _preferences.x + offset), Renderer.width - 280 * scale)}px`;
 
 	this.instances[nickname] = instance;
 	return instance;
@@ -375,9 +377,11 @@ function initResizable(instance) {
 	}
 
 	const resize = e => {
+		// Screen distance to window distance (UI/UIScale.js)
 		const rect = instance._host.getBoundingClientRect();
-		const width = Math.max(150, e.pageX - rect.left);
-		const height = Math.max(100, e.pageY - rect.top);
+		const scale = instance.scale;
+		const width = Math.max(150, (e.pageX - rect.left) / scale);
+		const height = Math.max(100, (e.pageY - rect.top) / scale);
 
 		instance._host.style.width = `${width}px`;
 		instance._host.style.height = `${height}px`;
