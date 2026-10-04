@@ -82,9 +82,9 @@ var init_Queue = __esmMin((() => {
 }));
 //#endregion
 //#region src/Core/Configs.js
-var _global$1, _server$2, Configs;
+var _global$2, _server$2, Configs;
 var init_Configs = __esmMin((() => {
-	_global$1 = {};
+	_global$2 = {};
 	_server$2 = {};
 	Configs = class {
 		/**
@@ -96,7 +96,7 @@ var init_Configs = __esmMin((() => {
 		*/
 		static get = (key, defaultValue) => {
 			if (key in _server$2) return _server$2[key];
-			if (key in _global$1) return _global$1[key];
+			if (key in _global$2) return _global$2[key];
 			return defaultValue;
 		};
 		/**
@@ -106,7 +106,7 @@ var init_Configs = __esmMin((() => {
 		* @param {?} data
 		*/
 		static set = (key, value) => {
-			_global$1[key] = value;
+			_global$2[key] = value;
 		};
 		/**
 		* Store the server informations
@@ -10763,14 +10763,14 @@ function BinaryReader(mixed, start, end) {
 	this.offset = 0;
 	this.length = (end || buffer.byteLength) - (start || 0);
 }
-var _global, bf_byteBuff, bf_wba, bf_wia;
+var _global$1, bf_byteBuff, bf_wba, bf_wia;
 var init_BinaryReader = __esmMin((() => {
 	init_Struct();
 	init_CodepageManager();
-	_global = typeof self !== "undefined" ? self : window;
-	_global.SEEK_CUR = 1;
-	_global.SEEK_SET = 2;
-	_global.SEEK_END = 3;
+	_global$1 = typeof self !== "undefined" ? self : window;
+	_global$1.SEEK_CUR = 1;
+	_global$1.SEEK_SET = 2;
+	_global$1.SEEK_END = 3;
 	/**
 	* Read Int8 from buffer
 	* @return int8
@@ -78450,6 +78450,240 @@ function UIClamp(el, WIDTH, HEIGHT, magnet) {
 	}
 }
 var init_ClampToViewport = __esmMin((() => {}));
+//#endregion
+//#region src/UI/UIScale.js
+/**
+* The name a component is scaled by: the window it was cloned from (every
+* WhisperBox is one), without a version suffix (InventoryV3 is Inventory).
+*/
+function scaleName(component) {
+	const name = String(component.scaleName || component.name);
+	const base = name.replace(/V\d+$/, "");
+	return Object.hasOwn(SCALABLE, base) ? base : name;
+}
+/**
+* Throw unless `name` is a scalable window.
+*/
+function checkName(name) {
+	if (typeof name !== "string" || !Object.hasOwn(SCALABLE, name)) throw new TypeError(`UIScale: "${name}" is not a scalable window`);
+}
+/**
+* A finite number, kept between MIN and MAX.
+*/
+function checkValue(value) {
+	if (typeof value !== "number" || !Number.isFinite(value)) throw new TypeError("UIScale: a scale is a finite number");
+	return Math.min(MAX, Math.max(MIN, value));
+}
+/**
+* The names of the windows that can be scaled.
+*/
+function names$1() {
+	return Object.keys(SCALABLE);
+}
+/**
+* A window's own factor (1 when none was set).
+*/
+function get$1(name) {
+	checkName(name);
+	return _scales.get(name) ?? 1;
+}
+/**
+* The global factor.
+*/
+function getGlobal() {
+	return _global;
+}
+/**
+* The factor a window is drawn at: global times its own.
+*/
+function effective(name) {
+	checkName(name);
+	return _global * (_scales.get(name) ?? 1);
+}
+/**
+* The factor a component is drawn at; 1 for a window that cannot be scaled.
+*/
+function of(component) {
+	if (!component || !component.name) return 1;
+	const name = scaleName(component);
+	return Object.hasOwn(SCALABLE, name) ? effective(name) : 1;
+}
+/**
+* The factor of the window an element is drawn in; 1 outside any window.
+*/
+function ofElement(element) {
+	const root = element?.getRootNode?.();
+	const component = root?.host ? _mounted.get(root.host) : null;
+	return component ? of(component) : 1;
+}
+/**
+* Draw a component's host at its factor. At 1 the host is left as it was.
+*/
+function apply$1(component) {
+	const host = component._host;
+	if (!host) return;
+	const scale = of(component);
+	if (scale === 1) {
+		host.style.removeProperty("scale");
+		host.style.removeProperty("transform-origin");
+	} else {
+		host.style.setProperty("scale", String(scale));
+		host.style.setProperty("transform-origin", SCALABLE[scaleName(component)]);
+	}
+}
+/**
+* Apply a change to the mounted windows it touches, keep them on screen,
+* and let them adjust (`onScale`).
+*/
+function refresh(name) {
+	_mounted.forEach((component) => {
+		if (name !== null && scaleName(component) !== name) return;
+		apply$1(component);
+		try {
+			component._fixPositionOverflow?.();
+			component.onScale?.(of(component));
+		} catch (error) {
+			console.error(`[UIScale] ${component.name} failed to adjust:`, error);
+		}
+	});
+}
+/**
+* Tell the listeners. A listener that throws is reported and the rest
+* still run.
+*/
+function emit$1(name, scale) {
+	const event = Object.freeze({
+		name,
+		scale
+	});
+	_listeners$2.slice().forEach((listener) => {
+		try {
+			listener(event);
+		} catch (error) {
+			console.error("[UIScale] a listener failed:", error);
+		}
+	});
+}
+/**
+* Set a window's own factor; 1 takes it back to the global factor.
+* Kept between 0.5 and 3. Returns the value set.
+*/
+function set(name, value) {
+	checkName(name);
+	const scale = checkValue(value);
+	if (scale === get$1(name)) return scale;
+	if (scale === 1) _scales.delete(name);
+	else _scales.set(name, scale);
+	refresh(name);
+	emit$1(name, scale);
+	return scale;
+}
+/**
+* Set the factor every scalable window is multiplied by. Kept between 0.5
+* and 3. Returns the value set.
+*/
+function setGlobal(value) {
+	const scale = checkValue(value);
+	if (scale === _global) return scale;
+	_global = scale;
+	refresh(null);
+	emit$1(null, scale);
+	return scale;
+}
+/**
+* Be told when a factor changes: `{ name, scale }`, with `name` null for the
+* global factor. Returns a function that stops it.
+*/
+function on$2(listener) {
+	if (typeof listener !== "function") throw new Error("UIScale.on takes a function");
+	_listeners$2.push(listener);
+	return () => {
+		const index = _listeners$2.indexOf(listener);
+		if (index > -1) _listeners$2.splice(index, 1);
+	};
+}
+/**
+* A component is going on screen (GUIComponent.append). Draws it at its
+* factor before it places itself.
+*/
+function attach$2(component) {
+	if (!component?._host) return;
+	_mounted.set(component._host, component);
+	apply$1(component);
+}
+/**
+* A component left the screen (GUIComponent.remove).
+*/
+function detach$1(component) {
+	if (component?._host) _mounted.delete(component._host);
+}
+var MIN, MAX, TOP_LEFT, TOP_RIGHT, TOP_CENTER, SCALABLE, _scales, _global, _mounted, _listeners$2, UIScale_default;
+var init_UIScale = __esmMin((() => {
+	MIN = .5;
+	MAX = 3;
+	TOP_LEFT = "0 0";
+	TOP_RIGHT = "100% 0";
+	TOP_CENTER = "50% 0";
+	SCALABLE = Object.freeze({
+		BasicInfo: TOP_LEFT,
+		ChatBox: TOP_LEFT,
+		ShortCut: TOP_LEFT,
+		ShortCuts: TOP_LEFT,
+		MiniMap: TOP_RIGHT,
+		StatusIcons: TOP_RIGHT,
+		MapName: TOP_CENTER,
+		PvPTimer: TOP_CENTER,
+		CashShopIcon: TOP_RIGHT,
+		RodexIcon: TOP_RIGHT,
+		PCGoldTimer: TOP_RIGHT,
+		Inventory: TOP_LEFT,
+		Equipment: TOP_LEFT,
+		SkillList: TOP_LEFT,
+		SkillDescription: TOP_LEFT,
+		Storage: TOP_LEFT,
+		PartyFriends: TOP_LEFT,
+		WhisperBox: TOP_LEFT,
+		NpcBox: TOP_LEFT,
+		NpcMenu: TOP_LEFT,
+		ItemInfo: TOP_LEFT,
+		ItemPreview: TOP_LEFT,
+		ItemCompare: TOP_LEFT,
+		ItemObtain: TOP_LEFT,
+		WinStats: TOP_LEFT,
+		Escape: TOP_LEFT,
+		GraphicsOption: TOP_LEFT,
+		SoundOption: TOP_LEFT,
+		InputBox: TOP_LEFT,
+		Emoticons: TOP_LEFT,
+		CardIllustration: TOP_LEFT,
+		PlayerViewEquip: TOP_LEFT,
+		WinLogin: TOP_LEFT,
+		WinList: TOP_LEFT,
+		CharSelect: TOP_LEFT,
+		CharCreate: TOP_LEFT,
+		PincodeWindow: TOP_LEFT
+	});
+	_scales = /* @__PURE__ */ new Map();
+	_global = 1;
+	_mounted = /* @__PURE__ */ new Map();
+	_listeners$2 = [];
+	UIScale_default = {
+		MIN,
+		MAX,
+		SCALABLE,
+		names: names$1,
+		get: get$1,
+		set,
+		getGlobal,
+		setGlobal,
+		effective,
+		of,
+		ofElement,
+		on: on$2,
+		attach: attach$2,
+		detach: detach$1
+	};
+}));
 //#endregion
 //#region src/Preferences/Graphics.js
 var defaultGraphicsSettings, cleanDefaults, GraphicsSettings;
@@ -220704,11 +220938,12 @@ function makeResizableDiv() {
 	let originalHeight = 0;
 	let originalAnchorY = 0;
 	let originalMouseY = 0;
+	let scale = 1;
 	const fixHeight = (height) => Math.floor(height / MAGIC_NUMBER) * MAGIC_NUMBER;
 	const resize = (e) => {
-		let height = fixHeight(originalHeight - (e.pageY - originalMouseY));
+		let height = fixHeight(originalHeight - (e.pageY - originalMouseY) / scale);
 		height = Math.max(MAGIC_NUMBER, Math.min(210, height));
-		ChatBox._host.style.top = `${originalAnchorY - height}px`;
+		ChatBox._host.style.top = `${originalAnchorY - height * scale}px`;
 		const contentWrapper = root.querySelector(".contentwrapper");
 		if (contentWrapper) contentWrapper.style.height = `${height}px`;
 		_heightIndex = Math.max(2, Math.min(6, height / MAGIC_NUMBER + 1));
@@ -220723,7 +220958,8 @@ function makeResizableDiv() {
 		e.preventDefault();
 		const contentWrapper = root.querySelector(".contentwrapper");
 		originalHeight = contentWrapper ? contentWrapper.offsetHeight : 0;
-		originalAnchorY = (parseInt(ChatBox._host.style.top, 10) || 0) + originalHeight;
+		scale = ChatBox.scale;
+		originalAnchorY = (parseInt(ChatBox._host.style.top, 10) || 0) + originalHeight * scale;
 		originalMouseY = e.pageY;
 		window.addEventListener("mousemove", resize);
 		window.addEventListener("mouseup", stopResize);
@@ -220846,8 +221082,9 @@ var init_ChatBox = __esmMin((() => {
 		_heightIndex = _preferences$41.height - 1;
 		ChatBox.updateHeight();
 		ChatBox.applyFontScale();
-		this._host.style.top = `${Math.min(Math.max(0, _preferences$41.y - (this._host.offsetHeight || 0)), Renderer.height - (this._host.offsetHeight || 0))}px`;
-		this._host.style.left = `${Math.min(Math.max(0, _preferences$41.x), Renderer.width - (this._host.offsetWidth || 0))}px`;
+		const hostRect = this._host.getBoundingClientRect();
+		this._host.style.top = `${Math.min(Math.max(0, _preferences$41.y - hostRect.height), Renderer.height - hostRect.height)}px`;
+		this._host.style.left = `${Math.min(Math.max(0, _preferences$41.x), Renderer.width - hostRect.width)}px`;
 		this.magnet.TOP = _preferences$41.magnet_top;
 		this.magnet.BOTTOM = _preferences$41.magnet_bottom;
 		this.magnet.LEFT = _preferences$41.magnet_left;
@@ -221296,7 +221533,7 @@ var init_ChatBox = __esmMin((() => {
 	* Stop custom scroll
 	*/
 	ChatBox.onRemove = function OnRemove() {
-		_preferences$41.y = (parseInt(this._host.style.top, 10) || 0) + (this._host.offsetHeight || 0);
+		_preferences$41.y = (parseInt(this._host.style.top, 10) || 0) + this._host.getBoundingClientRect().height;
 		_preferences$41.x = parseInt(this._host.style.left, 10) || 0;
 		_preferences$41.height = _heightIndex;
 		_preferences$41.magnet_top = this.magnet.TOP;
@@ -222033,7 +222270,7 @@ function onResize$7() {
 	const top = ItemCompare._host.offsetTop;
 	let lastHeight = 0;
 	function resizing() {
-		const h = Math.floor(Mouse.screen.y - top);
+		const h = Math.floor((Mouse.screen.y - top) / ItemCompare.scale);
 		if (h === lastHeight) return;
 		resize$4(h);
 		lastHeight = h;
@@ -222201,9 +222438,9 @@ var init_ItemCompare = __esmMin((() => {
 		if (descInner) resize$4(descInner.offsetHeight + 45);
 		if (ItemInfo_default._host) {
 			const itemInfoRect = ItemInfo_default._host.getBoundingClientRect();
-			const itemInfoWidth = itemInfoRect.width;
+			const width = this._host.getBoundingClientRect().width;
 			this._host.style.top = `${itemInfoRect.top ? itemInfoRect.top : 200}px`;
-			this._host.style.left = `${itemInfoRect.left ? itemInfoRect.left - itemInfoWidth : 200}px`;
+			this._host.style.left = `${itemInfoRect.left ? itemInfoRect.left - width : 200}px`;
 		}
 	};
 	/**
@@ -222443,8 +222680,9 @@ var init_ItemPreview = __esmMin((() => {
 		if (ItemInfo_default.ui) {
 			const itemInfoPosition = ItemInfo_default.ui.offset();
 			const itemInfoWidth = ItemInfo_default.ui.width();
-			const hostWidth = this._host.offsetWidth;
-			const hostHeight = this._host.offsetHeight;
+			const hostRect = this._host.getBoundingClientRect();
+			const hostWidth = hostRect.width;
+			const hostHeight = hostRect.height;
 			let left = itemInfoPosition.left + itemInfoWidth + 10;
 			let top = itemInfoPosition.top;
 			if (left + hostWidth > Renderer.width) left = Math.max(0, itemInfoPosition.left - hostWidth - 10);
@@ -222677,8 +222915,9 @@ var init_InputBox = __esmMin((() => {
 	*/
 	InputBox.init = function init() {
 		this.draggable();
-		this._host.style.top = `${(Renderer.height - 120) / 1.5 - 49}px`;
-		this._host.style.left = `${(Renderer.width - 280) / 2 + 1}px`;
+		const scale = this.scale;
+		this._host.style.top = `${(Renderer.height - 120 * scale) / 1.5 - 49}px`;
+		this._host.style.left = `${(Renderer.width - 280 * scale) / 2 + 1}px`;
 		const root = InputBox.getRoot();
 		const btn = root.querySelector("ui-button");
 		if (btn) btn.addEventListener("click", () => validate$1());
@@ -225852,8 +226091,9 @@ function initResizable(instance) {
 	if (!resizer) return;
 	const resize = (e) => {
 		const rect = instance._host.getBoundingClientRect();
-		const width = Math.max(150, e.pageX - rect.left);
-		const height = Math.max(100, e.pageY - rect.top);
+		const scale = instance.scale;
+		const width = Math.max(150, (e.pageX - rect.left) / scale);
+		const height = Math.max(100, (e.pageY - rect.top) / scale);
 		instance._host.style.width = `${width}px`;
 		instance._host.style.height = `${height}px`;
 		const container = root.querySelector(".whisper-container");
@@ -226042,8 +226282,9 @@ var init_WhisperBox = __esmMin((() => {
 		initResizable(instance);
 		const offset = this._spawnCounter % 10 * 20;
 		this._spawnCounter++;
-		instance._host.style.top = `${Math.min(Math.max(0, _preferences$38.y + offset), Renderer.height - 156)}px`;
-		instance._host.style.left = `${Math.min(Math.max(0, _preferences$38.x + offset), Renderer.width - 280)}px`;
+		const scale = instance.scale;
+		instance._host.style.top = `${Math.min(Math.max(0, _preferences$38.y + offset), Renderer.height - 156 * scale)}px`;
+		instance._host.style.left = `${Math.min(Math.max(0, _preferences$38.x + offset), Renderer.width - 280 * scale)}px`;
 		this.instances[nickname] = instance;
 		return instance;
 	};
@@ -228936,6 +229177,11 @@ function createPartyFriends(config) {
 					}
 					ghostInner.style.width = `${node.offsetWidth}px`;
 					ghostInner.style.height = `${node.offsetHeight}px`;
+					const scale = Component.scale;
+					if (scale !== 1) {
+						ghostInner.style.scale = String(scale);
+						ghostInner.style.transformOrigin = "0 0";
+					}
 				}
 			}
 			if (isDragging && ghostInner) {
@@ -229141,8 +229387,9 @@ function createPartyFriends(config) {
 		function resizing() {
 			const extraX = -20;
 			const extraY = 46;
-			let w = Math.floor((Mouse.screen.x - left - extraX) / 20);
-			let h = Math.floor((Mouse.screen.y - top - extraY) / 20);
+			const scale = Component.scale;
+			let w = Math.floor(((Mouse.screen.x - left) / scale - extraX) / 20);
+			let h = Math.floor(((Mouse.screen.y - top) / scale - extraY) / 20);
 			w = Math.min(Math.max(w, 12), 13);
 			h = Math.min(Math.max(h, 6), 12);
 			if (w === lastWidth && h === lastHeight) return;
@@ -234093,8 +234340,9 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 		const resizing = () => {
 			const extraX = -6;
 			const extraY = 32;
-			let w = Math.floor((Mouse.screen.x - left - extraX) / 32);
-			let h = Math.floor((Mouse.screen.y - top - extraY) / 32);
+			const scale = comp.scale;
+			let w = Math.floor(((Mouse.screen.x - left) / scale - extraX) / 32);
+			let h = Math.floor(((Mouse.screen.y - top) / scale - extraY) / 32);
 			w = Math.min(Math.max(w, 8), 8);
 			h = Math.min(Math.max(h, 4), 10);
 			if (w === lastWidth && h === lastHeight) return;
@@ -234426,7 +234674,7 @@ var init_ShortCut$2 = __esmMin((() => {
 //#region src/UI/Components/ShortCut/ShortCut.css?raw
 var ShortCut_default$1;
 var init_ShortCut$1 = __esmMin((() => {
-	ShortCut_default$1 = ":host {\r\n	width: 280px;\r\n	top: 0px;\r\n	left: 480px;\r\n	overflow: hidden;\r\n}\r\n\r\n#ShortCut {\r\n	position: absolute;\r\n	width: 280px;\r\n	height: 100%;\r\n	background-repeat: repeat-y;\r\n}\r\n#ShortCut .close {\r\n	position: absolute;\r\n	top: 2px;\r\n	right: 2px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 11px;\r\n	height: 11px;\r\n}\r\n#ShortCut .resize {\r\n	position: absolute;\r\n	bottom: 1px;\r\n	right: 1px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 13px;\r\n	height: 13px;\r\n}\r\n\r\n#ShortCut .row {\r\n	position: relative;\r\n}\r\n#ShortCut .row .container {\r\n	float: left;\r\n	width: 24px;\r\n	height: 23px;\r\n	margin-top: 5px;\r\n	margin-left: 5px;\r\n	margin-bottom: 6px;\r\n}\r\n#ShortCut .row .container:hover {\r\n	background-color: #b5ffb5;\r\n}\r\n#ShortCut .row .index {\r\n	float: left;\r\n	position: relative;\r\n	top: 13px;\r\n	left: 5px;\r\n}\r\n#ShortCut .row .clear {\r\n}\r\n\r\n#ShortCut .icon {\r\n	position: relative;\r\n}\r\n#ShortCut .icon .img {\r\n	width: 24px;\r\n	height: 24px;\r\n	background-repeat: no-repeat;\r\n	border: none;\r\n	background-color: transparent;\r\n}\r\n#ShortCut .icon .name {\r\n	display: none;\r\n	z-index: 1;\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n}\r\n#ShortCut .icon:hover .name {\r\n	display: block;\r\n}\r\n#ShortCut .icon.hide .name {\r\n	display: none;\r\n}\r\n#ShortCut .icon .amount {\r\n	position: absolute;\r\n	right: 1px;\r\n	top: 20px;\r\n	text-shadow: 1px 1px 0px white;\r\n	text-align: right;\r\n	font-weight: bold;\r\n}\r\n\r\n.shortcut-tooltip {\r\n	display: none;\r\n	position: fixed;\r\n	background-color: rgba(0, 0, 0, 0.8);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 2px 6px;\r\n	white-space: nowrap;\r\n	z-index: 10000;\r\n	border-radius: 2px;\r\n	pointer-events: none;\r\n	line-height: 1.2;\r\n}\r\n.shortcut-tooltip.show {\r\n	display: block;\r\n}\r\n\r\n#ShortCut .cooldown-overlay {\r\n	position: absolute;\r\n	top: 0;\r\n	left: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	pointer-events: none;\r\n	border-radius: 2px;\r\n	z-index: 999;\r\n	background: conic-gradient(rgba(0, 0, 0, 0.75) 0deg, transparent 0deg);\r\n}\r\n";
+	ShortCut_default$1 = ":host {\r\n	width: 280px;\r\n	top: 0px;\r\n	left: 480px;\r\n	overflow: hidden;\r\n}\r\n\r\n#ShortCut {\r\n	position: absolute;\r\n	width: 280px;\r\n	height: 100%;\r\n	background-repeat: repeat-y;\r\n}\r\n#ShortCut .close {\r\n	position: absolute;\r\n	top: 2px;\r\n	right: 2px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 11px;\r\n	height: 11px;\r\n}\r\n#ShortCut .resize {\r\n	position: absolute;\r\n	bottom: 1px;\r\n	right: 1px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 13px;\r\n	height: 13px;\r\n}\r\n\r\n#ShortCut .row {\r\n	position: relative;\r\n}\r\n#ShortCut .row .container {\r\n	float: left;\r\n	width: 24px;\r\n	height: 23px;\r\n	margin-top: 5px;\r\n	margin-left: 5px;\r\n	margin-bottom: 6px;\r\n}\r\n#ShortCut .row .container:hover {\r\n	background-color: #b5ffb5;\r\n}\r\n#ShortCut .row .index {\r\n	float: left;\r\n	position: relative;\r\n	top: 13px;\r\n	left: 5px;\r\n}\r\n#ShortCut .row .clear {\r\n}\r\n\r\n#ShortCut .icon {\r\n	position: relative;\r\n}\r\n#ShortCut .icon .img {\r\n	width: 24px;\r\n	height: 24px;\r\n	background-repeat: no-repeat;\r\n	border: none;\r\n	background-color: transparent;\r\n}\r\n#ShortCut .icon .name {\r\n	display: none;\r\n	z-index: 1;\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n}\r\n#ShortCut .icon:hover .name {\r\n	display: block;\r\n}\r\n#ShortCut .icon.hide .name {\r\n	display: none;\r\n}\r\n#ShortCut .icon .amount {\r\n	position: absolute;\r\n	right: 1px;\r\n	top: 20px;\r\n	text-shadow: 1px 1px 0px white;\r\n	text-align: right;\r\n	font-weight: bold;\r\n}\r\n\r\n.shortcut-tooltip {\r\n	display: none;\r\n	position: fixed;\r\n	background-color: rgba(0, 0, 0, 0.8);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 2px 6px;\r\n	white-space: nowrap;\r\n	z-index: 10000;\r\n	border-radius: 2px;\r\n	pointer-events: none;\r\n	line-height: 1.2;\r\n}\r\n.shortcut-tooltip.show {\r\n	display: block;\r\n}\r\n/* In the top layer while the hotbar is scaled (ShortCut.js): undo the popover defaults */\r\n.shortcut-tooltip[popover] {\r\n	inset: auto;\r\n	margin: 0;\r\n	border: none;\r\n	overflow: visible;\r\n}\r\n\r\n#ShortCut .cooldown-overlay {\r\n	position: absolute;\r\n	top: 0;\r\n	left: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	pointer-events: none;\r\n	border-radius: 2px;\r\n	z-index: 999;\r\n	background: conic-gradient(rgba(0, 0, 0, 0.75) 0deg, transparent 0deg);\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/ShortCut/ShortCut.js
@@ -234524,6 +234772,13 @@ function onContainerMouseEnter(event) {
 		const hostRect = ShortCut._host.getBoundingClientRect();
 		tooltip.textContent = tooltipText;
 		tooltip.classList.add("show");
+		const scale = ShortCut.scale;
+		if (scale !== 1 && typeof tooltip.showPopover === "function") {
+			tooltip.setAttribute("popover", "manual");
+			tooltip.showPopover();
+			tooltip.style.setProperty("scale", String(scale));
+			tooltip.style.setProperty("transform-origin", "0 0");
+		}
 		const tooltipRect = tooltip.getBoundingClientRect();
 		const showAbove = window.innerHeight - (hostRect.top + hostRect.height) < tooltipRect.height + 10;
 		const left = hostRect.left + hostRect.width / 2 - tooltipRect.width / 2;
@@ -234539,7 +234794,15 @@ function onContainerMouseEnter(event) {
 */
 function onContainerMouseLeave() {
 	const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
-	if (tooltip) tooltip.classList.remove("show");
+	if (tooltip) {
+		tooltip.classList.remove("show");
+		if (tooltip.hasAttribute("popover")) {
+			tooltip.hidePopover?.();
+			tooltip.removeAttribute("popover");
+			tooltip.style.removeProperty("scale");
+			tooltip.style.removeProperty("transform-origin");
+		}
+	}
 }
 /**
 * Resizing hotkey window
@@ -234549,7 +234812,7 @@ function onResize$6(event) {
 	const top = host.offsetTop;
 	let lastHeight = 0;
 	function resizing() {
-		let h = Math.floor((Mouse.screen.y - top) / 34 + 1);
+		let h = Math.floor((Mouse.screen.y - top) / ShortCut.scale / 34 + 1);
 		h = Math.min(Math.max(h, 1), _rowCount);
 		if (h === lastHeight) return;
 		host.style.height = `${h * 34}px`;
@@ -245757,7 +246020,7 @@ function createInventory(config) {
 		this.magnet.BOTTOM = _preferences.magnet_bottom;
 		this.magnet.LEFT = _preferences.magnet_left;
 		this.magnet.RIGHT = _preferences.magnet_right;
-		_realSize = _preferences.reduce ? 0 : this._host.getBoundingClientRect().height;
+		_realSize = _preferences.reduce ? 0 : this._host.offsetHeight;
 		const miniBtnAppend = root.querySelector(".titlebar .mini");
 		if (miniBtnAppend) miniBtnAppend.dispatchEvent(new Event("mousedown"));
 	};
@@ -245775,9 +246038,8 @@ function createInventory(config) {
 		_preferences.reduce = !!_realSize;
 		_preferences.y = parseInt(this._host.style.top, 10);
 		_preferences.x = parseInt(this._host.style.left, 10);
-		const hostRect = this._host.getBoundingClientRect();
-		_preferences.width = Math.floor((hostRect.width - 25) / 32);
-		if (resizableHeight) _preferences.height = Math.floor((hostRect.height - 20) / 32);
+		_preferences.width = Math.floor((this._host.offsetWidth - 25) / 32);
+		if (resizableHeight) _preferences.height = Math.floor((this._host.offsetHeight - 20) / 32);
 		_preferences.magnet_top = this.magnet.TOP;
 		_preferences.magnet_bottom = this.magnet.BOTTOM;
 		_preferences.magnet_left = this.magnet.LEFT;
@@ -245868,7 +246130,7 @@ function createInventory(config) {
 			if (lastItem) {
 				const itemRect = lastItem.getBoundingClientRect();
 				const hostRect = hostEl.getBoundingClientRect();
-				if (itemRect.bottom < hostRect.bottom && hostEl.scrollTop > 0) hostEl.scrollTop = Math.max(0, hostEl.scrollTop - (hostRect.bottom - itemRect.bottom));
+				if (itemRect.bottom < hostRect.bottom && hostEl.scrollTop > 0) hostEl.scrollTop = Math.max(0, hostEl.scrollTop - (hostRect.bottom - itemRect.bottom) / Component.scale);
 			}
 			if (hostEl.scrollTop > maxScroll) hostEl.scrollTop = maxScroll;
 			if (hostEl._roScrollbarRestart) hostEl._roScrollbarRestart();
@@ -246150,10 +246412,12 @@ function createInventory(config) {
 		let lastWidth = 0;
 		let lastHeight = 0;
 		function resizing() {
-			let w = Math.floor((Mouse.screen.x - left - 25) / 32);
+			const extraX = 25;
+			const scale = Component.scale;
+			let w = Math.floor(((Mouse.screen.x - left) / scale - extraX) / 32);
 			w = Math.min(Math.max(w, 6), resizableHeight ? 8 : 9);
 			if (resizableHeight) {
-				let h = Math.floor((Mouse.screen.y - top - 20) / 32);
+				let h = Math.floor(((Mouse.screen.y - top) / scale - 20) / 32);
 				h = Math.min(Math.max(h, 2), 5);
 				if (w === lastWidth && h === lastHeight) return;
 				Component.resize(w, h);
@@ -246217,7 +246481,7 @@ function createInventory(config) {
 			Component._host.style.height = `${_realSize}px`;
 			_realSize = 0;
 		} else {
-			_realSize = Component._host.getBoundingClientRect().height;
+			_realSize = Component._host.offsetHeight;
 			Component._host.style.height = "17px";
 			if (panel) panel.style.display = "none";
 		}
@@ -246304,8 +246568,9 @@ function createInventory(config) {
 		const rootRect = rootEl.getBoundingClientRect();
 		if (overlay) {
 			overlay.style.display = "block";
-			overlay.style.top = `${itemRect.top - rootRect.top}px`;
-			overlay.style.left = `${itemRect.left - rootRect.left + 35}px`;
+			const scale = Component.scale;
+			overlay.style.top = `${(itemRect.top - rootRect.top) / scale}px`;
+			overlay.style.left = `${(itemRect.left - rootRect.left) / scale + 35}px`;
 			overlay.innerHTML = _sanitizeHtml$7(`${DB.getItemName(item)}: ${item.count || 1}${quantity}`);
 			if (item.IsIdentified) overlay.classList.remove("grey");
 			else overlay.classList.add("grey");
@@ -246961,7 +247226,7 @@ function createStorage(config) {
 		_list.length = 0;
 		_preferences.y = parseInt(this._host.style.top, 10);
 		_preferences.x = parseInt(this._host.style.left, 10);
-		_preferences.height = Math.floor((this._host.getBoundingClientRect().height - 20) / 32);
+		_preferences.height = Math.floor((this._host.offsetHeight - 20) / 32);
 		_preferences.save();
 		if (hasFilters) {
 			for (const tabId in _openFilters) if (_openFilters.hasOwnProperty(tabId)) _openFilters[tabId].remove();
@@ -247090,7 +247355,7 @@ function createStorage(config) {
 		const top = Component._host.offsetTop;
 		let lastHeight = 0;
 		function resizing() {
-			let h = Math.floor((Mouse.screen.y - top - 20) / 32);
+			let h = Math.floor(((Mouse.screen.y - top) / Component.scale - 20) / 32);
 			h = Math.min(Math.max(h, 8), 17);
 			if (h === lastHeight) return;
 			resizeHeight(h);
@@ -247203,7 +247468,7 @@ function createStorage(config) {
 		const overlay = root.querySelector(".overlay");
 		if (overlay) {
 			overlay.textContent = title;
-			const height = Component._host.getBoundingClientRect().height;
+			const height = Component._host.offsetHeight;
 			overlay.style.top = `${height - 50}px`;
 			overlay.style.left = `${button.offsetLeft}px`;
 			overlay.style.display = "";
@@ -248825,8 +249090,9 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 		const rootEl = root.querySelector("#" + name) || root;
 		const btnRect = this.getBoundingClientRect();
 		const rootRect = rootEl.getBoundingClientRect();
-		const top = btnRect.top - rootRect.top;
-		const left = btnRect.left - rootRect.left;
+		const scale = Component.scale;
+		const top = (btnRect.top - rootRect.top) / scale;
+		const left = (btnRect.left - rootRect.left) / scale;
 		if (!top && !left) return;
 		if (overlay) {
 			overlay.style.display = "block";
@@ -249188,7 +249454,7 @@ function onResize$4() {
 	const top = ItemInfo._host.offsetTop;
 	let lastHeight = 0;
 	function resizing() {
-		const h = Math.floor(Mouse.screen.y - top);
+		const h = Math.floor((Mouse.screen.y - top) / ItemInfo.scale);
 		if (h === lastHeight) return;
 		resize$3(h);
 		lastHeight = h;
@@ -316813,6 +317079,7 @@ var init_Scrollbar = __esmMin((() => {
 	init_Texture();
 	init_DBManager();
 	init_Client();
+	init_UIScale();
 	ScrollBar = class ScrollBar {
 		/**
 		* @var {boolean} does the scrollbar completely loaded ?
@@ -317141,7 +317408,7 @@ var init_Scrollbar = __esmMin((() => {
 				const thumbHeight = thumb.clientHeight;
 				const maxScrollTop = sh - h;
 				const maxThumbTop = trackHeight - thumbHeight;
-				const deltaY = e.clientY - startY;
+				const deltaY = (e.clientY - startY) / UIScale_default.ofElement(thumb);
 				element.scrollTop = Math.max(0, Math.min(startThumbY + deltaY, maxThumbTop)) / maxThumbTop * maxScrollTop;
 				updateThumb();
 			});
@@ -317198,6 +317465,7 @@ var init_GUIComponent = __esmMin((() => {
 	init_SessionStorage();
 	init_Targa();
 	init_ClampToViewport();
+	init_UIScale();
 	init_preload_helper();
 	_Cursor = null;
 	_DB = null;
@@ -317329,6 +317597,7 @@ var init_GUIComponent = __esmMin((() => {
 				SessionStorage_default.FreezeUI = true;
 				_Cursor?.setType(_Cursor?.ACTION?.DEFAULT ?? 0);
 			}
+			UIScale_default.attach(this);
 			if (this.onAppend) this.onAppend();
 			this._setupScrollbars();
 			this._fixPositionOverflow();
@@ -317362,6 +317631,7 @@ var init_GUIComponent = __esmMin((() => {
 					node.dispatchEvent(new Event("x_remove"));
 				});
 				this._host.remove();
+				UIScale_default.detach(this);
 				if (this.mouseMode === MouseMode.FREEZE) {
 					_frozenBy.delete(this);
 					if (_frozenBy.size === 0) {
@@ -317374,6 +317644,15 @@ var init_GUIComponent = __esmMin((() => {
 					this.__scrollbarObserver = null;
 				}
 			}
+		}
+		/**
+		* The factor this window is drawn at (UI/UIScale.js); 1 unless a plugin
+		* scaled it. Screen distances divided by it are distances in the window.
+		*
+		* @return {number}
+		*/
+		get scale() {
+			return UIScale_default.of(this);
 		}
 		/**
 		* Focus the UI (bring to top of other components).
@@ -317433,6 +317712,7 @@ var init_GUIComponent = __esmMin((() => {
 			if (this.render) cloned.render = this.render;
 			cloned.mouseMode = this.mouseMode;
 			cloned.needFocus = this.needFocus;
+			cloned.scaleName = this.scaleName || this.name;
 			if (full) for (const key of Object.keys(this)) {
 				if (key === "_host" || key === "_shadow" || key === "_container" || key === "ui" || key === "__loaded" || key === "__preparing" || key === "__scrollbarObserver") continue;
 				cloned[key] = this[key];
@@ -317527,8 +317807,9 @@ var init_GUIComponent = __esmMin((() => {
 				} else if (event.which !== 1) return;
 				const x = host.offsetLeft - Mouse.screen.x;
 				const y = host.offsetTop - Mouse.screen.y;
-				const width = host.offsetWidth;
-				const height = host.offsetHeight;
+				const hostRect = host.getBoundingClientRect();
+				const width = hostRect.width;
+				const height = hostRect.height;
 				_snapCache = [];
 				if (UI_default.windowmagnet && component.manager) {
 					const hostParent = host.offsetParent;
@@ -317539,11 +317820,12 @@ var init_GUIComponent = __esmMin((() => {
 						const el = other._host || other.ui && other.ui[0];
 						if (!el) continue;
 						if (hostParent && el.offsetParent && el.offsetParent !== hostParent) continue;
+						const rect = el.getBoundingClientRect();
 						_snapCache.push({
-							left: el.offsetLeft,
-							top: el.offsetTop,
-							right: el.offsetLeft + el.offsetWidth,
-							bottom: el.offsetTop + el.offsetHeight
+							left: rect.left,
+							top: rect.top,
+							right: rect.right,
+							bottom: rect.bottom
 						});
 					}
 				}
@@ -318201,8 +318483,9 @@ function resetElementsPosition() {
 	const count = elements.length;
 	let x = 0;
 	let y = 0;
+	const height = (Renderer.height - 166) / StatusIcons.scale;
 	for (let i = 0; i < count; ++i, y += 36) {
-		if (y > Renderer.height - 166) {
+		if (y > height) {
 			y = 0;
 			x += 45;
 		}
@@ -318266,7 +318549,7 @@ function createElement(index) {
 function addElement$4(element) {
 	const root = StatusIcons.getRoot();
 	const elements = root.querySelectorAll(".state");
-	const max = (Renderer.height - 166) / 36 | 0;
+	const max = Math.max(1, (Renderer.height - 166) / StatusIcons.scale / 36 | 0);
 	const count = elements.length;
 	const x = (count / max | 0) * 45;
 	const y = count % max * 36;
@@ -318365,6 +318648,12 @@ var init_StatusIcons = __esmMin((() => {
 	*/
 	StatusIcons.onAppend = function onAppend() {
 		Renderer.render(rendering$1);
+	};
+	/**
+	* Drawn at another UI scale (UI/UIScale.js): fewer or more icons fit in a column
+	*/
+	StatusIcons.onScale = function onScale() {
+		resetElementsPosition();
 	};
 	/**
 	* Stop rendering icons
@@ -323922,9 +324211,8 @@ var init_ShortCuts = __esmMin((() => {
 		_preferences$12.reduce = false;
 		_preferences$12.y = parseInt(this._host.style.top, 10);
 		_preferences$12.x = parseInt(this._host.style.left, 10);
-		const hostRect = this._host.getBoundingClientRect();
-		_preferences$12.width = Math.floor((hostRect.width - 25) / 32);
-		_preferences$12.height = Math.floor((hostRect.height - 20) / 32);
+		_preferences$12.width = Math.floor((this._host.offsetWidth - 25) / 32);
+		_preferences$12.height = Math.floor((this._host.offsetHeight - 20) / 32);
 		_preferences$12.magnet_top = this.magnet.TOP;
 		_preferences$12.magnet_bottom = this.magnet.BOTTOM;
 		_preferences$12.magnet_left = this.magnet.LEFT;
@@ -332455,7 +332743,7 @@ var init_ItemObtain = __esmMin((() => {
 	*/
 	ItemObtain.onAppend = function onAppend() {
 		const el = this.getRoot().querySelector("#ItemObtain");
-		this._host.style.left = `${Renderer.width - (el ? el.offsetWidth : 0) >> 1}px`;
+		this._host.style.left = `${Renderer.width - (el ? el.getBoundingClientRect().width : 0) >> 1}px`;
 	};
 	/**
 	* Once removed from HTML, clean timer
@@ -332489,7 +332777,7 @@ var init_ItemObtain = __esmMin((() => {
 		const content = root.querySelector(".content");
 		if (content) content.innerHTML = `<img src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" class="item-${item.ITID}" width="24" height="24" /> ` + _sanitizeHtml$6(`${display} ${DB.getMessage(696).replace("%d", item.count || 1)}`);
 		const el = root.querySelector("#ItemObtain");
-		this._host.style.left = `${Renderer.width - (el ? el.offsetWidth : 0) >> 1}px`;
+		this._host.style.left = `${Renderer.width - (el ? el.getBoundingClientRect().width : 0) >> 1}px`;
 		Client.loadFile(DB.INTERFACE_PATH + "item/" + resource + ".bmp", (url) => {
 			const img = root.querySelector(`img.item-${item.ITID}`);
 			if (img) img.src = url;
@@ -341740,8 +342028,9 @@ var init_PincodeWindow = __esmMin((() => {
 	*/
 	PincodeWindow.init = function init() {
 		const root = this.getRoot();
-		this._host.style.top = (Renderer.height - 358) / 2 + "px";
-		this._host.style.left = (Renderer.width - 576) / 2 + "px";
+		const scale = this.scale;
+		this._host.style.top = (Renderer.height - 358 * scale) / 2 + "px";
+		this._host.style.left = (Renderer.width - 576 * scale) / 2 + "px";
 		root.querySelector(".pass").disabled = true;
 		root.querySelector(".newpass").disabled = true;
 		root.querySelector(".checkpass").disabled = true;
@@ -342311,8 +342600,9 @@ function createCharSelect(config) {
 			return;
 		}
 		const root = this.getRoot();
-		this._host.style.top = `${(Renderer.height - hostHeight) / 2}px`;
-		this._host.style.left = `${(Renderer.width - 576) / 2}px`;
+		const scale = this.scale;
+		this._host.style.top = `${(Renderer.height - hostHeight * scale) / 2}px`;
+		this._host.style.left = `${(Renderer.width - 576 * scale) / 2}px`;
 		_index = _preferences.index;
 		root.querySelector(".slotinfo .number").textContent = `${_list.length} / ${_maxSlots}`;
 		if (!pageBalls) root.querySelector(".pageinfo .count").textContent = _maxSlots / 3;
@@ -343489,8 +343779,9 @@ function createCharCreate(config) {
 	* Once add to HTML, start rendering
 	*/
 	Component.onAppend = function onAppend() {
-		this._host.style.top = `${(Renderer.height - hostHeight) / 2}px`;
-		this._host.style.left = `${(Renderer.width - hostWidth) / 2}px`;
+		const scale = this.scale;
+		this._host.style.top = `${(Renderer.height - hostHeight * scale) / 2}px`;
+		this._host.style.left = `${(Renderer.width - hostWidth * scale) / 2}px`;
 		if (hasRace) {
 			_human.render = true;
 			_human.entity.set({
@@ -344972,8 +345263,9 @@ var init_WinList = __esmMin((() => {
 	* Initialize UI
 	*/
 	WinList.init = function init() {
-		this._host.style.top = `${(Renderer.height - 280) / 1.5}px`;
-		this._host.style.left = `${(Renderer.width - 280) / 2}px`;
+		const scale = this.scale;
+		this._host.style.top = `${(Renderer.height - 280 * scale) / 1.5}px`;
+		this._host.style.left = `${(Renderer.width - 280 * scale) / 2}px`;
 		this.draggable();
 		const root = this.getRoot();
 		this._listEl = root.querySelector(".list");
