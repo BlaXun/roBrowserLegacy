@@ -34,6 +34,15 @@ const MODE = {
 	AIM: 1
 };
 
+/**
+ * Values of ControlsSettings.joyQuick.
+ */
+const QUICK_CAST = {
+	OFF: 0,
+	RELEASE: 1,
+	INSTANT: 2
+};
+
 // How far from the ray a target may stand and still count: HIT_RADIUS
 // cells next to the character, widening by HIT_SPREAD cells per cell of
 // distance (about 2 cells at 15 away), so a slightly-off stick still
@@ -56,6 +65,10 @@ let _aimDrawn = false;
 let _aimRingTarget = null; // the target the aim selected last
 let _aimRingAt = 0; // when, for the fade-out
 
+let _cursorHidden = false;
+let _mouseMoved = false; // the real mouse moved: cursor stays visible until the stick aims again
+let _mouseListening = false;
+
 const _aimWorld = glMatrix.vec4.create();
 const _aimView = glMatrix.vec4.create();
 
@@ -65,6 +78,18 @@ function isEnabled() {
 
 function isActive() {
 	return isEnabled() && ControlsSettings.joyRightStickMode === MODE.AIM;
+}
+
+/**
+ * The Quick-Cast mode in effect. With aiming available, Off is not: it
+ * leaves a targeted skill waiting for an A click at the cursor, and the
+ * aim does not keep the cursor on the target, so Instant stands in for it.
+ *
+ * @return {number} QUICK_CAST value
+ */
+function quickCastMode() {
+	const mode = ControlsSettings.joyQuick | 0;
+	return mode === QUICK_CAST.OFF && isEnabled() ? QUICK_CAST.INSTANT : mode;
 }
 
 /**
@@ -280,12 +305,42 @@ function getTarget() {
 }
 
 /**
- * Aim mode left: remove the ring and forget the last hit.
+ * Show or hide the game's cursor (CursorManager's .cursor element). Only
+ * its visibility changes: Mouse.screen still follows the target, so A
+ * clicks it as before.
+ */
+function setCursorHidden(hidden) {
+	if (hidden === _cursorHidden) {
+		return;
+	}
+	const cursor = document.querySelector('.cursor');
+	if (!cursor) {
+		return;
+	}
+	cursor.style.visibility = hidden ? 'hidden' : '';
+	_cursorHidden = hidden;
+}
+
+/**
+ * A real mouse move shows the cursor again, so the player taking the mouse
+ * is never left without one. Synthetic events (isTrusted false) do not
+ * count.
+ */
+function onMouseMove(event) {
+	if (event.isTrusted) {
+		_mouseMoved = true;
+		setCursorHidden(false);
+	}
+}
+
+/**
+ * Aim mode left: remove the ring, forget the last hit, show the cursor.
  */
 function release() {
 	_aimLastHit = null;
 	_aimRingTarget = null;
 	clearOverlay();
+	setCursorHidden(false);
 }
 
 /**
@@ -301,6 +356,16 @@ function update(x, y, held) {
 		release();
 		return;
 	}
+
+	// Settings > Gamepad > Aim Settings > Hide Cursor, off by default
+	if (held) {
+		_mouseMoved = false;
+	}
+	if (ControlsSettings.joyAimHideCursor && !_mouseListening) {
+		window.addEventListener('mousemove', onMouseMove);
+		_mouseListening = true;
+	}
+	setCursorHidden(!!ControlsSettings.joyAimHideCursor && !_mouseMoved);
 
 	const origin = [player.position[0], player.position[1]];
 	let hit = null;
@@ -381,6 +446,10 @@ function toggle() {
 function setEnabled(enabled) {
 	ControlsSettings.joyAimEnabled = !!enabled;
 	ControlsSettings.joyRightStickMode = enabled ? MODE.AIM : MODE.CURSOR;
+	// Quick-Cast Off is not available with aiming (quickCastMode)
+	if (enabled && (ControlsSettings.joyQuick | 0) === QUICK_CAST.OFF) {
+		ControlsSettings.joyQuick = QUICK_CAST.INSTANT;
+	}
 	ControlsSettings.save();
 	release();
 	JoystickUIRenderer.updateStickMode();
@@ -388,8 +457,10 @@ function setEnabled(enabled) {
 
 export default {
 	MODE,
+	QUICK_CAST,
 	isEnabled,
 	isActive,
+	quickCastMode,
 	setEnabled,
 	update,
 	release,

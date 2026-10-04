@@ -1,7 +1,9 @@
 /**
  * UI/Components/JoystickUI/JoystickCursorMotion.js
  *
- * Moves the virtual cursor with the right stick once per animation frame.
+ * Moves the virtual cursor with the right stick once per animation frame,
+ * and gives the same frame to the View + D-pad camera
+ * (JoystickCameraMotion). Stick values pass JoystickStickFilter first.
  *
  * The button/left-stick poll runs at 10 Hz (JoystickPollingLoop), which is
  * fine for discrete actions but made the cursor jump joySense pixels ten
@@ -19,6 +21,8 @@
 import ControlsSettings from 'Preferences/Controls.js';
 import Cursor from './JoystickMouseCursorAdapter.js';
 import Aim from './JoystickAimMode.js';
+import StickFilter from './JoystickStickFilter.js';
+import CameraMotion from './JoystickCameraMotion.js';
 
 // Old behaviour moved joySense px per 100 ms poll at full deflection.
 const SENSE_TO_PX_PER_SEC = 10;
@@ -55,16 +59,21 @@ function frame(time) {
 	const dt = Math.min(MAX_DT, (time - lastTime) / 1000);
 	lastTime = time;
 
+	if (dt > 0) {
+		CameraMotion.update(gp, dt);
+	}
+
 	if (gp.axes.length < 4 || dt <= 0) {
 		Aim.release();
 		return;
 	}
 
-	let x = gp.axes[2];
-	let y = gp.axes[3];
+	const axes = StickFilter.filterAxes(gp.axes);
+	let x = axes[2];
+	let y = axes[3];
 	if (ControlsSettings.joyReverseStick) {
-		x = gp.axes[0];
-		y = gp.axes[1];
+		x = axes[0];
+		y = axes[1];
 	}
 
 	// Radial deadzone, then rescale so speed starts at 0 just past it
@@ -133,5 +142,7 @@ export default {
 			cancelAnimationFrame(frameHandle);
 			frameHandle = null;
 		}
+		// Gamepad UI gone: no ring left behind, and the cursor visible again
+		Aim.release();
 	}
 };
