@@ -28,6 +28,7 @@ import Inventory from 'UI/Components/Inventory/Inventory.js';
 import { InventoryItemTransferPriority } from 'UI/Components/Inventory/InventoryItemTransfer.js';
 import htmlText from './NpcStore.html?raw';
 import cssText from './NpcStore.css?raw';
+import { onItemDoubleClick } from 'UI/ItemDoubleClick.js';
 import WheelSteps from 'UI/WheelSteps.js';
 
 /**
@@ -180,12 +181,8 @@ NpcStore.init = function init() {
 				onItemInfo.call(icon, e);
 			}
 		});
-		content.addEventListener('dblclick', e => {
-			const item = e.target.closest('.item');
-			if (item) {
-				onItemSelected.call(item);
-			}
-		});
+		// Counted per item rather than by the browser: see UI/ItemDoubleClick.js.
+		onItemDoubleClick(content, '.item', item => onItemSelected.call(item));
 		content.addEventListener('mousedown', e => {
 			const item = e.target.closest('.item');
 			if (item) {

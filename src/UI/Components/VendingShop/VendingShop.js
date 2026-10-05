@@ -26,6 +26,7 @@ import Vending from 'UI/Components/Vending/Vending.js';
 import htmlText from './VendingShop.html?raw';
 import cssText from './VendingShop.css?raw';
 import VendingReport from 'UI/Components/VendingReport/VendingReport.js';
+import { onItemDoubleClick } from 'UI/ItemDoubleClick.js';
 import WheelSteps from 'UI/WheelSteps.js';
 
 /**
@@ -124,12 +125,8 @@ VendingShop.init = function init() {
 				onItemInfo(e, itemEl);
 			}
 		});
-		content.addEventListener('dblclick', e => {
-			const itemEl = e.target.closest('.item');
-			if (itemEl) {
-				onItemUsed(e, itemEl);
-			}
-		});
+		// Counted per item rather than by the browser: see UI/ItemDoubleClick.js.
+		onItemDoubleClick(content, '.item', (itemEl, e) => onItemUsed(e, itemEl));
 	}
 
 	this.draggable('.titlebar');
