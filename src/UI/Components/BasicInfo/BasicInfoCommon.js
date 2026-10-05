@@ -59,7 +59,8 @@ export function createBasicInfo(config) {
 		miniLayout = false,
 		hideIds = [],
 		barScale = 1.27,
-		hasApBar = false
+		hasApBar = false,
+		menuTip = false
 	} = config;
 
 	const Component = new GUIComponent(name, cssText);
@@ -195,8 +196,47 @@ export function createBasicInfo(config) {
 	/**
 	 * Initialize UI
 	 */
+	/**
+	 * Draw the name of the button the pointer is on in one tip below the frame.
+	 *
+	 * Each button used to draw its own name above itself, which the menu, now that it scrolls,
+	 * would clip. The tip sits outside it and takes its text from the button's `.name`.
+	 */
+	function setupMenuTip(root) {
+		const inner = root.querySelector(innerId);
+		const buttons = root.querySelector('.buttons');
+		if (!inner || !buttons) {
+			return;
+		}
+
+		const tip = document.createElement('div');
+		tip.className = 'menu_tip';
+		inner.appendChild(tip);
+
+		const hide = () => {
+			tip.style.display = 'none';
+		};
+
+		buttons.addEventListener('mouseover', event => {
+			const button = event.target.closest(buttonsSelector);
+			const label = button && button.querySelector('.name');
+			if (!label || !label.textContent.trim()) {
+				hide();
+				return;
+			}
+			tip.textContent = label.textContent;
+			tip.style.display = 'block';
+		});
+		buttons.addEventListener('mouseleave', hide);
+		buttons.addEventListener('scroll', hide);
+	}
+
 	Component.init = function init() {
 		const root = this.getRoot();
+
+		if (menuTip) {
+			setupMenuTip(root);
+		}
 
 		root.querySelectorAll(topbarItemSelector).forEach(el => {
 			el.addEventListener('mousedown', e => e.stopImmediatePropagation());
