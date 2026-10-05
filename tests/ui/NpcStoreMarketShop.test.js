@@ -127,7 +127,9 @@ function amountOf(root, windowName, index) {
 
 function doubleClick(root, windowName, index) {
 	const item = root.querySelector(`.${windowName} .content .item[data-index="${index}"]`);
-	item.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+	// A double click as the player makes it: two clicks on the item (UI/ItemDoubleClick.js).
+	item.dispatchEvent(new window.MouseEvent('click', { bubbles: true, button: 0, detail: 1 }));
+	item.dispatchEvent(new window.MouseEvent('click', { bubbles: true, button: 0, detail: 2 }));
 }
 
 describe('NpcStore market shop quantities', () => {

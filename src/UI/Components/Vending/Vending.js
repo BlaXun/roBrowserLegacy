@@ -27,6 +27,7 @@ import cssText from './Vending.css?raw';
 import Renderer from 'Renderer/Renderer.js';
 import Inventory from 'UI/Components/Inventory/Inventory.js';
 import BasicInfo from 'UI/Components/BasicInfo/BasicInfo.js';
+import { onItemDoubleClick } from 'UI/ItemDoubleClick.js';
 import WheelSteps from 'UI/WheelSteps.js';
 
 const Vending = new GUIComponent('Vending', cssText);
@@ -155,12 +156,8 @@ Vending.init = function init() {
 			}
 		});
 
-		content.addEventListener('dblclick', e => {
-			const item = e.target.closest('.item');
-			if (item) {
-				onItemSelected.call(item);
-			}
-		});
+		// Counted per item rather than by the browser: see UI/ItemDoubleClick.js.
+		onItemDoubleClick(content, '.item', item => onItemSelected.call(item));
 
 		content.addEventListener('mousedown', e => {
 			const item = e.target.closest('.item');
