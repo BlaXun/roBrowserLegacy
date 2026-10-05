@@ -13,6 +13,7 @@ import WebGL from 'Utils/WebGL.js';
 import Client from 'Core/Client.js';
 import Altitude from 'Renderer/Map/Altitude.js';
 import SpriteRenderer from 'Renderer/SpriteRenderer.js';
+import { auraUniform, beginAuraBlend, endAuraBlend } from 'Renderer/Effects/AuraBlend.js';
 
 /**
  * @var {WebGLProgram}
@@ -78,7 +79,11 @@ function calculateSize(self, aura, auraAngle, i) {
  * GroundAura constructor
  */
 class GroundAura {
-	constructor(position, size, distance, textureName, tick) {
+	/**
+	 * @param {object} color optional tint from AuraTiers.auraColor; white when left out
+	 */
+	constructor(position, size, distance, textureName, tick, color) {
+		this.color = color || { r: 1, g: 1, b: 1, dark: false };
 		this.position = position;
 		this.textureName = textureName;
 		this.tick = tick;
@@ -179,6 +184,7 @@ class GroundAura {
 
 		gl.uniform3fv(uniform.uWorldPosition, worldPos);
 		const self = this;
+		beginAuraBlend(gl, this.color);
 		SpriteRenderer.runWithDepth(true, false, false, function () {
 			for (let i = 0; i < self.aura.length; i++) {
 				if (!self.aura[i].life) {
@@ -190,12 +196,13 @@ class GroundAura {
 				// Set uniforms - size in SpriteRenderer units (shader converts to world units)
 				gl.uniform2f(uniform.uSize, self.aura[i].size[0], self.aura[i].size[1]);
 				gl.uniform1f(uniform.uAngle, (auraAngle * Math.PI) / 180);
-				gl.uniform4f(uniform.uColor, 1.0, 1.0, 1.0, 0.8);
+				gl.uniform4f(uniform.uColor, ...auraUniform(self.color, 0.8));
 				gl.uniform1f(uniform.uZIndex, 1 + i);
 
 				gl.drawArrays(gl.TRIANGLES, 0, 6);
 			}
 		});
+		endAuraBlend(gl, this.color);
 	}
 
 	/**
