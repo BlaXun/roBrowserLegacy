@@ -28,6 +28,7 @@ import Inventory from 'UI/Components/Inventory/Inventory.js';
 import { InventoryItemTransferPriority } from 'UI/Components/Inventory/InventoryItemTransfer.js';
 import htmlText from './NpcStore.html?raw';
 import cssText from './NpcStore.css?raw';
+import WheelSteps from 'UI/WheelSteps.js';
 
 /**
  * Create NPC Store component
@@ -1224,17 +1225,7 @@ function onItemFocus() {
  * Update scroll by block (32px)
  */
 function onScroll(event) {
-	let delta;
-
-	if (event.deltaY) {
-		delta = event.deltaY > 0 ? -1 : 1;
-	} else if (event.wheelDelta) {
-		delta = event.wheelDelta / 120;
-	} else if (event.detail) {
-		delta = -event.detail;
-	}
-
-	this.scrollTop = Math.floor(this.scrollTop / 32) * 32 - delta * 32;
+	WheelSteps.scrollRows(event, this, 32);
 	event.preventDefault();
 }
 

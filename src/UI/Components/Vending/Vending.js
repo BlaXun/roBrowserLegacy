@@ -27,6 +27,7 @@ import cssText from './Vending.css?raw';
 import Renderer from 'Renderer/Renderer.js';
 import Inventory from 'UI/Components/Inventory/Inventory.js';
 import BasicInfo from 'UI/Components/BasicInfo/BasicInfo.js';
+import WheelSteps from 'UI/WheelSteps.js';
 
 const Vending = new GUIComponent('Vending', cssText);
 
@@ -652,18 +653,7 @@ function onItemFocus() {
 }
 
 function onScroll(event) {
-	let delta;
-
-	if (event.wheelDelta) {
-		delta = event.wheelDelta / 120;
-		if (window.opera) {
-			delta = -delta;
-		}
-	} else if (event.detail) {
-		delta = -event.detail;
-	}
-
-	this.scrollTop = Math.floor(this.scrollTop / 32) * 32 - delta * 32;
+	WheelSteps.scrollRows(event, this, 32);
 	event.preventDefault();
 }
 

@@ -27,6 +27,7 @@ import InputBox from 'UI/Components/InputBox/InputBox.js';
 import ItemInfo from 'UI/Components/ItemInfo/ItemInfo.js';
 import CartItems from 'UI/Components/CartItems/CartItems.js';
 import Inventory from 'UI/Components/Inventory/Inventory.js';
+import WheelSteps from 'UI/WheelSteps.js';
 
 export function createStorage(config) {
 	const {
@@ -575,17 +576,7 @@ export function createStorage(config) {
 	}
 
 	function onScroll(event, contentEl) {
-		let delta;
-
-		if (event.wheelDelta) {
-			delta = event.wheelDelta / 120;
-		} else if (event.detail) {
-			delta = -event.detail;
-		} else if (event.deltaY) {
-			delta = -event.deltaY / 100;
-		}
-
-		contentEl.scrollTop = Math.floor(contentEl.scrollTop / 32) * 32 - delta * 32;
+		WheelSteps.scrollRows(event, contentEl, 32);
 		event.preventDefault();
 	}
 
