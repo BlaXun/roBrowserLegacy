@@ -37,6 +37,9 @@ import EffectManager from 'Renderer/EffectManager.js';
 import SignboardManager from 'Renderer/SignboardManager.js';
 import ScreenEffectManager from 'Renderer/ScreenEffectManager.js';
 import Sky from 'Renderer/Effects/Sky.js';
+import WeatherTable from 'DB/Effects/WeatherEffect.js';
+import { addCustomMapWeather, customMapBgm } from 'DB/Map/CustomMaps.js';
+import Configs from 'Core/Configs.js';
 import Damage from 'Renderer/Effects/Damage.js';
 import GraphicsSettings from 'Preferences/Graphics.js';
 import MapPreferences from 'Preferences/Map.js';
@@ -619,7 +622,7 @@ function onMapComplete(success, error) {
 	}
 
 	// Play BGM
-	BGM.play((mapInfo && mapInfo.mp3) || '01.mp3');
+	BGM.play(customMapBgm(Configs.get('customMaps'), worldResource) || (mapInfo && mapInfo.mp3) || '01.mp3');
 
 	// Apply fog to map
 	this.fog.exist = !!(mapInfo && mapInfo.fog);
@@ -635,6 +638,8 @@ function onMapComplete(success, error) {
 	const gl = Renderer.getContext();
 
 	SpriteRenderer.init(gl);
+	// Maps the config gives a sky or weather of their own (custom maps).
+	addCustomMapWeather(WeatherTable, Configs.get('customMaps'));
 	Sky.init(gl, worldResource);
 	Damage.init(gl);
 	EffectManager.init(gl);
