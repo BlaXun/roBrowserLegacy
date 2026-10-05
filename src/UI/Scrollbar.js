@@ -12,6 +12,7 @@ import Texture from 'Utils/Texture.js';
 import DB from 'DB/DBManager.js';
 import Client from 'Core/Client.js';
 import UIScale from 'UI/UIScale.js';
+import WheelSteps from 'UI/WheelSteps.js';
 
 /**
  * ScrollBar Namespace
@@ -391,8 +392,14 @@ class ScrollBar {
 				return;
 			}
 
-			const delta = e.deltaY > 0 ? 1 : -1;
-			element.scrollTop += delta * 20;
+			// The window's own wheel handler already scrolled it by whole rows;
+			// adding this window-agnostic step too left the list between rows.
+			if (e.defaultPrevented) {
+				e.stopPropagation();
+				return;
+			}
+
+			element.scrollTop += WheelSteps.steps(e, element) * 20;
 
 			updateThumb();
 			e.preventDefault();

@@ -28,6 +28,7 @@ import Commands from 'Controls/ProcessCommand.js';
 import ChatBoxSettings from 'UI/Components/ChatBoxSettings/ChatBoxSettings.js';
 import Configs from 'Core/Configs.js';
 import EntityManager from 'Renderer/EntityManager.js';
+import WheelSteps from 'UI/WheelSteps.js';
 
 /**
  * @var {number} max message in the chatbox
@@ -1580,21 +1581,7 @@ ChatBox.saveCurrentTabChat = function saveCurrentTabChat() {
  * Update scroll by block (14px)
  */
 function onScroll(event) {
-	let delta;
-
-	if (event.wheelDelta) {
-		delta = event.wheelDelta / 120;
-		if (window.opera) {
-			delta = -delta;
-		}
-	} else if (event.detail) {
-		delta = -event.detail;
-	} else if (event.deltaY) {
-		delta = -event.deltaY / Math.abs(event.deltaY);
-	}
-
-	const lineHeight = getScrollLineHeightPx(this);
-	this.scrollTop = Math.floor(this.scrollTop / lineHeight) * lineHeight - (delta || 0) * lineHeight;
+	WheelSteps.scrollRows(event, this, getScrollLineHeightPx(this));
 	event.preventDefault();
 }
 
