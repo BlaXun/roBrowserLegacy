@@ -168,8 +168,12 @@
 	left: 0px;
 	top: 9px;
 	width: 220px;
+	height: 132px;
+	overflow-x: hidden;
+	overflow-y: auto; /* the client's scrollbar attaches to this, and only shows when there is more */
 	display: grid;
 	grid-template-columns: auto auto auto auto auto;
+	align-content: start; /* rows keep their height instead of stretching to fill the panel */
 	justify-items: center;
 	background-position: left bottom;
 }
@@ -187,6 +191,11 @@
 	border: none;
 	margin: 6px;
 	background: transparent;
+}
+/* The scrollbar takes 13px of the panel only while it scrolls. Five buttons still
+   fit in what is left if their side margins give up 2px each. */
+#BasicInfoV4 .buttons[style*='padding-right: 13px'] > button[id] {
+	margin: 6px 4px;
 }
 
 /* REDUCED */
@@ -216,12 +225,18 @@
 }
 
 #BasicInfoV4 .buttons button .name {
-	pointer-events: none;
-	position: relative;
 	display: none;
-	z-index: 1;
-	top: -20px;
-	left: 0px;
+}
+
+/* A button's name is drawn once, centred below the frame, rather than inside the
+   button, where a panel that scrolls would clip it. BasicInfoCommon fills it in. */
+#BasicInfoV4 .menu_tip {
+	display: none;
+	position: absolute;
+	left: 110px;
+	transform: translateX(-50%);
+	z-index: 10;
+	pointer-events: none;
 	background-color: rgba(0, 0, 0, 0.6);
 	text-shadow: 1px 1px black;
 	color: white;
@@ -229,11 +244,11 @@
 	white-space: nowrap;
 	font-size: 0.6rem;
 }
-#BasicInfoV4 .buttons button:hover .name {
-	display: table;
+#BasicInfoV4.large .menu_tip {
+	top: 280px; /* the panel is at 144px, 132px tall */
 }
-#BasicInfoV4 .buttons button .name {
-	display: none;
+#BasicInfoV4.small .menu_tip {
+	top: 198px; /* the panel is at 62px, 132px tall */
 }
 
 #BasicInfoV4 .buttons .btn_overlay {
