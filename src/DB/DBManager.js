@@ -434,6 +434,10 @@ class DB {
 			);
 
 			if (PACKETVER.value >= 20141008) {
+				// JobNameTable's values are sprite names, not display text: the
+				// mercenaries' are Korean (여\활용병), so decoding them with a Korean
+				// charpage made Unicode Hangul and the body sprite 404'd, leaving
+				// only the head. Load it as a resource table, like accname/robename.
 				loadLuaTableWithCustom(
 					[DB.LUA_PATH + 'datainfo/npcidentity.lub', DB.LUA_PATH + 'datainfo/jobname.lub'],
 					'JobNameTable',
@@ -451,7 +455,8 @@ class DB {
 								onLoad()
 							);
 						});
-					}
+					},
+					true
 				);
 			} else {
 				loadLuaTableWithCustom(
@@ -461,7 +466,9 @@ class DB {
 					function (json) {
 						Object.assign(MonsterTable, json);
 					},
-					onLoad()
+					onLoad(),
+					null,
+					true
 				);
 			}
 
