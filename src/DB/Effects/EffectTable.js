@@ -14,6 +14,7 @@ import Camera from 'Renderer/Camera.js';
 import SwirlingAura from 'Renderer/Effects/SwirlingAura.js';
 import GroundAura from 'Renderer/Effects/GroundAura.js';
 import Level99Bubble from 'Renderer/Effects/Level99Bubble.js';
+import LevelAuraEffects from 'DB/Effects/LevelAuraEffects.js';
 
 import SongEffects from 'Renderer/Effects/Songs.js';
 import SoundManager from 'Audio/SoundManager.js';
@@ -4302,7 +4303,13 @@ export default {
 			attachedEntity: true,
 			func: function (Params) {
 				this.add(
-					new SwirlingAura(Params.Init.ownerEntity.position, 'ring_blue.tga', Params.Inst.startTick),
+					new SwirlingAura(
+						Params.Init.ownerEntity.position,
+						'ring_blue.tga',
+						Params.Inst.startTick,
+						undefined,
+						Params.Init.auraColor
+					),
 					Params
 				);
 			}
@@ -4322,7 +4329,8 @@ export default {
 						100, // size (same as original Aura.js)
 						15.0, // distance (same as original Aura.js)
 						'pikapika2.bmp',
-						Params.Inst.startTick
+						Params.Inst.startTick,
+						Params.Init.auraColor
 					),
 					Params
 				);
@@ -4347,7 +4355,13 @@ export default {
 				}
 
 				this.add(
-					new Level99Bubble(Params.Init.ownerEntity.position, 'whitelight.tga', Params.Inst.startTick, flag1),
+					new Level99Bubble(
+						Params.Init.ownerEntity.position,
+						'whitelight.tga',
+						Params.Inst.startTick,
+						flag1,
+						Params.Init.auraColor
+					),
 					Params
 				);
 			}
@@ -23956,5 +23970,8 @@ export default {
 			texturePath: 'help_angel/help_angel_bottom/',
 			renderBeforeEntities: true
 		}
-	]
+	],
+
+	// The level auras past 99 and the coloured auras: LevelAuraEffects.js.
+	...LevelAuraEffects
 };

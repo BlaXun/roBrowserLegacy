@@ -21,6 +21,7 @@ import Client from 'Core/Client.js';
 import Camera from 'Renderer/Camera.js';
 import Altitude from 'Renderer/Map/Altitude.js';
 import SpriteRenderer from 'Renderer/SpriteRenderer.js';
+import { auraUniform, beginAuraBlend, endAuraBlend } from 'Renderer/Effects/AuraBlend.js';
 
 const DEG_TO_RAD = Math.PI / 180;
 const GAME_TO_WORLD = 0.1 * 2.2;
@@ -143,9 +144,10 @@ function createAnchor(isGhost, seedMaxUnits) {
  * @param {string} textureName - texture filename
  * @param {number} tick - start tick (unused, kept for parity)
  * @param {number} flag1 - tint selector (0 white, 1 blue, 11 ghost)
+ * @param {object} color - optional tint from AuraTiers.auraColor, over flag1's
  */
 class Level99Bubble {
-	constructor(position, textureName, tick, flag1) {
+	constructor(position, textureName, tick, flag1, color) {
 		this.position = position;
 		this.textureName = textureName || 'whitelight.tga';
 		this.tick = tick || 0;
@@ -161,7 +163,7 @@ class Level99Bubble {
 		this.seedMax = isGhost ? debugConfig.ghostSeedMax : debugConfig.seedMax;
 		this.resetY = isGhost ? -debugConfig.ghostSeedMax : REF_RESET_Y;
 		this.driftK = REF_DRIFT_K; // Jitter amplitude
-		this.color = pickColor(this.flag1);
+		this.color = color || pickColor(this.flag1);
 		this.isGhost = isGhost;
 		this.passCount = this.flag1 === 1 ? 2 : 1;
 
@@ -415,13 +417,15 @@ class Level99Bubble {
 				gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.quadData);
 
 				const self = this;
+				beginAuraBlend(gl, this.color);
 				SpriteRenderer.runWithDepth(true, false, false, function () {
 					for (let pass = 0; pass < self.passCount; pass++) {
-						gl.uniform4f(uniform.uColor, self.color.r, self.color.g, self.color.b, alphaValue);
+						gl.uniform4f(uniform.uColor, ...auraUniform(self.color, alphaValue));
 						gl.uniform1f(uniform.uZIndex, 0.01 + ec * 0.002 + ai * 0.0001 + pass * 0.00005);
 						gl.drawArrays(gl.TRIANGLES, 0, 6);
 					}
 				});
+				endAuraBlend(gl, this.color);
 			}
 		}
 	}

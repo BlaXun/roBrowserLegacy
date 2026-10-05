@@ -10,46 +10,36 @@
  * @typedef {Object} TMapPreferencesAura
  * @prop {number} aura - 0: no aura, 1: only aura, 2: aura and aura2
  *
- * @typedef {Object} TAuraSettings - default settings for aura (can be overridden by server config)
- * @prop {number} defaultLv - default aura level
- * @prop {number} babyLv - Baby class aura level
- * @prop {number} secondLv - Second class aura level
- * @prop {number} thirdLv - Third class aura level
- * @prop {number} homunLv - Homun class aura level
- * @prop {number} bossLv - Boss class aura level
+ * @typedef {Object} TAuraSettings - aura settings, the server's `aura` config over the defaults (AuraTiers.js)
+ * @prop {number} defaultLv - level of the first aura (99)
+ * @prop {number} lv150 - level of the 150 tier
+ * @prop {number} lv160 - level of the 160/185 tier
+ * @prop {number} fourthLv - level of a 4th job's gold aura (250)
+ * @prop {boolean} upperJob - transcendent second jobs wear the 185 tier from defaultLv
+ * @prop {number[]} color - [r, g, b] 0-255 for every tier
+ * @prop {object} colors - [r, g, b] by tier (99, 150, 185, fourth)
  */
 
-import EffectConst from 'DB/Effects/EffectConst.js';
 import /** @type {TMapPreferencesAura} */ MapPreferences from 'Preferences/Map.js';
 import Configs from 'Core/Configs.js';
-
-/** @type {TAuraSettings} */
-const _auraSettings = {
-	defaultLv: 99
-	// babyLv: 99, // TODO implement other aura levels
-	// secondLv: 99,
-	// thirdLv: 175,
-	// homunLv: 99,
-	// bossLv: 99,
-};
-
-const normalEffects = [EffectConst.EF_LEVEL99, EffectConst.EF_LEVEL99_2, EffectConst.EF_LEVEL99_3];
-
-const simpleEffects = [EffectConst.EF_LEVEL99_3];
+import { TIER_EFFECTS, ALL_TIER_EFFECTS, auraSettings, auraTier, tierColor } from 'DB/Effects/AuraTiers.js';
 
 /**
- * Aura class — handles level 99/max level character aura visual effects
+ * Aura class — the level aura a character wears: the level-99 one, and the
+ * tiers past it (DB/Effects/AuraTiers.js says which, by level and job).
  *
  * @class Aura
  * @property {boolean} isLoaded Whether aura effect is currently loaded
  * @property {Entity} entity Attached entity reference
  * @property {number} lastAuraState Saved preference state to track /aura toggle changes
+ * @property {string|null} loadedKey The tier, preference and colour last loaded
  */
 class Aura {
 	constructor(entity) {
 		this.isLoaded = false; // to avoid duplicate aura effects
 		this.entity = entity; // reference to attached entity
 		this.lastAuraState = 0; // save last aura state to track changes on aura/aura2 command
+		this.loadedKey = null;
 	}
 
 	/**
@@ -57,54 +47,55 @@ class Aura {
 	 */
 	load(effectManager) {
 		const server = Configs.getServer(); // find aura from servers config
+		/** @type {TAuraSettings} - server aura config over the defaults */
+		const settings = auraSettings(server != null ? server.aura : undefined);
+		const job = this.entity._job !== undefined ? this.entity._job : this.entity.job;
+		const tier = MapPreferences.aura > 0 ? auraTier(this.entity.clevel, job, settings) : null;
 
-		/** @type {TAuraSettings} - merge server aura config with default settings */
-		const settings =
-			server != null ? Object.assign({}, _auraSettings, server.aura) : Object.assign({}, _auraSettings);
-
-		// check if qualifies for aura and /aura2 preference
-		if (MapPreferences.aura > 0 && this.entity.clevel >= settings.defaultLv) {
-			// check if entity is visible
-			if (this.entity.isVisible()) {
-				// check if aura state has changed
-				if (this.lastAuraState !== MapPreferences.aura && this.isLoaded) {
-					this.remove(effectManager);
-				}
-				if (!this.isLoaded) {
-					// aura is already loaded
-					// select effects based on /aura preference
-					const effects = MapPreferences.aura < 2 ? simpleEffects : normalEffects;
-					// add aura effects
-					for (let effectIndex = 0; effectIndex < effects.length; effectIndex++) {
-						effectManager.spam({
-							ownerAID: this.entity.GID,
-							position: this.entity.position,
-							effectId: effects[effectIndex]
-						});
-					}
-					// set flag to avoid duplicate aura effects
-					this.isLoaded = true;
-					// save current aura state
-					this.lastAuraState = MapPreferences.aura;
-				}
-			} else {
-				// remove aura if entity is invisible
+		if (tier === null || !this.entity.isVisible()) {
+			// does not qualify, /aura is off, or the entity is not visible
+			if (this.isLoaded) {
 				this.remove(effectManager);
 			}
-		} else if (this.isLoaded) {
-			// remove aura if entity does not qualify
-			this.remove(effectManager);
-			// save current aura state
 			this.lastAuraState = MapPreferences.aura;
+			return;
 		}
+
+		// The level-99 aura keeps its own colours unless the server sets one.
+		const color =
+			tier === 99 && !settings.color && !(settings.colors && settings.colors[99])
+				? null
+				: tierColor(tier, settings);
+		const key = `${tier}:${MapPreferences.aura}:${color ? [color.r, color.g, color.b].join(',') : ''}`;
+		if (this.isLoaded && this.loadedKey === key) {
+			return;
+		}
+		// A level-up into the next tier, /aura toggled, or another colour.
+		if (this.isLoaded) {
+			this.remove(effectManager);
+		}
+
+		// /aura 1 is the simple aura, /aura 2 the whole of it
+		const effects = MapPreferences.aura < 2 ? TIER_EFFECTS[tier].simple : TIER_EFFECTS[tier].full;
+		for (let i = 0; i < effects.length; i++) {
+			effectManager.spam({
+				ownerAID: this.entity.GID,
+				position: this.entity.position,
+				effectId: effects[i],
+				auraColor: color || undefined
+			});
+		}
+		this.isLoaded = true;
+		this.loadedKey = key;
+		this.lastAuraState = MapPreferences.aura;
 	}
 
 	/**
 	 * Hide aura
 	 */
 	remove(effectManager) {
-		// remove aura effects
-		effectManager.remove(null, this.entity.GID, normalEffects);
+		// remove whichever tier's effects were showing
+		effectManager.remove(null, this.entity.GID, ALL_TIER_EFFECTS);
 		// free aura - needs to be separate to avoid circular dependency
 		this.free();
 	}
@@ -115,6 +106,7 @@ class Aura {
 	free() {
 		// reset flag to allow aura to be loaded
 		this.isLoaded = false;
+		this.loadedKey = null;
 	}
 }
 /**
