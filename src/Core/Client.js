@@ -14,6 +14,7 @@ import Executable from 'Utils/Executable.js';
 import Configs from './Configs.js';
 import Thread from './Thread.js';
 import Memory from './MemoryManager.js';
+import ClothPalette from './ClothPalette.js';
 import PACKETVER from 'Network/PacketVerManager.js';
 import Texture from 'Utils/Texture.js';
 import WebGL from 'Utils/WebGL.js';
@@ -277,6 +278,19 @@ async function onFileLoaded(data, error, input) {
 	let i, count, j, size;
 	let gl, frames, texture, layers, palette;
 	let precision;
+
+	// A cloth colour the game data has no palette for: built from the job's
+	// own palettes instead of falling back to the sprite's (ClothPalette).
+	if (error && ClothPalette.canBuild(input.filename)) {
+		ClothPalette.build(input.filename, function (built) {
+			if (built) {
+				onFileLoaded(built.buffer, null, input);
+			} else {
+				Memory.set(input.filename, data, error);
+			}
+		});
+		return;
+	}
 
 	if (data && !error) {
 		switch (input.filename.substr(-3)) {
