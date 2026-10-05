@@ -37,6 +37,8 @@ import EffectManager from 'Renderer/EffectManager.js';
 import SignboardManager from 'Renderer/SignboardManager.js';
 import ScreenEffectManager from 'Renderer/ScreenEffectManager.js';
 import Sky from 'Renderer/Effects/Sky.js';
+import WeatherTable, { addMapWeather } from 'DB/Effects/WeatherEffect.js';
+import Configs from 'Core/Configs.js';
 import Damage from 'Renderer/Effects/Damage.js';
 import GraphicsSettings from 'Preferences/Graphics.js';
 import MapPreferences from 'Preferences/Map.js';
@@ -635,6 +637,8 @@ function onMapComplete(success, error) {
 	const gl = Renderer.getContext();
 
 	SpriteRenderer.init(gl);
+	// Maps the config gives a sky or weather of their own (custom maps).
+	addMapWeather(WeatherTable, Configs.get('mapWeather'));
 	Sky.init(gl, worldResource);
 	Damage.init(gl);
 	EffectManager.init(gl);
