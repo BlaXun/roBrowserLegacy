@@ -1042,6 +1042,7 @@ SkillEffect[SK.NW_GRENADES_DROPPING] = { effectId: 'ef_nw_grenades_dropping' }; 
 SkillEffect[SK.NW_AUTO_FIRING_LAUNCHER] = { effectId: 'ef_nw_auto_firing_launcher' }; //Auto Firing Launcher
 SkillEffect[SK.NW_HIDDEN_CARD] = { effectId: 'ef_nw_hidden_card' }; //Hidden Card
 SkillEffect[SK.NW_MISSION_BOMBARD] = { effectId: 'ef_nw_mission_bombard', hitEffectId: 'ef_nw_mission_bombard_hit' }; //Mission Bombard
+SkillEffect[SK.NW_HASTY_FIRE_IN_THE_HOLE] = { effectId: 'ef_nw_hasty_fire_in_the_hole' }; //Hasty Fire in the Hole
 SkillEffect[5500 /* NW_WILD_SHOT */] = {
 	effectId: 'ef_nw_wild_shot',
 	effectIdOnCaster: 'ef_nw_wild_shot_cast',

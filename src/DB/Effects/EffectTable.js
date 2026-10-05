@@ -11765,6 +11765,20 @@ export default {
 		{
 			wav: 'effect/sky_emperor/ske_enchanting_sky',
 			attachedEntity: true
+		},
+		{
+			type: 'STR',
+			file: 'sky_emperor/ske_enchanting_sky/ske_enchanting_sky_00',
+			texturePath: 'sky_emperor/ske_enchanting_sky/',
+			min: 'sky_emperor/ske_enchanting_sky/min_ske_enchanting_sky_00',
+			attachedEntity: true
+		},
+		{
+			type: 'STR',
+			file: 'sky_emperor/ske_enchanting_sky/ske_enchanting_sky_01',
+			texturePath: 'sky_emperor/ske_enchanting_sky/',
+			min: 'sky_emperor/ske_enchanting_sky/min_ske_enchanting_sky_01',
+			attachedEntity: true
 		}
 	],
 
@@ -14969,6 +14983,20 @@ export default {
 	ef_ss_ankokuryuuakumu: [
 		{
 			wav: 'effect/shinkiro_shiranui/ss_ankokuryuuakumu',
+			attachedEntity: true
+		},
+		{
+			type: 'STR',
+			file: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/ankokuryuuakumu_00',
+			texturePath: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/',
+			min: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/min_ankokuryuuakumu_00',
+			attachedEntity: true
+		},
+		{
+			type: 'STR',
+			file: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/ankokuryuuakumu_01',
+			texturePath: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/',
+			min: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/min_ankokuryuuakumu_01',
 			attachedEntity: true
 		}
 	],
@@ -22165,6 +22193,25 @@ export default {
 			file: 'night_watch/nw_mission_bombard/mission_bombard/mission_bombard_hit',
 			texturePath: 'night_watch/nw_mission_bombard/mission_bombard/',
 			min: 'night_watch/nw_mission_bombard/mission_bombard/min_mission_bombard_hit'
+		}
+	],
+
+	// Hasty Fire in the Hole (NW_HASTY_FIRE_IN_THE_HOLE), from the client's own effect folders.
+	// A ground skill with a splash of 2 cells, which is the 5x5 art; the folder also has 7x7 and 9x9.
+	ef_nw_hasty_fire_in_the_hole: [
+		{
+			type: 'STR',
+			file: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/hasty_fire_in_the_hole_5x5',
+			texturePath: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/',
+			min: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/min_hasty_fire_in_the_hole_5x5',
+			wav: 'effect/night_watch/nw_hasty_fire_in_the_hole_0'
+		},
+		{
+			type: 'STR',
+			file: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/hasty_fire_in_the_hole_5x5',
+			texturePath: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/',
+			min: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/min_hasty_fire_in_the_hole_5x5',
+			renderBeforeEntities: true
 		}
 	],
 
