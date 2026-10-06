@@ -23,6 +23,7 @@ import Cursor from './JoystickMouseCursorAdapter.js';
 import Aim from './JoystickAimMode.js';
 import StickFilter from './JoystickStickFilter.js';
 import CameraMotion from './JoystickCameraMotion.js';
+import Support from './JoystickSupportMode.js';
 
 // Old behaviour moved joySense px per 100 ms poll at full deflection.
 const SENSE_TO_PX_PER_SEC = 10;
@@ -50,6 +51,7 @@ function frame(time) {
 	if (!gp) {
 		// Last pad gone: stop until one connects again
 		Aim.release();
+		Support.release();
 		frameHandle = null;
 		return;
 	}
@@ -65,6 +67,7 @@ function frame(time) {
 
 	if (gp.axes.length < 4 || dt <= 0) {
 		Aim.release();
+		Support.release();
 		return;
 	}
 
@@ -79,6 +82,12 @@ function frame(time) {
 	// Radial deadzone, then rescale so speed starts at 0 just past it
 	const magnitude = Math.hypot(x, y);
 	const deadzone = ControlsSettings.joyDeadline;
+
+	// Support: the right stick picks a party member on the radial
+	if (Support.update(x, y, magnitude, deadzone)) {
+		Aim.release();
+		return;
+	}
 
 	// Aim mode: the right stick picks a target instead
 	if (Aim.isActive()) {
@@ -144,5 +153,6 @@ export default {
 		}
 		// Gamepad UI gone: no ring left behind, and the cursor visible again
 		Aim.release();
+		Support.release();
 	}
 };

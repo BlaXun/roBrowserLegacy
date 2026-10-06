@@ -4,13 +4,15 @@ const mocks = vi.hoisted(() => ({
 	cursor: { moveBy: vi.fn() },
 	controls: { joyReverseStick: false, joyDeadline: 0.2, joySense: 10 },
 	aim: { isActive: vi.fn(() => false), update: vi.fn(), release: vi.fn() },
-	camera: { update: vi.fn() }
+	camera: { update: vi.fn() },
+	support: { update: vi.fn(() => false), release: vi.fn() }
 }));
 
 vi.mock('UI/Components/JoystickUI/JoystickMouseCursorAdapter.js', () => ({ default: mocks.cursor }));
 vi.mock('Preferences/Controls.js', () => ({ default: mocks.controls }));
 vi.mock('UI/Components/JoystickUI/JoystickAimMode.js', () => ({ default: mocks.aim }));
 vi.mock('UI/Components/JoystickUI/JoystickCameraMotion.js', () => ({ default: mocks.camera }));
+vi.mock('UI/Components/JoystickUI/JoystickSupportMode.js', () => ({ default: mocks.support }));
 
 const { default: CursorMotion } = await import('UI/Components/JoystickUI/JoystickCursorMotion.js');
 
