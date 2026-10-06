@@ -1219,6 +1219,17 @@ export function createPartyFriends(config) {
 	};
 
 	/**
+	 * The party members as the party packets left them (AID, characterName,
+	 * mapName, state 0 = online, class_, isDead, life), self included.
+	 * A copy: the gamepad support radial reads it every frame.
+	 *
+	 * @return {Array<object>}
+	 */
+	Component.getPartyMembers = function getPartyMembers() {
+		return _party.slice();
+	};
+
+	/**
 	 * Check if character is a group member
 	 *
 	 * @param {string} character name

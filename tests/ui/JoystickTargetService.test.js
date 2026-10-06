@@ -121,3 +121,27 @@ describe('JoystickTargetService focus validity', () => {
 		expect(Target.getEntity()).toBe(mocks.session.Entity); // the "no target" sentinel
 	});
 });
+
+describe('JoystickTargetService categories', () => {
+	beforeEach(() => {
+		mocks.focus = null;
+		mocks.list.clear();
+		mocks.controls.joyCycleMode = 0;
+	});
+
+	it('Support leaves the cycle and the aim nothing to pick (the radial does)', () => {
+		mocks.controls.joyCycleMode = 4;
+		expect(Target.getCycleTypes(FakeEntity)).toEqual([]);
+		mocks.controls.joyCycleMode = 0;
+		expect(Target.getCycleTypes(FakeEntity)).toEqual([FakeEntity.TYPE_MOB]);
+	});
+
+	it('clearTarget drops the focus and keeps the cursor where it is', () => {
+		const mob = spawn(new FakeEntity(7, FakeEntity.TYPE_MOB));
+		mob.onFocusEnd = vi.fn();
+		mocks.focus = mob;
+		Target.clearTarget();
+		expect(mocks.focus).toBeNull();
+		expect(mob.onFocusEnd).toHaveBeenCalled();
+	});
+});

@@ -87,6 +87,9 @@ function click(element) {
 describe('Guild positions checkboxes', () => {
 	beforeEach(() => {
 		mocks.session.isGuildMaster = true;
+		// A click marks the tab dirty, and a dirty tab keeps its edits over a
+		// refresh until Apply. Start every test from the server's rows.
+		Guild.reset();
 		Guild.setPositions([{ positionID: 0, right: 0x01, ranking: 0, payRate: 0, posName: 'Master' }], true);
 	});
 
