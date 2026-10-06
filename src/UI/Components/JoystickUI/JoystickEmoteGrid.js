@@ -50,7 +50,9 @@ let _repeatAt = 0;
 let _action = null;
 let _sprite = null;
 let _loading = false;
-const _entity = new Entity();
+// Created on first use, not at load: Entity's module imports the UI, which imports this one, so
+// at load time the circular import leaves Entity undefined and the whole client fails to start.
+let _entity = null;
 
 /**
  * Sprite indices of every emote, in the Emoticons window's order.
@@ -350,6 +352,9 @@ function drawEmote(canvas, emo) {
 		return;
 	}
 	SpriteRenderer.bind2DContext(canvas.getContext('2d'), CELL / 2 - layers[0].pos[0], CELL - layers[0].pos[1]);
+	if (!_entity) {
+		_entity = new Entity();
+	}
 	for (let i = 0; i < layers.length; ++i) {
 		_entity.renderLayer(layers[i], _sprite, _sprite, 1.0, [0, 0], false);
 	}
