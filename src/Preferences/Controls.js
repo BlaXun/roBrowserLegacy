@@ -23,6 +23,7 @@ export default Preferences.get(
 		/* Joystick */
 		attackTargetMode: 0,
 		joyCycleMode: 0, // target category (D-pad up/down): 0 mobs, 1 items, 2 mobs+items (legacy), 3 NPCs/portals, 4 support
+		joyEmoteFavorites: [], // emote grid (hold Menu): pinned emotes, sprite indices
 		joyButtonMap: null, // remapped buttons, map[role] = physical; null = default
 		joyAimEnabled: false, // right-stick aiming available (Settings > Gamepad)
 		joyAimRing: false, // aim: ring under a newly selected target, fading out

@@ -32,6 +32,10 @@ let rsHoldFired = false;
 let lsDownAt = 0;
 let lsHoldFired = false;
 
+// Menu (without View): a tap is Enter, a hold opens the emote grid
+let menuDownAt = 0;
+let menuHoldFired = false;
+
 function setClickLock() {
 	clickLock = true;
 	setTimeout(function () {
@@ -41,9 +45,19 @@ function setClickLock() {
 
 const ButtonInput = {
 	update: function (buttons) {
+		// The emote grid has every button while it is open. The Menu hold that
+		// opened it must not end in an Enter when it is let go.
+		if (Interaction.isEmoteGridOpen()) {
+			menuDownAt = buttons[9] !== 'unpressed' ? menuDownAt || Date.now() : 0;
+			menuHoldFired = true;
+			Interaction.emoteGridInput(buttons);
+			return true;
+		}
+
 		// Before the click lock: a release must not be missed, or a tap is lost
 		let stickButton = this._handleRightStickButton(buttons);
 		stickButton = this._handleLeftStickButton(buttons) || stickButton;
+		stickButton = this._handleMenuButton(buttons) || stickButton;
 
 		if (clickLock) {
 			return stickButton;
@@ -184,6 +198,41 @@ const ButtonInput = {
 		return false;
 	},
 
+	/**
+	 * Menu on its own (View + Menu is Escape, in _handleSpecial). A tap
+	 * presses Enter on release, a hold opens the emote grid.
+	 */
+	_handleMenuButton: function (btn) {
+		const state = btn[9];
+
+		if (btn[8] !== 'unpressed') {
+			menuDownAt = 0;
+			return false;
+		}
+
+		if (state !== 'unpressed') {
+			if (!menuDownAt) {
+				menuDownAt = Date.now();
+				menuHoldFired = false;
+			} else if (!menuHoldFired && Date.now() - menuDownAt >= STICK_HOLD_MS) {
+				menuHoldFired = true;
+				if (!SelectionUI.active()) {
+					Interaction.openEmoteGrid();
+				}
+			}
+			return true;
+		}
+
+		if (menuDownAt) {
+			if (!menuHoldFired && !SelectionUI.active()) {
+				Interaction.enter();
+			}
+			menuDownAt = 0;
+			return true;
+		}
+		return false;
+	},
+
 	_handleSetChange: function (btn) {
 		const l2 = btn[6] === 'holding';
 		const r2 = btn[7] === 'holding';
@@ -267,10 +316,6 @@ const ButtonInput = {
 		} else if (buttons[15] !== 'unpressed') {
 			// D-pad Right: cycle to the next nearby mob/item (or grid nav over a UI)
 			Interaction.cycleTarget('next');
-			pressed = true;
-		} else if (buttons[9] !== 'unpressed') {
-			// Start button
-			Interaction.enter();
 			pressed = true;
 		}
 

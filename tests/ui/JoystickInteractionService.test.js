@@ -71,6 +71,7 @@ vi.mock('UI/Components/JoystickUI/JoystickMenuNavigation.js', () => ({ default: 
 vi.mock('Engine/SessionStorage.js', () => ({ default: mocks.session }));
 vi.mock('UI/Components/JoystickUI/JoystickTargetCategory.js', () => ({ default: mocks.category }));
 vi.mock('UI/Components/JoystickUI/JoystickSupportMode.js', () => ({ default: mocks.support }));
+vi.mock('UI/Components/JoystickUI/JoystickEmoteGrid.js', () => ({ default: {} }));
 vi.mock('UI/Components/SkillTargetSelection/SkillTargetSelection.js', () => ({ default: mocks.sts }));
 
 const { default: Interaction } = await import('UI/Components/JoystickUI/JoystickInteractionService.js');
@@ -247,6 +248,60 @@ describe('JoystickInteractionService support category', () => {
 		Interaction.cycleTarget('next');
 		expect(mocks.support.cycle).toHaveBeenCalledWith('next');
 		expect(mocks.target.cycle).not.toHaveBeenCalled();
+	});
+
+	it('a quick tap of the face button casts on the focused member', () => {
+		vi.useFakeTimers();
+		try {
+			mocks.support.getFocusEntity.mockReturnValue(member);
+			mocks.input.buttonStates = ['unpressed', 'unpressed', 'pressed', 'unpressed'];
+			Interaction.executeShortcut(0, 'L1');
+			expect(mocks.support.castOn).not.toHaveBeenCalled(); // decided on release
+
+			mocks.input.buttonStates = ['unpressed', 'unpressed', 'unpressed', 'unpressed'];
+			vi.advanceTimersByTime(40);
+			expect(mocks.support.castOn).toHaveBeenCalledWith(member);
+		} finally {
+			mocks.input.buttonStates = [];
+			vi.useRealTimers();
+		}
+	});
+
+	it('holding the face button casts on yourself and keeps the focus', () => {
+		vi.useFakeTimers();
+		try {
+			const self = { GID: 1 };
+			mocks.session.Entity = self;
+			mocks.support.getFocusEntity.mockReturnValue(member);
+			mocks.input.buttonStates = ['unpressed', 'unpressed', 'pressed', 'unpressed'];
+			Interaction.executeShortcut(0, 'L1');
+
+			mocks.input.buttonStates = ['unpressed', 'unpressed', 'holding', 'unpressed'];
+			vi.advanceTimersByTime(200);
+			expect(mocks.support.castOn).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(150);
+			expect(mocks.support.castOn).toHaveBeenCalledTimes(1);
+			expect(mocks.support.castOn).toHaveBeenCalledWith(self);
+			expect(mocks.support.clearFocus).not.toHaveBeenCalled();
+		} finally {
+			mocks.input.buttonStates = [];
+			vi.useRealTimers();
+		}
+	});
+
+	it('the hold watch stops when the skill is cancelled meanwhile', () => {
+		vi.useFakeTimers();
+		try {
+			mocks.input.buttonStates = ['pressed', 'unpressed', 'unpressed', 'unpressed'];
+			Interaction.executeShortcut(0, 'L1');
+			mocks.sts.getFlag.mockReturnValue(0);
+			vi.advanceTimersByTime(400);
+			expect(mocks.support.castOn).not.toHaveBeenCalled();
+			expect(mocks.support.openPending).not.toHaveBeenCalled();
+		} finally {
+			mocks.input.buttonStates = [];
+			vi.useRealTimers();
+		}
 	});
 
 	it('L3 tap clears every kind of target', () => {

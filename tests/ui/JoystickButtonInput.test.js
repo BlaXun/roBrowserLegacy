@@ -10,7 +10,12 @@ const mocks = vi.hoisted(() => ({
 		toggleStickMode: vi.fn(),
 		clearTarget: vi.fn(),
 		toggleSit: vi.fn(),
-		recenterCursor: vi.fn()
+		recenterCursor: vi.fn(),
+		enter: vi.fn(),
+		escape: vi.fn(),
+		openEmoteGrid: vi.fn(),
+		isEmoteGridOpen: vi.fn(() => false),
+		emoteGridInput: vi.fn()
 	},
 	setManager: { toggle: vi.fn() },
 	shortcuts: { getGroup: vi.fn(() => ''), getShortcutIndex: vi.fn(() => -1) },
@@ -138,6 +143,36 @@ describe('JoystickButtonInput stick clicks', () => {
 		mocks.controls.joyAimEnabled = false;
 		ButtonInput.update(buttons({ 11: 'pressed' }));
 		expect(mocks.interaction.recenterCursor).toHaveBeenCalledTimes(1);
+	});
+
+	it('Menu tap presses Enter on release, Menu hold opens the emote grid', () => {
+		ButtonInput.update(buttons({ 9: 'pressed' }));
+		release();
+		expect(mocks.interaction.enter).toHaveBeenCalledTimes(1);
+		expect(mocks.interaction.openEmoteGrid).not.toHaveBeenCalled();
+
+		ButtonInput.update(buttons({ 9: 'pressed' }));
+		vi.setSystemTime(10500);
+		ButtonInput.update(buttons({ 9: 'holding' }));
+		expect(mocks.interaction.openEmoteGrid).toHaveBeenCalledTimes(1);
+
+		// The grid takes the buttons; letting Menu go afterwards is no Enter
+		mocks.interaction.isEmoteGridOpen.mockReturnValue(true);
+		ButtonInput.update(buttons({ 9: 'holding' }));
+		release();
+		expect(mocks.interaction.emoteGridInput).toHaveBeenCalledTimes(2);
+		mocks.interaction.isEmoteGridOpen.mockReturnValue(false);
+		release();
+		expect(mocks.interaction.enter).toHaveBeenCalledTimes(1);
+	});
+
+	it('View + Menu is still Escape, not Enter', async () => {
+		vi.useRealTimers();
+		await new Promise(resolve => setTimeout(resolve, 250));
+		ButtonInput.update(buttons({ 8: 'holding', 9: 'pressed' }));
+		ButtonInput.update(buttons({}));
+		expect(mocks.interaction.escape).toHaveBeenCalled();
+		expect(mocks.interaction.enter).not.toHaveBeenCalled();
 	});
 
 	it('D-pad up / down go to the category switch', async () => {

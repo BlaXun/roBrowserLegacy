@@ -28,6 +28,12 @@ import Session from 'Engine/SessionStorage.js';
 import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTargetSelection.js';
 import Category from './JoystickTargetCategory.js';
 import Support from './JoystickSupportMode.js';
+import EmoteGrid from './JoystickEmoteGrid.js';
+
+// Support: holding a skill's face button this long casts it on yourself
+// instead of the focused member.
+const SELF_CAST_HOLD_MS = 300;
+const HOLD_POLL_MS = 30;
 
 export default {
 	prepare: function () {},
@@ -66,6 +72,11 @@ export default {
 		ShortCut.onShortCut({
 			cmd: 'EXECUTE' + index
 		});
+
+		// Support skill in Support: tap for the focused member, hold for yourself
+		if (this.watchSelfCastHold(index)) {
+			return;
+		}
 
 		const quickCast = Aim.quickCastMode();
 		if (quickCast === Aim.QUICK_CAST.INSTANT) {
@@ -137,6 +148,62 @@ export default {
 		const shortcut = index >= 0 ? ShortCut.getList()[index] : null;
 		const info = shortcut && shortcut.isSkill ? SkillInfo[shortcut.ID] : null;
 		Support.openPending(index, info ? info.SkillName : '');
+		return true;
+	},
+
+	/**
+	 * Support category, a support skill waiting for its target: decide when
+	 * the face button that cast it is let go. Released within
+	 * SELF_CAST_HOLD_MS it goes the usual way (castInSupport: the focused
+	 * member, or the radial); still held then, it is cast on yourself and
+	 * the focus stays where it was.
+	 *
+	 * Quick-Cast Off is left alone: there the skill waits for A anyway.
+	 *
+	 * @param {number} index shortcut slot that cast the skill
+	 * @return {boolean} whether the watch took over the cast
+	 */
+	watchSelfCastHold: function (index) {
+		if (!Category.isSupport() || Aim.quickCastMode() === Aim.QUICK_CAST.OFF) {
+			return false;
+		}
+		const flag = SkillTargetSelection.getFlag();
+		if (!flag || !Support.isSupportSkill(flag)) {
+			return false;
+		}
+
+		// The face button of the combo (logical A / B / X / Y)
+		const states = Input.buttonStates || [];
+		let face = -1;
+		for (let i = 0; i < 4; i++) {
+			if (states[i] && states[i] !== 'unpressed') {
+				face = i;
+				break;
+			}
+		}
+		if (face === -1) {
+			this.castInSupport(index);
+			return true;
+		}
+
+		const startedAt = Date.now();
+		const watch = () => {
+			setTimeout(() => {
+				// Cancelled meanwhile (Escape, another skill)
+				if (!SkillTargetSelection.getFlag()) {
+					return;
+				}
+				const held = (Input.buttonStates || [])[face];
+				if (!held || held === 'unpressed') {
+					this.castInSupport(index);
+				} else if (Date.now() - startedAt >= SELF_CAST_HOLD_MS) {
+					Support.castOn(Session.Entity);
+				} else {
+					watch();
+				}
+			}, HOLD_POLL_MS);
+		};
+		watch();
 		return true;
 	},
 
@@ -304,6 +371,21 @@ export default {
 			return;
 		}
 		Cursor.rightClick(holding);
+	},
+
+	/**
+	 * Menu hold: the emote grid.
+	 */
+	openEmoteGrid: function () {
+		EmoteGrid.open();
+	},
+
+	isEmoteGridOpen: function () {
+		return EmoteGrid.isActive();
+	},
+
+	emoteGridInput: function (buttons) {
+		EmoteGrid.handleInput(buttons);
 	},
 
 	/**
