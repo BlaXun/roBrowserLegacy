@@ -19,6 +19,7 @@ import JoystickShortcutMapper from './JoystickShortcutMapper.js';
 import JoystickInputService from './JoystickInputService.js';
 import SkillInfo from 'DB/Skills/SkillInfo.js';
 import ButtonMap from './JoystickButtonMap.js';
+import Category from './JoystickTargetCategory.js';
 
 let ui = null;
 
@@ -204,6 +205,22 @@ function updateStickMode() {
 	}
 }
 
+/**
+ * Show the target category (D-pad up / down) next to the stick mode.
+ */
+function updateCategory() {
+	const shadow = _getShadow();
+	if (!shadow) return;
+
+	const el = shadow.querySelector('.target-category');
+	if (el) {
+		el.textContent = Category.nameOf(Category.get());
+		el.classList.toggle('support', Category.isSupport());
+	}
+}
+
+Category.onChange(updateCategory);
+
 function sync() {
 	if (!ui) {
 		return;
@@ -211,6 +228,7 @@ function sync() {
 
 	relabel();
 	updateStickMode();
+	updateCategory();
 
 	const startIdx = SetManager.getCurrentSet() === 1 ? 0 : 20;
 	for (let i = 0; i < 20; i++) {
@@ -278,6 +296,7 @@ export default {
 	updateVisuals,
 	relabel,
 	updateStickMode,
+	updateCategory,
 	show,
 	hide
 };

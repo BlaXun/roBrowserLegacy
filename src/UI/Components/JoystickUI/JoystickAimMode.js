@@ -214,8 +214,9 @@ function clearOverlay() {
  * @param {CanvasRenderingContext2D} ctx overlay, already cleared
  * @param {Entity} entity
  * @param {number} alpha 0-1, for the fade-out
+ * @param {string} [rgb] ring colour as 'r, g, b', red by default
  */
-function drawRing(ctx, entity, alpha) {
+function drawRing(ctx, entity, alpha, rgb = '255, 64, 64') {
 	const points = [];
 	for (let i = 0; i < RING_POINTS; i++) {
 		const a = (i / RING_POINTS) * Math.PI * 2;
@@ -235,10 +236,10 @@ function drawRing(ctx, entity, alpha) {
 		ctx.lineTo(points[i][0], points[i][1]);
 	}
 	ctx.closePath();
-	ctx.fillStyle = 'rgba(255, 64, 64, ' + 0.2 * alpha + ')';
+	ctx.fillStyle = 'rgba(' + rgb + ', ' + 0.2 * alpha + ')';
 	ctx.fill();
 	ctx.lineWidth = 2.5;
-	ctx.strokeStyle = 'rgba(255, 64, 64, ' + 0.9 * alpha + ')';
+	ctx.strokeStyle = 'rgba(' + rgb + ', ' + 0.9 * alpha + ')';
 	ctx.stroke();
 	_aimDrawn = true;
 }
@@ -466,5 +467,8 @@ export default {
 	release,
 	toggle,
 	stickToMapDirection,
-	findFirstHit
+	findFirstHit,
+	project,
+	isOnScreen,
+	drawRing
 };
