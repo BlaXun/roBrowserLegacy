@@ -608,13 +608,20 @@ function UpdateBodyStyle(look) {
 				}
 			}
 
-			path = Session.showsAdmin(this, 'sprite') ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex, look, cashMountCostume);
+			path = Session.showsAdmin(this, 'sprite')
+				? DB.getAdminPath(this._sex)
+				: DB.getBodyPath(job, this._sex, look, cashMountCostume);
 
 			// The job whose sprite getBodyPath picked, so the palette can be the one made for it: a
 			// body style draws the `costume_1` body of `look`, mounted or not, and that body has
 			// palettes of its own. Null when the style draws the job's own body, and for an admin,
 			// whose body is the admin sprite whatever the style.
-			const styled = !Session.showsAdmin(this, 'sprite') && PACKETVER.value > 20141022 && look > 0 && look !== job && !cashMountCostume;
+			const styled =
+				!Session.showsAdmin(this, 'sprite') &&
+				PACKETVER.value > 20141022 &&
+				look > 0 &&
+				look !== job &&
+				!cashMountCostume;
 			this._bodyStyleJob = styled ? look : null;
 			Entity = this.constructor;
 

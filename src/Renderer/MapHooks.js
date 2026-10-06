@@ -116,7 +116,10 @@ function mapFree(gl) {
 }
 
 function modelKey(name) {
-	return String(name).replace(/\\/g, '/').replace(/^data\/model\//i, '').toLowerCase();
+	return String(name)
+		.replace(/\\/g, '/')
+		.replace(/^data\/model\//i, '')
+		.toLowerCase();
 }
 
 /** Every model some hook draws itself, for the map loader. */

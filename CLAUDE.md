@@ -6,14 +6,15 @@ This is **Flux159/roBrowserLegacy**, the roBrowserLegacy fork that [Ragnarok Off
 
 ## Pull requests go to `ragnarokoffline`, not `master`
 
-| Branch | What it is | Open PRs against it? |
-|---|---|---|
+| Branch            | What it is                                                                                | Open PRs against it?         |
+| ----------------- | ----------------------------------------------------------------------------------------- | ---------------------------- |
 | `ragnarokoffline` | The fork's own branch. The app pins commits on it (`config/VENDOR_PINS` in the app repo). | **Yes. Every PR goes here.** |
-| `master` | A mirror of upstream's `master`. | **No.** |
+| `master`          | A mirror of upstream's `master`.                                                          | **No.**                      |
 
 GitHub may suggest `master` as the base, because that is the repository's default branch. Change it to `ragnarokoffline` before you open the PR. A PR against `master` drags in every upstream commit that `ragnarokoffline` hasn't merged yet.
 
 How to work:
+
 - Branch from `ragnarokoffline`: `git fetch origin && git switch -c my-change origin/ragnarokoffline`.
 - Keep a PR to one change.
 - `ragnarokoffline` only moves forward. Releases pin commits on it, so it refuses force-pushes and is never rebased. Newer upstream comes in as a merge of `master` into it, in its own PR.
@@ -23,6 +24,7 @@ How to work:
 ## What belongs here
 
 Fixes to the client, and **hook points** that let code outside the client draw or take part:
+
 - `src/Renderer/MapHooks.js`: drawing inside the map renderer (passes, depth, lights, model replacement);
 - `src/UI/ScreenHooks.js`: replacing the login, server list, character select and character creation screens;
 - `src/UI/ExitHooks.js`: the Esc menu's character select and exit actions;

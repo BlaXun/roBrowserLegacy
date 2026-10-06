@@ -1072,25 +1072,29 @@ class GUIComponent {
 
 		// Default background
 		if (background) {
-			_Client?.loadFile(_DB.INTERFACE_PATH + background, dataURI => {
-				bgUri = dataURI;
-				if (dataURI instanceof ArrayBuffer) {
-					try {
-						const tga = new Targa();
-						tga.load(new Uint8Array(dataURI));
-						bgUri = tga.getDataURL();
-					} catch (e) {
-						console.error(e.message);
+			_Client?.loadFile(
+				_DB.INTERFACE_PATH + background,
+				dataURI => {
+					bgUri = dataURI;
+					if (dataURI instanceof ArrayBuffer) {
+						try {
+							const tga = new Targa();
+							tga.load(new Uint8Array(dataURI));
+							bgUri = tga.getDataURL();
+						} catch (e) {
+							console.error(e.message);
+						}
 					}
+					node.classList.remove('no-texture');
+					updateBg();
+				},
+				() => {
+					// Not every client's data has every window's textures (iRO's
+					// 2026 data has no bank/ folder). Mark the node so a window's
+					// CSS can draw it without one instead of leaving it see-through.
+					node.classList.add('no-texture');
 				}
-				node.classList.remove('no-texture');
-				updateBg();
-			}, () => {
-				// Not every client's data has every window's textures (iRO's
-				// 2026 data has no bank/ folder). Mark the node so a window's
-				// CSS can draw it without one instead of leaving it see-through.
-				node.classList.add('no-texture');
-			});
+			);
 		}
 
 		// Active background

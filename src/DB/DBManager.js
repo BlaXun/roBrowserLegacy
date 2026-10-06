@@ -337,8 +337,7 @@ class DB {
 		const readMsgString = (_index, val) => {
 			MsgStringTable[_index] = val;
 		};
-		const loadMsgStringCSV = () =>
-			loadCSV('data/msgstringtable.csv', MsgStringTable, 0, 1, loadmsg);
+		const loadMsgStringCSV = () => loadCSV('data/msgstringtable.csv', MsgStringTable, 0, 1, loadmsg);
 		loadTable(
 			'data/msgstringtable.txt',
 			'#',
@@ -7242,37 +7241,45 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 
 	try {
 		console.log('Loading file "' + id_filename + '"...');
-		Client.loadFile(id_filename, async function (file) {
-			try {
-				// check if file is ArrayBuffer and convert to Uint8Array if necessary
-				const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
-				// mount file
-				lua.mountFile(id_filename, buffer);
-				// execute file
-				await lua.doFile(id_filename);
-				loadValueTable();
-			} catch (hException) {
-				console.error(`(${id_filename}) error: `, hException);
-				fail(hException);
-			}
-		}, () => fail(new Error(`${id_filename} not found`)));
-
-		function loadValueTable() {
-			console.log('Loading file "' + value_table_filename + '"...');
-			Client.loadFile(value_table_filename, async function (file) {
+		Client.loadFile(
+			id_filename,
+			async function (file) {
 				try {
 					// check if file is ArrayBuffer and convert to Uint8Array if necessary
 					const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
 					// mount file
-					lua.mountFile(value_table_filename, buffer);
+					lua.mountFile(id_filename, buffer);
 					// execute file
-					await lua.doFile(value_table_filename);
-					parseTable();
+					await lua.doFile(id_filename);
+					loadValueTable();
 				} catch (hException) {
-					console.error(`(${value_table_filename}) error: `, hException);
+					console.error(`(${id_filename}) error: `, hException);
 					fail(hException);
 				}
-			}, () => fail(new Error(`${value_table_filename} not found`)));
+			},
+			() => fail(new Error(`${id_filename} not found`))
+		);
+
+		function loadValueTable() {
+			console.log('Loading file "' + value_table_filename + '"...');
+			Client.loadFile(
+				value_table_filename,
+				async function (file) {
+					try {
+						// check if file is ArrayBuffer and convert to Uint8Array if necessary
+						const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
+						// mount file
+						lua.mountFile(value_table_filename, buffer);
+						// execute file
+						await lua.doFile(value_table_filename);
+						parseTable();
+					} catch (hException) {
+						console.error(`(${value_table_filename}) error: `, hException);
+						fail(hException);
+					}
+				},
+				() => fail(new Error(`${value_table_filename} not found`))
+			);
 		}
 
 		function parseTable() {
@@ -7354,31 +7361,33 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 function loadLuaValue(file_path, variable_name, callback, onEnd) {
 	try {
 		console.log('Loading file "' + file_path + '"...');
-		Client.loadFile(file_path, async function (file) {
-			try {
-				// Check if file is ArrayBuffer and convert to Uint8Array if necessary
-				const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
+		Client.loadFile(
+			file_path,
+			async function (file) {
+				try {
+					// Check if file is ArrayBuffer and convert to Uint8Array if necessary
+					const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
 
-				// Mount file
-				lua.mountFile(file_path, buffer);
+					// Mount file
+					lua.mountFile(file_path, buffer);
 
-				// Execute file
-				await lua.doFile(file_path);
+					// Execute file
+					await lua.doFile(file_path);
 
-				// Get context
-				const ctx = lua.ctx;
+					// Get context
+					const ctx = lua.ctx;
 
-				// Initialize result variable
-				let result = null;
+					// Initialize result variable
+					let result = null;
 
-				// Add key-value pairs to objects at any nesting level
-				ctx.extractValue = value => {
-					result = JSON.parse(userStringDecoder.decode(value));
-				};
+					// Add key-value pairs to objects at any nesting level
+					ctx.extractValue = value => {
+						result = JSON.parse(userStringDecoder.decode(value));
+					};
 
-				// Create and execute a wrapper Lua code to extract the variable
-				lua.doStringSync(
-					String.raw`
+					// Create and execute a wrapper Lua code to extract the variable
+					lua.doStringSync(
+						String.raw`
 							local function escape_str(str)
 								return str:gsub("\\", "\\\\"):gsub("\"", "\\\"")
 							end
@@ -7422,35 +7431,36 @@ function loadLuaValue(file_path, variable_name, callback, onEnd) {
 								end
 							end
 						` +
-						`
+							`
 							extractValue(to_json(${variable_name}))
 						`
-				);
+					);
 
-				// Unmount file
-				lua.unmountFile(file_path);
+					// Unmount file
+					lua.unmountFile(file_path);
 
-				// Return the extracted value
-				callback.call(null, result);
-			} catch (hException) {
-				console.error(`(${file_path}) error: `, hException);
+					// Return the extracted value
+					callback.call(null, result);
+				} catch (hException) {
+					console.error(`(${file_path}) error: `, hException);
+					callback.call(null, null);
+				} finally {
+					if (onEnd) {
+						onEnd.call();
+					}
+				}
+			},
+			// Without this the failure is dropped, onEnd never runs, and the whole
+			// database stays "loading" forever -- stranding the player at character
+			// select with no way to reach the map server.
+			function () {
+				console.error(`(${file_path}) could not be read; skipping`);
 				callback.call(null, null);
-			} finally {
 				if (onEnd) {
 					onEnd.call();
 				}
 			}
-		},
-		// Without this the failure is dropped, onEnd never runs, and the whole
-		// database stays "loading" forever -- stranding the player at character
-		// select with no way to reach the map server.
-		function () {
-			console.error(`(${file_path}) could not be read; skipping`);
-			callback.call(null, null);
-			if (onEnd) {
-				onEnd.call();
-			}
-		});
+		);
 	} catch (e) {
 		console.error('error: ', e);
 		if (onEnd) {
