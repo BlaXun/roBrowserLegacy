@@ -529,22 +529,19 @@ function onUpdateTargetOption() {
  */
 const MAPPING_ROLES = [
 	[ButtonMap.BUTTON.A, 'Click / confirm'],
-	[ButtonMap.BUTTON.B, 'Right click (hold on item/skill: options)'],
+	[ButtonMap.BUTTON.B, 'Right click (hold on item/skill: options) - cancels a skill waiting in the Support radial'],
 	[ButtonMap.BUTTON.X, 'Attack target'],
 	[ButtonMap.BUTTON.Y, 'Pick up item'],
-	[ButtonMap.BUTTON.LEFT, 'Previous target (grid left on items)'],
-	[ButtonMap.BUTTON.RIGHT, 'Next target (grid right on items)'],
-	[ButtonMap.BUTTON.UP, 'Up (arrow key, item grids)'],
-	[ButtonMap.BUTTON.DOWN, 'Down (arrow key, item grids)'],
-	[ButtonMap.BUTTON.LS, 'Target cycle: mobs / items / both / NPCs'],
+	[ButtonMap.BUTTON.LEFT, 'Previous target (Support: party member; grid left on items)'],
+	[ButtonMap.BUTTON.RIGHT, 'Next target (Support: party member, lowest HP first; grid right on items)'],
+	[ButtonMap.BUTTON.UP, 'Previous target category (up in item grids and NPC menus)'],
+	[ButtonMap.BUTTON.DOWN, 'Next target category (down in item grids and NPC menus)'],
+	[ButtonMap.BUTTON.LS, 'Tap: clear target - Hold: sit / stand'],
 	[
 		ButtonMap.BUTTON.RS,
-		() =>
-			Controls.joyAimEnabled
-				? 'Tap: right stick aim/cursor - Hold: clear target'
-				: 'Clear target, recenter cursor'
+		() => (Controls.joyAimEnabled ? 'Tap: right stick aim/cursor - Hold: recenter cursor' : 'Recenter cursor')
 	],
-	[ButtonMap.BUTTON.MENU, 'Enter'],
+	[ButtonMap.BUTTON.MENU, 'Tap: Enter - Hold: emotes'],
 	[ButtonMap.BUTTON.VIEW, 'Camera & menu modifier'],
 	[ButtonMap.BUTTON.LB, 'Shortcuts: skill bar 1, slots 1-4'],
 	[ButtonMap.BUTTON.LT, 'Shortcuts: skill bar 1, slots 5-8'],
@@ -575,8 +572,23 @@ function getMappingCombos() {
 		[n(B.VIEW) + ' + ' + n(B.MENU), 'Escape'],
 		[n(B.VIEW) + ' + ' + [n(B.A), n(B.B), n(B.X), n(B.Y)].join(' / '), 'Inventory / equipment / skills / status'],
 		[n(B.VIEW) + ' (cursor on item/skill)', 'Context menu'],
+		[
+			n(B.LB) + ' / ' + n(B.RB) + ' / ' + n(B.LT) + ' / ' + n(B.RT) + ' + ' + faces + ' (hold)',
+			'Support: the support skill on yourself'
+		],
+		[n(B.UP) + ' / ' + n(B.DOWN) + ' / ' + n(B.LEFT) + ' / ' + n(B.RIGHT) + ' (emotes open)', 'Choose an emote'],
+		[
+			[n(B.A), n(B.X), n(B.Y), n(B.B)].join(' / ') + ' (emotes open)',
+			'Play / play and stay open / favourite / close'
+		],
+		[n(B.LB) + ' / ' + n(B.RB) + ' (emotes open)', 'Previous / next emote page'],
 		[sticks[0], 'Move'],
-		[sticks[1], Controls.joyAimEnabled ? 'Cursor, or aim (tap ' + n(B.RS) + ')' : 'Cursor']
+		[
+			sticks[1],
+			Controls.joyAimEnabled
+				? 'Cursor, or aim (tap ' + n(B.RS) + '); Support: party radial'
+				: 'Cursor; picks a member for a skill waiting in the Support radial'
+		]
 	];
 }
 

@@ -14,6 +14,8 @@ import InputService from './JoystickInputService.js';
 import Interaction from './JoystickInteractionService.js';
 import ShortcutMapper from './JoystickShortcutMapper.js';
 import JoystickUIRenderer from './JoystickUIRenderer.js';
+import EmoteGrid from './JoystickEmoteGrid.js';
+import Category from './JoystickTargetCategory.js';
 
 export default {
 	prepare: function () {
@@ -30,5 +32,7 @@ export default {
 		Interaction.dispose();
 		InputService.dispose();
 		JoystickUIRenderer.dispose();
+		EmoteGrid.dispose();
+		Category.dispose();
 	}
 };
