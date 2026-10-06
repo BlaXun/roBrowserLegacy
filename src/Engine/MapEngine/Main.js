@@ -495,6 +495,9 @@ function onParameterChange(pkt) {
 			break;
 
 		case StatusProperty.JOBLEVEL:
+			// Kept on the entity as well: a job change redraws the window from it
+			// (Entity.js), and the level arrives before the new job does.
+			Session.Entity.joblevel = amount;
 			BasicInfo.getUI().update('jlvl', amount);
 			SkillList.getUI().onLevelUp();
 			break;

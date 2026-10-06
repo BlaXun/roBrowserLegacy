@@ -26,6 +26,8 @@ import Vending from 'UI/Components/Vending/Vending.js';
 import htmlText from './VendingShop.html?raw';
 import cssText from './VendingShop.css?raw';
 import VendingReport from 'UI/Components/VendingReport/VendingReport.js';
+import { onItemDoubleClick } from 'UI/ItemDoubleClick.js';
+import WheelSteps from 'UI/WheelSteps.js';
 
 /**
  * Create Component
@@ -123,12 +125,8 @@ VendingShop.init = function init() {
 				onItemInfo(e, itemEl);
 			}
 		});
-		content.addEventListener('dblclick', e => {
-			const itemEl = e.target.closest('.item');
-			if (itemEl) {
-				onItemUsed(e, itemEl);
-			}
-		});
+		// Counted per item rather than by the browser: see UI/ItemDoubleClick.js.
+		onItemDoubleClick(content, '.item', (itemEl, e) => onItemUsed(e, itemEl));
 	}
 
 	this.draggable('.titlebar');
@@ -516,20 +514,7 @@ function onDrop(event) {
  * Block the scroll to move 32px at each move
  */
 function onScroll(event) {
-	let delta;
-
-	if (event.wheelDelta) {
-		delta = event.wheelDelta / 120;
-		if (window.opera) {
-			delta = -delta;
-		}
-	} else if (event.detail) {
-		delta = -event.detail;
-	} else if (event.deltaY) {
-		delta = -event.deltaY / 100;
-	}
-
-	event.currentTarget.scrollTop = Math.floor(event.currentTarget.scrollTop / 32) * 32 - delta * 32;
+	WheelSteps.scrollRows(event, event.currentTarget, 32);
 	event.stopImmediatePropagation();
 	event.preventDefault();
 }

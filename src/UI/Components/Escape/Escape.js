@@ -12,6 +12,8 @@ import KEYS from 'Controls/KeyEventHandler.js';
 import Renderer from 'Renderer/Renderer.js';
 import UIManager from 'UI/UIManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
+import ExitHooks from 'UI/ExitHooks.js';
+import MenuHooks from 'UI/MenuHooks.js';
 import SoundOption from 'UI/Components/SoundOption/SoundOption.js';
 import GraphicsOption from 'UI/Components/GraphicsOption/GraphicsOption.js';
 import ShortCutOption from 'UI/Components/ShortCutOption/ShortCutOption.js';
@@ -63,15 +65,21 @@ Escape.init = function init() {
 		Escape.onReturnSavePointRequest();
 	});
 	root.querySelector('.charselect').addEventListener('click', function () {
+		ExitHooks.emit('charSelect', 'escape');
 		Escape.onCharSelectionRequest();
 	});
 	root.querySelector('.hotkey').addEventListener('click', onToggleShortcutUI);
 	root.querySelector('.exit').addEventListener('click', function () {
+		ExitHooks.emit('login', 'escape');
 		Escape.onExitRequest();
 	});
 	root.querySelector('.cancel').addEventListener('click', function () {
 		Escape._host.style.display = 'none';
 	});
+
+	// Buttons added by plugins (UI/MenuHooks.js)
+	renderHookedButtons();
+	MenuHooks.onChange(renderHookedButtons);
 
 	// Start hidden
 	this._host.style.display = 'none';
@@ -94,7 +102,7 @@ Escape.onRemove = function onRemove() {
 	root.querySelectorAll('.resurection, .savepoint').forEach(function (el) {
 		el.style.display = 'none';
 	});
-	root.querySelectorAll('.graphics, .sound, .hotkey').forEach(function (el) {
+	root.querySelectorAll('.graphics, .sound, .hotkey, .hooked').forEach(function (el) {
 		el.style.display = '';
 	});
 };
@@ -159,7 +167,7 @@ Escape.showDeathMenu = function showDeathMenu(hasSiegfried) {
 	if (hasSiegfried) {
 		root.querySelector('.resurection').style.display = '';
 	}
-	root.querySelectorAll('.graphics, .sound, .hotkey').forEach(function (el) {
+	root.querySelectorAll('.graphics, .sound, .hotkey, .hooked').forEach(function (el) {
 		el.style.display = 'none';
 	});
 };
@@ -173,10 +181,45 @@ Escape.resetMenu = function resetMenu() {
 	root.querySelectorAll('.resurection, .savepoint').forEach(function (el) {
 		el.style.display = 'none';
 	});
-	root.querySelectorAll('.graphics, .sound, .hotkey').forEach(function (el) {
+	root.querySelectorAll('.graphics, .sound, .hotkey, .hooked').forEach(function (el) {
 		el.style.display = '';
 	});
 };
+
+/**
+ * Draw the buttons plugins added (UI/MenuHooks.js) after the settings buttons,
+ * from their own pictures, the way the menu's buttons are drawn. Hidden with
+ * the settings buttons while the death menu shows.
+ */
+function renderHookedButtons() {
+	const root = Escape.getRoot();
+	const exit = root.querySelector('.exit');
+	if (!exit) {
+		return;
+	}
+	root.querySelectorAll('.hooked').forEach(el => el.remove());
+
+	const settingsShown = root.querySelector('.graphics')?.style.display !== 'none';
+	MenuHooks.list().forEach(button => {
+		const el = document.createElement('button');
+		el.className = 'hooked';
+		el.dataset.background = button.background;
+		if (button.hover) {
+			el.dataset.hover = button.hover;
+		}
+		if (button.down) {
+			el.dataset.down = button.down;
+		}
+		if (button.title) {
+			el.title = button.title;
+			el.setAttribute('aria-label', button.title);
+		}
+		el.style.display = settingsShown ? '' : 'none';
+		el.addEventListener('click', () => MenuHooks.press(button));
+		GUIComponent.processDataAttrs(el);
+		exit.before(el);
+	});
+}
 
 /**
  * @var {function} callback when player want to resurect using Token of Siegfried

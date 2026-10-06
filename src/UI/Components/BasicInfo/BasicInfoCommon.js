@@ -59,7 +59,8 @@ export function createBasicInfo(config) {
 		miniLayout = false,
 		hideIds = [],
 		barScale = 1.27,
-		hasApBar = false
+		hasApBar = false,
+		menuTip = false
 	} = config;
 
 	const Component = new GUIComponent(name, cssText);
@@ -195,8 +196,47 @@ export function createBasicInfo(config) {
 	/**
 	 * Initialize UI
 	 */
+	/**
+	 * Draw the name of the button the pointer is on in one tip below the frame.
+	 *
+	 * Each button used to draw its own name above itself, which the menu, now that it scrolls,
+	 * would clip. The tip sits outside it and takes its text from the button's `.name`.
+	 */
+	function setupMenuTip(root) {
+		const inner = root.querySelector(innerId);
+		const buttons = root.querySelector('.buttons');
+		if (!inner || !buttons) {
+			return;
+		}
+
+		const tip = document.createElement('div');
+		tip.className = 'menu_tip';
+		inner.appendChild(tip);
+
+		const hide = () => {
+			tip.style.display = 'none';
+		};
+
+		buttons.addEventListener('mouseover', event => {
+			const button = event.target.closest(buttonsSelector);
+			const label = button && button.querySelector('.name');
+			if (!label || !label.textContent.trim()) {
+				hide();
+				return;
+			}
+			tip.textContent = label.textContent;
+			tip.style.display = 'block';
+		});
+		buttons.addEventListener('mouseleave', hide);
+		buttons.addEventListener('scroll', hide);
+	}
+
 	Component.init = function init() {
 		const root = this.getRoot();
+
+		if (menuTip) {
+			setupMenuTip(root);
+		}
 
 		root.querySelectorAll(topbarItemSelector).forEach(el => {
 			el.addEventListener('mousedown', e => e.stopImmediatePropagation());
@@ -394,8 +434,15 @@ export function createBasicInfo(config) {
 	 * @param {number} val2 maximum value
 	 * @param {string} color bar color prefix
 	 */
+	// The pictures of a bar load asynchronously, and a newer update can start before an
+	// older one's have arrived. Only the latest update of a bar may draw, or the older
+	// one's red 30% lands over a full blue bar after it.
+	const barUpdates = {};
+
 	function updateBar(root, type, val1, val2, color) {
 		const perc = Math.floor((val1 * 100) / val2);
+		const update = (barUpdates[type] = (barUpdates[type] || 0) + 1);
+		const isLatest = () => barUpdates[type] === update;
 
 		root.querySelectorAll(`.${type}_value`).forEach(el => {
 			el.textContent = val1;
@@ -416,14 +463,14 @@ export function createBasicInfo(config) {
 
 		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/gze${color}_left.bmp`, url => {
 			const el = root.querySelector(`.${type}_bar_left`);
-			if (el) {
+			if (el && isLatest()) {
 				el.style.backgroundImage = `url(${url})`;
 			}
 		});
 
 		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/gze${color}_mid.bmp`, url => {
 			const el = root.querySelector(`.${type}_bar_middle`);
-			if (el) {
+			if (el && isLatest()) {
 				el.style.backgroundImage = `url(${url})`;
 				el.style.width = `${Math.floor(Math.min(perc, 100) * barScale)}px`;
 			}
@@ -431,7 +478,7 @@ export function createBasicInfo(config) {
 
 		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/gze${color}_right.bmp`, url => {
 			const el = root.querySelector(`.${type}_bar_right`);
-			if (el) {
+			if (el && isLatest()) {
 				el.style.backgroundImage = `url(${url})`;
 				el.style.left = `${Math.floor(Math.min(perc, 100) * barScale)}px`;
 			}

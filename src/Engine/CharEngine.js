@@ -822,6 +822,15 @@ function onReceiveMapInfo(pkt) {
 			DB.startedLazyInit = true;
 		}
 		retryCount++;
+		// Every five seconds, not every hundred milliseconds: this is a
+		// breadcrumb for a bug report, not a progress bar.
+		if (retryCount % 50 === 0) {
+			console.warn(
+				'waiting for the client database: ' + DB.index + ' of ' + DB.count +
+				' loaded after ' + (retryCount / 10) + 's. If this does not move, a ' +
+				'file the database asked for never came back.'
+			);
+		}
 		if (retryCount > 600) {
 			UIManager.showMessageBox('Failed loading databases, please restart the game', 'ok', () => {
 				CharEngine.reload();

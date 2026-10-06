@@ -24,6 +24,10 @@ const DIRECTION = [
 // Server C++ uses a fixed 1.414 approximation for diagonals in path duration
 const DIAGONAL_FACTOR = 1.414;
 
+// Headroom over the measured round trip before a walk's age stops being read as
+// network delay: a frame or two, plus the server's own processing.
+const LATENCY_SLACK_MS = 100;
+
 // Facing behavior (official-like):
 // - First segment: continuous heading toward next tile center.
 // - Later segments: snap to 8-way direction per segment offset.
@@ -76,7 +80,10 @@ function estimatePathDuration(path, total, baseSpeed, startPos) {
  * the walk based on latency.
  */
 function computeWalkStartTick(nowTick, moveStartTime, pathDuration, maxClamp) {
-	if (!moveStartTime || !Session || !Session.serverTick) {
+	// Not `!Session.serverTick`: that is non-zero from the first frame, because
+	// it counts from the renderer starting. Until a pong lands it is not the
+	// server's clock, and subtracting a server tick from it is meaningless.
+	if (!moveStartTime || !Session || !Session.serverTickSynced) {
 		return nowTick;
 	}
 
@@ -84,6 +91,15 @@ function computeWalkStartTick(nowTick, moveStartTime, pathDuration, maxClamp) {
 	if (!isFinite(elapsed) || elapsed <= 0) {
 		return nowTick;
 	}
+
+	// Only network delay can make a walk older than it looks, and the ping
+	// measures that. Between pongs serverTick runs on this machine's clock, so a
+	// server whose clock runs at a different rate drifts from it: a VM guest that
+	// failed to calibrate its TSC ran at 0.889x, which puts the estimate up to a
+	// second ahead by the next 10 s pong. A player-like walk was then drawn that
+	// far down its path and snapped back on the next update -- a teleport.
+	const roundTrip = Session.ping && Session.ping.value > 0 ? Session.ping.value : 0;
+	elapsed = Math.min(elapsed, roundTrip + LATENCY_SLACK_MS);
 
 	if (pathDuration && pathDuration > 0) {
 		// If the delta is wildly larger than the path duration, serverTick is probably not aligned.
@@ -977,6 +993,8 @@ function distance(entity1, entity2) {
 /**
  * Initialize and export methods
  */
+export { computeWalkStartTick };
+
 export default function Init() {
 	this.onWalkEnd = function onWalkEnd() {};
 	this._preserveDirection = false;

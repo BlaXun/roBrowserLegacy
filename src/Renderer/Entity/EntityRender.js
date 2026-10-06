@@ -27,7 +27,6 @@ import StatusConst from 'DB/Status/StatusState.js';
 import SpriteRenderer from 'Renderer/SpriteRenderer.js';
 import Ground from 'Renderer/Map/Ground.js';
 import Altitude from 'Renderer/Map/Altitude.js';
-import Water from 'Renderer/Map/Water.js';
 import Session from 'Engine/SessionStorage.js';
 import DB from 'DB/DBManager.js';
 import GraphicsSettings from 'Preferences/Graphics.js';
@@ -89,6 +88,10 @@ function render(modelView, projection) {
 	this.boundingRect.y1 = -Infinity;
 	this.boundingRect.x2 = -Infinity;
 	this.boundingRect.y2 = Infinity;
+
+	// What the attachments draw this frame, for renderWaterDepth.
+	this.waterDepthAttachments = this._waterDepthAttachments || (this._waterDepthAttachments = []);
+	this.waterDepthAttachments.length = 0;
 
 	// Render it only if visible
 	if (this.effectColor[3]) {
@@ -557,27 +560,74 @@ const renderEntity = (function renderEntityClosure() {
  * sound or trail state is touched. Only set for the non-player body pass;
  * entity types that already write depth never get a frame.
  */
+const _attachmentPosition = new Int32Array(2);
+
 function renderWaterDepth() {
 	const frame = this.waterDepthFrame;
+	const attachments = this.waterDepthAttachments;
 
-	if (!frame || this.hideEntity || !this.effectColor[3]) {
+	if (this.hideEntity || !this.effectColor[3] || (!frame && !(attachments && attachments.length))) {
 		return;
 	}
 
-	if (!Water.isSubmerged(this.position[0], this.position[1])) {
-		return;
-	}
-
+	// Every non-player sprite, not only those standing in water: none of them
+	// writes depth in the colour pass, so without this the water drawn next
+	// paints over any part of a sprite that has water *behind* it -- an NPC at
+	// a cliff edge above the sea (the captain on int_land) lost his head and
+	// shoulders to it. Transparent pixels are discarded, so only the
+	// silhouette writes depth; for a submerged sprite that is still what hides
+	// the part below the surface.
 	const self = this;
-	SpriteRenderer.position.set(this.position);
-	SpriteRenderer.position[2] = SpriteRenderer.position[2] + 0.2;
-	SpriteRenderer.zIndex = 150;
-	SpriteRenderer.runWithDepth(true, true, false, function () {
-		for (let i = 0, count = frame.layers.length; i < count; ++i) {
-			self.renderLayer(frame.layers[i], frame.spr, frame.pal, frame.size, frame.position, 'body', false);
+	// renderLayer grows boundingRect for every 'body' layer, in sprite-local
+	// units. By now renderGUI has already turned this frame's rect into the
+	// screen box picking tests against; redrawing the body here would mix
+	// local points back into it, and a monster standing in water could no
+	// longer be clicked. The depth pass must not change picking: keep the rect.
+	const rect = this.boundingRect;
+	const x1 = rect.x1,
+		y1 = rect.y1,
+		x2 = rect.x2,
+		y2 = rect.y2;
+	if (frame) {
+		SpriteRenderer.position.set(this.position);
+		SpriteRenderer.position[2] = SpriteRenderer.position[2] + 0.2;
+		SpriteRenderer.zIndex = 150;
+		SpriteRenderer.runWithDepth(true, true, false, function () {
+			for (let i = 0, count = frame.layers.length; i < count; ++i) {
+				self.renderLayer(frame.layers[i], frame.spr, frame.pal, frame.size, frame.position, 'body', false);
+			}
+		});
+	}
+
+	// Emotions and quest icons over the head, and anything else attached: the
+	// same problem as the body, for players too, whose bodies do write depth
+	// but whose attachments do not.
+	if (attachments && attachments.length) {
+		const alpha = this.effectColor[3];
+		for (let a = 0; a < attachments.length; ++a) {
+			const item = attachments[a];
+			SpriteRenderer.position[0] = item.position[0];
+			SpriteRenderer.position[1] = item.position[1];
+			SpriteRenderer.position[2] = item.position[2];
+			SpriteRenderer.depth = item.depth;
+			SpriteRenderer.zIndex = item.zIndex;
+			this.effectColor[3] = item.opacity;
+			_attachmentPosition[0] = item.x;
+			_attachmentPosition[1] = item.y;
+			SpriteRenderer.runWithDepth(true, true, false, function () {
+				for (let i = 0, count = item.layers.length; i < count; ++i) {
+					self.renderLayer(item.layers[i], item.spr, item.spr, 1.0, _attachmentPosition, false);
+				}
+			});
 		}
-	});
+		this.effectColor[3] = alpha;
+		SpriteRenderer.depth = 0.0;
+	}
 	SpriteRenderer.zIndex = 1;
+	rect.x1 = x1;
+	rect.y1 = y1;
+	rect.x2 = x2;
+	rect.y2 = y2;
 }
 
 /**

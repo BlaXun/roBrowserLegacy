@@ -68,6 +68,13 @@ function RenderCanvas3D(isBlendModeOne) {
 		gl.uniform1i(uniform.uDisableDepthCorrection, disableDepthCorrection);
 	}
 
+	// The vertical plane depth for the whole quad only where depth is written
+	// (players, the depth pass before the water); see SpriteRenderer.vs.
+	if (_fullPlaneDepth !== _depthMask) {
+		_fullPlaneDepth = _depthMask;
+		gl.uniform1i(uniform.uFullPlaneDepth, _fullPlaneDepth);
+	}
+
 	gl.uniform1f(uniform.uSpriteRendererZindex, this.zIndex++);
 	// Rotate
 	if (this.angle !== _angle) {
@@ -344,6 +351,11 @@ let _disableDepthCorrection = false;
 let _depthMask = true;
 
 /**
+ * @type {boolean} cached full plane depth state (follows the depth mask)
+ */
+let _fullPlaneDepth = true;
+
+/**
  * @type {boolean} cached depth test state
  */
 let _depthTest = true;
@@ -519,6 +531,7 @@ class SpriteRenderer {
 		gl.uniform1f(uniform.uCameraZoom, Camera.zoom);
 		gl.uniform1f(uniform.uCameraLatitude, Camera.getLatitude());
 		gl.uniform1i(uniform.uDisableDepthCorrection, (_disableDepthCorrection = false));
+		gl.uniform1i(uniform.uFullPlaneDepth, (_fullPlaneDepth = true));
 
 		// Enable all attributes
 		gl.enableVertexAttribArray(attribute.aPosition);

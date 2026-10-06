@@ -406,7 +406,8 @@ function onDrop(event) {
 		// Ignore parsing error
 	}
 
-	if (data && data.type === 'item') {
+	// The switch set holds what is not worn; a drag off the equipment window is not one.
+	if (data && data.type === 'item' && data.from !== 'Equipment') {
 		const item = data.data;
 
 		if (

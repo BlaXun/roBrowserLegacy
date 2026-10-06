@@ -213,11 +213,20 @@
 	width: 165px;
 	height: 110px;
 	color: white;
-	padding-top: 20px;
 	background-repeat: no-repeat;
 	background-color: transparent;
 	border: 0;
 	text-align: center;
+}
+
+/* The label sits on the middle of the Poring, not at its crown. Centred on
+   its own: the button's display is set inline when it is shown. */
+#CharSelectV4 .btn.ok ui-text {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 50%;
+	transform: translateY(-50%);
 }
 
 #CharSelectV4 .btn.ok:hover {

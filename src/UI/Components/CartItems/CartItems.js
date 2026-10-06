@@ -29,6 +29,7 @@ import cssText from './CartItems.css?raw';
 import Storage from 'UI/Components/Storage/Storage.js';
 import Inventory from 'UI/Components/Inventory/Inventory.js';
 import Equipment from 'UI/Components/Equipment/Equipment.js';
+import WheelSteps from 'UI/WheelSteps.js';
 
 /**
  * Create Component
@@ -94,7 +95,12 @@ CartItems.init = function Init() {
 
 	// on drop item
 	this._host.addEventListener('drop', onDrop);
-	this._host.addEventListener('dragover', e => e.stopImmediatePropagation());
+	this._host.addEventListener('dragover', e => {
+		e.stopImmediatePropagation();
+		// A drop only fires on a target whose dragover cancelled the event.
+		// Without this the cart is never a drop target and onDrop never runs.
+		e.preventDefault();
+	});
 
 	// Items event (delegation)
 	const content = root.querySelector('.container .content');
@@ -615,10 +621,9 @@ function onDrop(event) {
  * Block the scroll to move 32px at each move
  */
 function onScroll(event) {
-	const delta = event.deltaY > 0 ? -1 : 1;
 	const el = event.currentTarget;
 
-	el.scrollTop = Math.floor(el.scrollTop / 32) * 32 - delta * 32;
+	WheelSteps.scrollRows(event, el, 32);
 
 	if (el._roScrollbarRestart) {
 		el._roScrollbarRestart();

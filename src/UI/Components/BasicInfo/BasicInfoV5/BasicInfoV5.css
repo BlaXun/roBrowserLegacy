@@ -194,6 +194,8 @@
 	top: 9px;
 	width: 220px;
 	height: 132px;
+	overflow-x: hidden;
+	overflow-y: auto; /* the client's scrollbar attaches to this, and only shows when there is more */
 	background-repeat: no-repeat;
 	background-position: bottom; /* alinha o fundo pela base */
 }
@@ -211,6 +213,11 @@
 	height: 32px;
 	border: none;
 	margin: 6px;
+}
+/* The scrollbar takes 13px of the panel only while it scrolls. Five buttons still
+   fit in what is left if their side margins give up 2px each. */
+#BasicInfoV5 .buttons[style*='padding-right: 13px'] > div[id] {
+	margin: 6px 4px;
 }
 #BasicInfoV5 .buttons .clear {
 	clear: both;
@@ -281,11 +288,18 @@
 }
 
 #BasicInfoV5 .buttons div .name {
-	position: relative;
 	display: none;
-	z-index: 1;
-	top: -20px;
-	left: 0px;
+}
+
+/* A button's name is drawn once, centred below the frame, rather than inside the
+   button, where a panel that scrolls would clip it. BasicInfoCommon fills it in. */
+#BasicInfoV5 .menu_tip {
+	display: none;
+	position: absolute;
+	left: 110px;
+	transform: translateX(-50%);
+	z-index: 10;
+	pointer-events: none;
 	background-color: rgba(0, 0, 0, 0.6);
 	text-shadow: 1px 1px black;
 	color: white;
@@ -293,11 +307,11 @@
 	white-space: nowrap;
 	font-size: 0.6rem;
 }
-#BasicInfoV5 .buttons div:hover .name {
-	display: table;
+#BasicInfoV5.large .menu_tip {
+	top: 296px; /* the panel is at 160px, 132px tall */
 }
-#BasicInfoV5 .buttons div .name {
-	display: none;
+#BasicInfoV5.small .menu_tip {
+	top: 216px; /* the panel is at 80px, 132px tall */
 }
 
 #BasicInfoV5 .buttons .btn_overlay {
@@ -305,8 +319,10 @@
 	height: 40px;
 	border: none;
 	position: relative;
-	top: -13px;
-	left: -7px;
+	/* The picture's tile starts 6px below its top and flush left, which puts it over
+	   its button; -13px and -7px left it up and to the left, and past the panel's top. */
+	top: -6px;
+	left: 0;
 	z-index: 10;
 	display: none;
 }

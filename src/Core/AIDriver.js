@@ -42,10 +42,27 @@ class AIDriver {
 		function addCTX(lua, isHoAI = true) {
 			const ctx = lua.ctx;
 
+			// SkillInfo has no usable AttackRange for homunculus and mercenary
+			// skills, so the only place their real range is known is the skill
+			// list the server sent in ZC_HOSKILLINFO_LIST / ZC_MER_SKILLINFO_LIST,
+			// which the skill window already holds.
+			const SkillListAI = UIManager.getComponent(isHoAI ? 'SkillListHOM' : 'SkillListMER');
+
+			function getAISkill(id) {
+				if (id === null || id === undefined || !SkillListAI || !SkillListAI.getSkillById) {
+					return null;
+				}
+				return SkillListAI.getSkillById(Number(id));
+			}
+
+			function isOwnAIUnit(id) {
+				return Number(id) === (isHoAI ? Session.homunId : Session.mercId);
+			}
+
 			// Initialize GetV, GetMsg and GetResMsg adapter
 			lua.doStringSync(`
-			function GetV(V_, id)
-				local res = GetVJS(V_, id)
+			function GetV(V_, id, skill, lv)
+				local res = GetVJS(V_, id, skill, lv)
 				if(V_ == 1 or V_ == 13) then
 					return res[1], res[2]
 				end
@@ -110,7 +127,7 @@ class AIDriver {
 				}
 			};
 
-			ctx.GetVJS = (V_, id) => {
+			ctx.GetVJS = (V_, id, skillId, skillLv) => {
 				const entity = EntityManager.get(Number(id));
 
 				switch (V_) {
@@ -178,6 +195,15 @@ class AIDriver {
 						return entity && entity.targetGID && entity.targetGID > 0 ? entity.targetGID : -1;
 
 					case 6: // V_SKILLATTACKRANGE
+						// Asked about a specific skill of our own unit, answer from
+						// the server's skill list; an unlearned skill is 0. Without a
+						// skill id the caller only wants the entity's melee range.
+						if (skillId !== null && skillId !== undefined && isOwnAIUnit(id)) {
+							const skill = getAISkill(skillId);
+							if (skill) {
+								return skill.level > 0 ? skill.attackRange || 1 : 0;
+							}
+						}
 						return entity ? entity.attack_range : 1;
 
 					case 7: // V_HOMUNTYPE
@@ -201,6 +227,12 @@ class AIDriver {
 						return Number((entity.job + '').substring(1));
 					case 14: // V_SKILLATTACKRANGE_LEVEL
 						// Returns the skill attack range for the skill level (Never implemented on original client)
+						if (skillId !== null && skillId !== undefined && isOwnAIUnit(id)) {
+							const skill = getAISkill(skillId);
+							if (skill) {
+								return skill.level > 0 ? skill.attackRange || 1 : 0;
+							}
+						}
 						if (entity !== null) {
 							return entity.attack_range || 1;
 						}
@@ -314,7 +346,24 @@ class AIDriver {
 					}
 
 					// check range
-					const range = SkillInfo[skillId].AttackRange[level - 1] + 1 || homun.attack_range || 1;
+					// SkillInfo carries AttackRange = null for these skills, and
+					// `null + 1` is 1 in JavaScript -- truthy, so the fallbacks below
+					// never ran and every AI skill was given melee range, silently
+					// dropping any cast further than one cell away.
+					const aiSkill = getAISkill(skillId);
+					const infoRange =
+						SkillInfo[skillId] && SkillInfo[skillId].AttackRange
+							? SkillInfo[skillId].AttackRange[level - 1]
+							: null;
+
+					let range;
+					if (aiSkill && aiSkill.attackRange > 0) {
+						range = aiSkill.attackRange;
+					} else if (Number.isFinite(infoRange) && infoRange > 0) {
+						range = infoRange + 1;
+					} else {
+						range = homun.attack_range || 1;
+					}
 
 					if (
 						homun.position[0] > 0 &&

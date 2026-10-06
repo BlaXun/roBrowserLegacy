@@ -530,10 +530,10 @@ const CommandStore = {
 			Session.homCustomAI = !Session.homCustomAI;
 			if (Session.homCustomAI) {
 				HomunInformations.resetAI();
-				this.addText(DB.getMessage(1024), this.TYPE.INFO, this.FILTER.PUBLIC_LOG);
+				this.addText(DB.getMessage(1023), this.TYPE.INFO, this.FILTER.PUBLIC_LOG);
 			} else {
 				HomunInformations.resetAI();
-				this.addText(DB.getMessage(1023), this.TYPE.INFO, this.FILTER.PUBLIC_LOG);
+				this.addText(DB.getMessage(1024), this.TYPE.INFO, this.FILTER.PUBLIC_LOG);
 			}
 			return;
 		}

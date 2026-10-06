@@ -14,6 +14,7 @@ import Camera from 'Renderer/Camera.js';
 import SwirlingAura from 'Renderer/Effects/SwirlingAura.js';
 import GroundAura from 'Renderer/Effects/GroundAura.js';
 import Level99Bubble from 'Renderer/Effects/Level99Bubble.js';
+import LevelAuraEffects from 'DB/Effects/LevelAuraEffects.js';
 
 import SongEffects from 'Renderer/Effects/Songs.js';
 import SoundManager from 'Audio/SoundManager.js';
@@ -4302,7 +4303,13 @@ export default {
 			attachedEntity: true,
 			func: function (Params) {
 				this.add(
-					new SwirlingAura(Params.Init.ownerEntity.position, 'ring_blue.tga', Params.Inst.startTick),
+					new SwirlingAura(
+						Params.Init.ownerEntity.position,
+						'ring_blue.tga',
+						Params.Inst.startTick,
+						undefined,
+						Params.Init.auraColor
+					),
 					Params
 				);
 			}
@@ -4322,7 +4329,8 @@ export default {
 						100, // size (same as original Aura.js)
 						15.0, // distance (same as original Aura.js)
 						'pikapika2.bmp',
-						Params.Inst.startTick
+						Params.Inst.startTick,
+						Params.Init.auraColor
 					),
 					Params
 				);
@@ -4347,7 +4355,13 @@ export default {
 				}
 
 				this.add(
-					new Level99Bubble(Params.Init.ownerEntity.position, 'whitelight.tga', Params.Inst.startTick, flag1),
+					new Level99Bubble(
+						Params.Init.ownerEntity.position,
+						'whitelight.tga',
+						Params.Inst.startTick,
+						flag1,
+						Params.Init.auraColor
+					),
 					Params
 				);
 			}
@@ -11765,6 +11779,20 @@ export default {
 		{
 			wav: 'effect/sky_emperor/ske_enchanting_sky',
 			attachedEntity: true
+		},
+		{
+			type: 'STR',
+			file: 'sky_emperor/ske_enchanting_sky/ske_enchanting_sky_00',
+			texturePath: 'sky_emperor/ske_enchanting_sky/',
+			min: 'sky_emperor/ske_enchanting_sky/min_ske_enchanting_sky_00',
+			attachedEntity: true
+		},
+		{
+			type: 'STR',
+			file: 'sky_emperor/ske_enchanting_sky/ske_enchanting_sky_01',
+			texturePath: 'sky_emperor/ske_enchanting_sky/',
+			min: 'sky_emperor/ske_enchanting_sky/min_ske_enchanting_sky_01',
+			attachedEntity: true
 		}
 	],
 
@@ -14969,6 +14997,20 @@ export default {
 	ef_ss_ankokuryuuakumu: [
 		{
 			wav: 'effect/shinkiro_shiranui/ss_ankokuryuuakumu',
+			attachedEntity: true
+		},
+		{
+			type: 'STR',
+			file: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/ankokuryuuakumu_00',
+			texturePath: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/',
+			min: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/min_ankokuryuuakumu_00',
+			attachedEntity: true
+		},
+		{
+			type: 'STR',
+			file: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/ankokuryuuakumu_01',
+			texturePath: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/',
+			min: 'shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/min_ankokuryuuakumu_01',
 			attachedEntity: true
 		}
 	],
@@ -22168,6 +22210,25 @@ export default {
 		}
 	],
 
+	// Hasty Fire in the Hole (NW_HASTY_FIRE_IN_THE_HOLE), from the client's own effect folders.
+	// A ground skill with a splash of 2 cells, which is the 5x5 art; the folder also has 7x7 and 9x9.
+	ef_nw_hasty_fire_in_the_hole: [
+		{
+			type: 'STR',
+			file: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/hasty_fire_in_the_hole_5x5',
+			texturePath: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/',
+			min: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/min_hasty_fire_in_the_hole_5x5',
+			wav: 'effect/night_watch/nw_hasty_fire_in_the_hole_0'
+		},
+		{
+			type: 'STR',
+			file: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/hasty_fire_in_the_hole_5x5',
+			texturePath: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/',
+			min: 'night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/min_hasty_fire_in_the_hole_5x5',
+			renderBeforeEntities: true
+		}
+	],
+
 	// Wild Shot (NW_WILD_SHOT), from the client's own effect folders.
 	ef_nw_wild_shot: [
 		{
@@ -23909,5 +23970,8 @@ export default {
 			texturePath: 'help_angel/help_angel_bottom/',
 			renderBeforeEntities: true
 		}
-	]
+	],
+
+	// The level auras past 99 and the coloured auras: LevelAuraEffects.js.
+	...LevelAuraEffects
 };

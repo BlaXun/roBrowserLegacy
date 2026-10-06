@@ -78,6 +78,14 @@ export function createWinStats({ name, htmlText, cssText, hasTraits }) {
 
 		_root = this.getRoot();
 
+		// Stat descriptions use RO color codes (^RRGGBB), unlike regular UI labels.
+		// Keep data-text's safe text lookup, then only render formatting in tooltips.
+		_root.querySelectorAll('.desc .hover[data-text]').forEach(tooltip => {
+			const escaped = document.createElement('div');
+			escaped.textContent = DB.getMessage(tooltip.dataset.text, '');
+			tooltip.innerHTML = DB.formatMsgToHtml(escaped.innerHTML);
+		});
+
 		// Base stat up buttons
 		const upButtons = _root.querySelectorAll('.up button');
 		upButtons.forEach(btn => {

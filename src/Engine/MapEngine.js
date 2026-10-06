@@ -93,7 +93,7 @@ import Achievement from 'UI/Components/Achievement/Achievement.js';
 import MainEngine from './MapEngine/Main.js';
 import MapStateEngine from './MapEngine/MapState.js';
 import NPCEngine from './MapEngine/NPC.js';
-import EntityEngine from './MapEngine/Entity.js';
+import EntityEngine, { clearQuestEffects } from './MapEngine/Entity.js';
 import ItemEngine from './MapEngine/Item.js';
 import MailEngine from './MapEngine/Mail.js';
 import PrivateMessageEngine from './MapEngine/PrivateMessage.js';
@@ -168,6 +168,13 @@ class MapEngine {
 				// Force reloading map
 				MapRenderer.currentMap = '';
 
+				// Each map-server builds the title list anew when the character
+				// enters it, and sends a fresh achievement list to go with it.
+				if (Session.Achievement) {
+					Session.Achievement.titles = [];
+					Session.Achievement.loginListPending = true;
+				}
+
 				// Fail to connect...
 				if (!success) {
 					UIManager.showErrorBox(DB.getMessage(1));
@@ -215,6 +222,8 @@ class MapEngine {
 					ping = new PACKET.CZ.REQUEST_TIME();
 				}
 				const startTick = Date.now();
+				// A new connection makes any previous correction meaningless.
+				Session.serverTickSynced = false;
 				Network.setPing(() => {
 					if (is_sec_hbt) {
 						Network.sendPacket(hbt);
@@ -226,6 +235,10 @@ class MapEngine {
 						console.warn('[Network] The server did not answer the previous PING!');
 					}
 					SP.pingTime = ping.clientTime;
+					// The base pingTime is measured from, so the pong can be put on
+					// the same clock and subtracted. Without it there is nothing here
+					// for a pong to be compared against.
+					SP.epoch = startTick;
 					SP.returned = false;
 
 					Network.sendPacket(ping);
@@ -467,10 +480,14 @@ function onPong(pkt) {
 	const SP = Session.ping;
 
 	SP.returned = true;
-	SP.pongTime = 0;
+	// On the same clock as pingTime, so the subtraction below is the round
+	// trip it reads as. It used to be assigned 0 first, which made `value`
+	// minus the age of the session.
+	SP.pongTime = SP.epoch ? Date.now() - SP.epoch : SP.pingTime;
 	SP.value = SP.pongTime - SP.pingTime;
 
 	Session.serverTick = pkt.time + SP.value / 2; // Adjust with half ping
+	Session.serverTickSynced = true;
 }
 
 /**
@@ -627,6 +644,8 @@ function onConnectionRefused(pkt) {
  * @param {object} pkt - PACKET.ZC.NPCACK_MAPMOVE
  */
 function onMapChange(pkt) {
+	clearQuestEffects();
+
 	MapRenderer.onLoad = () => {
 		Session.Entity.set({
 			PosDir: [pkt.xPos, pkt.yPos, 0],

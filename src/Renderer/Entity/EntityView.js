@@ -36,6 +36,7 @@ import EntityAction from './EntityAction.js';
 import PACKETVER from 'Network/PacketVerManager.js';
 import JobConst from 'DB/Jobs/JobConst.js';
 import GR2ModelRenderer from 'Renderer/GR2/GR2ModelRenderer.js';
+import Session from 'Engine/SessionStorage.js';
 
 // Client directory the GR2 3D-mob models resolve against (GR2ModelRenderer fetches from here).
 const GR2_MODEL_ROOT = 'data/model/3dmob/';
@@ -43,6 +44,49 @@ const GR2_MODEL_ROOT = 'data/model/3dmob/';
 // Stand-in when a .gr2 model is absent from the GRF: render the Poring sprite instead of nothing
 // (job 1002). Consumed only after GR2ModelRenderer.isMissing flags the path (see UpdateBody).
 const GR2_FALLBACK_JOB = 1002;
+
+/**
+ * Load the first body in `paths` whose .spr and .act both load, and call onload
+ * with that path (no extension). A body missing either file moves on to the
+ * next path; a late answer about a path already given up on is ignored.
+ *
+ * @param {Array<string>} paths - body paths without extension, in order of preference
+ * @param {function} onload - called once, with the path that loaded
+ * @param {object} args - Client.loadFile arguments for the .spr
+ */
+function loadBody(paths, onload, args) {
+	let index = 0;
+
+	const attempt = () => {
+		const current = index;
+		const path = paths[current];
+		let pending = 2;
+
+		const done = () => {
+			if (current === index && --pending === 0) {
+				onload(path);
+			}
+		};
+
+		const fail = () => {
+			if (current !== index) {
+				return;
+			}
+			index++;
+			if (index < paths.length) {
+				attempt();
+			}
+		};
+
+		Client.loadFile(path + '.act', done, fail);
+		// A failure already known (the .act) answers at once: skip the .spr then.
+		if (current === index) {
+			Client.loadFile(path + '.spr', done, fail, args);
+		}
+	};
+
+	attempt();
+}
 
 /**
  * Files to display a view
@@ -259,7 +303,7 @@ function UpdateBody(job) {
 	// Don't force the GM/admin sprite when the entity is displaying a monster
 	// form (disguise or transformation) - otherwise a GM disguised as a monster
 	// shows the headless admin sprite instead of the monster.
-	const showAdminSprite = this.isAdmin && !shouldSuppressHead.call(this);
+	const showAdminSprite = Session.showsAdmin(this, 'sprite') && !shouldSuppressHead.call(this);
 	let path = showAdminSprite ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex);
 	const Entity = this.constructor;
 
@@ -370,11 +414,13 @@ function UpdateBody(job) {
 		this.gr2 = null;
 	}
 
-	// Loading
-	Client.loadFile(path + '.act');
-	Client.loadFile(
-		path + '.spr',
-		function () {
+	// Loading: the body the tables name, then -- when the client's data lacks it -- the
+	// stand-ins DB.getBodyFallbackPaths names, so an NPC is never drawn as nothing.
+	// The GM sprite is chosen on purpose and gets none.
+	const paths = [path].concat(showAdminSprite ? [] : DB.getBodyFallbackPaths(job, this._sex) || []);
+	loadBody(
+		paths,
+		function (loaded) {
 			// Check if callback is stale (transformation changed while callback was pending)
 			const isStaleCallback = this._transformationSeq && this._transformationSeq > transformationSeq;
 
@@ -383,8 +429,8 @@ function UpdateBody(job) {
 
 			// Only update if callback is valid
 			if (!isStaleCallback && job === currentJob) {
-				this.files.body.spr = path + '.spr';
-				this.files.body.act = path + '.act';
+				this.files.body.spr = loaded + '.spr';
+				this.files.body.act = loaded + '.act';
 
 				// Apply head suppression/restoration
 				// Apply head suppression/restoration
@@ -396,7 +442,6 @@ function UpdateBody(job) {
 			this.weapon = this._weapon;
 			this.shield = this._shield;
 		}.bind(this),
-		null,
 		{
 			to_rgba: this.objecttype !== Entity.TYPE_PC
 		}
@@ -563,13 +608,13 @@ function UpdateBodyStyle(look) {
 				}
 			}
 
-			path = this.isAdmin ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex, look, cashMountCostume);
+			path = Session.showsAdmin(this, 'sprite') ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex, look, cashMountCostume);
 
 			// The job whose sprite getBodyPath picked, so the palette can be the one made for it: a
 			// body style draws the `costume_1` body of `look`, mounted or not, and that body has
 			// palettes of its own. Null when the style draws the job's own body, and for an admin,
 			// whose body is the admin sprite whatever the style.
-			const styled = !this.isAdmin && PACKETVER.value > 20141022 && look > 0 && look !== job && !cashMountCostume;
+			const styled = !Session.showsAdmin(this, 'sprite') && PACKETVER.value > 20141022 && look > 0 && look !== job && !cashMountCostume;
 			this._bodyStyleJob = styled ? look : null;
 			Entity = this.constructor;
 

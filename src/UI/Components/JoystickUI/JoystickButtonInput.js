@@ -14,9 +14,20 @@ import Interaction from './JoystickInteractionService.js';
 import SetManager from './JoystickSetManager.js';
 import JoystickUIRenderer from './JoystickUIRenderer.js';
 import SelectionUI from './JoystickSelectionUI.js';
+import ControlsSettings from 'Preferences/Controls.js';
 
 let clickLock = false;
 const lockTimeout = 200;
+
+// View + LB/RB and View + LT/RT: one press turns the camera this far
+const CAMERA_STEP_SMALL = 45;
+const CAMERA_STEP_LARGE = 90;
+
+// RS click: a tap switches the right stick between aim and cursor, a hold
+// clears the target. Decided on release (tap) or after RS_HOLD_MS (hold).
+const RS_HOLD_MS = 400;
+let rsDownAt = 0;
+let rsHoldFired = false;
 
 function setClickLock() {
 	clickLock = true;
@@ -27,8 +38,11 @@ function setClickLock() {
 
 const ButtonInput = {
 	update: function (buttons) {
+		// Before the click lock: a release must not be missed, or a tap is lost
+		const stickButton = this._handleRightStickButton(buttons);
+
 		if (clickLock) {
-			return false;
+			return stickButton;
 		}
 
 		if (SelectionUI.active()) {
@@ -76,15 +90,25 @@ const ButtonInput = {
 			pressed = true;
 		}
 
-		// X → attack
-		if (btn[2] !== 'unpressed') {
-			Interaction.attackTargeted();
+		// X → attack. A fresh press always attacks. While held, attack only
+		// when the target changes (previous one died, D-pad cycled): the
+		// server keeps attacking on its own (action 7), and re-sending every
+		// poll restarted the walk -- zig-zag that mouse combat does not have.
+		// Handling 'holding' too means a press that lands inside the click
+		// lock is not lost.
+		if (btn[2] !== 'unpressed' && Interaction.attackTargeted(btn[2] === 'holding')) {
 			pressed = true;
 		}
 
-		// Y → pickup item
-		if (btn[3] !== 'unpressed') {
+		// Y → pickup item (single-fire; nothing to do while held)
+		if (btn[3] === 'pressed') {
 			Interaction.pickUpItem();
+			pressed = true;
+		}
+
+		// L3 (left stick click) → switch D-pad cycle mode (mobs/items/both)
+		if (btn[10] === 'pressed') {
+			Interaction.nextCycleMode();
 			pressed = true;
 		}
 
@@ -95,11 +119,48 @@ const ButtonInput = {
 		return pressed;
 	},
 
+	_handleRightStickButton: function (btn) {
+		const state = btn[11];
+
+		// Aiming switched off in the settings: RS click clears the target as
+		// soon as it is pressed, as it did before aiming existed.
+		if (!ControlsSettings.joyAimEnabled) {
+			rsDownAt = 0;
+			if (state === 'pressed') {
+				Interaction.resetFocus();
+			}
+			return state !== 'unpressed';
+		}
+
+		if (state !== 'unpressed') {
+			if (!rsDownAt) {
+				rsDownAt = Date.now();
+				rsHoldFired = false;
+			} else if (!rsHoldFired && Date.now() - rsDownAt >= RS_HOLD_MS) {
+				// Hold: clear target + recenter cursor, once per hold
+				Interaction.resetFocus();
+				rsHoldFired = true;
+			}
+			return true;
+		}
+
+		if (rsDownAt) {
+			if (!rsHoldFired && !SelectionUI.active()) {
+				// Tap: right stick aim <-> cursor
+				Interaction.toggleStickMode();
+			}
+			rsDownAt = 0;
+			return true;
+		}
+		return false;
+	},
+
 	_handleSetChange: function (btn) {
 		const l2 = btn[6] === 'holding';
 		const r2 = btn[7] === 'holding';
 
-		if (l2 && r2) {
+		// With View held the triggers turn the camera
+		if (l2 && r2 && btn[8] === 'unpressed') {
 			SetManager.toggle();
 			JoystickUIRenderer.updateSetIndicator();
 			JoystickUIRenderer.sync();
@@ -114,25 +175,42 @@ const ButtonInput = {
 		const selectPressed = buttons[8] === 'holding';
 
 		if (selectPressed) {
-			if (buttons[12] !== 'unpressed') {
-				// D-pad Up
-				Interaction.cameraZoom(-2);
-				pressed = true;
-			} else if (buttons[13] !== 'unpressed') {
-				// D-pad Down
-				Interaction.cameraZoom(2);
-				pressed = true;
-			} else if (buttons[14] !== 'unpressed') {
-				// D-pad Left
-				Interaction.cameraAngle(-5);
-				pressed = true;
-			} else if (buttons[15] !== 'unpressed') {
-				// D-pad Right
-				Interaction.cameraAngle(5);
-				pressed = true;
-			} else if (buttons[9] !== 'unpressed') {
+			if (
+				buttons[12] !== 'unpressed' ||
+				buttons[13] !== 'unpressed' ||
+				buttons[14] !== 'unpressed' ||
+				buttons[15] !== 'unpressed'
+			) {
+				// View + D-pad: zoom and turn, every frame in
+				// JoystickCameraMotion. No click lock, so other View combos
+				// still answer while the camera moves.
+				return true;
+			}
+
+			// View + LB / RB: a 45 degree turn, LT / RT: 90 degrees. Once per
+			// press, so no click lock: a quick second tap turns again.
+			const turn = this._cameraStep(buttons);
+			if (turn) {
+				Interaction.cameraAngle(turn);
+				return true;
+			}
+
+			if (buttons[9] !== 'unpressed') {
 				// Start button
 				Interaction.escape();
+				pressed = true;
+			} else if (buttons[0] === 'pressed') {
+				// View + A/B/X/Y: windows, as Alt+E / Alt+Q / Alt+S / Alt+A
+				Interaction.toggleWindow('Inventory');
+				pressed = true;
+			} else if (buttons[1] === 'pressed') {
+				Interaction.toggleWindow('Equipment');
+				pressed = true;
+			} else if (buttons[2] === 'pressed') {
+				Interaction.toggleWindow('SkillList');
+				pressed = true;
+			} else if (buttons[3] === 'pressed') {
+				Interaction.toggleWindow('WinStats');
 				pressed = true;
 			} else {
 				pressed = Interaction.showinfo();
@@ -154,12 +232,12 @@ const ButtonInput = {
 			Interaction.navigateDpad('down');
 			pressed = true;
 		} else if (buttons[14] !== 'unpressed') {
-			// D-pad Left
-			Interaction.navigateDpad('left');
+			// D-pad Left: cycle to the previous nearby mob/item (or grid nav over a UI)
+			Interaction.cycleTarget('prev');
 			pressed = true;
 		} else if (buttons[15] !== 'unpressed') {
-			// D-pad Right
-			Interaction.navigateDpad('right');
+			// D-pad Right: cycle to the next nearby mob/item (or grid nav over a UI)
+			Interaction.cycleTarget('next');
 			pressed = true;
 		} else if (buttons[9] !== 'unpressed') {
 			// Start button
@@ -172,6 +250,26 @@ const ButtonInput = {
 		}
 
 		return pressed;
+	},
+
+	/**
+	 * Degrees a fresh LB / RB / LT / RT press turns the camera (with View
+	 * held), or 0.
+	 */
+	_cameraStep: function (btn) {
+		if (btn[4] === 'pressed') {
+			return -CAMERA_STEP_SMALL;
+		}
+		if (btn[5] === 'pressed') {
+			return CAMERA_STEP_SMALL;
+		}
+		if (btn[6] === 'pressed') {
+			return -CAMERA_STEP_LARGE;
+		}
+		if (btn[7] === 'pressed') {
+			return CAMERA_STEP_LARGE;
+		}
+		return 0;
 	},
 
 	_handleShortcuts: function (btn) {

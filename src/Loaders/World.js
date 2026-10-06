@@ -250,6 +250,7 @@ class RSW {
 		return {
 			water: this.water,
 			light: this.light,
+			lights: this.lights,
 			sound: this.sounds,
 			effect: this.effects
 		};

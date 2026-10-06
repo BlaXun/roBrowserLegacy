@@ -12,6 +12,7 @@
 import glMatrix from 'Utils/gl-matrix.js';
 import MapPreferences from 'Preferences/Map.js';
 import EntityOverlay from 'Renderer/Entity/EntityOverlay.js';
+import Session from 'Engine/SessionStorage.js';
 
 /**
  * Global methods
@@ -359,7 +360,7 @@ class Display {
 									? entity.display.STYLE.NPC
 									: entity.objecttype === entity.constructor.TYPE_ITEM
 										? entity.display.STYLE.ITEM
-										: entity.objecttype === entity.constructor.TYPE_PC && entity.isAdmin
+										: entity.objecttype === entity.constructor.TYPE_PC && Session.showsAdmin(entity, 'name')
 											? entity.display.STYLE.ADMIN
 											: entity.display.STYLE.DEFAULT
 		);

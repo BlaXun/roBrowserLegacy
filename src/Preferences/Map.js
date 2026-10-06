@@ -31,11 +31,13 @@ export default Preferences.get(
 		lightmap: true,
 
 		/**
-		 * Posterize lightmap ?
+		 * How the map's baked light is drawn: 0 posterized into 16 steps, as the
+		 * original client does (visible bands across lit floors); 1 smooth;
+		 * 2 smooth with a slight gamma curve.
 		 *
-		 * Toggle using "/smoothlight" in the chatbox
+		 * Set in Graphics Settings, or cycle with "/smoothlight" in the chatbox.
 		 */
-		smoothlight: 0,
+		smoothlight: 1,
 
 		/**
 		 * Display effects ?

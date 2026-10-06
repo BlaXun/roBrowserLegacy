@@ -401,7 +401,8 @@ export function createInventory(config) {
 		this.magnet.LEFT = _preferences.magnet_left;
 		this.magnet.RIGHT = _preferences.magnet_right;
 
-		_realSize = _preferences.reduce ? 0 : this._host.getBoundingClientRect().height;
+		// Layout height: the window may be drawn scaled (UI/UIScale.js)
+		_realSize = _preferences.reduce ? 0 : this._host.offsetHeight;
 		const miniBtnAppend = root.querySelector('.titlebar .mini');
 		if (miniBtnAppend) {
 			miniBtnAppend.dispatchEvent(new Event('mousedown'));
@@ -429,10 +430,10 @@ export function createInventory(config) {
 		_preferences.reduce = !!_realSize;
 		_preferences.y = parseInt(this._host.style.top, 10);
 		_preferences.x = parseInt(this._host.style.left, 10);
-		const hostRect = this._host.getBoundingClientRect();
-		_preferences.width = Math.floor((hostRect.width - (23 + 16 + 16 - 30)) / 32);
+		// Layout size: the window may be drawn scaled (UI/UIScale.js)
+		_preferences.width = Math.floor((this._host.offsetWidth - (23 + 16 + 16 - 30)) / 32);
 		if (resizableHeight) {
-			_preferences.height = Math.floor((hostRect.height - (31 + 19 - 30)) / 32);
+			_preferences.height = Math.floor((this._host.offsetHeight - (31 + 19 - 30)) / 32);
 		}
 		_preferences.magnet_top = this.magnet.TOP;
 		_preferences.magnet_bottom = this.magnet.BOTTOM;
@@ -554,7 +555,11 @@ export function createInventory(config) {
 				const hostRect = hostEl.getBoundingClientRect();
 
 				if (itemRect.bottom < hostRect.bottom && hostEl.scrollTop > 0) {
-					hostEl.scrollTop = Math.max(0, hostEl.scrollTop - (hostRect.bottom - itemRect.bottom));
+					// Screen distance to window distance (UI/UIScale.js)
+					hostEl.scrollTop = Math.max(
+						0,
+						hostEl.scrollTop - (hostRect.bottom - itemRect.bottom) / Component.scale
+					);
 				}
 			}
 
@@ -996,12 +1001,14 @@ export function createInventory(config) {
 		function resizing() {
 			const extraX = 23 + 16 + 16 - 30;
 
-			let w = Math.floor((Mouse.screen.x - left - extraX) / 32);
+			// Screen distance to window distance (UI/UIScale.js)
+			const scale = Component.scale;
+			let w = Math.floor(((Mouse.screen.x - left) / scale - extraX) / 32);
 			w = Math.min(Math.max(w, 6), resizableHeight ? 8 : 9);
 
 			if (resizableHeight) {
 				const extraY = 31 + 19 - 30;
-				let h = Math.floor((Mouse.screen.y - top - extraY) / 32);
+				let h = Math.floor(((Mouse.screen.y - top) / scale - extraY) / 32);
 				h = Math.min(Math.max(h, 2), 5);
 
 				if (w === lastWidth && h === lastHeight) {
@@ -1087,7 +1094,7 @@ export function createInventory(config) {
 			Component._host.style.height = `${_realSize}px`;
 			_realSize = 0;
 		} else {
-			_realSize = Component._host.getBoundingClientRect().height;
+			_realSize = Component._host.offsetHeight;
 			Component._host.style.height = '17px';
 			if (panel) {
 				panel.style.display = 'none';
@@ -1131,6 +1138,13 @@ export function createInventory(config) {
 			data = JSON.parse(event.dataTransfer.getData('Text'));
 			item = data.data;
 		} catch (_e) {
+			return false;
+		}
+
+		// Dragged off the equipment window: take it off. Ahead of the quantity
+		// prompt below, because equipped ammunition is a stack and comes off whole.
+		if (data.type === 'item' && data.from === 'Equipment') {
+			Equipment.getUI().onUnEquip(item.index);
 			return false;
 		}
 
@@ -1212,8 +1226,10 @@ export function createInventory(config) {
 
 		if (overlay) {
 			overlay.style.display = 'block';
-			overlay.style.top = `${itemRect.top - rootRect.top}px`;
-			overlay.style.left = `${itemRect.left - rootRect.left + 35}px`;
+			// Screen distance to window distance (UI/UIScale.js)
+			const scale = Component.scale;
+			overlay.style.top = `${(itemRect.top - rootRect.top) / scale}px`;
+			overlay.style.left = `${(itemRect.left - rootRect.left) / scale + 35}px`;
 			overlay.innerHTML = _sanitizeHtml(`${DB.getItemName(item)}: ${item.count || 1}${quantity}`);
 
 			if (item.IsIdentified) {

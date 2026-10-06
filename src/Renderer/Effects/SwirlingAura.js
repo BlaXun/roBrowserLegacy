@@ -23,6 +23,7 @@ import glMatrix from 'Utils/gl-matrix.js';
 import Client from 'Core/Client.js';
 import Altitude from 'Renderer/Map/Altitude.js';
 import SpriteRenderer from 'Renderer/SpriteRenderer.js';
+import { auraUniform, beginAuraBlend, endAuraBlend } from 'Renderer/Effects/AuraBlend.js';
 
 const mat4 = glMatrix.mat4;
 
@@ -54,7 +55,10 @@ const VERTICES_PER_BAND = E_DIVISION * 2;
  * - GI[2]: RotStart=180°, max_height=11, distance=4.3, rise_angle=45°
  */
 class SwirlingAura {
-	constructor(position, textureName, tick, sizeType) {
+	/**
+	 * @param {object} color optional tint from AuraTiers.auraColor, over the blue or green
+	 */
+	constructor(position, textureName, tick, sizeType, color) {
 		this.position = position;
 		this.textureName = textureName;
 		this.tick = tick;
@@ -68,6 +72,9 @@ class SwirlingAura {
 			this.color = { r: 100 / 255, g: 255 / 255, b: 100 / 255 };
 		} else {
 			this.color = { r: 100 / 255, g: 100 / 255, b: 255 / 255 };
+		}
+		if (color) {
+			this.color = color;
 		}
 
 		// Alpha from original inspiration game: alphaB = 120
@@ -260,6 +267,7 @@ class SwirlingAura {
 		const elapsed = tick - this.tick;
 		const process = elapsed / RAG_TICK_MS;
 
+		beginAuraBlend(gl, this.color);
 		SpriteRenderer.runWithDepth(true, false, false, function () {
 			// Render each band
 			for (let ec = 0; ec < self.bands.length; ec++) {
@@ -285,7 +293,7 @@ class SwirlingAura {
 				gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, STRIDE * 4, 3 * 4);
 
 				// Set color and alpha
-				gl.uniform4f(uniform.uColor, self.color.r, self.color.g, self.color.b, self.alphaB);
+				gl.uniform4f(uniform.uColor, ...auraUniform(self.color, self.alphaB));
 				gl.uniform1f(uniform.uZIndex, 0.01 + ec * 0.001);
 
 				// Draw
@@ -293,6 +301,7 @@ class SwirlingAura {
 				gl.drawElements(gl.TRIANGLES, self.indexCount, gl.UNSIGNED_SHORT, 0);
 			}
 		});
+		endAuraBlend(gl, this.color);
 	}
 
 	/**

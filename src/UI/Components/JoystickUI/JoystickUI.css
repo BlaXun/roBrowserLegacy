@@ -30,6 +30,20 @@
 	cursor: pointer;
 }
 
+#JoystickUI .stick-mode {
+	display: inline-block;
+	margin-left: 6px;
+	padding: 2px 8px;
+	color: #ccc;
+	font-family: sans-serif;
+	border-left: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+#JoystickUI .stick-mode.aim {
+	color: #ffd740;
+	font-weight: bold;
+}
+
 #JoystickUI .set-btn.active {
 	background-color: #d32f2f;
 	color: white;

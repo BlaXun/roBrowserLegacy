@@ -15,6 +15,7 @@ import UIPreferences from 'Preferences/UI.js';
 import Session from 'Engine/SessionStorage.js';
 import Targa from 'Loaders/Targa.js';
 import ClampToViewport from 'UI/ClampToViewport.js';
+import UIScale from 'UI/UIScale.js';
 
 /**
  * Heavy modules loaded lazily to keep viewer bundles lightweight.
@@ -88,6 +89,14 @@ const CSS_NUMBER = {
 	widows: true,
 	zoom: true
 };
+
+/**
+ * The FREEZE-mode components open now. The map gets its clicks back only when
+ * the last one closes, so a window opened over another (an InputBox over a
+ * shop) cannot unfreeze it.
+ * @type {Set<GUIComponent>}
+ */
+const _frozenBy = new Set();
 
 class GUIComponent {
 	/**
@@ -241,10 +250,14 @@ class GUIComponent {
 
 		// Freeze mode
 		if (this.mouseMode === MouseMode.FREEZE) {
+			_frozenBy.add(this);
 			Mouse.intersect = false;
 			Session.FreezeUI = true;
 			_Cursor?.setType(_Cursor?.ACTION?.DEFAULT ?? 0);
 		}
+
+		// Draw at its UI scale before it places itself
+		UIScale.attach(this);
 
 		// Hook
 		if (this.onAppend) {
@@ -304,11 +317,18 @@ class GUIComponent {
 
 			// Detach from DOM
 			this._host.remove();
+			UIScale.detach(this);
 
-			// Freeze mode cleanup
+			// Freeze mode cleanup: only once no frozen window is left. A shop
+			// asks for an amount in an InputBox, and both freeze; closing the
+			// InputBox used to hand the map its clicks back while the shop was
+			// still open, so pressing Buy also walked to where it was pressed.
 			if (this.mouseMode === MouseMode.FREEZE) {
-				Mouse.intersect = true;
-				Session.FreezeUI = false;
+				_frozenBy.delete(this);
+				if (_frozenBy.size === 0) {
+					Mouse.intersect = true;
+					Session.FreezeUI = false;
+				}
 			}
 
 			// Scrollbar observer cleanup
@@ -317,6 +337,16 @@ class GUIComponent {
 				this.__scrollbarObserver = null;
 			}
 		}
+	}
+
+	/**
+	 * The factor this window is drawn at (UI/UIScale.js); 1 unless a plugin
+	 * scaled it. Screen distances divided by it are distances in the window.
+	 *
+	 * @return {number}
+	 */
+	get scale() {
+		return UIScale.of(this);
 	}
 
 	// ─── Focus / zIndex management ─────────────────────────
@@ -400,6 +430,9 @@ class GUIComponent {
 		// Always inherit behavioral properties
 		cloned.mouseMode = this.mouseMode;
 		cloned.needFocus = this.needFocus;
+
+		// Scaled as the window it copies (UI/UIScale.js): every WhisperBox, whatever its name
+		cloned.scaleName = this.scaleName || this.name;
 
 		if (full) {
 			for (const key of Object.keys(this)) {
@@ -552,8 +585,10 @@ class GUIComponent {
 
 			const x = host.offsetLeft - Mouse.screen.x;
 			const y = host.offsetTop - Mouse.screen.y;
-			const width = host.offsetWidth;
-			const height = host.offsetHeight;
+			// On-screen size: a scaled window (UI/UIScale.js) is larger than its layout box
+			const hostRect = host.getBoundingClientRect();
+			const width = hostRect.width;
+			const height = hostRect.height;
 
 			// Build snap cache from other active components
 			_snapCache = [];
@@ -579,11 +614,13 @@ class GUIComponent {
 						continue;
 					}
 
+					// On-screen box: a scaled window (UI/UIScale.js) is larger than its layout box
+					const rect = el.getBoundingClientRect();
 					_snapCache.push({
-						left: el.offsetLeft,
-						top: el.offsetTop,
-						right: el.offsetLeft + el.offsetWidth,
-						bottom: el.offsetTop + el.offsetHeight
+						left: rect.left,
+						top: rect.top,
+						right: rect.right,
+						bottom: rect.bottom
 					});
 				}
 			}
@@ -843,6 +880,17 @@ class GUIComponent {
 		});
 	}
 
+	/**
+	 * Tell the window's mouse guard the pointer has left.
+	 *
+	 * Hiding is display:none, and a browser fires no mouseleave for an element
+	 * that disappears under the pointer. A STOP-mode window hidden while hovered
+	 * kept the map from taking clicks until it was shown and left again.
+	 */
+	_releaseMouse() {
+		(this.__mouseStopBlock || this._host).dispatchEvent(new Event('mouseleave'));
+	}
+
 	_setupMouseMode() {
 		const element = this.__mouseStopBlock || this._host;
 		if (this.mouseMode === GUIComponent.MouseMode.STOP) {
@@ -1035,7 +1083,13 @@ class GUIComponent {
 						console.error(e.message);
 					}
 				}
+				node.classList.remove('no-texture');
 				updateBg();
+			}, () => {
+				// Not every client's data has every window's textures (iRO's
+				// 2026 data has no bank/ folder). Mark the node so a window's
+				// CSS can draw it without one instead of leaving it see-through.
+				node.classList.add('no-texture');
 			});
 		}
 
@@ -1061,9 +1115,13 @@ class GUIComponent {
 				}
 			});
 
+			// Kept when the window is removed: remove() fires x_remove on every
+			// node, but a window reuses its nodes when it is appended again, and
+			// nothing processes them a second time. Disconnecting here froze each
+			// data-active image after the window's first removal, such as on a
+			// map change. The observer goes with the node when the node goes.
 			observer.observe(node, { attributes: true, attributeFilter: ['class'] });
 
-			node.addEventListener('x_remove', () => observer.disconnect(), { once: true });
 			if (!node._roActiveObserver) {
 				node._roActiveObserver = observer;
 			}
@@ -1245,6 +1303,7 @@ class GUIComponent {
 			},
 			hide() {
 				host.style.display = 'none';
+				component._releaseMouse();
 				return proxy;
 			},
 			toggle() {
@@ -1253,6 +1312,7 @@ class GUIComponent {
 					component._fixPositionOverflow();
 				} else {
 					host.style.display = 'none';
+					component._releaseMouse();
 				}
 				return proxy;
 			},

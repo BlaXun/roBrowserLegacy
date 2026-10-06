@@ -71,6 +71,13 @@ StatusIcons.onAppend = function onAppend() {
 };
 
 /**
+ * Drawn at another UI scale (UI/UIScale.js): fewer or more icons fit in a column
+ */
+StatusIcons.onScale = function onScale() {
+	resetElementsPosition();
+};
+
+/**
  * Stop rendering icons
  */
 StatusIcons.onRemove = function onRemove() {
@@ -213,8 +220,11 @@ function resetElementsPosition() {
 	let x = 0;
 	let y = 0;
 
+	// The screen height left below the icons, in window units (UI/UIScale.js)
+	const height = (Renderer.height - 166) / StatusIcons.scale;
+
 	for (let i = 0; i < count; ++i, y += 36) {
-		if (y > Renderer.height - 166) {
+		if (y > height) {
 			y = 0;
 			x += 45;
 		}
@@ -305,7 +315,8 @@ function createElement(index) {
 function addElement(element) {
 	const root = StatusIcons.getRoot();
 	const elements = root.querySelectorAll('.state');
-	const max = ((Renderer.height - 166) / 36) | 0;
+	// The screen height left below the icons, in window units (UI/UIScale.js)
+	const max = Math.max(1, ((Renderer.height - 166) / StatusIcons.scale / 36) | 0);
 	const count = elements.length;
 	const x = ((count / max) | 0) * 45;
 	const y = (count % max) * 36;

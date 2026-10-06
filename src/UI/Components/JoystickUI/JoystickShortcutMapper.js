@@ -67,10 +67,14 @@ function getIndexFromButtons(btn, set) {
 		return -1;
 	}
 
-	const a = btn[0] !== 'unpressed';
-	const b = btn[1] !== 'unpressed';
-	const x = btn[2] !== 'unpressed';
-	const y = btn[3] !== 'unpressed';
+	// Trigger buttons fire only on the initial transition (pressed), not while
+	// still being held. Repeated executeShortcut calls would re-dispatch
+	// quickCastClick's mousedown/mouseup every poll, re-targeting the skill
+	// and causing the same walk/zig-zag seen with held X attack.
+	const a = btn[0] === 'pressed';
+	const b = btn[1] === 'pressed';
+	const x = btn[2] === 'pressed';
+	const y = btn[3] === 'pressed';
 
 	let slot = -1;
 	let tab = 1;

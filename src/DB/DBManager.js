@@ -19,6 +19,7 @@ import WeaponJobTable from './Jobs/WeaponJobTable.js';
 import BabyTable from './Jobs/BabyTable.js';
 import HairIndexTable from './Jobs/HairIndexTable.js';
 import MonsterTable from './Monsters/MonsterTable.js';
+import BodyFallbackTable from './Monsters/BodyFallbackTable.js';
 import MonsterNameTable from './Monsters/MonsterNameTable.js';
 import PetIllustration from './Pets/PetIllustration.js';
 import PetAction from './Pets/PetAction.js';
@@ -50,6 +51,7 @@ import PetHungryState from './Pets/PetHungryState.js';
 import PetFriendlyState from './Pets/PetFriendlyState.js';
 import PetMessageConst from './Pets/PetMessageConst.js';
 import MapInfo from './Map/MapTable.js';
+import { mergeSignboards } from './Map/SignboardMerge.js';
 import Network from 'Network/NetworkManager.js';
 import PACKET from 'Network/PacketStructure.js';
 import PACKETVER from 'Network/PacketVerManager.js';
@@ -332,14 +334,22 @@ class DB {
 			true
 		);
 		const loadmsg = onLoad();
+		const readMsgString = (_index, val) => {
+			MsgStringTable[_index] = val;
+		};
+		const loadMsgStringCSV = () =>
+			loadCSV('data/msgstringtable.csv', MsgStringTable, 0, 1, loadmsg);
 		loadTable(
 			'data/msgstringtable.txt',
 			'#',
 			1,
-			(_index, val) => {
-				MsgStringTable[_index] = val;
-			},
-			() => loadCSV('data/msgstringtable.csv', MsgStringTable, 0, 1, loadmsg),
+			readMsgString,
+			// An empty msgstringtable.txt is a miss, not an answer: newer clients
+			// keep the file and put the table under a second name.
+			() =>
+				MsgStringTable.length
+					? loadMsgStringCSV()
+					: loadTable('data/msgstringtablel.txt', '#', 1, readMsgString, loadMsgStringCSV, true),
 			true
 		);
 
@@ -400,27 +410,38 @@ class DB {
 				tryLoadLuaAliases(loadItemInfo, iteminfoNames, null, onLoad());
 			}
 
-			loadLuaTable(
+			loadLuaTableWithCustom(
 				[DB.LUA_PATH + 'datainfo/accessoryid.lub', DB.LUA_PATH + 'datainfo/accname.lub'],
 				'AccNameTable',
+				'accessory',
 				function (json) {
 					Object.assign(HatTable, json);
 				},
-				onLoad()
+				onLoad(),
+				null,
+				true
 			);
-			loadLuaTable(
+			loadLuaTableWithCustom(
 				[DB.LUA_PATH + 'datainfo/spriterobeid.lub', DB.LUA_PATH + 'datainfo/spriterobename.lub'],
 				'RobeNameTable',
+				'robe',
 				function (json) {
 					Object.assign(RobeTable, json);
 				},
-				onLoad()
+				onLoad(),
+				null,
+				true
 			);
 
 			if (PACKETVER.value >= 20141008) {
-				loadLuaTable(
+				// JobNameTable's values are sprite names, not display text: the
+				// mercenaries' are Korean (여\활용병), so decoding them with a Korean
+				// charpage made Unicode Hangul and the body sprite 404'd, leaving
+				// only the head. Load it as a resource table, like accname/robename.
+				loadLuaTableWithCustom(
 					[DB.LUA_PATH + 'datainfo/npcidentity.lub', DB.LUA_PATH + 'datainfo/jobname.lub'],
 					'JobNameTable',
+					'monster',
 					function (json) {
 						Object.assign(MonsterTable, json);
 					},
@@ -434,16 +455,20 @@ class DB {
 								onLoad()
 							);
 						});
-					}
+					},
+					true
 				);
 			} else {
-				loadLuaTable(
+				loadLuaTableWithCustom(
 					[DB.LUA_PATH + 'datainfo/npcidentity.lub', DB.LUA_PATH + 'datainfo/jobname.lub'],
 					'JobNameTable',
+					'monster',
 					function (json) {
 						Object.assign(MonsterTable, json);
 					},
-					onLoad()
+					onLoad(),
+					null,
+					true
 				);
 			}
 
@@ -458,7 +483,14 @@ class DB {
 			loadItemDBTable(DB.LUA_PATH + 'ItemDBNameTbl.lub', null, onLoad());
 
 			// Weapon tables
-			loadWeaponTable(DB.LUA_PATH + 'datainfo/weapontable.lub', null, onLoad());
+			// customLuaTables.weapon: further weapon tables, after the base, in order.
+			const onWeaponEnd = onLoad();
+			const customWeapons = customLuaTables('weapon');
+			const loadCustomWeapon = (index = 0) =>
+				index < customWeapons.length
+					? loadWeaponTable(customWeapons[index], null, () => loadCustomWeapon(index + 1))
+					: onWeaponEnd();
+			loadWeaponTable(DB.LUA_PATH + 'datainfo/weapontable.lub', null, () => loadCustomWeapon());
 
 			// Title tables
 			if (PACKETVER.value >= 20170208) {
@@ -611,10 +643,19 @@ class DB {
 
 			// EntitySignBoard
 			const onSignBoardEnd = onLoad();
-			loadSignBoardList(DB.LUA_PATH + 'SignBoardList.lub', null, () => {
-				// this is not official, its a translation file
-				loadSignBoardData('SystemEN/Sign_Data.lub', null, onSignBoardEnd);
-			});
+			// customSignBoardList: further signboard tables, loaded after the base
+			// in the order given. Each adds its signs to what came before, and a
+			// sign on a cell that already has one replaces it, so a mod can put an
+			// icon over its own NPC without carrying the whole table.
+			const customSignBoardList = Configs.get('customSignBoardList', []);
+			// Emptied first, because the tables are merged: a second load (another
+			// server) must not keep the first one's signs.
+			SignBoardTable = {};
+			const loadCustomSignBoardList = (index = 0) =>
+				index < customSignBoardList.length
+					? loadSignBoardList(customSignBoardList[index], null, () => loadCustomSignBoardList(index + 1))
+					: loadSignBoardData('SystemEN/Sign_Data.lub', null, onSignBoardEnd); // this is not official, its a translation file
+			loadSignBoardList(DB.LUA_PATH + 'SignBoardList.lub', null, () => loadCustomSignBoardList());
 
 			// CheckAttendance
 			if (Configs.get('enableCheckAttendance') && PACKETVER.value >= 20180307) {
@@ -623,9 +664,18 @@ class DB {
 
 			// Quest
 			const onQuestEnd = onLoad();
+			// customQuestInfo: further quest tables, loaded after the base in the
+			// order given. Each registers its quests by id over what came before,
+			// so one can add a quest or reword an existing one without carrying
+			// the whole table.
+			const customQuestInfo = Configs.get('customQuestInfo', []);
+			const loadCustomQuestInfo = (index = 0) =>
+				index < customQuestInfo.length
+					? loadQuestInfo(customQuestInfo[index], null, () => loadCustomQuestInfo(index + 1))
+					: onQuestEnd();
 			tryLoadLuaAliases(loadQuestInfo, getSystemAliases('System/OngoingQuestInfoList.lub'), null, () => {
 				// this is not official, its a translation file
-				loadQuestInfo('SystemEN/OngoingQuests.lub', null, onQuestEnd);
+				loadQuestInfo('SystemEN/OngoingQuests.lub', null, () => loadCustomQuestInfo());
 			});
 
 			// TODO: System/RecommendedQuests.lub
@@ -1282,6 +1332,39 @@ class DB {
 
 		// MONSTER
 		return 'data/sprite/\xb8\xf3\xbd\xba\xc5\xcd/' + (MonsterTable[id] || MonsterTable[1001]).toLowerCase();
+	}
+
+	/**
+	 * Bodies to try, in order, when the one getBodyPath names fails to load.
+	 *
+	 * The client's data can lack a file its own tables still name (iRO 2026-09
+	 * dropped 4_m_drzonda01, the Zonda teleporters). An NPC or monster is never
+	 * left without a body: first the stand-ins BodyFallbackTable lists for that
+	 * id, then the body getBodyPath already draws for an id it does not know
+	 * (1_ETC_01 for an NPC), or for a monster the Poring a missing 3D model gets.
+	 * Players, homunculi and mercenaries get none.
+	 *
+	 * @param {number|string} id entity
+	 * @param {boolean} sex
+	 * @return {Array<string>} paths without extension, never the body's own
+	 */
+	static getBodyFallbackPaths(id, sex) {
+		const own = DB.getBodyPath(id, sex);
+		if (!own || DB.isPlayer(id) || DB.isHomunculus(id) || DB.isMercenary(id) || typeof id !== 'number') {
+			return [];
+		}
+
+		const ids = (BodyFallbackTable[id] || []).concat(DB.isNPC(id) ? 46 : 1002);
+		const paths = [];
+
+		for (const alt of ids) {
+			const path = DB.getBodyPath(alt, sex);
+			if (path && path !== own && !/\.gr2$/i.test(path) && !paths.includes(path)) {
+				paths.push(path);
+			}
+		}
+
+		return paths;
 	}
 
 	/**
@@ -2064,7 +2147,13 @@ class DB {
 
 		const baseClass = WeaponJobTable[job] || WeaponJobTable[0];
 
-		id = DB.getWeaponType(id);
+		// A look id that weapontable.lub names is drawn under that name. The
+		// official ones are all below WeaponType.MAX, which getWeaponType passes
+		// through; a mod's own look needs a higher id, which getWeaponType would
+		// turn into its base weapon type (or an unrelated item's ClassNum), so
+		// the mod's sprite was never asked for. Attack motions still come from
+		// the base type, through getWeaponType(id, true) and Expansion_Weapon_IDs.
+		id = id >= WeaponType.MAX && WeaponTable[id] !== undefined ? id : DB.getWeaponType(id);
 
 		// TODO: CHECK IF THIS IS CORRECT
 		if (leftid) {
@@ -5126,6 +5215,15 @@ function loadItemInfo(filename, callback, onEnd) {
 				console.log('Loading file "' + filename + '"...');
 				// check if file is ArrayBuffer and convert to Uint8Array if necessary
 				const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
+				// A table saved as UTF-8 -- what a text editor writes -- rather than in
+				// the client's codepage. Decided once for the whole file: a table in
+				// the codepage almost never survives strict UTF-8 decoding, while one
+				// short string easily could.
+				const utf8 = isUtf8Table(buffer);
+				const displayText = bytes =>
+					utf8 ? userStringDecoder.decode(bytes, 'utf-8') : userStringDecoder.decode(bytes, userCharpage);
+				const resourceText = bytes =>
+					utf8 ? userStringDecoder.decode(utf8ResourceBytes(bytes)) : userStringDecoder.decode(bytes);
 				// get context, a proxy. It will be used to interact with lua conveniently
 				const ctx = lua.ctx;
 
@@ -5141,10 +5239,10 @@ function loadItemInfo(filename, callback, onEnd) {
 				) => {
 					ItemTable[ItemID] = {
 						...(typeof ItemTable[ItemID] === 'object' && ItemTable[ItemID]),
-						unidentifiedDisplayName: userStringDecoder.decode(unidentifiedDisplayName, userCharpage),
-						unidentifiedResourceName: userStringDecoder.decode(unidentifiedResourceName),
-						identifiedDisplayName: userStringDecoder.decode(identifiedDisplayName, userCharpage),
-						identifiedResourceName: userStringDecoder.decode(identifiedResourceName),
+						unidentifiedDisplayName: displayText(unidentifiedDisplayName),
+						unidentifiedResourceName: resourceText(unidentifiedResourceName),
+						identifiedDisplayName: displayText(identifiedDisplayName),
+						identifiedResourceName: resourceText(identifiedResourceName),
 						unidentifiedDescriptionName: [],
 						identifiedDescriptionName: [],
 						EffectID: null,
@@ -5156,11 +5254,11 @@ function loadItemInfo(filename, callback, onEnd) {
 					return 1;
 				};
 				ctx.AddItemUnidentifiedDesc = (ItemID, v) => {
-					ItemTable[ItemID].unidentifiedDescriptionName.push(userStringDecoder.decode(v, userCharpage));
+					ItemTable[ItemID].unidentifiedDescriptionName.push(displayText(v));
 					return 1;
 				};
 				ctx.AddItemIdentifiedDesc = (ItemID, v) => {
-					ItemTable[ItemID].identifiedDescriptionName.push(userStringDecoder.decode(v, userCharpage));
+					ItemTable[ItemID].identifiedDescriptionName.push(displayText(v));
 					return 1;
 				};
 				ctx.AddItemEffectInfo = (ItemID, EffectID) => {
@@ -5175,6 +5273,9 @@ function loadItemInfo(filename, callback, onEnd) {
 					ItemTable[ItemID].PackageID = PackageID;
 					return 1;
 				};
+				// A table is what this file defines, not what the previous one left
+				// behind. Empty rather than nil, so `tbl[30000] = {...}` still works.
+				lua.doStringSync('tbl = {} tbl_custom = {} tbl_override = {}');
 				// mount file
 				lua.mountFile(filename, buffer);
 				// execute file
@@ -5184,43 +5285,61 @@ function loadItemInfo(filename, callback, onEnd) {
 				// doing this way we avoid to have to load the other file
 				// on my tests dont care if the main() is on itemInfo.lub or itemInfo_f.lub the content is always the same
 				lua.doStringSync(`
+						function item_is_described(DESC)
+							if type(DESC) ~= "table" then
+								return false
+							end
+							if type(DESC.identifiedDescriptionName) == "table" and #DESC.identifiedDescriptionName > 0 then
+								return true
+							end
+							return type(DESC.identifiedDisplayName) == "string" and DESC.identifiedDisplayName ~= ""
+						end
 						function main_item()
-							_processedItems = _processedItems or {} 
-							for ItemID, DESC in pairs(tbl) do
-								if not _processedItems[ItemID] and #DESC.identifiedDescriptionName > 0 then
-									_processedItems[ItemID] = true 
-									result, msg = AddItem(ItemID, DESC.unidentifiedDisplayName, DESC.unidentifiedResourceName, DESC.identifiedDisplayName, DESC.identifiedResourceName, DESC.slotCount, DESC.ClassNum)
-									if not result then
-										return false, msg
-									end
-									for k, v in pairs(DESC.unidentifiedDescriptionName) do
-										result, msg = AddItemUnidentifiedDesc(ItemID, v)
-										if not result then
-											return false, msg
-										end
-									end
-									for k, v in pairs(DESC.identifiedDescriptionName) do
-										result, msg = AddItemIdentifiedDesc(ItemID, v)
-										if not result then
-											return false, msg
-										end
-									end
-									if nil ~= DESC.EffectID then
-										result, msg = AddItemEffectInfo(ItemID, DESC.EffectID)
-										if not result then
-											return false, msg
-										end
-									end
-									if nil ~= DESC.costume then
-										result, msg = AddItemIsCostume(ItemID, DESC.costume)
-										if not result then
-											return false, msg
-										end
-									end
-									if nil ~= DESC.PackageID then
-										result, msg = AddItemPackageID(ItemID, DESC.PackageID)
-										if not result then
-											return false, msg
+							_processedItems = _processedItems or {}
+							-- tbl_custom and tbl_override are the custom item tables official
+							-- clients and translations write (itemInfo_C.lua). An override
+							-- is read first so it wins over the entry it replaces.
+							local sources = { tbl_override, tbl, tbl_custom }
+							for s = 1, 3 do
+								local source = sources[s]
+								if type(source) == "table" then
+									for ItemID, DESC in pairs(source) do
+										if not _processedItems[ItemID] and item_is_described(DESC) then
+											_processedItems[ItemID] = true
+											result, msg = AddItem(ItemID, DESC.unidentifiedDisplayName or "", DESC.unidentifiedResourceName or "", DESC.identifiedDisplayName or "", DESC.identifiedResourceName or "", DESC.slotCount, DESC.ClassNum)
+											if not result then
+												return false, msg
+											end
+											for k, v in pairs(DESC.unidentifiedDescriptionName or {}) do
+												result, msg = AddItemUnidentifiedDesc(ItemID, v)
+												if not result then
+													return false, msg
+												end
+											end
+											for k, v in pairs(DESC.identifiedDescriptionName or {}) do
+												result, msg = AddItemIdentifiedDesc(ItemID, v)
+												if not result then
+													return false, msg
+												end
+											end
+											if nil ~= DESC.EffectID then
+												result, msg = AddItemEffectInfo(ItemID, DESC.EffectID)
+												if not result then
+													return false, msg
+												end
+											end
+											if nil ~= DESC.costume then
+												result, msg = AddItemIsCostume(ItemID, DESC.costume)
+												if not result then
+													return false, msg
+												end
+											end
+											if nil ~= DESC.PackageID then
+												result, msg = AddItemPackageID(ItemID, DESC.PackageID)
+												if not result then
+													return false, msg
+												end
+											end
 										end
 									end
 								end
@@ -5244,6 +5363,48 @@ function loadItemInfo(filename, callback, onEnd) {
 				onEnd(false);
 			}
 		});
+}
+
+/**
+ * Whether an item table is UTF-8 text with something beyond ASCII in it.
+ *
+ * @param {Uint8Array} bytes
+ * @returns {boolean}
+ */
+function isUtf8Table(bytes) {
+	if (!bytes.some(b => b > 0x7f)) {
+		return false;
+	}
+	try {
+		new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+		return true;
+	} catch (e) {
+		return false;
+	}
+}
+
+/**
+ * The bytes a resource name from a UTF-8 item table stands for.
+ *
+ * Resource names become file paths, and the client's files are named in its
+ * codepage read one byte to a character. So Hangul is put back into CP949, and
+ * a character below U+0100 -- a name already spelled the way paths appear on
+ * disk, as in `»¡°£Æ÷¼Ç` -- is the byte it already represents.
+ *
+ * @param {Uint8Array} bytes - UTF-8 encoded resource name
+ * @returns {Uint8Array}
+ */
+function utf8ResourceBytes(bytes) {
+	const out = [];
+	for (const ch of userStringDecoder.decode(bytes, 'utf-8')) {
+		const code = ch.codePointAt(0);
+		if (code < 0x100) {
+			out.push(code);
+		} else {
+			out.push(...userStringDecoder.encode(ch, 'windows-949'));
+		}
+	}
+	return Uint8Array.from(out);
 }
 
 /**
@@ -6129,6 +6290,10 @@ function loadHatEffectInfo(onEnd) {
 				await LoadHatEffectInfo();
 			} catch (e) {
 				console.error('[HatEffect] ID load error', e);
+				// Returning without this leaves the database loading forever.
+				if (typeof onEnd === 'function') {
+					onEnd();
+				}
 				return;
 			} finally {
 				lua.unmountFile('hateffectids.lub');
@@ -6166,7 +6331,10 @@ function loadSignBoardData(filename, callback, onEnd) {
 
 				// create required functions in context
 				ctx.AddSignBoardData = (key, translation) => {
-					const decoded_key = key && key.length > 1 ? userStringDecoder.decode(key) : null;
+					// Decoded as SignBoardList.lub decodes its descriptions, which is what
+					// the key is looked up by: under another codepage the Korean key
+					// comes out different and no signboard is ever translated.
+					const decoded_key = key && key.length > 1 ? userStringDecoder.decode(key, userCharpage) : null;
 					const decoded_translation =
 						translation && translation.length > 1 ? userStringDecoder.decode(translation) : null;
 					SignBoardTranslatedTable[decoded_key] = decoded_translation;
@@ -6256,6 +6424,11 @@ function loadSignBoardList(filename, callback, onEnd) {
 				// mount file
 				lua.mountFile('SignBoardList.lub', buffer);
 
+				// Cleared first: the tables share one Lua state, and a file that
+				// failed to define its own would otherwise add the previous
+				// file's signs a second time.
+				lua.doStringSync('SignBoardList = nil');
+
 				// execute file
 				await lua.doFile('SignBoardList.lub');
 
@@ -6280,7 +6453,9 @@ function loadSignBoardList(filename, callback, onEnd) {
                         main_SignBoardList()
 					`);
 
-				SignBoardTable = preprocessSignboardData(signBoardList);
+				// Merged over what earlier tables loaded rather than replacing it,
+				// so customSignBoardList can add to the base.
+				mergeSignboards(signBoardList, SignBoardTable);
 			} catch (error) {
 				console.error('[loadSignBoardList] Error: ', error);
 			} finally {
@@ -6292,29 +6467,6 @@ function loadSignBoardList(filename, callback, onEnd) {
 		},
 		onEnd
 	);
-}
-
-/**
- * Preprocesses an array of signboard objects and organizes them into a nested dictionary.
- *
- * @param {Array} signboardArray - The array of signboard objects.
- * @return {Object} The nested dictionary containing the preprocessed signboard data.
- */
-function preprocessSignboardData(signboardArray) {
-	const signboardDict = {};
-
-	for (const signboard of signboardArray) {
-		const { mapname, x, y } = signboard;
-		if (!signboardDict[mapname]) {
-			signboardDict[mapname] = {};
-		}
-		if (!signboardDict[mapname][x]) {
-			signboardDict[mapname][x] = {};
-		}
-		signboardDict[mapname][x][y] = signboard;
-	}
-
-	return signboardDict;
 }
 
 /**
@@ -6498,6 +6650,17 @@ function loadSkillInfoList(filename, callback, onEnd) {
 					return 1;
 				};
 
+				// A job's own list replaces the generic one, even when it is empty:
+				// Rogue learns Vulture's Eye without Archer's Owl's Eye 3
+				// (`NeedSkillList = { [JOBID.JT_ROGUE] = {} }`). Declared before its
+				// entries are added, so an empty list is still there.
+				ctx.AddJobSkillRequirementList = (skillId, jobId) => {
+					if (!SkillInfo[skillId].NeedSkillList[jobId]) {
+						SkillInfo[skillId].NeedSkillList[jobId] = [];
+					}
+					return 1;
+				};
+
 				ctx.AddJobSkillRequirement = (skillId, jobId, requiredSkillId, requiredLevel) => {
 					if (!SkillInfo[skillId].NeedSkillList[jobId]) {
 						SkillInfo[skillId].NeedSkillList[jobId] = [];
@@ -6558,6 +6721,7 @@ function loadSkillInfoList(filename, callback, onEnd) {
 								if skillData.NeedSkillList then  
 									for jobId, reqList in pairs(skillData.NeedSkillList) do  
 										if reqList then  
+											AddJobSkillRequirementList(skillId, jobId)
 											for _, req in ipairs(reqList) do  
 												if req[1] and req[2] then  
 													AddJobSkillRequirement(skillId, jobId, req[1], req[2])  
@@ -6992,9 +7156,89 @@ function loadStateIconInfo(basePath, callback, onEnd) {
  *
  * @author alisonrag
  */
-function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc) {
+/**
+ * customLuaTables: tables a mod adds rows to, instead of replacing the whole
+ * file. `Configs.get('customLuaTables')` is an object of lists:
+ *
+ *   accessory: [[idfile, namefile], ...]   headgear looks   (accessoryid / accname)
+ *   robe:      [[idfile, namefile], ...]   garment looks    (spriterobeid / spriterobename)
+ *   monster:   [[idfile, namefile], ...]   monster sprites  (npcidentity / jobname)
+ *   weapon:    [file, ...]                 weapon looks     (weapontable)
+ *
+ * Each is loaded after the base table, in order, and merged over it by id --
+ * the counterpart of customItemInfo and customQuestInfo for the view tables.
+ *
+ * @param {string} key
+ * @return {Array}
+ */
+function customLuaTables(key) {
+	const all = Configs.get('customLuaTables', {});
+	const list = all && typeof all === 'object' ? all[key] : null;
+	return Array.isArray(list) ? list : [];
+}
+
+/**
+ * loadLuaTable, then each customLuaTables[key] pair after it.
+ *
+ * A mod's rows must land after the base's, or the base would overwrite them,
+ * so each table starts when the one before it has been parsed or has failed.
+ * `onEnd` waits for the whole chain: loadLuaTable on its own calls onEnd as
+ * soon as it has *started*, which let the game place the player before a
+ * mod's headgear row existed -- the look was looked up, not found, and never
+ * shown. A table that fails says so in the console and the chain goes on.
+ */
+function loadLuaTableWithCustom(file_list, table_name, key, callback, onEnd, contextFunc, isResourceTable = false) {
+	const custom = customLuaTables(key);
+	const next = index => {
+		if (index >= custom.length) {
+			onEnd.call();
+			return;
+		}
+		const advance = once(() => next(index + 1));
+		loadLuaTable(
+			custom[index],
+			table_name,
+			function (json) {
+				callback.call(null, json);
+				advance();
+			},
+			function () {},
+			null,
+			isResourceTable,
+			advance
+		);
+	};
+	const start = once(() => next(0));
+	loadLuaTable(
+		file_list,
+		table_name,
+		function (json) {
+			callback.call(null, json);
+			start();
+		},
+		function () {},
+		contextFunc,
+		isResourceTable,
+		start
+	);
+}
+
+/** fn, callable once; later calls do nothing. */
+function once(fn) {
+	let called = false;
+	return (...args) => {
+		if (!called) {
+			called = true;
+			fn(...args);
+		}
+	};
+}
+
+function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isResourceTable = false, onError = null) {
 	const id_filename = file_list[0];
 	const value_table_filename = file_list[1];
+	// Told when the table will not arrive: a file missing, or a Lua error.
+	const fail = typeof onError === 'function' ? onError : function () {};
 
 	try {
 		console.log('Loading file "' + id_filename + '"...');
@@ -7009,8 +7253,9 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc) {
 				loadValueTable();
 			} catch (hException) {
 				console.error(`(${id_filename}) error: `, hException);
+				fail(hException);
 			}
-		});
+		}, () => fail(new Error(`${id_filename} not found`)));
 
 		function loadValueTable() {
 			console.log('Loading file "' + value_table_filename + '"...');
@@ -7025,8 +7270,9 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc) {
 					parseTable();
 				} catch (hException) {
 					console.error(`(${value_table_filename}) error: `, hException);
+					fail(hException);
 				}
-			});
+			}, () => fail(new Error(`${value_table_filename} not found`)));
 		}
 
 		function parseTable() {
@@ -7038,7 +7284,12 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc) {
 
 			// create context function
 			ctx.addKeyAndValueToTable = (key, value) => {
-				table[key] = userStringDecoder.decode(value, userCharpage);
+				// Resource-name tables (accname, robename) hold GRF sprite filenames, not
+				// display text. They must stay as raw EUC-KR byte-strings so the paths built
+				// in getHatPath/getRobePath match the files -- decoding with the charpage
+				// turns them into Unicode Hangul and every sprite request 404s. Display
+				// tables (job names, skill descriptions...) still decode with the charpage.
+				table[key] = userStringDecoder.decode(value, isResourceTable ? null : userCharpage);
 				return 1;
 			};
 
@@ -7085,6 +7336,7 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc) {
 		}
 	} catch (e) {
 		console.error('error: ', e);
+		fail(e);
 	} finally {
 		onEnd.call();
 	}
@@ -7187,6 +7439,16 @@ function loadLuaValue(file_path, variable_name, callback, onEnd) {
 				if (onEnd) {
 					onEnd.call();
 				}
+			}
+		},
+		// Without this the failure is dropped, onEnd never runs, and the whole
+		// database stays "loading" forever -- stranding the player at character
+		// select with no way to reach the map server.
+		function () {
+			console.error(`(${file_path}) could not be read; skipping`);
+			callback.call(null, null);
+			if (onEnd) {
+				onEnd.call();
 			}
 		});
 	} catch (e) {

@@ -9,6 +9,7 @@
  */
 
 import Polling from './JoystickPollingLoop.js';
+import CursorMotion from './JoystickCursorMotion.js';
 import InputService from './JoystickInputService.js';
 import Interaction from './JoystickInteractionService.js';
 import ShortcutMapper from './JoystickShortcutMapper.js';
@@ -20,10 +21,12 @@ export default {
 		InputService.prepare();
 		Interaction.prepare();
 		Polling.start();
+		CursorMotion.start();
 		JoystickUIRenderer.hide();
 	},
 	dispose: function () {
 		Polling.stop();
+		CursorMotion.stop();
 		Interaction.dispose();
 		InputService.dispose();
 		JoystickUIRenderer.dispose();

@@ -128,6 +128,9 @@ export function createEquipment({
 	Component.init = function init() {
 		const root = Component.getRoot();
 		const canvases = root.querySelectorAll('canvas');
+		// init() can run more than once; without this the contexts accumulate
+		// and the character is drawn once per stale entry.
+		_ctx.length = 0;
 		if (canvases[0]) _ctx.push(canvases[0].getContext('2d'));
 		if (canvases[1]) _ctx.push(canvases[1].getContext('2d'));
 
@@ -226,6 +229,8 @@ export function createEquipment({
 		}
 
 		if (titles) {
+			const titleList = root.querySelector('#title_list');
+			if (titleList) titleList.addEventListener('click', onTitleClick);
 			this.loadTitles();
 		}
 
@@ -233,8 +238,11 @@ export function createEquipment({
 		this._host.addEventListener('dragleave', onDragLeave);
 		this._host.addEventListener('drop', onDrop);
 
-		const content = root.querySelector('.content');
-		if (content) {
+		// Every tab is its own .content table: general, costume, and on some
+		// versions title and damage skin. querySelector bound only the first, so
+		// costume and shadow gear ignored double-click, right-click and hover,
+		// and nothing could take a costume off.
+		root.querySelectorAll('.content').forEach(content => {
 			content.addEventListener('contextmenu', e => {
 				e.preventDefault();
 				const item = e.target.closest('.item');
@@ -252,7 +260,14 @@ export function createEquipment({
 				const btn = e.target.closest('button');
 				if (btn) onEquipmentOut();
 			});
-		}
+			content.addEventListener('dragstart', e => {
+				const item = e.target.closest('.item');
+				if (item) onEquipmentDragStart.call(item, e);
+			});
+			content.addEventListener('dragend', e => {
+				if (e.target.closest('.item')) onEquipmentDragEnd();
+			});
+		});
 
 		this.draggable('.titlebar');
 
@@ -269,17 +284,9 @@ export function createEquipment({
 
 		if (damageSkin) {
 			// Damage Skin Settings
+			// Each button's images, the picked one as data-active, are in the
+			// HTML and set up once with the rest of the window.
 			const skinButtons = root.querySelectorAll('#damageskin .skin-option');
-			skinButtons.forEach(btn => {
-				btn.setAttribute('data-background', 'showdamage/btn_damage.bmp');
-				btn.setAttribute('data-hover', 'showdamage/btn_damage_press.bmp');
-				btn.setAttribute('data-down', 'showdamage/btn_damage_pick.bmp');
-			});
-			if (this.parseHTML) {
-				skinButtons.forEach(btn => {
-					this.parseHTML.call(btn);
-				});
-			}
 			skinButtons.forEach(btn => {
 				btn.addEventListener('mousedown', function () {
 					const skinId = parseInt(this.getAttribute('data-skin'), 10);
@@ -547,7 +554,7 @@ export function createEquipment({
 			cell.innerHTML =
 				'<div class="item" data-index="' +
 				item.index +
-				'">' +
+				'" draggable="true">' +
 				'<button>' +
 				gradeInner +
 				'</button>' +
@@ -839,6 +846,11 @@ export function createEquipment({
 				}
 			}
 		}
+		// preventDefault, not `return false`: a drop only fires on a target
+		// whose dragover cancelled the event, and a falsy return from an
+		// addEventListener callback cancels nothing. Without this the window
+		// is never a drop target and onDrop below never runs.
+		event.preventDefault();
 		event.stopImmediatePropagation();
 		return false;
 	}
@@ -859,6 +871,16 @@ export function createEquipment({
 		try {
 			data = JSON.parse(event.dataTransfer.getData('Text'));
 		} catch (_e) {
+			return false;
+		}
+
+		// Already worn: a drag that started here and ended here changes nothing.
+		if (data && data.type === 'item' && data.from === 'Equipment') {
+			Component.getRoot()
+				.querySelectorAll('td')
+				.forEach(td => {
+					td.style.backgroundImage = 'none';
+				});
 			return false;
 		}
 
@@ -909,6 +931,39 @@ export function createEquipment({
 		if (overlay) overlay.style.display = 'none';
 	}
 
+	// Dragging a worn item onto the inventory takes it off, as double-clicking
+	// does; the inventory's onDrop recognises `from: 'Equipment'`. Same payload
+	// and drag image as an inventory item, so drop targets read it the same way.
+	function onEquipmentDragStart(event) {
+		const index = parseInt(this.getAttribute('data-index'), 10);
+		const item = _list[index];
+		if (!item) return;
+
+		const img = new Image();
+		const btn = this.querySelector('button');
+		const url = btn ? btn.style.backgroundImage.match(/\((.*?)\)/)?.[1]?.replace(/('|")/g, '') : '';
+		img.decoding = 'async';
+		img.src = url || '';
+
+		event.dataTransfer.setDragImage(img, 12, 12);
+		event.dataTransfer.setData(
+			'Text',
+			JSON.stringify(
+				(window._OBJ_DRAG_ = {
+					type: 'item',
+					from: 'Equipment',
+					data: item
+				})
+			)
+		);
+
+		onEquipmentOut();
+	}
+
+	function onEquipmentDragEnd() {
+		delete window._OBJ_DRAG_;
+	}
+
 	function onEquipmentOver() {
 		const idx = parseInt(this.parentNode.getAttribute('data-index'), 10);
 		const item = _list[idx];
@@ -919,8 +974,10 @@ export function createEquipment({
 		const rootEl = root.querySelector('#' + name) || root;
 		const btnRect = this.getBoundingClientRect();
 		const rootRect = rootEl.getBoundingClientRect();
-		const top = btnRect.top - rootRect.top;
-		const left = btnRect.left - rootRect.left;
+		// Screen distance to window distance (UI/UIScale.js)
+		const scale = Component.scale;
+		const top = (btnRect.top - rootRect.top) / scale;
+		const left = (btnRect.left - rootRect.left) / scale;
 		if (!top && !left) return;
 
 		if (overlay) {
@@ -985,6 +1042,16 @@ export function createEquipment({
 		};
 	}
 
+	function onTitleClick(e) {
+		const option = e.target.closest('.title-option');
+		if (option) {
+			e.preventDefault();
+			e.stopPropagation();
+			const titleId = parseInt(option.getAttribute('data-title'));
+			Component.selectTitle(titleId);
+		}
+	}
+
 	if (titles) {
 		Component.loadTitles = function () {
 			const root = Component.getRoot();
@@ -1000,28 +1067,20 @@ export function createEquipment({
 			removeEl.textContent = removeTitleText;
 			titleList.appendChild(removeEl);
 
-			const allTitles = DB.getAllTitles();
-			for (const titleId in allTitles) {
-				if (allTitles.hasOwnProperty(titleId)) {
-					const titleName = allTitles[titleId];
-					const selectedClass = parseInt(titleId) === _currentTitleId ? ' selected' : '';
+			// Only the titles the character owns: the map-server refuses the rest.
+			// Engine/MapEngine/Achievement.js keeps this list.
+			const ownedTitles = (Session.Achievement && Session.Achievement.titles) || [];
+			ownedTitles
+				.slice()
+				.sort((a, b) => a - b)
+				.forEach(titleId => {
+					const selectedClass = titleId === _currentTitleId ? ' selected' : '';
 					const titleEl = document.createElement('div');
 					titleEl.className = `title-option${selectedClass}`;
 					titleEl.setAttribute('data-title', titleId);
-					titleEl.textContent = titleName;
+					titleEl.textContent = DB.getTitleString(titleId);
 					titleList.appendChild(titleEl);
-				}
-			}
-
-			titleList.addEventListener('click', e => {
-				const option = e.target.closest('.title-option');
-				if (option) {
-					e.preventDefault();
-					e.stopPropagation();
-					const titleId = parseInt(option.getAttribute('data-title'));
-					Component.selectTitle(titleId);
-				}
-			});
+				});
 		};
 
 		Component.selectTitle = function (titleId) {
@@ -1038,38 +1097,17 @@ export function createEquipment({
 
 	if (damageSkin) {
 		Component.setDamageSkin = function setDamageSkin(skinId) {
-			const root = Component.getRoot();
-			const buttons = root.querySelectorAll('#damageskin .skin-option');
-			const buttonSelected = root.querySelector(`#damageskin .skin-option[data-skin="${skinId}"]`);
-
 			GraphicsSettings.damageSkin = skinId;
 			GraphicsSettings.save();
 
+			// The button's data-active image shows while it has the class
+			// "active", over its hover image, so the pick stays drawn when the
+			// pointer leaves it. Setting its background here instead raced the
+			// button's own image loads and was undone on mouseout.
+			const buttons = Component.getRoot().querySelectorAll('#damageskin .skin-option');
 			buttons.forEach(btn => {
-				btn.setAttribute('data-background', 'showdamage/btn_damage.bmp');
-				btn.setAttribute('data-hover', 'showdamage/btn_damage_press.bmp');
-				btn.setAttribute('data-down', 'showdamage/btn_damage_pick.bmp');
+				btn.classList.toggle('active', parseInt(btn.getAttribute('data-skin'), 10) === skinId);
 			});
-			if (this.parseHTML) {
-				buttons.forEach(btn => {
-					this.parseHTML.call(btn);
-				});
-			}
-
-			Client.loadFile(DB.INTERFACE_PATH + 'showdamage/btn_damage.bmp', data => {
-				buttons.forEach(btn => {
-					btn.style.backgroundImage = `url(${data})`;
-				});
-			});
-
-			if (buttonSelected) {
-				Client.loadFile(DB.INTERFACE_PATH + 'showdamage/btn_damage_pick.bmp', data => {
-					buttonSelected.style.backgroundImage = `url(${data})`;
-				});
-
-				buttonSelected.onmouseover = null;
-				buttonSelected.onmouseout = null;
-			}
 		};
 
 		Component.setDamageMotion = function setDamageMotion(motionId) {

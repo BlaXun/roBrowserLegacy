@@ -80,9 +80,10 @@ ItemCompare.onAppend = function onAppend() {
 	// Position ItemCompare next to ItemInfo
 	if (ItemInfo._host) {
 		const itemInfoRect = ItemInfo._host.getBoundingClientRect();
-		const itemInfoWidth = itemInfoRect.width;
+		// Its own on-screen width: the two windows may be drawn at different scales (UI/UIScale.js)
+		const width = this._host.getBoundingClientRect().width;
 		this._host.style.top = `${itemInfoRect.top ? itemInfoRect.top : 200}px`;
-		this._host.style.left = `${itemInfoRect.left ? itemInfoRect.left - itemInfoWidth : 200}px`;
+		this._host.style.left = `${itemInfoRect.left ? itemInfoRect.left - width : 200}px`;
 	}
 };
 
@@ -192,7 +193,8 @@ ItemCompare.setItem = function setItem(item) {
 
 	const descInner = root.querySelector('.description-inner');
 	if (descInner) {
-		descInner.textContent = item.IsIdentified ? it.identifiedDescriptionName : it.unidentifiedDescriptionName;
+		const rawDesc = item.IsIdentified ? it.identifiedDescriptionName : it.unidentifiedDescriptionName;
+		descInner.innerHTML = DB.formatMsgToHtml(_escapeHTML(rawDesc));
 	}
 
 	// Add view button (for cards)
@@ -323,7 +325,8 @@ function onResize() {
 	let lastHeight = 0;
 
 	function resizing() {
-		const h = Math.floor(Mouse.screen.y - top);
+		// Screen distance to window distance (UI/UIScale.js)
+		const h = Math.floor((Mouse.screen.y - top) / ItemCompare.scale);
 		if (h === lastHeight) {
 			return;
 		}

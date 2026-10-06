@@ -745,7 +745,8 @@ function onDrop(event) {
 		return;
 	}
 
-	if (data.type !== 'item' || data.from == 'Storage' || data.from == 'Mail') {
+	// A worn item cannot be attached; it has to come off first.
+	if (data.type !== 'item' || data.from == 'Storage' || data.from == 'Mail' || data.from == 'Equipment') {
 		return;
 	}
 

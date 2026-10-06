@@ -458,7 +458,8 @@ function onResize() {
 	let lastHeight = 0;
 
 	function resizing() {
-		const h = Math.floor(Mouse.screen.y - top);
+		// Screen distance to window distance (UI/UIScale.js)
+		const h = Math.floor((Mouse.screen.y - top) / ItemInfo.scale);
 		if (h === lastHeight) {
 			return;
 		}

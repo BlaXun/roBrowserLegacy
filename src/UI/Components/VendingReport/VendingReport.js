@@ -18,6 +18,7 @@ import VendingShop from 'UI/Components/VendingShop/VendingShop.js';
 import 'UI/Elements/Elements.js';
 import htmlText from './VendingReport.html?raw';
 import cssText from './VendingReport.css?raw';
+import WheelSteps from 'UI/WheelSteps.js';
 
 /**
  * Create Component
@@ -338,14 +339,12 @@ function onScrollWheel(event) {
 
 	const ROW_HEIGHT = 24;
 
-	let delta = 0;
-	if (event.wheelDelta) {
-		delta = event.wheelDelta > 0 ? 1 : -1;
-	} else if (event.deltaY) {
-		delta = event.deltaY < 0 ? 1 : -1;
+	const steps = WheelSteps.steps(event, this);
+	if (!steps) {
+		return;
 	}
 
-	let target = this.scrollTop - delta * ROW_HEIGHT;
+	let target = this.scrollTop + steps * ROW_HEIGHT;
 
 	const maxScroll = this.scrollHeight - this.clientHeight;
 	target = Math.max(0, Math.min(target, maxScroll));

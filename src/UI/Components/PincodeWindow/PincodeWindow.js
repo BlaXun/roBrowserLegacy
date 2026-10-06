@@ -106,8 +106,10 @@ function advanceVisualSeed() {
 PincodeWindow.init = function init() {
 	const root = this.getRoot();
 
-	this._host.style.top = (Renderer.height - 358) / 2 + 'px';
-	this._host.style.left = (Renderer.width - 576) / 2 + 'px';
+	// Centered at its on-screen size (UI/UIScale.js)
+	const scale = this.scale;
+	this._host.style.top = (Renderer.height - 358 * scale) / 2 + 'px';
+	this._host.style.left = (Renderer.width - 576 * scale) / 2 + 'px';
 
 	// Disable pass fields
 	root.querySelector('.pass').disabled = true;

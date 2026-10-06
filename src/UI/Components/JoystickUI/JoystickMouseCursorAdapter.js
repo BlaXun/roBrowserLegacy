@@ -12,12 +12,20 @@ import Renderer from 'Renderer/Renderer.js';
 import Mouse from 'Controls/MouseEventHandler.js';
 import glMatrix from 'Vendors/gl-matrix.js';
 import Camera from 'Renderer/Camera.js';
+import DB from 'DB/DBManager.js';
 import ControlsSettings from 'Preferences/Controls.js';
 import Interaction from './JoystickInteractionService.js';
 
 function move(dx, dy) {
-	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, Mouse.screen.x + dx * ControlsSettings.joySense));
-	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, Mouse.screen.y + dy * ControlsSettings.joySense));
+	moveBy(dx * ControlsSettings.joySense, dy * ControlsSettings.joySense);
+}
+
+/**
+ * Move the virtual cursor by a pixel offset, clamped to the viewport.
+ */
+function moveBy(dx, dy) {
+	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, Mouse.screen.x + dx));
+	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, Mouse.screen.y + dy));
 
 	const cursor = document.querySelector('.cursor');
 	if (cursor) {
@@ -89,8 +97,48 @@ function moveMouseToEntity(entity) {
 	}
 }
 
-function leftClick(click = false) {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+/**
+ * The element under the virtual cursor, looking inside shadow roots.
+ *
+ * Windows built on GUIComponent live in a shadow root, and
+ * document.elementFromPoint only returns their host element. Events
+ * dispatched there never reached the buttons inside, so A could not press
+ * them, and the item/skill grid checks never matched.
+ */
+function elementAtCursor() {
+	let el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	while (el && el.shadowRoot) {
+		const inner = el.shadowRoot.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+		if (!inner || inner === el) {
+			break;
+		}
+		el = inner;
+	}
+	return el;
+}
+
+/**
+ * Put the virtual cursor at a screen position.
+ */
+function moveTo(x, y) {
+	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, x));
+	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, y));
+
+	const cursor = document.querySelector('.cursor');
+	if (cursor) {
+		cursor.style.left = Mouse.screen.x + 'px';
+		cursor.style.top = Mouse.screen.y + 'px';
+	}
+}
+
+/**
+ * A: a full click at the cursor -- mousedown, mouseup and click, as a real
+ * mouse sends. A tap used to send only mousedown and mouseup, so buttons
+ * that listen for click (the escape and death menus among them) ignored it.
+ * Events are composed so they bubble out of a window's shadow root.
+ */
+function leftClick() {
+	const el = elementAtCursor();
 	if (!el) {
 		handleWorldLeftClick();
 		return;
@@ -103,6 +151,7 @@ function leftClick(click = false) {
 	const eventOptions = {
 		bubbles: true,
 		cancelable: true,
+		composed: true,
 		view: window,
 		clientX: Mouse.screen.x,
 		clientY: Mouse.screen.y,
@@ -111,14 +160,12 @@ function leftClick(click = false) {
 	el.dispatchEvent(new MouseEvent('mousedown', eventOptions));
 	setTimeout(function () {
 		el.dispatchEvent(new MouseEvent('mouseup', eventOptions));
-		if (click) {
-			el.dispatchEvent(new MouseEvent('click', eventOptions));
-		}
+		el.dispatchEvent(new MouseEvent('click', eventOptions));
 	}, 50);
 }
 
 function rightClick(holding = false) {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	const el = elementAtCursor();
 	const isCanvas = el && el.tagName.toLowerCase() === 'canvas';
 	if (!el || isCanvas) {
 		handleWorldRightClick();
@@ -185,8 +232,35 @@ function handleWorldRightClick() {
 	}, 100);
 }
 
+/**
+ * Turn the camera by some degrees, under the rules the mouse turn follows
+ * (Camera.processMouseAction).
+ *
+ * The camera wraps its current angle to +-360 every frame but eases toward
+ * angleFinal; a target past a full turn would keep it spinning forever.
+ * So once the target passes +-180, both move a full turn back, which
+ * changes nothing on screen. Then the map's limits apply: indoor maps only
+ * turn a little.
+ *
+ * @param {number} angle degrees, positive turns right
+ */
 function changeCameraAngle(angle) {
-	Camera.angleFinal[1] += angle;
+	let target = Camera.angleFinal[1] + angle;
+	if (target > 180) {
+		target -= 360;
+		Camera.angle[1] -= 360;
+	} else if (target < -180) {
+		target += 360;
+		Camera.angle[1] += 360;
+	}
+
+	if (DB.isIndoor(Camera.currentMap)) {
+		target = Math.min(Math.max(target, Camera.indoorRotationFrom), Camera.indoorRotationTo);
+	} else {
+		target = Math.min(Math.max(target, Camera.rotationFrom), Camera.rotationTo);
+	}
+
+	Camera.angleFinal[1] = target;
 	Camera.updateState();
 	Camera.save();
 }
@@ -215,10 +289,10 @@ function enter() {
 }
 
 function contextMenu() {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
-	const draggableElement = el.closest('.item, .skill');
+	const el = elementAtCursor();
+	const draggableElement = el && el.closest('.item, .skill');
 
-	if (el && draggableElement) {
+	if (draggableElement) {
 		const contextMenuEvent = new MouseEvent('contextmenu', {
 			bubbles: true,
 			cancelable: true,
@@ -235,9 +309,10 @@ function contextMenu() {
 }
 
 function navigateDraggableItems(direction) {
-	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	const el = elementAtCursor();
 
-	const container = el.closest('.item, .skill');
+	// The cursor can sit on the viewport's edge, where nothing is found
+	const container = el && el.closest('.item, .skill');
 
 	if (!container) {
 		// Fall back to regular arrow key navigation
@@ -337,14 +412,43 @@ function navigateDraggableItems(direction) {
 	}
 }
 
-function quickCastClick() {
+/**
+ * Click the map for Quick-Cast, but only while a skill is still waiting for
+ * a target. Items, self skills and skills already cast leave the game in
+ * normal mode, where this click would be a plain left click on the ground:
+ * it cancelled the running attack and walked to the cursor.
+ *
+ * @param {function} [beforeClick] runs just before the click, e.g. to put
+ *   the cursor on the selected target
+ */
+function quickCastClick(beforeClick) {
 	setTimeout(function () {
+		if (Mouse.state !== Mouse.MOUSE_STATE.USESKILL) {
+			return;
+		}
+		if (beforeClick) {
+			beforeClick();
+		}
 		_dispatchMouseEvent(Renderer.canvas, 'mousedown', 1);
 		setTimeout(function () {
 			_dispatchMouseEvent(Renderer.canvas, 'mouseup', 1);
 		}, 100);
 	}, 100);
 }
+
+/**
+ * Snap the virtual cursor back to the middle of the viewport.
+ */
+function recenter() {
+	Mouse.screen.x = Math.floor(Renderer.width / 2);
+	Mouse.screen.y = Math.floor(Renderer.height / 2);
+	const cursor = document.querySelector('.cursor');
+	if (cursor) {
+		cursor.style.left = Mouse.screen.x + 'px';
+		cursor.style.top = Mouse.screen.y + 'px';
+	}
+}
+
 export default {
 	quickCastClick: quickCastClick,
 	moveMouseToEntity: moveMouseToEntity,
@@ -355,6 +459,10 @@ export default {
 	changeCameraZoom: changeCameraZoom,
 	changeCameraAngle: changeCameraAngle,
 	move: move,
+	moveBy: moveBy,
 	leftClick: leftClick,
-	rightClick: rightClick
+	rightClick: rightClick,
+	elementAtCursor: elementAtCursor,
+	moveTo: moveTo,
+	recenter: recenter
 };

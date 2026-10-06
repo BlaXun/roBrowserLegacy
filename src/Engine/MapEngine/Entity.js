@@ -105,6 +105,24 @@ const MAX_ATTACKMT = AVG_ATTACK_SPEED * 2;
 const clanEmblems = {};
 
 /**
+ * Quest icon of each NPC on the current map, by NPC id.
+ * The server sends ZC_QUEST_NOTIFY_EFFECT for every quest NPC on the map when
+ * the map loads, in sight or not, and afterwards only when an icon changes. It
+ * never sends it again when an NPC comes into view, so the client keeps it here
+ * and draws it whenever the NPC appears.
+ */
+const questEffects = new Map();
+
+const QUEST_EFFECT_NONE = 9999; // QTYPE_NONE: hide the icon
+
+// Minimap colour of each e_questinfo_markcolor; QMARK_NONE (0) draws no mark
+const QuestMarkColors = {
+	1: 0xffff00, // QMARK_YELLOW
+	2: 0x00e16a, // QMARK_GREEN
+	3: 0x800080 // QMARK_PURPLE
+};
+
+/**
  * Spam an entity on the map
  * Generic packet handler
  */
@@ -131,6 +149,9 @@ function onEntitySpam(pkt) {
 			}
 		}
 		EntityManager.add(entity);
+		if (questEffects.has(entity.GID)) {
+			attachQuestEffect(entity, questEffects.get(entity.GID));
+		}
 		const cachedLife = EntityManager.getLife(entity.GID);
 		if (cachedLife && entity.life.hp <= -1) {
 			if (cachedLife.hp !== undefined) entity.life.hp = cachedLife.hp;
@@ -375,11 +396,14 @@ function onEntityVanish(pkt) {
 
 		const deathDelay = isSyncedDeath ? entity._deathSyncTick - Renderer.tick + C_DEATH_SYNC_OFFSET : 0;
 
-		// Free the GID immediately so it can be reused; removeGID only drops the
-		// lookup entry and keeps the entity in the render list, so the death /
-		// fade-out animation continues independently. Deferring removeGID would
-		// leave the GID mapped to a dying entity and let a reused GID collide.
-		EntityManager.removeGID(pkt.GID);
+		// A dead PC remains a server-side actor and may be resurrected with the
+		// same GID. Keep that lookup until a later EXIT/TELEPORT/OUTOFSIGHT packet
+		// truly removes it; otherwise ZC_RESURRECTION cannot find the corpse and a
+		// subsequent movement/spawn packet creates a second visual actor. Mobs and
+		// other entity types still free their reusable GID immediately.
+		if (pkt.type !== Entity.VT.DEAD || entity.objecttype !== Entity.TYPE_PC) {
+			EntityManager.removeGID(pkt.GID);
+		}
 
 		const playDeath = () => {
 			entity.remove(pkt.type);
@@ -1034,7 +1058,7 @@ function onEntityTalk(pkt) {
 		// Should not happen
 		if (entity === Session.Entity) {
 			type |= ChatBox.TYPE.SELF;
-		} else if (entity.isAdmin) {
+		} else if (Session.showsAdmin(entity, 'chat')) {
 			type |= ChatBox.TYPE.ADMIN;
 		}
 	}
@@ -1080,6 +1104,15 @@ function onEntityIdentity(pkt) {
 			entity.display.title_name = titleText;
 		} else {
 			entity.display.title_name = '';
+		}
+
+		// The server names the player again whenever their title changes, and
+		// this is the only place it says which title is worn after login.
+		if (PACKETVER.value >= 20170208 && entity === Session.Entity && pkt.TitleID !== undefined) {
+			const equipment = Equipment.getUI();
+			if (equipment && typeof equipment.setTitle === 'function') {
+				equipment.setTitle(pkt.TitleID);
+			}
 		}
 
 		entity.display.party_name = pkt.PName || '';
@@ -1134,7 +1167,7 @@ function updateEntityStyle(entity) {
 							? entity.display.STYLE.NPC
 							: entity.objecttype === Entity.TYPE_NPC2
 								? entity.display.STYLE.NPC
-								: entity.objecttype === Entity.TYPE_PC && entity.isAdmin
+								: entity.objecttype === Entity.TYPE_PC && Session.showsAdmin(entity, 'name')
 									? entity.display.STYLE.ADMIN
 									: entity.display.STYLE.DEFAULT
 	);
@@ -1146,6 +1179,9 @@ function onTitleChangeAck(pkt) {
 		if (comp && typeof comp.setTitle === 'function') {
 			comp.setTitle(pkt.title_id);
 		}
+	} else {
+		// The map-server refuses a title the character doesn't own
+		ChatBox.addText('You cannot use that title.', ChatBox.TYPE.ERROR, ChatBox.FILTER.PUBLIC_LOG);
 	}
 }
 
@@ -1191,46 +1227,59 @@ function onEntityLifeUpdateTiny(pkt) {
  */
 function onEntityQuestNotifyEffect(pkt) {
 	const entity = EntityManager.get(pkt.npcID);
-	let color = 0;
+	// Before 2012-04-10 the server hides an icon with QTYPE_QUEST and no mark
+	const hide =
+		pkt.effect === QUEST_EFFECT_NONE || (PACKETVER.value < 20120410 && pkt.effect === 0 && pkt.color === 0);
 
-	if (pkt.effect !== 9999) {
-		const emotionId = pkt.effect + 81;
-
-		if (entity && pkt.effect in Emotions.indexes) {
-			entity.attachments.add({
-				frame: Emotions.indexes[emotionId],
-				file: 'emotion',
-				play: true,
-				head: true,
-				repeat: true,
-				depth: 5.0
-			});
-		}
+	if (hide) {
+		questEffects.delete(pkt.npcID);
+	} else {
+		questEffects.set(pkt.npcID, pkt.effect);
 	}
 
-	switch (pkt.color + 1) {
-		case 1:
-			// yellow
-			color = 0xffff00;
-			break;
-		case 2:
-			// orange
-			color = 0xffa500;
-			break;
-		case 3:
-			// green
-			color = 0x00e16a;
-			break;
-		case 4:
-			// purple
-			color = 0x800080;
-			break;
-		case 0:
-		default:
-			return;
+	if (entity) {
+		attachQuestEffect(entity, hide ? QUEST_EFFECT_NONE : pkt.effect);
 	}
 
-	MiniMap.getUI().addNpcMark(pkt.npcID, pkt.xPos, pkt.yPos, color, Infinity);
+	const color = hide ? undefined : QuestMarkColors[pkt.color];
+
+	if (color === undefined) {
+		MiniMap.getUI().removeNpcMark(pkt.npcID);
+	} else {
+		MiniMap.getUI().addNpcMark(pkt.npcID, pkt.xPos, pkt.yPos, color, Infinity);
+	}
+}
+
+/**
+ * Draw a quest icon over an NPC's head, replacing the one it has
+ *
+ * @param {Entity} entity
+ * @param {number} effect - e_questinfo_types, QUEST_EFFECT_NONE to remove the icon
+ */
+function attachQuestEffect(entity, effect) {
+	const emotionId = effect + 81;
+
+	if (effect === QUEST_EFFECT_NONE || !(emotionId in Emotions.indexes)) {
+		entity.attachments.remove('questinfo');
+		return;
+	}
+
+	entity.attachments.add({
+		uid: 'questinfo',
+		frame: Emotions.indexes[emotionId],
+		file: 'emotion',
+		play: true,
+		head: true,
+		repeat: true,
+		depth: 5.0
+	});
+}
+
+/**
+ * Forget the quest icons of the map being left
+ */
+function clearQuestEffects() {
+	questEffects.clear();
 }
 
 /**
@@ -1282,15 +1331,45 @@ function onEntityViewChange(pkt) {
 				if (entity === Session.Entity) {
 					//Interchange UI depending on Job
 					if (PACKETVER.value >= 20200520) {
-						BasicInfo.getUI().remove();
+						// The server sends the new job's levels and experience before it
+						// sends the job itself, so they sit in the window being replaced.
+						// A different version of the window starts empty: carry them over.
+						const previous = BasicInfo.getUI();
+						previous.remove();
 						BasicInfo.selectUIVersionWithJob(DB.getJobClass(pkt.value));
-						BasicInfo.getUI().prepare();
-						BasicInfo.getUI().update('blvl', Session.Entity.clevel);
-						BasicInfo.getUI().update('jlvl', Session.Entity.joblevel);
-						BasicInfo.getUI().update('zeny', Session.Entity.money);
-						BasicInfo.getUI().update('name', Session.Entity.display.name);
-						BasicInfo.getUI().update('bexp', BasicInfo.getUI().base_exp, BasicInfo.getUI().base_exp_next);
-						BasicInfo.getUI().append();
+						const ui = BasicInfo.getUI();
+						if (ui !== previous) {
+							ui.base_exp = previous.base_exp;
+							ui.base_exp_next = previous.base_exp_next;
+							ui.job_exp = previous.job_exp;
+							ui.job_exp_next = previous.job_exp_next;
+						}
+						ui.prepare();
+						ui.update('blvl', Session.Entity.clevel);
+						ui.update('jlvl', Session.Entity.joblevel);
+						ui.update('zeny', Session.Entity.money);
+						ui.update('name', Session.Entity.display.name);
+						ui.update('bexp', ui.base_exp, ui.base_exp_next);
+						if (ui.job_exp_next > -1) {
+							ui.update('jexp', ui.job_exp, ui.job_exp_next);
+						}
+						// The bars too: a new window has none of them, and the server only sends
+						// one again when it changes -- AP, full after a job change, may not for a while.
+						const life = Session.Entity.life;
+						if (life.hp > -1 && life.hp_max > -1) {
+							ui.update('hp', life.hp, life.hp_max);
+						}
+						if (life.sp > -1 && life.sp_max > -1) {
+							ui.update('sp', life.sp, life.sp_max);
+						}
+						if (life.ap > -1 && life.ap_max > -1) {
+							ui.update('ap', life.ap, life.ap_max);
+						}
+						if (Session.Entity.max_weight) {
+							ui.weight_max = Session.Entity.max_weight;
+							ui.update('weight', Session.Entity.weight, ui.weight_max);
+						}
+						ui.append();
 					}
 					// Update UI for all client versions
 					BasicInfo.getUI().update('job', pkt.value);
@@ -2968,4 +3047,4 @@ export default function EntityEngine() {
 	Network.hookPacket(PACKET.ZC.HAT_EFFECT, onHatEffects);
 }
 
-export { onEntityActionPosition, onEntityAction };
+export { onEntityActionPosition, onEntityAction, clearQuestEffects };

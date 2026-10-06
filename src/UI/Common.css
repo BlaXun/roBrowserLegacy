@@ -174,3 +174,13 @@ ui-button {
 :host-context(.custom-cursor) * {
 	cursor: none !important;
 }
+
+/* The shadow container every component's markup sits in.
+
+   It had no size of its own, so a component asking for `height: 100%`
+   resolved it against `auto` and collapsed to its content -- a title bar and
+   nothing else, with the rest clipped by any `overflow: hidden` beneath it.
+   Inert where the host has no definite height, which is most components. */
+.ui-component-root {
+	height: 100%;
+}

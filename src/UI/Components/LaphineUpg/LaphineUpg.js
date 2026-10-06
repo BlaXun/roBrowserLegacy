@@ -769,7 +769,8 @@ function onSubmitItemDrop(event) {
 		return;
 	}
 
-	if (data.type !== 'item') {
+	// A worn item has to come off before it can be upgraded.
+	if (data.type !== 'item' || data.from === 'Equipment') {
 		return;
 	}
 

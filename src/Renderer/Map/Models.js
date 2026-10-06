@@ -236,6 +236,27 @@ function unbind(gl) {
  * @param {object} fog structure
  * @param {object} light structure
  */
+/**
+ * Draw the models with someone else's program bound -- a hook's shadow map
+ * (Renderer/MapHooks.js): the same buffer and batches, position and texture
+ * coordinates only.
+ */
+function renderDepth(gl, program) {
+	if (!_buffer || !_objects.length) {
+		return;
+	}
+	const attribute = program.attribute;
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer);
+	gl.enableVertexAttribArray(attribute.aPosition);
+	gl.enableVertexAttribArray(attribute.aTextureCoord);
+	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 9 * 4, 0);
+	gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 9 * 4, 6 * 4);
+	gl.activeTexture(gl.TEXTURE0);
+	drawMeshes(gl);
+	gl.disableVertexAttribArray(attribute.aPosition);
+	gl.disableVertexAttribArray(attribute.aTextureCoord);
+}
+
 function render(gl, modelView, projection, normalMat, fog, light) {
 	bind(gl, modelView, projection, fog, light);
 	OccluderFade.renderOpaque(gl, _program.uniform, () => drawMeshes(gl));
@@ -298,5 +319,6 @@ export default {
 	init: init,
 	render: render,
 	renderFaded: renderFaded,
+	renderDepth: renderDepth,
 	free: free
 };
