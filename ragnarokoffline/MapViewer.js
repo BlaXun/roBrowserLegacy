@@ -11363,6 +11363,149 @@ var init_MemoryManager = __esmMin((() => {
 	};
 }));
 //#endregion
+//#region src/Core/ClothPalette.js
+/**
+* Whether a palette that failed to load is one this can build.
+*
+* @param {string} filename
+* @return {boolean}
+*/
+function canBuild(filename) {
+	return filename.startsWith(BODY_DIR) && NAME.test(filename.slice(16));
+}
+/**
+* Build the palette for a missing body palette file.
+*
+* @param {string} filename - the missing .pal
+* @param {function} callback - called with a 1024-byte Uint8Array, or null
+*/
+function build(filename, callback) {
+	const match = filename.match(NAME);
+	const colour = parseInt(match[2], 10);
+	const names = SIBLINGS.filter((n) => n !== colour).map((n) => match[1] + n + (match[3] || "") + ".pal");
+	const found = new Array(names.length).fill(null);
+	let pending = names.length;
+	names.forEach((name, i) => {
+		Thread.send("GET_FILE", {
+			filename: name,
+			args: null
+		}, (data, error) => {
+			if (!error && data && data.byteLength >= 1024) found[i] = new Uint8Array(data, 0, 1024);
+			if (--pending === 0) callback(recolour(found.filter(Boolean), colour));
+		});
+	});
+}
+/**
+* @param {Uint8Array[]} palettes - the job's own, first one first
+* @param {number} colour
+* @return {Uint8Array|null}
+*/
+function recolour(palettes, colour) {
+	if (palettes.length < 2) return null;
+	const base = palettes[0];
+	const cloth = [];
+	for (let i = FIRST_CLOTH_INDEX; i < 256; ++i) {
+		const o = i * 4;
+		if (palettes.some((p) => p[o] !== base[o] || p[o + 1] !== base[o + 1] || p[o + 2] !== base[o + 2])) cloth.push(i);
+	}
+	if (!cloth.length) return null;
+	const [hue, saturation, lightness] = LOOKS[((colour - 4) % LOOKS.length + LOOKS.length) % LOOKS.length];
+	const out = new Uint8Array(base);
+	for (const i of cloth) {
+		const o = i * 4;
+		const hls = rgbToHls(base[o] / 255, base[o + 1] / 255, base[o + 2] / 255);
+		const rgb = hlsToRgb(hue === null ? hls[0] : hue / 360, Math.min(1, hls[1] * lightness), hue === null ? 0 : Math.min(1, Math.max(hls[2], .35) * saturation));
+		out[o] = Math.round(rgb[0] * 255);
+		out[o + 1] = Math.round(rgb[1] * 255);
+		out[o + 2] = Math.round(rgb[2] * 255);
+	}
+	return out;
+}
+/** Python's colorsys.rgb_to_hls: all values 0..1. */
+function rgbToHls(r, g, b) {
+	const max = Math.max(r, g, b);
+	const min = Math.min(r, g, b);
+	const l = (max + min) / 2;
+	if (max === min) return [
+		0,
+		l,
+		0
+	];
+	const d = max - min;
+	const s = l <= .5 ? d / (max + min) : d / (2 - max - min);
+	const rc = (max - r) / d;
+	const gc = (max - g) / d;
+	const bc = (max - b) / d;
+	let h = r === max ? bc - gc : g === max ? 2 + rc - bc : 4 + gc - rc;
+	h = (h / 6 % 1 + 1) % 1;
+	return [
+		h,
+		l,
+		s
+	];
+}
+/** Python's colorsys.hls_to_rgb: all values 0..1. */
+function hlsToRgb(h, l, s) {
+	if (s === 0) return [
+		l,
+		l,
+		l
+	];
+	const m2 = l <= .5 ? l * (1 + s) : l + s - l * s;
+	const m1 = 2 * l - m2;
+	return [
+		channel(m1, m2, h + 1 / 3),
+		channel(m1, m2, h),
+		channel(m1, m2, h - 1 / 3)
+	];
+}
+function channel(m1, m2, h) {
+	h = (h % 1 + 1) % 1;
+	if (h < 1 / 6) return m1 + (m2 - m1) * h * 6;
+	if (h < .5) return m2;
+	if (h < 2 / 3) return m1 + (m2 - m1) * (2 / 3 - h) * 6;
+	return m1;
+}
+var BODY_DIR, NAME, SIBLINGS, LOOKS, FIRST_CLOTH_INDEX, ClothPalette_default;
+var init_ClothPalette = __esmMin((() => {
+	init_Thread();
+	BODY_DIR = "data/palette/¸ö/";
+	NAME = /^(.*_)(\d+)(_1)?\.pal$/i;
+	SIBLINGS = [
+		1,
+		2,
+		3
+	];
+	LOOKS = [
+		[
+			105,
+			.85,
+			1.05
+		],
+		[
+			28,
+			.6,
+			.65
+		],
+		[
+			null,
+			0,
+			.45
+		],
+		[
+			275,
+			.75,
+			.95
+		]
+	];
+	FIRST_CLOTH_INDEX = 2;
+	ClothPalette_default = {
+		canBuild,
+		build,
+		recolour
+	};
+}));
+//#endregion
 //#region src/Network/Packets/packets2003_len_main.js
 var packets2003_len_main_exports = /* @__PURE__ */ __exportAll({ default: () => packets2003_len_main_default });
 function init$36(packetver) {
@@ -84009,7 +84152,7 @@ var init_PostProcess = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/Shaders/VerticalFlip.js
-var _program$28, _buffer$21, _active$3, VerticalFlip;
+var _program$29, _buffer$22, _active$3, VerticalFlip;
 var init_VerticalFlip = __esmMin((() => {
 	init_VerticalFlip$2();
 	init_VerticalFlip$1();
@@ -84018,15 +84161,15 @@ var init_VerticalFlip = __esmMin((() => {
 	_active$3 = false;
 	VerticalFlip = class {
 		static init(gl) {
-			if (_program$28) return;
+			if (_program$29) return;
 			try {
-				_program$28 = WebGL_default.createShaderProgram(gl, VerticalFlip_default$1, VerticalFlip_default);
+				_program$29 = WebGL_default.createShaderProgram(gl, VerticalFlip_default$1, VerticalFlip_default);
 			} catch (e) {
 				console.error("Error when compiling shader VerticalFlip.", e);
 				return;
 			}
-			_buffer$21 = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$21);
+			_buffer$22 = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$22);
 			gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
 				-1,
 				-1,
@@ -84053,19 +84196,19 @@ var init_VerticalFlip = __esmMin((() => {
 		* @param {WebGLFramebuffer} outputFbo - Target
 		*/
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$21 || !_program$28 || !_active$3) return;
+			if (!_buffer$22 || !_program$29 || !_active$3) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
-			gl.useProgram(_program$28);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$21);
-			let posLoc = _program$28.attribute.aPosition;
+			gl.useProgram(_program$29);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$22);
+			let posLoc = _program$29.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
 			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 16, 0);
-			posLoc = _program$28.attribute.aTextureCoord;
+			posLoc = _program$29.attribute.aTextureCoord;
 			gl.enableVertexAttribArray(posLoc);
 			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 16, 8);
 			gl.activeTexture(gl.TEXTURE0);
 			gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-			gl.uniform1i(_program$28.uniform.uTexture, 0);
+			gl.uniform1i(_program$29.uniform.uTexture, 0);
 			gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 			PostProcess.afterRenderPass(gl);
 		}
@@ -84073,13 +84216,13 @@ var init_VerticalFlip = __esmMin((() => {
 		* @returns {WebGLProgram} Shader program
 		*/
 		static program() {
-			return _program$28;
+			return _program$29;
 		}
 		/** Resets effect state */
 		static clean(gl) {
 			_active$3 = false;
-			if (_buffer$21) gl.deleteBuffer(_buffer$21);
-			_program$28 = _buffer$21 = null;
+			if (_buffer$22) gl.deleteBuffer(_buffer$22);
+			_program$29 = _buffer$22 = null;
 		}
 		/** @returns {boolean} Whether the effect is active */
 		static isActive() {
@@ -207583,9 +207726,9 @@ function init$12(gl) {
 			if (enableMipmap) gl.generateMipmap(gl.TEXTURE_2D);
 		});
 	});
-	_buffer$20 = gl.createBuffer();
-	_program$27 = WebGL_default.createShaderProgram(gl, GridSelector_default$2, GridSelector_default$1);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$20);
+	_buffer$21 = gl.createBuffer();
+	_program$28 = WebGL_default.createShaderProgram(gl, GridSelector_default$2, GridSelector_default$1);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$21);
 	gl.bufferData(gl.ARRAY_BUFFER, _buffer_data.byteLength, gl.DYNAMIC_DRAW);
 }
 /**
@@ -207600,10 +207743,10 @@ function init$12(gl) {
 */
 function render$13(gl, modelView, projection, fog, x, y) {
 	if (!_texture$5) return;
-	const uniform = _program$27.uniform;
-	const attribute = _program$27.attribute;
+	const uniform = _program$28.uniform;
+	const attribute = _program$28.attribute;
 	let z;
-	gl.useProgram(_program$27);
+	gl.useProgram(_program$28);
 	gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -207612,7 +207755,7 @@ function render$13(gl, modelView, projection, fog, x, y) {
 	gl.uniform3fv(uniform.uFogColor, fog.color);
 	gl.enableVertexAttribArray(attribute.aPosition);
 	gl.enableVertexAttribArray(attribute.aTextCoord);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$20);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$21);
 	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 20, 0);
 	gl.vertexAttribPointer(attribute.aTextCoord, 2, gl.FLOAT, false, 20, 12);
 	gl.activeTexture(gl.TEXTURE0);
@@ -207641,20 +207784,20 @@ function render$13(gl, modelView, projection, fog, x, y) {
 * @param {object} gl context
 */
 function free$8(gl) {
-	if (_buffer$20) {
-		gl.deleteBuffer(_buffer$20);
-		_buffer$20 = null;
+	if (_buffer$21) {
+		gl.deleteBuffer(_buffer$21);
+		_buffer$21 = null;
 	}
 	if (_texture$5) {
 		gl.deleteTexture(_texture$5);
 		_texture$5 = null;
 	}
-	if (_program$27) {
-		gl.deleteProgram(_program$27);
-		_program$27 = null;
+	if (_program$28) {
+		gl.deleteProgram(_program$28);
+		_program$28 = null;
 	}
 }
-var _program$27, _buffer$20, _texture$5, _xy, _buffer_data, GridSelector_default;
+var _program$28, _buffer$21, _texture$5, _xy, _buffer_data, GridSelector_default;
 var init_GridSelector = __esmMin((() => {
 	init_Altitude();
 	init_Client();
@@ -207663,8 +207806,8 @@ var init_GridSelector = __esmMin((() => {
 	init_Configs();
 	init_GridSelector$2();
 	init_GridSelector$1();
-	_program$27 = null;
-	_buffer$20 = null;
+	_program$28 = null;
+	_buffer$21 = null;
 	_texture$5 = null;
 	_xy = null;
 	_buffer_data = new Float32Array([
@@ -207778,9 +207921,9 @@ var init_Ground$1 = __esmMin((() => {
 * @param {object} light structure
 */
 function render$12(gl, modelView, projection, normalMat, fog, light) {
-	const uniform = _program$26.uniform;
-	const attribute = _program$26.attribute;
-	gl.useProgram(_program$26);
+	const uniform = _program$27.uniform;
+	const attribute = _program$27.attribute;
+	gl.useProgram(_program$27);
 	gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniform3fv(uniform.uLightDirection, light.direction);
@@ -207800,7 +207943,7 @@ function render$12(gl, modelView, projection, normalMat, fog, light) {
 	gl.enableVertexAttribArray(attribute.aTextureCoord);
 	gl.enableVertexAttribArray(attribute.aLightmapCoord);
 	gl.enableVertexAttribArray(attribute.aTileColorCoord);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$19);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$20);
 	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 48, 0);
 	gl.vertexAttribPointer(attribute.aVertexNormal, 3, gl.FLOAT, false, 48, 12);
 	gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 48, 24);
@@ -207950,9 +208093,9 @@ function init$11(gl, data) {
 	_width = data.width;
 	data.height;
 	_shadowMap = data.shadowMap;
-	if (!_buffer$19) _buffer$19 = gl.createBuffer();
-	if (!_program$26) _program$26 = WebGL_default.createShaderProgram(gl, Ground_default$2, Ground_default$1);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$19);
+	if (!_buffer$20) _buffer$20 = gl.createBuffer();
+	if (!_program$27) _program$27 = WebGL_default.createShaderProgram(gl, Ground_default$2, Ground_default$1);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$20);
 	gl.bufferData(gl.ARRAY_BUFFER, data.mesh, gl.STATIC_DRAW);
 	initLightmap(gl, data.lightmap, data.lightmapSize);
 	initTileColor(gl, data.tileColor, data.width, data.height);
@@ -207976,9 +208119,9 @@ function free$7(gl) {
 		gl.deleteTexture(_textureAtlas);
 		_textureAtlas = null;
 	}
-	if (_buffer$19) {
-		gl.deleteBuffer(_buffer$19);
-		_buffer$19 = null;
+	if (_buffer$20) {
+		gl.deleteBuffer(_buffer$20);
+		_buffer$20 = null;
 	}
 	_shadowMap = null;
 	_vertCount$1 = 0;
@@ -208015,7 +208158,7 @@ function textures() {
 		lightmap: _lightmap
 	};
 }
-var procCanvas$2, procCtx$2, _program$26, _buffer$19, _lightmap, _tileColor, _textureAtlas, _shadowMap, _vertCount$1, _width, Ground_default;
+var procCanvas$2, procCtx$2, _program$27, _buffer$20, _lightmap, _tileColor, _textureAtlas, _shadowMap, _vertCount$1, _width, Ground_default;
 var init_Ground = __esmMin((() => {
 	init_WebGL();
 	init_Texture();
@@ -208025,8 +208168,8 @@ var init_Ground = __esmMin((() => {
 	init_Ground$1();
 	procCanvas$2 = document.createElement("canvas");
 	procCtx$2 = procCanvas$2.getContext("2d", { willReadFrequently: true });
-	_program$26 = null;
-	_buffer$19 = null;
+	_program$27 = null;
+	_buffer$20 = null;
 	_lightmap = null;
 	_tileColor = null;
 	_textureAtlas = null;
@@ -208191,7 +208334,7 @@ var init_SpriteRenderer$1 = __esmMin((() => {
 */
 function RenderCanvas3D(isBlendModeOne) {
 	if (!this.image.texture || !this.color[3]) return;
-	const uniform = _program$25.uniform;
+	const uniform = _program$26.uniform;
 	const gl = _gl$2;
 	const use_pal = this.image.palette !== null;
 	if (isBlendModeOne) gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
@@ -208299,7 +208442,7 @@ function fillImageData(imageData, frame, pal, color) {
 		}
 	}
 }
-var mat4$22, RenderCanvas2D, _program$25, _buffer$18, _ctx$5, _gl$2, _groupId, _lastGroupId, _shadow, _angle, _depth, _disableDepthCorrection, _depthMask, _fullPlaneDepth, _depthTest, _texture$4, _usepal, _pos$8, _matrix$7, _size$7, _offset, SpriteRenderer;
+var mat4$22, RenderCanvas2D, _program$26, _buffer$19, _ctx$5, _gl$2, _groupId, _lastGroupId, _shadow, _angle, _depth, _disableDepthCorrection, _depthMask, _fullPlaneDepth, _depthTest, _texture$4, _usepal, _pos$8, _matrix$7, _size$7, _offset, SpriteRenderer;
 var init_SpriteRenderer = __esmMin((() => {
 	init_WebGL();
 	init_gl_matrix();
@@ -208372,8 +208515,8 @@ var init_SpriteRenderer = __esmMin((() => {
 			_ctx$5.restore();
 		};
 	})();
-	_program$25 = null;
-	_buffer$18 = null;
+	_program$26 = null;
+	_buffer$19 = null;
 	_ctx$5 = null;
 	_gl$2 = null;
 	_groupId = 0;
@@ -208462,9 +208605,9 @@ var init_SpriteRenderer = __esmMin((() => {
 		* @param {object} gl context
 		*/
 		static init(gl) {
-			if (!_buffer$18) {
-				_buffer$18 = gl.createBuffer();
-				gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$18);
+			if (!_buffer$19) {
+				_buffer$19 = gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$19);
 				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
 					-.5,
 					.5,
@@ -208484,7 +208627,7 @@ var init_SpriteRenderer = __esmMin((() => {
 					1
 				]), gl.STATIC_DRAW);
 			}
-			if (!_program$25) _program$25 = WebGL_default.createShaderProgram(gl, SpriteRenderer_default$1, SpriteRenderer_default);
+			if (!_program$26) _program$26 = WebGL_default.createShaderProgram(gl, SpriteRenderer_default$1, SpriteRenderer_default);
 		}
 		/**
 		* Initialize 3D Context
@@ -208495,9 +208638,9 @@ var init_SpriteRenderer = __esmMin((() => {
 		* @param {object} fog structure
 		*/
 		static bind3DContext(gl, modelView, projection, fog) {
-			const attribute = _program$25.attribute;
-			const uniform = _program$25.uniform;
-			gl.useProgram(_program$25);
+			const attribute = _program$26.attribute;
+			const uniform = _program$26.uniform;
+			gl.useProgram(_program$26);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uViewModelMat, false, mat4$22.invert(_matrix$7, modelView));
@@ -208514,7 +208657,7 @@ var init_SpriteRenderer = __esmMin((() => {
 			gl.uniform1i(uniform.uFullPlaneDepth, _fullPlaneDepth = true);
 			gl.enableVertexAttribArray(attribute.aPosition);
 			gl.enableVertexAttribArray(attribute.aTextureCoord);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$18);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$19);
 			gl.vertexAttribPointer(attribute.aPosition, 2, gl.FLOAT, false, 16, 0);
 			gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 16, 8);
 			this.render = RenderCanvas3D;
@@ -208530,7 +208673,7 @@ var init_SpriteRenderer = __esmMin((() => {
 		* @param {object} gl context
 		*/
 		static unbind(gl) {
-			const attribute = _program$25.attribute;
+			const attribute = _program$26.attribute;
 			gl.disableVertexAttribArray(attribute.aPosition);
 			gl.disableVertexAttribArray(attribute.aTextureCoord);
 		}
@@ -208627,12 +208770,12 @@ function init$10(gl, water) {
 	_wavePitch = water.wavePitch;
 	_waterOpacity = water.type !== 4 && water.type !== 6 ? .8 : 1;
 	if (!_vertCount) return;
-	if (!_program$24) _program$24 = WebGL_default.createShaderProgram(gl, Water_default$2, Water_default$1);
-	_buffer$17 = gl.createBuffer();
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$17);
+	if (!_program$25) _program$25 = WebGL_default.createShaderProgram(gl, Water_default$2, Water_default$1);
+	_buffer$18 = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$18);
 	gl.bufferData(gl.ARRAY_BUFFER, water.mesh, gl.STATIC_DRAW);
 	function onTextureLoaded(texture, index) {
-		_textures$1[index] = texture;
+		_textures$2[index] = texture;
 	}
 	for (let i = 0; i < 32; ++i) WebGL_default.texture(gl, water.images[i], onTextureLoaded, i);
 }
@@ -208648,10 +208791,10 @@ function init$10(gl, water) {
 */
 function render$11(gl, modelView, projection, fog, light, tick) {
 	if (!_vertCount) return;
-	const uniform = _program$24.uniform;
-	const attribute = _program$24.attribute;
+	const uniform = _program$25.uniform;
+	const attribute = _program$25.attribute;
 	const frame = tick / (1e3 / 60);
-	gl.useProgram(_program$24);
+	gl.useProgram(_program$25);
 	gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -208660,7 +208803,7 @@ function render$11(gl, modelView, projection, fog, light, tick) {
 	gl.uniform3fv(uniform.uFogColor, fog.color);
 	gl.enableVertexAttribArray(attribute.aPosition);
 	gl.enableVertexAttribArray(attribute.aTextureCoord);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$17);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$18);
 	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 20, 0);
 	gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 20, 12);
 	gl.activeTexture(gl.TEXTURE0);
@@ -208669,7 +208812,7 @@ function render$11(gl, modelView, projection, fog, light, tick) {
 	gl.uniform1f(uniform.uOpacity, _waterOpacity);
 	gl.uniform1f(uniform.uWavePitch, _wavePitch);
 	gl.uniform1f(uniform.uWaterOffset, frame * _waveSpeed % 360 - 180);
-	gl.bindTexture(gl.TEXTURE_2D, _textures$1[frame / _animSpeed % 32 | 0]);
+	gl.bindTexture(gl.TEXTURE_2D, _textures$2[frame / _animSpeed % 32 | 0]);
 	gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 	SpriteRenderer.runWithDepth(true, false, false, function() {
 		gl.drawArrays(gl.TRIANGLES, 0, _vertCount);
@@ -208684,17 +208827,17 @@ function render$11(gl, modelView, projection, fog, light, tick) {
 */
 function free$6(gl) {
 	let i;
-	if (_buffer$17) {
-		gl.deleteBuffer(_buffer$17);
-		_buffer$17 = null;
+	if (_buffer$18) {
+		gl.deleteBuffer(_buffer$18);
+		_buffer$18 = null;
 	}
-	if (_program$24) {
-		gl.deleteProgram(_program$24);
-		_program$24 = null;
+	if (_program$25) {
+		gl.deleteProgram(_program$25);
+		_program$25 = null;
 	}
-	for (i = 0; i < 32; ++i) if (_textures$1[i]) {
-		gl.deleteTexture(_textures$1[i]);
-		_textures$1[i] = null;
+	for (i = 0; i < 32; ++i) if (_textures$2[i]) {
+		gl.deleteTexture(_textures$2[i]);
+		_textures$2[i] = null;
 	}
 	_vertCount = 0;
 }
@@ -208729,9 +208872,9 @@ function hasWater() {
 function state() {
 	if (!_vertCount) return null;
 	return {
-		buffer: _buffer$17,
+		buffer: _buffer$18,
 		vertCount: _vertCount,
-		textures: _textures$1,
+		textures: _textures$2,
 		level: _waterLevel,
 		waveHeight: _waveHeight,
 		waveSpeed: _waveSpeed,
@@ -208740,17 +208883,17 @@ function state() {
 		opacity: _waterOpacity
 	};
 }
-var _program$24, _buffer$17, _vertCount, _textures$1, _waveSpeed, _waveHeight, _wavePitch, _waterLevel, _animSpeed, _waterOpacity, Water_default;
+var _program$25, _buffer$18, _vertCount, _textures$2, _waveSpeed, _waveHeight, _wavePitch, _waterLevel, _animSpeed, _waterOpacity, Water_default;
 var init_Water = __esmMin((() => {
 	init_WebGL();
 	init_SpriteRenderer();
 	init_Altitude();
 	init_Water$2();
 	init_Water$1();
-	_program$24 = null;
-	_buffer$17 = null;
+	_program$25 = null;
+	_buffer$18 = null;
 	_vertCount = 0;
-	_textures$1 = new Array(32);
+	_textures$2 = new Array(32);
 	_waveSpeed = 0;
 	_waveHeight = 0;
 	_wavePitch = 0;
@@ -209037,9 +209180,9 @@ function init$9(gl, data) {
 	_objects.length = count;
 	_batchesReady = false;
 	_pendingTextures = count;
-	if (!_buffer$16) _buffer$16 = gl.createBuffer();
-	if (!_program$23) _program$23 = WebGL_default.createShaderProgram(gl, Models_default$2, OccluderFade.injectShader(Models_default$1));
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$16);
+	if (!_buffer$17) _buffer$17 = gl.createBuffer();
+	if (!_program$24) _program$24 = WebGL_default.createShaderProgram(gl, Models_default$2, OccluderFade.injectShader(Models_default$1));
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$17);
 	gl.bufferData(gl.ARRAY_BUFFER, data.buffer, gl.STATIC_DRAW);
 	function onTextureLoaded(texture, index) {
 		_objects[index].texture = texture;
@@ -209086,9 +209229,9 @@ function drawMeshes(gl) {
 * @param {object} light structure
 */
 function bind$1(gl, modelView, projection, fog, light) {
-	const uniform = _program$23.uniform;
-	const attribute = _program$23.attribute;
-	gl.useProgram(_program$23);
+	const uniform = _program$24.uniform;
+	const attribute = _program$24.attribute;
+	gl.useProgram(_program$24);
 	gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniform3fv(uniform.uLightDirection, light.direction);
@@ -209105,7 +209248,7 @@ function bind$1(gl, modelView, projection, fog, light) {
 	gl.enableVertexAttribArray(attribute.aVertexNormal);
 	gl.enableVertexAttribArray(attribute.aTextureCoord);
 	gl.enableVertexAttribArray(attribute.aAlpha);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$16);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$17);
 	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 36, 0);
 	gl.vertexAttribPointer(attribute.aVertexNormal, 3, gl.FLOAT, false, 36, 12);
 	gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 36, 24);
@@ -209119,7 +209262,7 @@ function bind$1(gl, modelView, projection, fog, light) {
 * @param {object} gl context
 */
 function unbind(gl) {
-	const attribute = _program$23.attribute;
+	const attribute = _program$24.attribute;
 	gl.disableVertexAttribArray(attribute.aPosition);
 	gl.disableVertexAttribArray(attribute.aVertexNormal);
 	gl.disableVertexAttribArray(attribute.aTextureCoord);
@@ -209141,9 +209284,9 @@ function unbind(gl) {
 * coordinates only.
 */
 function renderDepth(gl, program) {
-	if (!_buffer$16 || !_objects.length) return;
+	if (!_buffer$17 || !_objects.length) return;
 	const attribute = program.attribute;
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$16);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$17);
 	gl.enableVertexAttribArray(attribute.aPosition);
 	gl.enableVertexAttribArray(attribute.aTextureCoord);
 	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 36, 0);
@@ -209155,8 +209298,8 @@ function renderDepth(gl, program) {
 }
 function render$10(gl, modelView, projection, normalMat, fog, light) {
 	bind$1(gl, modelView, projection, fog, light);
-	OccluderFade.renderOpaque(gl, _program$23.uniform, () => drawMeshes(gl));
-	OccluderFade.renderQuery(gl, _program$23.uniform, () => drawMeshes(gl), OccluderFade.QUERY.MODELS);
+	OccluderFade.renderOpaque(gl, _program$24.uniform, () => drawMeshes(gl));
+	OccluderFade.renderQuery(gl, _program$24.uniform, () => drawMeshes(gl), OccluderFade.QUERY.MODELS);
 	unbind(gl);
 }
 /**
@@ -209173,7 +209316,7 @@ function render$10(gl, modelView, projection, normalMat, fog, light) {
 function renderFaded$1(gl, modelView, projection, normalMat, fog, light) {
 	if (!OccluderFade.needsBlendPass()) return;
 	bind$1(gl, modelView, projection, fog, light);
-	OccluderFade.renderBlend(gl, _program$23.uniform, () => drawMeshes(gl));
+	OccluderFade.renderBlend(gl, _program$24.uniform, () => drawMeshes(gl));
 	unbind(gl);
 }
 /**
@@ -209183,28 +209326,28 @@ function renderFaded$1(gl, modelView, projection, normalMat, fog, light) {
 */
 function free$5(gl) {
 	let i, count;
-	if (_buffer$16) {
-		gl.deleteBuffer(_buffer$16);
-		_buffer$16 = null;
+	if (_buffer$17) {
+		gl.deleteBuffer(_buffer$17);
+		_buffer$17 = null;
 	}
-	if (_program$23) {
-		gl.deleteProgram(_program$23);
-		_program$23 = null;
+	if (_program$24) {
+		gl.deleteProgram(_program$24);
+		_program$24 = null;
 	}
 	for (i = 0, count = _objects.length; i < count; ++i) gl.deleteTexture(_objects[i].texture);
 	_objects.length = 0;
 	_batches.length = 0;
 	_batchesReady = false;
 }
-var _program$23, _buffer$16, _objects, _batches, _batchesReady, _pendingTextures, Models_default;
+var _program$24, _buffer$17, _objects, _batches, _batchesReady, _pendingTextures, Models_default;
 var init_Models = __esmMin((() => {
 	init_Models$2();
 	init_Models$1();
 	init_WebGL();
 	init_Map();
 	init_OccluderFade();
-	_program$23 = null;
-	_buffer$16 = null;
+	_program$24 = null;
+	_buffer$17 = null;
 	_objects = [];
 	_batches = [];
 	_batchesReady = false;
@@ -209235,33 +209378,33 @@ var init_AnimatedModels$1 = __esmMin((() => {
 * Initialize shader program
 */
 function init$8(gl) {
-	_program$22 = WebGL_default.createShaderProgram(gl, AnimatedModels_default$2, OccluderFade.injectShader(AnimatedModels_default$1));
-	_program$22.uniform = {
-		uModelViewMat: gl.getUniformLocation(_program$22, "uModelViewMat"),
-		uProjectionMat: gl.getUniformLocation(_program$22, "uProjectionMat"),
-		uNormalMat: gl.getUniformLocation(_program$22, "uNormalMat"),
-		uLightDirection: gl.getUniformLocation(_program$22, "uLightDirection"),
-		uLightOpacity: gl.getUniformLocation(_program$22, "uLightOpacity"),
-		uLightAmbient: gl.getUniformLocation(_program$22, "uLightAmbient"),
-		uLightDiffuse: gl.getUniformLocation(_program$22, "uLightDiffuse"),
-		uLightEnv: gl.getUniformLocation(_program$22, "uLightEnv"),
-		uFogUse: gl.getUniformLocation(_program$22, "uFogUse"),
-		uFogNear: gl.getUniformLocation(_program$22, "uFogNear"),
-		uFogFar: gl.getUniformLocation(_program$22, "uFogFar"),
-		uFogColor: gl.getUniformLocation(_program$22, "uFogColor"),
-		uDiffuse: gl.getUniformLocation(_program$22, "uDiffuse"),
-		uOccluderFadeMode: gl.getUniformLocation(_program$22, "uOccluderFadeMode"),
-		uOccluderFadeEye: gl.getUniformLocation(_program$22, "uOccluderFadeEye"),
-		uOccluderFadeFocus: gl.getUniformLocation(_program$22, "uOccluderFadeFocus"),
-		uOccluderFadeRadius: gl.getUniformLocation(_program$22, "uOccluderFadeRadius"),
-		uOccluderFadeOpacity: gl.getUniformLocation(_program$22, "uOccluderFadeOpacity"),
-		uOccluderFadeStrength: gl.getUniformLocation(_program$22, "uOccluderFadeStrength")
+	_program$23 = WebGL_default.createShaderProgram(gl, AnimatedModels_default$2, OccluderFade.injectShader(AnimatedModels_default$1));
+	_program$23.uniform = {
+		uModelViewMat: gl.getUniformLocation(_program$23, "uModelViewMat"),
+		uProjectionMat: gl.getUniformLocation(_program$23, "uProjectionMat"),
+		uNormalMat: gl.getUniformLocation(_program$23, "uNormalMat"),
+		uLightDirection: gl.getUniformLocation(_program$23, "uLightDirection"),
+		uLightOpacity: gl.getUniformLocation(_program$23, "uLightOpacity"),
+		uLightAmbient: gl.getUniformLocation(_program$23, "uLightAmbient"),
+		uLightDiffuse: gl.getUniformLocation(_program$23, "uLightDiffuse"),
+		uLightEnv: gl.getUniformLocation(_program$23, "uLightEnv"),
+		uFogUse: gl.getUniformLocation(_program$23, "uFogUse"),
+		uFogNear: gl.getUniformLocation(_program$23, "uFogNear"),
+		uFogFar: gl.getUniformLocation(_program$23, "uFogFar"),
+		uFogColor: gl.getUniformLocation(_program$23, "uFogColor"),
+		uDiffuse: gl.getUniformLocation(_program$23, "uDiffuse"),
+		uOccluderFadeMode: gl.getUniformLocation(_program$23, "uOccluderFadeMode"),
+		uOccluderFadeEye: gl.getUniformLocation(_program$23, "uOccluderFadeEye"),
+		uOccluderFadeFocus: gl.getUniformLocation(_program$23, "uOccluderFadeFocus"),
+		uOccluderFadeRadius: gl.getUniformLocation(_program$23, "uOccluderFadeRadius"),
+		uOccluderFadeOpacity: gl.getUniformLocation(_program$23, "uOccluderFadeOpacity"),
+		uOccluderFadeStrength: gl.getUniformLocation(_program$23, "uOccluderFadeStrength")
 	};
-	_program$22.attribute = {
-		aPosition: gl.getAttribLocation(_program$22, "aPosition"),
-		aNormal: gl.getAttribLocation(_program$22, "aNormal"),
-		aTextureCoord: gl.getAttribLocation(_program$22, "aTextureCoord"),
-		aAlpha: gl.getAttribLocation(_program$22, "aAlpha")
+	_program$23.attribute = {
+		aPosition: gl.getAttribLocation(_program$23, "aPosition"),
+		aNormal: gl.getAttribLocation(_program$23, "aNormal"),
+		aTextureCoord: gl.getAttribLocation(_program$23, "aTextureCoord"),
+		aAlpha: gl.getAttribLocation(_program$23, "aAlpha")
 	};
 }
 /**
@@ -209284,7 +209427,7 @@ function isNodeStatic(node) {
 */
 function add$3(gl, modelData) {
 	if (!modelData || !modelData.nodes || modelData.nodes.length === 0) return;
-	if (!_program$22) init$8(gl);
+	if (!_program$23) init$8(gl);
 	const instances = [];
 	for (let i = 0; i < modelData.instances.length; i++) {
 		const instArray = modelData.instances[i];
@@ -209438,11 +209581,11 @@ function add$3(gl, modelData) {
 	}
 	gl.bindBuffer(gl.ARRAY_BUFFER, animModel.buffer);
 	gl.bufferData(gl.ARRAY_BUFFER, animModel._gpuBuffer.byteLength, gl.DYNAMIC_DRAW);
-	for (let t = 0; t < modelData.textures.length; t++) loadTexture$1(gl, animModel, "data\\texture\\" + modelData.textures[t], t);
+	for (let t = 0; t < modelData.textures.length; t++) loadTexture$2(gl, animModel, "data\\texture\\" + modelData.textures[t], t);
 	animModel.vao = gl.createVertexArray();
 	gl.bindVertexArray(animModel.vao);
 	gl.bindBuffer(gl.ARRAY_BUFFER, animModel.buffer);
-	const attribute = _program$22.attribute;
+	const attribute = _program$23.attribute;
 	const stride = 36;
 	gl.enableVertexAttribArray(attribute.aPosition);
 	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, stride, 0);
@@ -209459,7 +209602,7 @@ function add$3(gl, modelData) {
 /**
 * Load a texture for a model
 */
-function loadTexture$1(gl, model, path, index) {
+function loadTexture$2(gl, model, path, index) {
 	Client.loadFile(path, function(data) {
 		WebGL_default.texture(gl, data, function(texture) {
 			model.textureObjects[index] = texture;
@@ -209639,8 +209782,8 @@ function updateModelBuffer(gl, model, frame, force) {
 * Bind program and per-frame uniforms shared by both model passes
 */
 function bind(gl, modelView, projection, normalMat, fog, light) {
-	const uniform = _program$22.uniform;
-	gl.useProgram(_program$22);
+	const uniform = _program$23.uniform;
+	gl.useProgram(_program$23);
 	gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniformMatrix3fv(uniform.uNormalMat, false, normalMat);
@@ -209679,14 +209822,14 @@ function drawModels(gl) {
 */
 function render$9(gl, modelView, projection, normalMat, fog, light, tick) {
 	if (_animatedModels.length === 0) return;
-	if (!_program$22) init$8(gl);
+	if (!_program$23) init$8(gl);
 	bind(gl, modelView, projection, normalMat, fog, light);
 	for (let m = 0; m < _animatedModels.length; m++) {
 		const model = _animatedModels[m];
 		updateModelBuffer(gl, model, tick % (model.animLen || 1), false);
 	}
-	OccluderFade.renderOpaque(gl, _program$22.uniform, () => drawModels(gl));
-	OccluderFade.renderQuery(gl, _program$22.uniform, () => drawModels(gl), OccluderFade.QUERY.ANIMATED);
+	OccluderFade.renderOpaque(gl, _program$23.uniform, () => drawModels(gl));
+	OccluderFade.renderQuery(gl, _program$23.uniform, () => drawModels(gl), OccluderFade.QUERY.ANIMATED);
 	gl.bindVertexArray(null);
 }
 /**
@@ -209694,9 +209837,9 @@ function render$9(gl, modelView, projection, normalMat, fog, light, tick) {
 * Reuses the vertex data uploaded by render() this frame.
 */
 function renderFaded(gl, modelView, projection, normalMat, fog, light) {
-	if (_animatedModels.length === 0 || !_program$22 || !OccluderFade.needsBlendPass()) return;
+	if (_animatedModels.length === 0 || !_program$23 || !OccluderFade.needsBlendPass()) return;
 	bind(gl, modelView, projection, normalMat, fog, light);
-	OccluderFade.renderBlend(gl, _program$22.uniform, () => drawModels(gl));
+	OccluderFade.renderBlend(gl, _program$23.uniform, () => drawModels(gl));
 	gl.bindVertexArray(null);
 }
 /**
@@ -209705,7 +209848,7 @@ function renderFaded(gl, modelView, projection, normalMat, fog, light) {
 function hasAnimatedModels() {
 	return _animatedModels.length > 0;
 }
-var mat3$4, mat4$20, vec3$5, quat$1, _tempVec3, _tempVec3Scale, _tempQuat, _tempMat4, _program$22, _animatedModels, AnimatedModels_default;
+var mat3$4, mat4$20, vec3$5, quat$1, _tempVec3, _tempVec3Scale, _tempQuat, _tempMat4, _program$23, _animatedModels, AnimatedModels_default;
 var init_AnimatedModels = __esmMin((() => {
 	init_Client();
 	init_gl_matrix();
@@ -209722,7 +209865,7 @@ var init_AnimatedModels = __esmMin((() => {
 	_tempVec3Scale = vec3$5.create();
 	_tempQuat = quat$1.create();
 	_tempMat4 = mat4$20.create();
-	_program$22 = null;
+	_program$23 = null;
 	_animatedModels = [];
 	AnimatedModels_default = {
 		init: init$8,
@@ -213423,31 +213566,31 @@ function grayBroadcast(src, out) {
 * Initialize the shader program.
 */
 function init$7(gl) {
-	_program$21 = WebGL_default.createShaderProgram(gl, GR2Model_default$1, GR2Model_default);
-	_program$21.uniform = {
-		uModelViewMat: gl.getUniformLocation(_program$21, "uModelViewMat"),
-		uProjectionMat: gl.getUniformLocation(_program$21, "uProjectionMat"),
-		uNormalMat: gl.getUniformLocation(_program$21, "uNormalMat"),
-		uBones: gl.getUniformLocation(_program$21, "uBones[0]"),
-		uLightDirection: gl.getUniformLocation(_program$21, "uLightDirection"),
-		uLightOpacity: gl.getUniformLocation(_program$21, "uLightOpacity"),
-		uLightAmbient: gl.getUniformLocation(_program$21, "uLightAmbient"),
-		uLightDiffuse: gl.getUniformLocation(_program$21, "uLightDiffuse"),
-		uLightEnv: gl.getUniformLocation(_program$21, "uLightEnv"),
-		uAlphaRef: gl.getUniformLocation(_program$21, "uAlphaRef"),
-		uAlpha: gl.getUniformLocation(_program$21, "uAlpha"),
-		uFogUse: gl.getUniformLocation(_program$21, "uFogUse"),
-		uFogNear: gl.getUniformLocation(_program$21, "uFogNear"),
-		uFogFar: gl.getUniformLocation(_program$21, "uFogFar"),
-		uFogColor: gl.getUniformLocation(_program$21, "uFogColor"),
-		uDiffuse: gl.getUniformLocation(_program$21, "uDiffuse")
+	_program$22 = WebGL_default.createShaderProgram(gl, GR2Model_default$1, GR2Model_default);
+	_program$22.uniform = {
+		uModelViewMat: gl.getUniformLocation(_program$22, "uModelViewMat"),
+		uProjectionMat: gl.getUniformLocation(_program$22, "uProjectionMat"),
+		uNormalMat: gl.getUniformLocation(_program$22, "uNormalMat"),
+		uBones: gl.getUniformLocation(_program$22, "uBones[0]"),
+		uLightDirection: gl.getUniformLocation(_program$22, "uLightDirection"),
+		uLightOpacity: gl.getUniformLocation(_program$22, "uLightOpacity"),
+		uLightAmbient: gl.getUniformLocation(_program$22, "uLightAmbient"),
+		uLightDiffuse: gl.getUniformLocation(_program$22, "uLightDiffuse"),
+		uLightEnv: gl.getUniformLocation(_program$22, "uLightEnv"),
+		uAlphaRef: gl.getUniformLocation(_program$22, "uAlphaRef"),
+		uAlpha: gl.getUniformLocation(_program$22, "uAlpha"),
+		uFogUse: gl.getUniformLocation(_program$22, "uFogUse"),
+		uFogNear: gl.getUniformLocation(_program$22, "uFogNear"),
+		uFogFar: gl.getUniformLocation(_program$22, "uFogFar"),
+		uFogColor: gl.getUniformLocation(_program$22, "uFogColor"),
+		uDiffuse: gl.getUniformLocation(_program$22, "uDiffuse")
 	};
-	_program$21.attribute = {
-		aPosition: gl.getAttribLocation(_program$21, "aPosition"),
-		aNormal: gl.getAttribLocation(_program$21, "aNormal"),
-		aTextureCoord: gl.getAttribLocation(_program$21, "aTextureCoord"),
-		aBoneIndex: gl.getAttribLocation(_program$21, "aBoneIndex"),
-		aBoneWeight: gl.getAttribLocation(_program$21, "aBoneWeight")
+	_program$22.attribute = {
+		aPosition: gl.getAttribLocation(_program$22, "aPosition"),
+		aNormal: gl.getAttribLocation(_program$22, "aNormal"),
+		aTextureCoord: gl.getAttribLocation(_program$22, "aTextureCoord"),
+		aBoneIndex: gl.getAttribLocation(_program$22, "aBoneIndex"),
+		aBoneWeight: gl.getAttribLocation(_program$22, "aBoneWeight")
 	};
 }
 /**
@@ -213605,7 +213748,7 @@ function acquire(path) {
 */
 function buildTypeGL(gl, type) {
 	type.textures = makeTypeTextures(gl, type.parsed);
-	const attr = _program$21.attribute;
+	const attr = _program$22.attribute;
 	type.submeshes = type.meshes.map(function(mesh) {
 		const vao = gl.createVertexArray();
 		gl.bindVertexArray(vao);
@@ -213725,13 +213868,13 @@ function normalize3(v) {
 function render$8(gl, modelView, projection, normalMat, fog, light, tick) {
 	_gl$1 = gl;
 	if (_instances.length === 0 || !light) return;
-	if (!_program$21) init$7(gl);
+	if (!_program$22) init$7(gl);
 	for (const path in _types) {
 		const type = _types[path];
 		if (type.cpuReady && !type.glReady) buildTypeGL(gl, type);
 	}
-	const uniform = _program$21.uniform;
-	gl.useProgram(_program$21);
+	const uniform = _program$22.uniform;
+	gl.useProgram(_program$22);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniform1f(uniform.uLightOpacity, light.opacity != null ? light.opacity : 1);
 	gl.uniform3fv(uniform.uLightEnv, light.env || _phaseEnv);
@@ -214076,7 +214219,7 @@ function clear() {
 	for (let i = 0; i < insts.length; i++) detach(insts[i]);
 	_poseCache = {};
 }
-var mat3$3, mat4$19, ALPHA_REF, _phaseDiffuse, _phaseAmbient, _phaseEnv, _gr2FlagDiffuse, _gr2EmpDiffuse, _gr2EmpAmbient, _gr2FlagAmbient, GR2_ROSTER, _program$21, _gl$1, _types, _missing, _instances, _poseCache, _dbgCellTile, _dbgTileInst, _dbgCellInited, _debugCell, BASE_SPHERE_HALF_EXTENT, _readyPromise, _mv, _mvp, _nmat, _lightView, _clip, CULL_MARGIN, CLIP_W_EPS, DIR_STEP_DEG, FADE, TEX_MISSING_PX, TEX_GREY_PX, A4_NIBBLE_EXPAND, _emblemCanvas, GR2_VERTEX_STRIDE, GR2_VERTEX_LAYOUT, GR2ModelRenderer_default;
+var mat3$3, mat4$19, ALPHA_REF, _phaseDiffuse, _phaseAmbient, _phaseEnv, _gr2FlagDiffuse, _gr2EmpDiffuse, _gr2EmpAmbient, _gr2FlagAmbient, GR2_ROSTER, _program$22, _gl$1, _types, _missing, _instances, _poseCache, _dbgCellTile, _dbgTileInst, _dbgCellInited, _debugCell, BASE_SPHERE_HALF_EXTENT, _readyPromise, _mv, _mvp, _nmat, _lightView, _clip, CULL_MARGIN, CLIP_W_EPS, DIR_STEP_DEG, FADE, TEX_MISSING_PX, TEX_GREY_PX, A4_NIBBLE_EXPAND, _emblemCanvas, GR2_VERTEX_STRIDE, GR2_VERTEX_LAYOUT, GR2ModelRenderer_default;
 var init_GR2ModelRenderer = __esmMin((() => {
 	init_Client();
 	init_gl_matrix();
@@ -214135,7 +214278,7 @@ var init_GR2ModelRenderer = __esmMin((() => {
 		sguardian90_9: "emp",
 		treasurebox_2: "emp"
 	};
-	_program$21 = null;
+	_program$22 = null;
 	_gl$1 = null;
 	_types = {};
 	_missing = {};
@@ -215549,6 +215692,7 @@ var init_SkillEffect = __esmMin((() => {
 		effectId: "ef_nw_mission_bombard",
 		hitEffectId: "ef_nw_mission_bombard_hit"
 	};
+	SkillEffect[SkillConst_default.NW_HASTY_FIRE_IN_THE_HOLE] = { effectId: "ef_nw_hasty_fire_in_the_hole" };
 	SkillEffect[5500] = {
 		effectId: "ef_nw_wild_shot",
 		effectIdOnCaster: "ef_nw_wild_shot_cast",
@@ -220700,6 +220844,66 @@ var init_ChatBoxSettings = __esmMin((() => {
 	ChatBoxSettings_default = UIManager.addComponent(ChatBoxSettings);
 }));
 //#endregion
+//#region src/UI/WheelSteps.js
+/**
+* How many steps this wheel event moves `element`: positive down, negative
+* up, often 0 while a smooth gesture is still adding up.
+*
+* @param {WheelEvent} event
+* @param {HTMLElement} element - the list being scrolled; each keeps its own count
+* @return {number}
+*/
+function steps(event, element) {
+	let dy = event.deltaY || 0;
+	if (!dy && event.wheelDelta) dy = -event.wheelDelta;
+	if (!dy) return 0;
+	if (event.deltaMode === 1) dy *= LINE;
+	else if (event.deltaMode === 2) dy *= element.clientHeight || NOTCH;
+	const now = typeof event.timeStamp === "number" && event.timeStamp > 0 ? event.timeStamp : performance.now();
+	const sign = Math.sign(dy);
+	const state = _gestures.get(element);
+	if (!state || now - state.time > GESTURE_GAP || state.sign !== sign) {
+		_gestures.set(element, {
+			acc: 0,
+			time: now,
+			sign
+		});
+		return sign;
+	}
+	state.time = now;
+	state.acc += dy;
+	const whole = Math.trunc(state.acc / NOTCH);
+	state.acc -= whole * NOTCH;
+	return whole;
+}
+/**
+* Scroll `element` by this wheel event, `rowHeight` pixels a step, snapped to
+* whole rows. Returns the number of steps taken.
+*
+* @param {WheelEvent} event
+* @param {HTMLElement} element
+* @param {number} rowHeight
+* @return {number}
+*/
+function scrollRows(event, element, rowHeight) {
+	const n = steps(event, element);
+	if (n) element.scrollTop = Math.floor(element.scrollTop / rowHeight) * rowHeight + n * rowHeight;
+	return n;
+}
+var NOTCH, LINE, GESTURE_GAP, _gestures, WheelSteps_default;
+var init_WheelSteps = __esmMin((() => {
+	NOTCH = 100;
+	LINE = 33;
+	GESTURE_GAP = 150;
+	_gestures = /* @__PURE__ */ new WeakMap();
+	WheelSteps_default = {
+		steps,
+		scrollRows,
+		NOTCH,
+		GESTURE_GAP
+	};
+}));
+//#endregion
 //#region src/UI/Components/ChatBox/ChatBox.js
 /**
 * Helper: query inside shadow root
@@ -220840,14 +221044,7 @@ function shouldLetChatInputHandleVerticalArrows(inputEl, direction) {
 * Update scroll by block (14px)
 */
 function onScroll$6(event) {
-	let delta;
-	if (event.wheelDelta) {
-		delta = event.wheelDelta / 120;
-		if (window.opera) delta = -delta;
-	} else if (event.detail) delta = -event.detail;
-	else if (event.deltaY) delta = -event.deltaY / Math.abs(event.deltaY);
-	const lineHeight = getScrollLineHeightPx(this);
-	this.scrollTop = Math.floor(this.scrollTop / lineHeight) * lineHeight - (delta || 0) * lineHeight;
+	WheelSteps_default.scrollRows(event, this, getScrollLineHeightPx(this));
 	event.preventDefault();
 }
 /**
@@ -220987,6 +221184,7 @@ var init_ChatBox = __esmMin((() => {
 	init_ChatBoxSettings();
 	init_Configs();
 	init_EntityManager();
+	init_WheelSteps();
 	MAX_MSG = 400;
 	MAX_LENGTH = 100;
 	MAGIC_NUMBER = 42;
@@ -241126,7 +241324,7 @@ var init_Reputation = __esmMin((() => {
 //#endregion
 //#region src/UI/Components/BasicInfo/BasicInfoCommon.js
 function createBasicInfo(config) {
-	const { name, htmlText, cssText, prefKey, reduceDefault = true, innerId, topbarItemSelector = ".topbar button", topbarDblClick = false, toggleButtonsEvent = "mousedown", buttonsSelector = ".buttons button", buttonsEvent = "mousedown", buttonKeyBy = "class", infoOpensWinStats = true, partyViaGetUI = false, hasToolbarToggle = false, miniLayout = false, hideIds = [], barScale = 1.27, hasApBar = false } = config;
+	const { name, htmlText, cssText, prefKey, reduceDefault = true, innerId, topbarItemSelector = ".topbar button", topbarDblClick = false, toggleButtonsEvent = "mousedown", buttonsSelector = ".buttons button", buttonsEvent = "mousedown", buttonKeyBy = "class", infoOpensWinStats = true, partyViaGetUI = false, hasToolbarToggle = false, miniLayout = false, hideIds = [], barScale = 1.27, hasApBar = false, menuTip = false } = config;
 	const Component = new GUIComponent(name, cssText);
 	/**
 	* Stored data
@@ -241237,8 +241435,38 @@ function createBasicInfo(config) {
 	/**
 	* Initialize UI
 	*/
+	/**
+	* Draw the name of the button the pointer is on in one tip below the frame.
+	*
+	* Each button used to draw its own name above itself, which the menu, now that it scrolls,
+	* would clip. The tip sits outside it and takes its text from the button's `.name`.
+	*/
+	function setupMenuTip(root) {
+		const inner = root.querySelector(innerId);
+		const buttons = root.querySelector(".buttons");
+		if (!inner || !buttons) return;
+		const tip = document.createElement("div");
+		tip.className = "menu_tip";
+		inner.appendChild(tip);
+		const hide = () => {
+			tip.style.display = "none";
+		};
+		buttons.addEventListener("mouseover", (event) => {
+			const button = event.target.closest(buttonsSelector);
+			const label = button && button.querySelector(".name");
+			if (!label || !label.textContent.trim()) {
+				hide();
+				return;
+			}
+			tip.textContent = label.textContent;
+			tip.style.display = "block";
+		});
+		buttons.addEventListener("mouseleave", hide);
+		buttons.addEventListener("scroll", hide);
+	}
 	Component.init = function init() {
 		const root = this.getRoot();
+		if (menuTip) setupMenuTip(root);
 		root.querySelectorAll(topbarItemSelector).forEach((el) => {
 			el.addEventListener("mousedown", (e) => e.stopImmediatePropagation());
 		});
@@ -241379,8 +241607,11 @@ function createBasicInfo(config) {
 	* @param {number} val2 maximum value
 	* @param {string} color bar color prefix
 	*/
+	const barUpdates = {};
 	function updateBar(root, type, val1, val2, color) {
 		const perc = Math.floor(val1 * 100 / val2);
+		const update = barUpdates[type] = (barUpdates[type] || 0) + 1;
+		const isLatest = () => barUpdates[type] === update;
 		root.querySelectorAll(`.${type}_value`).forEach((el) => {
 			el.textContent = val1;
 		});
@@ -241398,18 +241629,18 @@ function createBasicInfo(config) {
 		}
 		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/gze${color}_left.bmp`, (url) => {
 			const el = root.querySelector(`.${type}_bar_left`);
-			if (el) el.style.backgroundImage = `url(${url})`;
+			if (el && isLatest()) el.style.backgroundImage = `url(${url})`;
 		});
 		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/gze${color}_mid.bmp`, (url) => {
 			const el = root.querySelector(`.${type}_bar_middle`);
-			if (el) {
+			if (el && isLatest()) {
 				el.style.backgroundImage = `url(${url})`;
 				el.style.width = `${Math.floor(Math.min(perc, 100) * barScale)}px`;
 			}
 		});
 		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/gze${color}_right.bmp`, (url) => {
 			const el = root.querySelector(`.${type}_bar_right`);
-			if (el) {
+			if (el && isLatest()) {
 				el.style.backgroundImage = `url(${url})`;
 				el.style.left = `${Math.floor(Math.min(perc, 100) * barScale)}px`;
 			}
@@ -241620,13 +241851,13 @@ var init_BasicInfoV3 = __esmMin((() => {
 //#region src/UI/Components/BasicInfo/BasicInfoV4/BasicInfoV4.html?raw
 var BasicInfoV4_default$2;
 var init_BasicInfoV4$2 = __esmMin((() => {
-	BasicInfoV4_default$2 = "<div\r\n	id=\"BasicInfoV4\"\r\n	class=\"large\"\r\n	data-background=\"basic_interface/basewin_bg2.bmp\"\r\n	data-preload=\"basic_interface/gzered_left.bmp;basic_interface/gzered_mid.bmp;basic_interface/gzered_right.bmp;basic_interface/gzeblue_left.bmp;basic_interface/gzeblue_mid.bmp;basic_interface/gzeblue_right.bmp\"\r\n>\r\n	<div class=\"topbar\">\r\n		<button\r\n			class=\"left\"\r\n			data-background=\"basic_interface/sys_base_off.bmp\"\r\n			data-hover=\"basic_interface/sys_base_on.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"right\"\r\n			data-background=\"basic_interface/sys_mini_off.bmp\"\r\n			data-hover=\"basic_interface/sys_mini_on.bmp\"\r\n		></button>\r\n	</div>\r\n\r\n	<!-- LARGE INTERFACE -->\r\n	<div class=\"large\">\r\n		<div class=\"title\" data-text=\"238\">Basic Information</div>\r\n		<div class=\"name\"><span class=\"name_value\"></span></div>\r\n		<div class=\"job\"><span class=\"job_value\"></span></div>\r\n\r\n		<div class=\"hp_title\">HP</div>\r\n		<div class=\"hp_bar\">\r\n			<div class=\"hp_bar_left\"></div>\r\n			<div class=\"hp_bar_middle\"></div>\r\n			<div class=\"hp_bar_right\"></div>\r\n			<div class=\"hp_bar_perc\"><span class=\"hp_value\"></span> / <span class=\"hp_max_value\"></span></div>\r\n		</div>\r\n		<div class=\"hp_perc\"></div>\r\n\r\n		<div class=\"sp_title\">SP</div>\r\n		<div class=\"sp_bar\">\r\n			<div class=\"sp_bar_left\"></div>\r\n			<div class=\"sp_bar_middle\"></div>\r\n			<div class=\"sp_bar_right\"></div>\r\n			<div class=\"sp_bar_perc\"><span class=\"sp_value\"></span> / <span class=\"sp_max_value\"></span></div>\r\n		</div>\r\n		<div class=\"sp_perc\"></div>\r\n\r\n		<div class=\"blvl\">Base Lv. <span class=\"blvl_value\"></span></div>\r\n		<div class=\"bexp\">\r\n			<div></div>\r\n		</div>\r\n\r\n		<div class=\"jlvl\">Job Lv. <span class=\"jlvl_value\"></span></div>\r\n		<div class=\"jexp\">\r\n			<div></div>\r\n		</div>\r\n\r\n		<div class=\"extra\">\r\n			<span class=\"weight\"\r\n				>Weight : <span class=\"weight_value\">0</span> / <span class=\"weight_total\">0</span></span\r\n			>\r\n			Zeny : <span class=\"zeny_value\">0</span>\r\n		</div>\r\n	</div>\r\n\r\n	<!-- SMALL INTERFACE -->\r\n	<div class=\"small\">\r\n		<div class=\"line1 name_value\"></div>\r\n		<div class=\"line2\">\r\n			Lv.<span class=\"blvl_value\"></span> / <span class=\"job_value\"></span> / Lv.<span class=\"jlvl_value\"></span>\r\n			/ Exp. <span class=\"bexp_value\"></span>\r\n		</div>\r\n		<div class=\"line3\">\r\n			HP. <span class=\"hp_value\"></span> / <span class=\"hp_max_value\"></span> | SP.\r\n			<span class=\"sp_value\"></span> / <span class=\"sp_max_value\"></span>\r\n		</div>\r\n	</div>\r\n\r\n	<button\r\n		id=\"btn_open\"\r\n		class=\"btn_open bt_menu toggle_btns\"\r\n		data-background=\"menu_icon/bt_menu_normal.bmp\"\r\n		data-hover=\"menu_icon/bt_menu_over.bmp\"\r\n		data-down=\"menu_icon/bt_menu_press.bmp\"\r\n	></button>\r\n	<button\r\n		id=\"btn_close\"\r\n		class=\"btn_close bt_menu toggle_btns\"\r\n		data-background=\"menu_icon/bt_menu_close_normal.bmp\"\r\n		data-hover=\"menu_icon/bt_menu_close_over.bmp\"\r\n		data-down=\"menu_icon/bt_menu_close_press.bmp\"\r\n	></button>\r\n\r\n	<!-- BUTTONS -->\r\n	<div class=\"buttons\" data-background=\"menu_icon/bg_menu.tga\">\r\n		<button\r\n			id=\"info\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_status.bmp\"\r\n			data-down=\"menu_icon/bt_status_press.bmp\"\r\n		>\r\n			<span class=\"name\">Status (Alt + A)</span>\r\n		</button>\r\n		<button\r\n			id=\"equip\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_equip.bmp\"\r\n			data-down=\"menu_icon/bt_equip_press.bmp\"\r\n		>\r\n			<span class=\"name\">Equip (Alt + Q)</span>\r\n		</button>\r\n		<button\r\n			id=\"item\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_item.bmp\"\r\n			data-down=\"menu_icon/bt_item_press.bmp\"\r\n		>\r\n			<div\r\n				class=\"btn_overlay\"\r\n				data-background=\"menu_icon/bt_item_new.bmp\"\r\n				data-down=\"menu_icon/bt_item_new_press.bmp\"\r\n			></div>\r\n			<span class=\"name\">Inventory (Alt + E)</span>\r\n		</button>\r\n		<button\r\n			id=\"skill\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_skill.bmp\"\r\n			data-down=\"menu_icon/bt_skill_press.bmp\"\r\n		>\r\n			<span class=\"name\">SkillTree (Alt + S)</span>\r\n		</button>\r\n		<button\r\n			id=\"party\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_party.bmp\"\r\n			data-down=\"menu_icon/bt_party_press.bmp\"\r\n		>\r\n			<span class=\"name\">Party (Alt + Z)</span>\r\n		</button>\r\n		<button\r\n			id=\"guild\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_guild.bmp\"\r\n			data-down=\"menu_icon/bt_guild_press.bmp\"\r\n		>\r\n			<span class=\"name\">Guild (Alt + G)</span>\r\n		</button>\r\n		<button\r\n			id=\"battle\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_battle.bmp\"\r\n			data-down=\"menu_icon/bt_battle_press.bmp\"\r\n		>\r\n			<span class=\"name\">Battleground</span>\r\n		</button>\r\n		<button\r\n			id=\"quest\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_quest.bmp\"\r\n			data-down=\"menu_icon/bt_quest_press.bmp\"\r\n		>\r\n			<span class=\"name\">Quest List (Alt + U)</span>\r\n		</button>\r\n		<button\r\n			id=\"map\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_map.bmp\"\r\n			data-down=\"menu_icon/bt_map_press.bmp\"\r\n		>\r\n			<span class=\"name\">World Map (Ctrl + ')</span>\r\n		</button>\r\n		<button\r\n			id=\"navigation\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_navigation.bmp\"\r\n			data-down=\"menu_icon/bt_navigation_press.bmp\"\r\n		>\r\n			<span class=\"name\">Navigation</span>\r\n		</button>\r\n		<button\r\n			id=\"option\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_option.bmp\"\r\n			data-down=\"menu_icon/bt_option_press.bmp\"\r\n		>\r\n			<span class=\"name\">Option (Esc)</span>\r\n		</button>\r\n		<button\r\n			id=\"bank\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_bank.bmp\"\r\n			data-down=\"menu_icon/bt_bank_press.bmp\"\r\n		>\r\n			<span class=\"name\">Bank (Ctrl + B)</span>\r\n		</button>\r\n		<button\r\n			id=\"replay\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_rec.bmp\"\r\n			data-down=\"menu_icon/bt_rec_press.bmp\"\r\n		>\r\n			<span class=\"name\">Replay</span>\r\n		</button>\r\n		<button\r\n			id=\"mail\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_mail.bmp\"\r\n			data-down=\"menu_icon/bt_mail_press.bmp\"\r\n		>\r\n			<span class=\"name\">Mail</span>\r\n		</button>\r\n		<button\r\n			id=\"achievment\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_achievement.bmp\"\r\n			data-down=\"menu_icon/bt_achievement_press.bmp\"\r\n		>\r\n			<span class=\"name\">Achievement</span>\r\n		</button>\r\n		<button\r\n			id=\"tipbox\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_tip.bmp\"\r\n			data-down=\"menu_icon/bt_tip_press.bmp\"\r\n		>\r\n			<span class=\"name\">Tipbox (Alt + D)</span>\r\n		</button>\r\n		<button\r\n			id=\"shortcut\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_keyboard.bmp\"\r\n			data-down=\"menu_icon/bt_keyboard_press.bmp\"\r\n		>\r\n			<span class=\"name\">ShortCut Description</span>\r\n		</button>\r\n		<button\r\n			id=\"attendance\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_attendance.bmp\"\r\n			data-down=\"menu_icon/bt_attendance_press.bmp\"\r\n		>\r\n			<span class=\"name\">Attendance Check</span>\r\n		</button>\r\n		<button\r\n			id=\"agency\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_adventureragency.bmp\"\r\n			data-down=\"menu_icon/bt_adventureragency_press.bmp\"\r\n		>\r\n			<span class=\"name\">Adventurer's Agency (Ctrl + Z)</span>\r\n		</button>\r\n		<!--<button class=\"reputation\" data-background=\"menu_icon/\" data-hover=\"menu_icon/\" data-down=\"menu_icon/\"></button> -->\r\n	</div>\r\n</div>\r\n";
+	BasicInfoV4_default$2 = "<div\r\n	id=\"BasicInfoV4\"\r\n	class=\"large\"\r\n	data-background=\"basic_interface/basewin_bg2.bmp\"\r\n	data-preload=\"basic_interface/gzered_left.bmp;basic_interface/gzered_mid.bmp;basic_interface/gzered_right.bmp;basic_interface/gzeblue_left.bmp;basic_interface/gzeblue_mid.bmp;basic_interface/gzeblue_right.bmp\"\r\n>\r\n	<div class=\"topbar\">\r\n		<button\r\n			class=\"left\"\r\n			data-background=\"basic_interface/sys_base_off.bmp\"\r\n			data-hover=\"basic_interface/sys_base_on.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"right\"\r\n			data-background=\"basic_interface/sys_mini_off.bmp\"\r\n			data-hover=\"basic_interface/sys_mini_on.bmp\"\r\n		></button>\r\n	</div>\r\n\r\n	<!-- LARGE INTERFACE -->\r\n	<div class=\"large\">\r\n		<div class=\"title\" data-text=\"238\">Basic Information</div>\r\n		<div class=\"name\"><span class=\"name_value\"></span></div>\r\n		<div class=\"job\"><span class=\"job_value\"></span></div>\r\n\r\n		<div class=\"hp_title\">HP</div>\r\n		<div class=\"hp_bar\">\r\n			<div class=\"hp_bar_left\"></div>\r\n			<div class=\"hp_bar_middle\"></div>\r\n			<div class=\"hp_bar_right\"></div>\r\n			<div class=\"hp_bar_perc\"><span class=\"hp_value\"></span> / <span class=\"hp_max_value\"></span></div>\r\n		</div>\r\n		<div class=\"hp_perc\"></div>\r\n\r\n		<div class=\"sp_title\">SP</div>\r\n		<div class=\"sp_bar\">\r\n			<div class=\"sp_bar_left\"></div>\r\n			<div class=\"sp_bar_middle\"></div>\r\n			<div class=\"sp_bar_right\"></div>\r\n			<div class=\"sp_bar_perc\"><span class=\"sp_value\"></span> / <span class=\"sp_max_value\"></span></div>\r\n		</div>\r\n		<div class=\"sp_perc\"></div>\r\n\r\n		<div class=\"blvl\">Base Lv. <span class=\"blvl_value\"></span></div>\r\n		<div class=\"bexp\">\r\n			<div></div>\r\n		</div>\r\n\r\n		<div class=\"jlvl\">Job Lv. <span class=\"jlvl_value\"></span></div>\r\n		<div class=\"jexp\">\r\n			<div></div>\r\n		</div>\r\n\r\n		<div class=\"extra\">\r\n			<span class=\"weight\"\r\n				>Weight : <span class=\"weight_value\">0</span> / <span class=\"weight_total\">0</span></span\r\n			>\r\n			Zeny : <span class=\"zeny_value\">0</span>\r\n		</div>\r\n	</div>\r\n\r\n	<!-- SMALL INTERFACE -->\r\n	<div class=\"small\">\r\n		<div class=\"line1 name_value\"></div>\r\n		<div class=\"line2\">\r\n			Lv.<span class=\"blvl_value\"></span> / <span class=\"job_value\"></span> / Lv.<span class=\"jlvl_value\"></span>\r\n			/ Exp. <span class=\"bexp_value\"></span>\r\n		</div>\r\n		<div class=\"line3\">\r\n			HP. <span class=\"hp_value\"></span> / <span class=\"hp_max_value\"></span> | SP.\r\n			<span class=\"sp_value\"></span> / <span class=\"sp_max_value\"></span>\r\n		</div>\r\n	</div>\r\n\r\n	<button\r\n		id=\"btn_open\"\r\n		class=\"btn_open bt_menu toggle_btns\"\r\n		data-background=\"menu_icon/bt_menu_normal.bmp\"\r\n		data-hover=\"menu_icon/bt_menu_over.bmp\"\r\n		data-down=\"menu_icon/bt_menu_press.bmp\"\r\n	></button>\r\n	<button\r\n		id=\"btn_close\"\r\n		class=\"btn_close bt_menu toggle_btns\"\r\n		data-background=\"menu_icon/bt_menu_close_normal.bmp\"\r\n		data-hover=\"menu_icon/bt_menu_close_over.bmp\"\r\n		data-down=\"menu_icon/bt_menu_close_press.bmp\"\r\n	></button>\r\n\r\n	<!-- BUTTONS -->\r\n	<div class=\"buttons\" data-background=\"menu_icon/bg_menu.tga\">\r\n		<button\r\n			id=\"info\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_status.bmp\"\r\n			data-down=\"menu_icon/bt_status_press.bmp\"\r\n		>\r\n			<span class=\"name\">Status (Alt + A)</span>\r\n		</button>\r\n		<button\r\n			id=\"equip\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_equip.bmp\"\r\n			data-down=\"menu_icon/bt_equip_press.bmp\"\r\n		>\r\n			<span class=\"name\">Equip (Alt + Q)</span>\r\n		</button>\r\n		<button\r\n			id=\"item\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_item.bmp\"\r\n			data-down=\"menu_icon/bt_item_press.bmp\"\r\n		>\r\n			<div\r\n				class=\"btn_overlay\"\r\n				data-background=\"menu_icon/bt_item_new.bmp\"\r\n				data-down=\"menu_icon/bt_item_new_press.bmp\"\r\n			></div>\r\n			<span class=\"name\">Inventory (Alt + E)</span>\r\n		</button>\r\n		<button\r\n			id=\"skill\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_skill.bmp\"\r\n			data-down=\"menu_icon/bt_skill_press.bmp\"\r\n		>\r\n			<span class=\"name\">SkillTree (Alt + S)</span>\r\n		</button>\r\n		<button\r\n			id=\"party\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_party.bmp\"\r\n			data-down=\"menu_icon/bt_party_press.bmp\"\r\n		>\r\n			<span class=\"name\">Party (Alt + Z)</span>\r\n		</button>\r\n		<button\r\n			id=\"guild\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_guild.bmp\"\r\n			data-down=\"menu_icon/bt_guild_press.bmp\"\r\n		>\r\n			<span class=\"name\">Guild (Alt + G)</span>\r\n		</button>\r\n		<button\r\n			id=\"battle\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_battle.bmp\"\r\n			data-down=\"menu_icon/bt_battle_press.bmp\"\r\n		>\r\n			<span class=\"name\">Battleground</span>\r\n		</button>\r\n		<button\r\n			id=\"quest\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_quest.bmp\"\r\n			data-down=\"menu_icon/bt_quest_press.bmp\"\r\n		>\r\n			<span class=\"name\">Quest List (Alt + U)</span>\r\n		</button>\r\n		<button\r\n			id=\"map\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_map.bmp\"\r\n			data-down=\"menu_icon/bt_map_press.bmp\"\r\n		>\r\n			<span class=\"name\">World Map (Ctrl + ')</span>\r\n		</button>\r\n		<button\r\n			id=\"navigation\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_navigation.bmp\"\r\n			data-down=\"menu_icon/bt_navigation_press.bmp\"\r\n		>\r\n			<span class=\"name\">Navigation</span>\r\n		</button>\r\n		<button\r\n			id=\"option\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_option.bmp\"\r\n			data-down=\"menu_icon/bt_option_press.bmp\"\r\n		>\r\n			<span class=\"name\">Option (Esc)</span>\r\n		</button>\r\n		<button\r\n			id=\"bank\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_bank.bmp\"\r\n			data-down=\"menu_icon/bt_bank_press.bmp\"\r\n		>\r\n			<span class=\"name\">Bank (Ctrl + B)</span>\r\n		</button>\r\n		<button\r\n			id=\"replay\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_rec.bmp\"\r\n			data-down=\"menu_icon/bt_rec_press.bmp\"\r\n		>\r\n			<span class=\"name\">Replay</span>\r\n		</button>\r\n		<button\r\n			id=\"mail\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_mail.bmp\"\r\n			data-down=\"menu_icon/bt_mail_press.bmp\"\r\n		>\r\n			<span class=\"name\">Mail</span>\r\n		</button>\r\n		<button\r\n			id=\"achievment\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_achievement.bmp\"\r\n			data-down=\"menu_icon/bt_achievement_press.bmp\"\r\n		>\r\n			<span class=\"name\">Achievement</span>\r\n		</button>\r\n		<button\r\n			id=\"tipbox\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_tip.bmp\"\r\n			data-down=\"menu_icon/bt_tip_press.bmp\"\r\n		>\r\n			<span class=\"name\">Tipbox (Alt + D)</span>\r\n		</button>\r\n		<button\r\n			id=\"shortcut\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_keyboard.bmp\"\r\n			data-down=\"menu_icon/bt_keyboard_press.bmp\"\r\n		>\r\n			<span class=\"name\">ShortCut Description</span>\r\n		</button>\r\n		<button\r\n			id=\"attendance\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_attendance.bmp\"\r\n			data-down=\"menu_icon/bt_attendance_press.bmp\"\r\n		>\r\n			<span class=\"name\">Attendance Check</span>\r\n		</button>\r\n		<button\r\n			id=\"agency\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_adventureragency.bmp\"\r\n			data-down=\"menu_icon/bt_adventureragency_press.bmp\"\r\n		>\r\n			<span class=\"name\">Adventurer's Agency (Ctrl + Z)</span>\r\n		</button>\r\n		<button\r\n			id=\"repute\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_repute.bmp\"\r\n			data-down=\"menu_icon/bt_repute_press.bmp\"\r\n		>\r\n			<span class=\"name\">Reputation Status</span>\r\n		</button>\r\n	</div>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/BasicInfo/BasicInfoV4/BasicInfoV4.css?raw
 var BasicInfoV4_default$1;
 var init_BasicInfoV4$1 = __esmMin((() => {
-	BasicInfoV4_default$1 = ":host {\r\n	width: 220px;\r\n	height: 135px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#BasicInfoV4 {\r\n	position: absolute;\r\n	width: 220px;\r\n	height: 135px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#BasicInfoV4.small .large {\r\n	display: none;\r\n}\r\n#BasicInfoV4.large .small {\r\n	display: none;\r\n	border-radius: 5px;\r\n}\r\n#BasicInfoV4.small {\r\n	height: 53px;\r\n}\r\n#BasicInfoV4.large .bt_menu {\r\n	top: 135px;\r\n}\r\n#BasicInfoV4.small .bt_menu {\r\n	top: 53px;\r\n}\r\n\r\n#BasicInfoV4.large .buttons {\r\n	top: 144px;\r\n}\r\n#BasicInfoV4.small .buttons {\r\n	top: 62px;\r\n}\r\n\r\n#BasicInfoV4 .topbar {\r\n	height: 16px;\r\n}\r\n#BasicInfoV4 .topbar .left {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n#BasicInfoV4 .topbar .right {\r\n	position: absolute;\r\n	top: 3px;\r\n	right: 2px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n\r\n/* LARGE */\r\n#BasicInfoV4 .large .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n}\r\n#BasicInfoV4 .large .name {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 20px;\r\n}\r\n#BasicInfoV4 .large .job {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 33px;\r\n}\r\n#BasicInfoV4 .large .hp_title {\r\n	position: absolute;\r\n	top: 50px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .sp_title {\r\n	position: absolute;\r\n	top: 65px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .hp_bar,\r\n#BasicInfoV4 .large .sp_bar {\r\n	position: absolute;\r\n	top: 53px;\r\n	left: 35px;\r\n	width: 135px;\r\n	height: 9px;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV4 .large .sp_bar {\r\n	top: 68px;\r\n}\r\n#BasicInfoV4 .large .hp_bar div,\r\n#BasicInfoV4 .large .sp_bar div {\r\n	width: 4px;\r\n	height: 9px;\r\n	float: left;\r\n}\r\n#BasicInfoV4 .large div.hp_bar_perc,\r\n#BasicInfoV4 .large div.sp_bar_perc {\r\n	text-align: center;\r\n	width: 127px;\r\n	position: absolute;\r\n	top: -1px;\r\n}\r\n#BasicInfoV4 .large .hp_perc {\r\n	position: absolute;\r\n	top: 50px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV4 .large .sp_perc {\r\n	position: absolute;\r\n	top: 65px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV4 .large .blvl {\r\n	position: absolute;\r\n	top: 86px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .jlvl {\r\n	position: absolute;\r\n	top: 97px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .bexp,\r\n#BasicInfoV4 .large .jexp {\r\n	position: absolute;\r\n	top: 89px;\r\n	left: 84px;\r\n	width: 110px;\r\n	height: 4px;\r\n	border: 1px solid #afafaf;\r\n	background-color: white;\r\n}\r\n#BasicInfoV4 .large .bexp div,\r\n#BasicInfoV4 .large .jexp div {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 0%;\r\n	height: 4px;\r\n	background-color: #4262a5;\r\n}\r\n#BasicInfoV4 .large .jexp {\r\n	top: 101px;\r\n}\r\n#BasicInfoV4 .large .extra {\r\n	position: absolute;\r\n	top: 119px;\r\n	right: -15px;\r\n	width: 100%;\r\n	padding-right: 20px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	text-align: right;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .buttons {\r\n	position: absolute;\r\n	left: 0px;\r\n	top: 9px;\r\n	width: 220px;\r\n	display: grid;\r\n	grid-template-columns: auto auto auto auto auto;\r\n	justify-items: center;\r\n	background-position: left bottom;\r\n}\r\n#BasicInfoV4 .bt_menu {\r\n	position: absolute;\r\n	left: 0px;\r\n	width: 219px;\r\n	height: 9px;\r\n}\r\n#BasicInfoV4 .buttons:hover {\r\n}\r\n#BasicInfoV4 .buttons button {\r\n	width: 32px;\r\n	height: 32px;\r\n	border: none;\r\n	margin: 6px;\r\n	background: transparent;\r\n}\r\n\r\n/* REDUCED */\r\n#BasicInfoV4 .small .line1 {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .small .line2 {\r\n	position: absolute;\r\n	top: 20px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .small .line3 {\r\n	position: absolute;\r\n	top: 36px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .toggle_btns {\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: rgba(0, 0, 0, 0);\r\n}\r\n\r\n#BasicInfoV4 .buttons button .name {\r\n	pointer-events: none;\r\n	position: relative;\r\n	display: none;\r\n	z-index: 1;\r\n	top: -20px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#BasicInfoV4 .buttons button:hover .name {\r\n	display: table;\r\n}\r\n#BasicInfoV4 .buttons button .name {\r\n	display: none;\r\n}\r\n\r\n#BasicInfoV4 .buttons .btn_overlay {\r\n	pointer-events: none;\r\n	width: 35px;\r\n	height: 40px;\r\n	border: none;\r\n	position: relative;\r\n	top: -6px;\r\n	left: 0;\r\n	display: none;\r\n}\r\n#BasicInfoV4 .buttons button:active .btn_overlay {\r\n	pointer-events: none;\r\n	top: -5px;\r\n}\r\n";
+	BasicInfoV4_default$1 = ":host {\r\n	width: 220px;\r\n	height: 135px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#BasicInfoV4 {\r\n	position: absolute;\r\n	width: 220px;\r\n	height: 135px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#BasicInfoV4.small .large {\r\n	display: none;\r\n}\r\n#BasicInfoV4.large .small {\r\n	display: none;\r\n	border-radius: 5px;\r\n}\r\n#BasicInfoV4.small {\r\n	height: 53px;\r\n}\r\n#BasicInfoV4.large .bt_menu {\r\n	top: 135px;\r\n}\r\n#BasicInfoV4.small .bt_menu {\r\n	top: 53px;\r\n}\r\n\r\n#BasicInfoV4.large .buttons {\r\n	top: 144px;\r\n}\r\n#BasicInfoV4.small .buttons {\r\n	top: 62px;\r\n}\r\n\r\n#BasicInfoV4 .topbar {\r\n	height: 16px;\r\n}\r\n#BasicInfoV4 .topbar .left {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n#BasicInfoV4 .topbar .right {\r\n	position: absolute;\r\n	top: 3px;\r\n	right: 2px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n\r\n/* LARGE */\r\n#BasicInfoV4 .large .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n}\r\n#BasicInfoV4 .large .name {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 20px;\r\n}\r\n#BasicInfoV4 .large .job {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 33px;\r\n}\r\n#BasicInfoV4 .large .hp_title {\r\n	position: absolute;\r\n	top: 50px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .sp_title {\r\n	position: absolute;\r\n	top: 65px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .hp_bar,\r\n#BasicInfoV4 .large .sp_bar {\r\n	position: absolute;\r\n	top: 53px;\r\n	left: 35px;\r\n	width: 135px;\r\n	height: 9px;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV4 .large .sp_bar {\r\n	top: 68px;\r\n}\r\n#BasicInfoV4 .large .hp_bar div,\r\n#BasicInfoV4 .large .sp_bar div {\r\n	width: 4px;\r\n	height: 9px;\r\n	float: left;\r\n}\r\n#BasicInfoV4 .large div.hp_bar_perc,\r\n#BasicInfoV4 .large div.sp_bar_perc {\r\n	text-align: center;\r\n	width: 127px;\r\n	position: absolute;\r\n	top: -1px;\r\n}\r\n#BasicInfoV4 .large .hp_perc {\r\n	position: absolute;\r\n	top: 50px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV4 .large .sp_perc {\r\n	position: absolute;\r\n	top: 65px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV4 .large .blvl {\r\n	position: absolute;\r\n	top: 86px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .jlvl {\r\n	position: absolute;\r\n	top: 97px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .bexp,\r\n#BasicInfoV4 .large .jexp {\r\n	position: absolute;\r\n	top: 89px;\r\n	left: 84px;\r\n	width: 110px;\r\n	height: 4px;\r\n	border: 1px solid #afafaf;\r\n	background-color: white;\r\n}\r\n#BasicInfoV4 .large .bexp div,\r\n#BasicInfoV4 .large .jexp div {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 0%;\r\n	height: 4px;\r\n	background-color: #4262a5;\r\n}\r\n#BasicInfoV4 .large .jexp {\r\n	top: 101px;\r\n}\r\n#BasicInfoV4 .large .extra {\r\n	position: absolute;\r\n	top: 119px;\r\n	right: -15px;\r\n	width: 100%;\r\n	padding-right: 20px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	text-align: right;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .buttons {\r\n	position: absolute;\r\n	left: 0px;\r\n	top: 9px;\r\n	width: 220px;\r\n	height: 132px;\r\n	overflow-x: hidden;\r\n	overflow-y: auto; /* the client's scrollbar attaches to this, and only shows when there is more */\r\n	display: grid;\r\n	grid-template-columns: auto auto auto auto auto;\r\n	align-content: start; /* rows keep their height instead of stretching to fill the panel */\r\n	justify-items: center;\r\n	background-position: left bottom;\r\n}\r\n#BasicInfoV4 .bt_menu {\r\n	position: absolute;\r\n	left: 0px;\r\n	width: 219px;\r\n	height: 9px;\r\n}\r\n#BasicInfoV4 .buttons:hover {\r\n}\r\n#BasicInfoV4 .buttons button {\r\n	width: 32px;\r\n	height: 32px;\r\n	border: none;\r\n	margin: 6px;\r\n	background: transparent;\r\n}\r\n/* The scrollbar takes 13px of the panel only while it scrolls. Five buttons still\r\n   fit in what is left if their side margins give up 2px each. */\r\n#BasicInfoV4 .buttons[style*='padding-right: 13px'] > button[id] {\r\n	margin: 6px 4px;\r\n}\r\n\r\n/* REDUCED */\r\n#BasicInfoV4 .small .line1 {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .small .line2 {\r\n	position: absolute;\r\n	top: 20px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .small .line3 {\r\n	position: absolute;\r\n	top: 36px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .toggle_btns {\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: rgba(0, 0, 0, 0);\r\n}\r\n\r\n#BasicInfoV4 .buttons button .name {\r\n	display: none;\r\n}\r\n\r\n/* A button's name is drawn once, centred below the frame, rather than inside the\r\n   button, where a panel that scrolls would clip it. BasicInfoCommon fills it in. */\r\n#BasicInfoV4 .menu_tip {\r\n	display: none;\r\n	position: absolute;\r\n	left: 110px;\r\n	transform: translateX(-50%);\r\n	z-index: 10;\r\n	pointer-events: none;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#BasicInfoV4.large .menu_tip {\r\n	top: 280px; /* the panel is at 144px, 132px tall */\r\n}\r\n#BasicInfoV4.small .menu_tip {\r\n	top: 198px; /* the panel is at 62px, 132px tall */\r\n}\r\n\r\n#BasicInfoV4 .buttons .btn_overlay {\r\n	pointer-events: none;\r\n	width: 35px;\r\n	height: 40px;\r\n	border: none;\r\n	position: relative;\r\n	top: -6px;\r\n	left: 0;\r\n	display: none;\r\n}\r\n#BasicInfoV4 .buttons button:active .btn_overlay {\r\n	pointer-events: none;\r\n	top: -5px;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/BasicInfo/BasicInfoV4/BasicInfoV4.js
@@ -241657,6 +241888,7 @@ var init_BasicInfoV4 = __esmMin((() => {
 			"shortcut",
 			"agency"
 		],
+		menuTip: true,
 		barScale: 1.27
 	});
 }));
@@ -241670,7 +241902,7 @@ var init_BasicInfoV5$2 = __esmMin((() => {
 //#region src/UI/Components/BasicInfo/BasicInfoV5/BasicInfoV5.css?raw
 var BasicInfoV5_default$1;
 var init_BasicInfoV5$1 = __esmMin((() => {
-	BasicInfoV5_default$1 = ":host {\r\n	width: 220px;\r\n	height: 150px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#BasicInfoV5 {\r\n	position: absolute;\r\n	width: 220px;\r\n	height: 150px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#BasicInfoV5.small .large {\r\n	display: none;\r\n}\r\n#BasicInfoV5.large .small {\r\n	display: none;\r\n	border-radius: 5px;\r\n}\r\n#BasicInfoV5.small {\r\n	height: 70px;\r\n}\r\n#BasicInfoV5.large .bt_menu {\r\n	top: 150px;\r\n}\r\n#BasicInfoV5.small .bt_menu {\r\n	top: 70px;\r\n}\r\n\r\n#BasicInfoV5.large .buttons {\r\n	top: 160px;\r\n}\r\n#BasicInfoV5.small .buttons {\r\n	top: 80px;\r\n}\r\n\r\n#BasicInfoV5 .topbar .left {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n#BasicInfoV5 .topbar .right {\r\n	position: absolute;\r\n	top: 3px;\r\n	right: 2px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n\r\n/* LARGE */\r\n#BasicInfoV5 .large .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n}\r\n#BasicInfoV5 .large .name {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 20px;\r\n}\r\n#BasicInfoV5 .large .job {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 33px;\r\n}\r\n#BasicInfoV5 .large .hp_title {\r\n	position: absolute;\r\n	top: 50px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .sp_title {\r\n	position: absolute;\r\n	top: 65px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .ap_title {\r\n	position: absolute;\r\n	top: 80px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .hp_bar,\r\n#BasicInfoV5 .large .sp_bar,\r\n#BasicInfoV5 .large .ap_bar {\r\n	position: absolute;\r\n	top: 53px;\r\n	left: 35px;\r\n	width: 135px;\r\n	height: 9px;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .large .sp_bar {\r\n	top: 68px;\r\n}\r\n#BasicInfoV5 .large .ap_bar {\r\n	top: 83px;\r\n	background: linear-gradient(\r\n		to bottom,\r\n		#5a5a63 0%,\r\n		#a5a5ad 15%,\r\n		#bdc6ce 30%,\r\n		#ceced6 45%,\r\n		#d6dede 65%,\r\n		#e7e7ef 70%,\r\n		#f7f7f7 80%\r\n	);\r\n	border-radius: 15px;\r\n	border: 1px solid #b5b5b5;\r\n}\r\n#BasicInfoV5 .large .hp_bar div,\r\n#BasicInfoV5 .large .sp_bar div,\r\n#BasicInfoV5 .large .ap_bar div {\r\n	width: 4px;\r\n	height: 9px;\r\n	float: left;\r\n}\r\n#BasicInfoV5 .large div.hp_bar_perc,\r\n#BasicInfoV5 .large div.sp_bar_perc,\r\n#BasicInfoV5 .large div.ap_bar_perc {\r\n	text-align: center;\r\n	width: 127px;\r\n	position: absolute;\r\n	top: -1px;\r\n}\r\n#BasicInfoV5 .large .hp_perc {\r\n	position: absolute;\r\n	top: 50px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .sp_perc {\r\n	position: absolute;\r\n	top: 65px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .ap_perc {\r\n	position: absolute;\r\n	top: 80px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .blvl {\r\n	position: absolute;\r\n	top: 101px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .jlvl {\r\n	position: absolute;\r\n	top: 112px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .bexp,\r\n#BasicInfoV5 .large .jexp {\r\n	position: absolute;\r\n	top: 104px;\r\n	left: 84px;\r\n	width: 110px;\r\n	height: 4px;\r\n	border: 1px solid #afafaf;\r\n	background-color: white;\r\n}\r\n#BasicInfoV5 .large .bexp div,\r\n#BasicInfoV5 .large .jexp div {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 0%;\r\n	height: 4px;\r\n	background-color: #4262a5;\r\n}\r\n#BasicInfoV5 .large .jexp {\r\n	top: 116px;\r\n}\r\n#BasicInfoV5 .large .extra {\r\n	position: absolute;\r\n	top: 134px;\r\n	right: -15px;\r\n	width: 100%;\r\n	padding-right: 20px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	text-align: right;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .buttons {\r\n	position: absolute;\r\n	left: 0px;\r\n	top: 9px;\r\n	width: 220px;\r\n	height: 132px;\r\n	background-repeat: no-repeat;\r\n	background-position: bottom; /* alinha o fundo pela base */\r\n}\r\n#BasicInfoV5 .bt_menu {\r\n	position: absolute;\r\n	left: 0px;\r\n	width: 219px;\r\n	height: 9px;\r\n}\r\n#BasicInfoV5 .buttons:hover {\r\n}\r\n#BasicInfoV5 .buttons > div[id] {\r\n	float: left;\r\n	width: 32px;\r\n	height: 32px;\r\n	border: none;\r\n	margin: 6px;\r\n}\r\n#BasicInfoV5 .buttons .clear {\r\n	clear: both;\r\n}\r\n\r\n/* REDUCED */\r\n#BasicInfoV5 .small .line1 {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .small .info-container {\r\n	position: absolute;\r\n	top: 17px;\r\n	height: 60px;\r\n	width: 220px;\r\n	background-color: #ffffff;\r\n}\r\n#BasicInfoV5 .small .hpcontainer,\r\n#BasicInfoV5 .small .spcontainer {\r\n	position: absolute;\r\n	width: 130px;\r\n}\r\n#BasicInfoV5 .small .expcontainer,\r\n#BasicInfoV5 .small .apcontainer {\r\n	position: absolute;\r\n	width: 65px;\r\n	left: 140px;\r\n}\r\n#BasicInfoV5 .small .line2 {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .small .line3 {\r\n	position: absolute;\r\n	top: 20px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line3 .hp_max_value {\r\n	display: inline-block;\r\n	width: 65px;\r\n	text-align: left;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line4 {\r\n	position: absolute;\r\n	top: 35px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line4 .sp_max_value {\r\n	display: inline-block;\r\n	width: 73px;\r\n	text-align: left;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .toggle_btns {\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: rgba(0, 0, 0, 0);\r\n}\r\n\r\n#BasicInfoV5 .buttons div .name {\r\n	position: relative;\r\n	display: none;\r\n	z-index: 1;\r\n	top: -20px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#BasicInfoV5 .buttons div:hover .name {\r\n	display: table;\r\n}\r\n#BasicInfoV5 .buttons div .name {\r\n	display: none;\r\n}\r\n\r\n#BasicInfoV5 .buttons .btn_overlay {\r\n	width: 35px;\r\n	height: 40px;\r\n	border: none;\r\n	position: relative;\r\n	top: -13px;\r\n	left: -7px;\r\n	z-index: 10;\r\n	display: none;\r\n}\r\n";
+	BasicInfoV5_default$1 = ":host {\r\n	width: 220px;\r\n	height: 150px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#BasicInfoV5 {\r\n	position: absolute;\r\n	width: 220px;\r\n	height: 150px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#BasicInfoV5.small .large {\r\n	display: none;\r\n}\r\n#BasicInfoV5.large .small {\r\n	display: none;\r\n	border-radius: 5px;\r\n}\r\n#BasicInfoV5.small {\r\n	height: 70px;\r\n}\r\n#BasicInfoV5.large .bt_menu {\r\n	top: 150px;\r\n}\r\n#BasicInfoV5.small .bt_menu {\r\n	top: 70px;\r\n}\r\n\r\n#BasicInfoV5.large .buttons {\r\n	top: 160px;\r\n}\r\n#BasicInfoV5.small .buttons {\r\n	top: 80px;\r\n}\r\n\r\n#BasicInfoV5 .topbar .left {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n#BasicInfoV5 .topbar .right {\r\n	position: absolute;\r\n	top: 3px;\r\n	right: 2px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n\r\n/* LARGE */\r\n#BasicInfoV5 .large .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n}\r\n#BasicInfoV5 .large .name {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 20px;\r\n}\r\n#BasicInfoV5 .large .job {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 33px;\r\n}\r\n#BasicInfoV5 .large .hp_title {\r\n	position: absolute;\r\n	top: 50px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .sp_title {\r\n	position: absolute;\r\n	top: 65px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .ap_title {\r\n	position: absolute;\r\n	top: 80px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .hp_bar,\r\n#BasicInfoV5 .large .sp_bar,\r\n#BasicInfoV5 .large .ap_bar {\r\n	position: absolute;\r\n	top: 53px;\r\n	left: 35px;\r\n	width: 135px;\r\n	height: 9px;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .large .sp_bar {\r\n	top: 68px;\r\n}\r\n#BasicInfoV5 .large .ap_bar {\r\n	top: 83px;\r\n	background: linear-gradient(\r\n		to bottom,\r\n		#5a5a63 0%,\r\n		#a5a5ad 15%,\r\n		#bdc6ce 30%,\r\n		#ceced6 45%,\r\n		#d6dede 65%,\r\n		#e7e7ef 70%,\r\n		#f7f7f7 80%\r\n	);\r\n	border-radius: 15px;\r\n	border: 1px solid #b5b5b5;\r\n}\r\n#BasicInfoV5 .large .hp_bar div,\r\n#BasicInfoV5 .large .sp_bar div,\r\n#BasicInfoV5 .large .ap_bar div {\r\n	width: 4px;\r\n	height: 9px;\r\n	float: left;\r\n}\r\n#BasicInfoV5 .large div.hp_bar_perc,\r\n#BasicInfoV5 .large div.sp_bar_perc,\r\n#BasicInfoV5 .large div.ap_bar_perc {\r\n	text-align: center;\r\n	width: 127px;\r\n	position: absolute;\r\n	top: -1px;\r\n}\r\n#BasicInfoV5 .large .hp_perc {\r\n	position: absolute;\r\n	top: 50px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .sp_perc {\r\n	position: absolute;\r\n	top: 65px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .ap_perc {\r\n	position: absolute;\r\n	top: 80px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .blvl {\r\n	position: absolute;\r\n	top: 101px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .jlvl {\r\n	position: absolute;\r\n	top: 112px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .bexp,\r\n#BasicInfoV5 .large .jexp {\r\n	position: absolute;\r\n	top: 104px;\r\n	left: 84px;\r\n	width: 110px;\r\n	height: 4px;\r\n	border: 1px solid #afafaf;\r\n	background-color: white;\r\n}\r\n#BasicInfoV5 .large .bexp div,\r\n#BasicInfoV5 .large .jexp div {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 0%;\r\n	height: 4px;\r\n	background-color: #4262a5;\r\n}\r\n#BasicInfoV5 .large .jexp {\r\n	top: 116px;\r\n}\r\n#BasicInfoV5 .large .extra {\r\n	position: absolute;\r\n	top: 134px;\r\n	right: -15px;\r\n	width: 100%;\r\n	padding-right: 20px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	text-align: right;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .buttons {\r\n	position: absolute;\r\n	left: 0px;\r\n	top: 9px;\r\n	width: 220px;\r\n	height: 132px;\r\n	overflow-x: hidden;\r\n	overflow-y: auto; /* the client's scrollbar attaches to this, and only shows when there is more */\r\n	background-repeat: no-repeat;\r\n	background-position: bottom; /* alinha o fundo pela base */\r\n}\r\n#BasicInfoV5 .bt_menu {\r\n	position: absolute;\r\n	left: 0px;\r\n	width: 219px;\r\n	height: 9px;\r\n}\r\n#BasicInfoV5 .buttons:hover {\r\n}\r\n#BasicInfoV5 .buttons > div[id] {\r\n	float: left;\r\n	width: 32px;\r\n	height: 32px;\r\n	border: none;\r\n	margin: 6px;\r\n}\r\n/* The scrollbar takes 13px of the panel only while it scrolls. Five buttons still\r\n   fit in what is left if their side margins give up 2px each. */\r\n#BasicInfoV5 .buttons[style*='padding-right: 13px'] > div[id] {\r\n	margin: 6px 4px;\r\n}\r\n#BasicInfoV5 .buttons .clear {\r\n	clear: both;\r\n}\r\n\r\n/* REDUCED */\r\n#BasicInfoV5 .small .line1 {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .small .info-container {\r\n	position: absolute;\r\n	top: 17px;\r\n	height: 60px;\r\n	width: 220px;\r\n	background-color: #ffffff;\r\n}\r\n#BasicInfoV5 .small .hpcontainer,\r\n#BasicInfoV5 .small .spcontainer {\r\n	position: absolute;\r\n	width: 130px;\r\n}\r\n#BasicInfoV5 .small .expcontainer,\r\n#BasicInfoV5 .small .apcontainer {\r\n	position: absolute;\r\n	width: 65px;\r\n	left: 140px;\r\n}\r\n#BasicInfoV5 .small .line2 {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .small .line3 {\r\n	position: absolute;\r\n	top: 20px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line3 .hp_max_value {\r\n	display: inline-block;\r\n	width: 65px;\r\n	text-align: left;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line4 {\r\n	position: absolute;\r\n	top: 35px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line4 .sp_max_value {\r\n	display: inline-block;\r\n	width: 73px;\r\n	text-align: left;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .toggle_btns {\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: rgba(0, 0, 0, 0);\r\n}\r\n\r\n#BasicInfoV5 .buttons div .name {\r\n	display: none;\r\n}\r\n\r\n/* A button's name is drawn once, centred below the frame, rather than inside the\r\n   button, where a panel that scrolls would clip it. BasicInfoCommon fills it in. */\r\n#BasicInfoV5 .menu_tip {\r\n	display: none;\r\n	position: absolute;\r\n	left: 110px;\r\n	transform: translateX(-50%);\r\n	z-index: 10;\r\n	pointer-events: none;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#BasicInfoV5.large .menu_tip {\r\n	top: 296px; /* the panel is at 160px, 132px tall */\r\n}\r\n#BasicInfoV5.small .menu_tip {\r\n	top: 216px; /* the panel is at 80px, 132px tall */\r\n}\r\n\r\n#BasicInfoV5 .buttons .btn_overlay {\r\n	width: 35px;\r\n	height: 40px;\r\n	border: none;\r\n	position: relative;\r\n	/* The picture's tile starts 6px below its top and flush left, which puts it over\r\n	   its button; -13px and -7px left it up and to the left, and past the panel's top. */\r\n	top: -6px;\r\n	left: 0;\r\n	z-index: 10;\r\n	display: none;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/BasicInfo/BasicInfoV5/BasicInfoV5.js
@@ -241701,6 +241933,7 @@ var init_BasicInfoV5 = __esmMin((() => {
 			"shortcut",
 			"agency"
 		],
+		menuTip: true,
 		barScale: 1.27,
 		hasApBar: true
 	});
@@ -243668,7 +243901,7 @@ function calculateAnimation(layer, keyIndex, result) {
 	}
 	return true;
 }
-var mat4$18, D3DBLEND, _program$20, _buffer$15, _bufferData, _matrix$6, _lastAngle, PIXEL_TO_WORLD_Z, anim, StrEffect;
+var mat4$18, D3DBLEND, _program$21, _buffer$16, _bufferData, _matrix$6, _lastAngle, PIXEL_TO_WORLD_Z, anim, StrEffect;
 var init_StrEffect = __esmMin((() => {
 	init_StrEffect$2();
 	init_StrEffect$1();
@@ -243677,8 +243910,8 @@ var init_StrEffect = __esmMin((() => {
 	init_Client();
 	mat4$18 = gl_matrix_default.mat4;
 	D3DBLEND = {};
-	_program$20 = null;
-	_buffer$15 = null;
+	_program$21 = null;
+	_buffer$16 = null;
 	_bufferData = /* @__PURE__ */ new Float32Array(16);
 	_matrix$6 = mat4$18.create();
 	_lastAngle = -1;
@@ -243802,8 +244035,8 @@ var init_StrEffect = __esmMin((() => {
 		* @param {StrAnimation} animation object
 		*/
 		renderAnimation(gl, material, animat) {
-			const uniform = _program$20.uniform;
-			const attribute = _program$20.attribute;
+			const uniform = _program$21.uniform;
+			const attribute = _program$21.attribute;
 			let sizeScale = 1;
 			if (this.ownerEntity) sizeScale = (this.ownerEntity.xSize + this.ownerEntity.ySize) / 2 / 5;
 			_bufferData[0] = animat.xy[0] * sizeScale;
@@ -243842,7 +244075,7 @@ var init_StrEffect = __esmMin((() => {
 			gl.uniform1f(uniform.uVerticalBase, verticalBase);
 			gl.uniform3fv(uniform.uSpritePosition, this.position);
 			gl.uniformMatrix4fv(uniform.uSpriteAngle, false, _matrix$6);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$15);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$16);
 			gl.bufferSubData(gl.ARRAY_BUFFER, 0, _bufferData);
 			gl.vertexAttribPointer(attribute.aPosition, 2, gl.FLOAT, false, 16, 0);
 			gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 16, 8);
@@ -243856,12 +244089,12 @@ var init_StrEffect = __esmMin((() => {
 		* @param {object} gl context
 		*/
 		static init(gl) {
-			if (!_buffer$15) {
-				_buffer$15 = gl.createBuffer();
-				gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$15);
+			if (!_buffer$16) {
+				_buffer$16 = gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$16);
 				gl.bufferData(gl.ARRAY_BUFFER, _bufferData.byteLength, gl.DYNAMIC_DRAW);
 			}
-			if (!_program$20) _program$20 = WebGL_default.createShaderProgram(gl, StrEffect_default$1, StrEffect_default);
+			if (!_program$21) _program$21 = WebGL_default.createShaderProgram(gl, StrEffect_default$1, StrEffect_default);
 			D3DBLEND[1] = gl.ZERO;
 			D3DBLEND[2] = gl.ONE;
 			D3DBLEND[3] = gl.SRC_COLOR;
@@ -243883,13 +244116,13 @@ var init_StrEffect = __esmMin((() => {
 		* @param {object} webgl context
 		*/
 		static free(gl) {
-			if (_program$20) {
-				gl.deleteProgram(_program$20);
-				_program$20 = null;
+			if (_program$21) {
+				gl.deleteProgram(_program$21);
+				_program$21 = null;
 			}
-			if (_buffer$15) {
-				gl.deleteBuffer(_buffer$15);
-				_buffer$15 = null;
+			if (_buffer$16) {
+				gl.deleteBuffer(_buffer$16);
+				_buffer$16 = null;
 			}
 			this.ready = false;
 		}
@@ -243903,10 +244136,10 @@ var init_StrEffect = __esmMin((() => {
 		* @param {number} tick
 		*/
 		static beforeRender(gl, modelView, projection, fog, tick) {
-			const uniform = _program$20.uniform;
-			const attribute = _program$20.attribute;
+			const uniform = _program$21.uniform;
+			const attribute = _program$21.attribute;
 			gl.depthMask(false);
-			gl.useProgram(_program$20);
+			gl.useProgram(_program$21);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1f(uniform.uFogNear, fog.near * 100);
@@ -243924,8 +244157,8 @@ var init_StrEffect = __esmMin((() => {
 		*/
 		static afterRender(gl) {
 			gl.depthMask(true);
-			gl.disableVertexAttribArray(_program$20.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$20.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$21.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$21.attribute.aTextureCoord);
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 		}
 	};
@@ -247430,11 +247663,7 @@ function createStorage(config) {
 		return -1;
 	}
 	function onScroll(event, contentEl) {
-		let delta;
-		if (event.wheelDelta) delta = event.wheelDelta / 120;
-		else if (event.detail) delta = -event.detail;
-		else if (event.deltaY) delta = -event.deltaY / 100;
-		contentEl.scrollTop = Math.floor(contentEl.scrollTop / 32) * 32 - delta * 32;
+		WheelSteps_default.scrollRows(event, contentEl, 32);
 		event.preventDefault();
 	}
 	function onFilterWindowOpen(button) {
@@ -247561,6 +247790,7 @@ var init_StorageCommon = __esmMin((() => {
 	init_ItemInfo();
 	init_CartItems();
 	init_Inventory();
+	init_WheelSteps();
 }));
 //#endregion
 //#region src/UI/Components/Storage/StorageV0/Storage.html?raw
@@ -248010,9 +248240,8 @@ function onDrop$8(event) {
 * Block the scroll to move 32px at each move
 */
 function onScroll$5(event) {
-	const delta = event.deltaY > 0 ? -1 : 1;
 	const el = event.currentTarget;
-	el.scrollTop = Math.floor(el.scrollTop / 32) * 32 - delta * 32;
+	WheelSteps_default.scrollRows(event, el, 32);
 	if (el._roScrollbarRestart) el._roScrollbarRestart();
 	event.stopImmediatePropagation();
 	event.preventDefault();
@@ -248153,6 +248382,7 @@ var init_CartItems = __esmMin((() => {
 	init_Storage$1();
 	init_Inventory();
 	init_Equipment();
+	init_WheelSteps();
 	CartItems = new GUIComponent("CartItems", CartItems_default$1);
 	CartItems.render = () => CartItems_default$2;
 	/**
@@ -256271,7 +256501,7 @@ function generateCylinder(totalCircleSides, circleSides, repeatTextureX) {
 	}
 	return new Float32Array(mesh);
 }
-var _program$19, blendMode$3, mat4$17, _matrix$5, Cylinder;
+var _program$20, blendMode$3, mat4$17, _matrix$5, Cylinder;
 var init_Cylinder = __esmMin((() => {
 	init_WebGL();
 	init_gl_matrix();
@@ -256375,8 +256605,8 @@ var init_Cylinder = __esmMin((() => {
 		render(gl, tick) {
 			const renderCount = tick - this.startTick;
 			const duration = this.endTick - this.startTick;
-			const uniform = _program$19.uniform;
-			const attribute = _program$19.attribute;
+			const uniform = _program$20.uniform;
+			const attribute = _program$20.attribute;
 			gl.bindTexture(gl.TEXTURE_2D, this.texture);
 			if (this.repeatTextureX > 1) gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
 			gl.enableVertexAttribArray(attribute.aPosition);
@@ -256496,7 +256726,7 @@ var init_Cylinder = __esmMin((() => {
 			blendMode$3[13] = gl.CONSTANT_ALPHA;
 			blendMode$3[14] = gl.ONE_MINUS_CONSTANT_ALPHA;
 			blendMode$3[15] = gl.SRC_ALPHA_SATURATE;
-			_program$19 = WebGL_default.createShaderProgram(gl, Cylinder_default$1, Cylinder_default);
+			_program$20 = WebGL_default.createShaderProgram(gl, Cylinder_default$1, Cylinder_default);
 			this.ready = true;
 			this.renderBeforeEntities = false;
 		}
@@ -256506,9 +256736,9 @@ var init_Cylinder = __esmMin((() => {
 		* @param {object} webgl context
 		*/
 		static free(gl) {
-			if (_program$19) {
-				gl.deleteProgram(_program$19);
-				_program$19 = null;
+			if (_program$20) {
+				gl.deleteProgram(_program$20);
+				_program$20 = null;
 			}
 			if (this.buffer) gl.deleteBuffer(this.buffer);
 			this.ready = false;
@@ -256519,8 +256749,8 @@ var init_Cylinder = __esmMin((() => {
 		* @param {object} webgl context
 		*/
 		static beforeRender(gl, modelView, projection, fog, tick) {
-			const uniform = _program$19.uniform;
-			gl.useProgram(_program$19);
+			const uniform = _program$20.uniform;
+			gl.useProgram(_program$20);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -256536,8 +256766,8 @@ var init_Cylinder = __esmMin((() => {
 		* @param {object} webgl context
 		*/
 		static afterRender(gl) {
-			gl.disableVertexAttribArray(_program$19.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$19.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$20.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$20.attribute.aTextureCoord);
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 		}
 	};
@@ -257851,7 +258081,7 @@ function initModel(gl, data) {
 		WebGL_default.texture(gl, data.infos[i].texture, onTextureLoaded, i);
 	}
 }
-var _program$18, _normalMat, mat4$15, mat3$1, quat, vec3$3, _light, RsmEffect;
+var _program$19, _normalMat, mat4$15, mat3$1, quat, vec3$3, _light, RsmEffect;
 var init_RsmEffect = __esmMin((() => {
 	init_RsmEffect$2();
 	init_RsmEffect$1();
@@ -257859,7 +258089,7 @@ var init_RsmEffect = __esmMin((() => {
 	init_gl_matrix();
 	init_Client();
 	init_Model();
-	_program$18 = null;
+	_program$19 = null;
 	_normalMat = /* @__PURE__ */ new Float32Array(9);
 	mat4$15 = gl_matrix_default.mat4;
 	mat3$1 = gl_matrix_default.mat3;
@@ -257909,7 +258139,7 @@ var init_RsmEffect = __esmMin((() => {
 			this._Params = params;
 		}
 		static init(gl) {
-			_program$18 = WebGL_default.createShaderProgram(gl, RsmEffect_default$1, RsmEffect_default);
+			_program$19 = WebGL_default.createShaderProgram(gl, RsmEffect_default$1, RsmEffect_default);
 			this.ready = true;
 		}
 		init(gl, tick) {
@@ -257989,18 +258219,18 @@ var init_RsmEffect = __esmMin((() => {
 			this.ready = false;
 		}
 		static free(gl) {
-			if (_program$18) {
-				gl.deleteProgram(_program$18);
-				_program$18 = null;
+			if (_program$19) {
+				gl.deleteProgram(_program$19);
+				_program$19 = null;
 			}
 			this.ready = false;
 		}
 		static beforeRender(gl, modelView, projection, fog, tick) {
 			mat4$15.toInverseMat3(modelView, _normalMat);
 			mat3$1.transpose(_normalMat, _normalMat);
-			const uniform = _program$18.uniform;
-			const attribute = _program$18.attribute;
-			gl.useProgram(_program$18);
+			const uniform = _program$19.uniform;
+			const attribute = _program$19.attribute;
+			gl.useProgram(_program$19);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniformMatrix3fv(uniform.uNormalMat, false, _normalMat);
@@ -258020,7 +258250,7 @@ var init_RsmEffect = __esmMin((() => {
 			gl.uniform1i(uniform.uDiffuse, 0);
 		}
 		render(gl, tick) {
-			const uniform = _program$18.uniform;
+			const uniform = _program$19.uniform;
 			if (this.isAnimated && this.model && this.animLen > 0) {
 				const elapsed = tick - this.startTick;
 				const frame = Math.floor(elapsed * this.fps / 1e3 % this.animLen);
@@ -258032,7 +258262,7 @@ var init_RsmEffect = __esmMin((() => {
 			gl.uniform3fv(uniform.uPosition, this.position);
 			gl.uniform1f(uniform.uSize, this.size);
 			gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-			const attribute = _program$18.attribute;
+			const attribute = _program$19.attribute;
 			gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 36, 0);
 			gl.vertexAttribPointer(attribute.aVertexNormal, 3, gl.FLOAT, false, 36, 12);
 			gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 36, 24);
@@ -258043,7 +258273,7 @@ var init_RsmEffect = __esmMin((() => {
 			}
 		}
 		static afterRender(gl) {
-			const attribute = _program$18.attribute;
+			const attribute = _program$19.attribute;
 			gl.disableVertexAttribArray(attribute.aPosition);
 			gl.disableVertexAttribArray(attribute.aVertexNormal);
 			gl.disableVertexAttribArray(attribute.aTextureCoord);
@@ -259067,7 +259297,7 @@ var init_QuadHorn$1 = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/QuadHorn.js
-var _program$17, mat4$14, blendMode, vertices, texCoords, rand$1, QuadHorn;
+var _program$18, mat4$14, blendMode, vertices, texCoords, rand$1, QuadHorn;
 var init_QuadHorn = __esmMin((() => {
 	init_WebGL();
 	init_gl_matrix();
@@ -259203,8 +259433,8 @@ var init_QuadHorn = __esmMin((() => {
 			this.ready = false;
 		}
 		render(gl, tick) {
-			const uniform = _program$17.uniform;
-			const attribute = _program$17.attribute;
+			const uniform = _program$18.uniform;
+			const attribute = _program$18.attribute;
 			const deltaStart = (tick - this.startTick) / 1e3;
 			const deltaEnd = (tick - this.endTick) / 1e3;
 			gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -259291,7 +259521,7 @@ var init_QuadHorn = __esmMin((() => {
 			gl.flush();
 		}
 		static init(gl) {
-			_program$17 = WebGL_default.createShaderProgram(gl, QuadHorn_default$1, QuadHorn_default);
+			_program$18 = WebGL_default.createShaderProgram(gl, QuadHorn_default$1, QuadHorn_default);
 			blendMode[1] = gl.ZERO;
 			blendMode[2] = gl.ONE;
 			blendMode[3] = gl.SRC_COLOR;
@@ -259311,16 +259541,16 @@ var init_QuadHorn = __esmMin((() => {
 			this.renderBeforeEntities = true;
 		}
 		static free(gl) {
-			if (_program$17) {
-				gl.deleteProgram(_program$17);
-				_program$17 = null;
+			if (_program$18) {
+				gl.deleteProgram(_program$18);
+				_program$18 = null;
 			}
 			if (this.buffer) gl.deleteBuffer(this.buffer);
 			this.ready = false;
 		}
 		static beforeRender(gl, modelView, projection, fog, tick) {
-			const uniform = _program$17.uniform;
-			gl.useProgram(_program$17);
+			const uniform = _program$18.uniform;
+			gl.useProgram(_program$18);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -259331,9 +259561,9 @@ var init_QuadHorn = __esmMin((() => {
 			gl.uniform1i(uniform.uDiffuse, 0);
 		}
 		static afterRender(gl) {
-			gl.disableVertexAttribArray(_program$17.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$17.attribute.aTextureCoord);
-			gl.disableVertexAttribArray(_program$17.attribute.aColor);
+			gl.disableVertexAttribArray(_program$18.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$18.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$18.attribute.aColor);
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 		}
 	};
@@ -259548,7 +259778,7 @@ function setVertex(index, x, y, z, u, v) {
 	_vertices[offset + 3] = u;
 	_vertices[offset + 4] = v;
 }
-var mat4$13, _matrix$4, UNIT, LAYER_COUNT, SEGMENT_COUNT, TEXTURE_COUNT, SEGMENT_HEIGHT, EFFECT_TICK_MS, OPACITY, PARTICLE_TEXTURE, PARTICLE_CYCLE_MS, PARTICLE_SIZE, PARTICLE_COLOR, PARTICLE_FLOATS, PARTICLE_CORNERS, _program$16, _particleProgram, _textureCache, _vertices, WaterfallEffect;
+var mat4$13, _matrix$4, UNIT, LAYER_COUNT, SEGMENT_COUNT, TEXTURE_COUNT, SEGMENT_HEIGHT, EFFECT_TICK_MS, OPACITY, PARTICLE_TEXTURE, PARTICLE_CYCLE_MS, PARTICLE_SIZE, PARTICLE_COLOR, PARTICLE_FLOATS, PARTICLE_CORNERS, _program$17, _particleProgram, _textureCache, _vertices, WaterfallEffect;
 var init_WaterfallEffect = __esmMin((() => {
 	init_WebGL();
 	init_gl_matrix();
@@ -259621,8 +259851,8 @@ var init_WaterfallEffect = __esmMin((() => {
 			this.textureCache = loadTextures(gl, this.textureSet, this);
 		}
 		render(gl, tick) {
-			const uniform = _program$16.uniform;
-			const attribute = _program$16.attribute;
+			const uniform = _program$17.uniform;
+			const attribute = _program$17.attribute;
 			mat4$13.identity(_matrix$4);
 			mat4$13.translate(_matrix$4, _matrix$4, [
 				this.position[0] + .5,
@@ -259693,9 +259923,9 @@ var init_WaterfallEffect = __esmMin((() => {
 			gl.disableVertexAttribArray(attribute.aCorner);
 			gl.disableVertexAttribArray(attribute.aSeed);
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-			gl.useProgram(_program$16);
-			gl.enableVertexAttribArray(_program$16.attribute.aPosition);
-			gl.enableVertexAttribArray(_program$16.attribute.aTextureCoord);
+			gl.useProgram(_program$17);
+			gl.enableVertexAttribArray(_program$17.attribute.aPosition);
+			gl.enableVertexAttribArray(_program$17.attribute.aTextureCoord);
 		}
 		/**
 		* Free WebGL resources
@@ -259740,9 +259970,9 @@ var init_WaterfallEffect = __esmMin((() => {
 			gl.uniform1f(_particleProgram.uniform.uFogFar, fog.far);
 			gl.uniform1i(_particleProgram.uniform.uTexture, 0);
 			gl.uniform3fv(_particleProgram.uniform.uColor, PARTICLE_COLOR);
-			const uniform = _program$16.uniform;
-			const attribute = _program$16.attribute;
-			gl.useProgram(_program$16);
+			const uniform = _program$17.uniform;
+			const attribute = _program$17.attribute;
+			gl.useProgram(_program$17);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1i(uniform.uFogUse, fogUse);
@@ -259765,8 +259995,8 @@ var init_WaterfallEffect = __esmMin((() => {
 		*/
 		static afterRender(gl) {
 			gl.depthMask(true);
-			gl.disableVertexAttribArray(_program$16.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$16.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$17.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$17.attribute.aTextureCoord);
 		}
 		/**
 		* Initialize the effect type
@@ -259774,7 +260004,7 @@ var init_WaterfallEffect = __esmMin((() => {
 		* @param {WebGLRenderingContext} gl
 		*/
 		static init(gl) {
-			_program$16 = WebGL_default.createShaderProgram(gl, WaterfallEffect_default$1, WaterfallEffect_default);
+			_program$17 = WebGL_default.createShaderProgram(gl, WaterfallEffect_default$1, WaterfallEffect_default);
 			_particleProgram = WebGL_default.createShaderProgram(gl, WaterfallParticle_default$1, WaterfallParticle_default);
 			this.ready = true;
 		}
@@ -259792,9 +260022,9 @@ var init_WaterfallEffect = __esmMin((() => {
 				cache.waiters.clear();
 			});
 			_textureCache.clear();
-			if (_program$16) gl.deleteProgram(_program$16);
+			if (_program$17) gl.deleteProgram(_program$17);
 			if (_particleProgram) gl.deleteProgram(_particleProgram);
-			_program$16 = null;
+			_program$17 = null;
 			_particleProgram = null;
 			this.ready = false;
 			this.needInit = true;
@@ -261141,7 +261371,7 @@ var init_Blind$1 = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/Shaders/Blind.js
-var _program$15, _buffer$14, _active, Blind;
+var _program$16, _buffer$15, _active, Blind;
 var init_Blind = __esmMin((() => {
 	init_WebGL();
 	init_Camera();
@@ -261157,31 +261387,31 @@ var init_Blind = __esmMin((() => {
 		* @param {WebGLFramebuffer} outputFbo - Target buffer
 		*/
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$14 || !_program$15 || !Blind.isActive()) return;
+			if (!_buffer$15 || !_program$16 || !Blind.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
-			gl.useProgram(_program$15);
+			gl.useProgram(_program$16);
 			const baseRadius = .2;
 			const baseFalloff = .5;
 			const zoom = Camera.zoomFinal;
 			const focusRadius = baseRadius + (63 - zoom) / 1e3;
 			const focusFalloff = baseFalloff + (63 - zoom) / 1e3;
-			gl.uniform1f(_program$15.uniform.uFocusRadius, focusRadius);
-			gl.uniform1f(_program$15.uniform.uFocusFalloff, focusFalloff);
-			gl.uniform2f(_program$15.uniform.uAspectRatio, gl.canvas.width / gl.canvas.height, 1);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$14);
-			const posLoc = _program$15.attribute.aPosition;
+			gl.uniform1f(_program$16.uniform.uFocusRadius, focusRadius);
+			gl.uniform1f(_program$16.uniform.uFocusFalloff, focusFalloff);
+			gl.uniform2f(_program$16.uniform.uAspectRatio, gl.canvas.width / gl.canvas.height, 1);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$15);
+			const posLoc = _program$16.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
 			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 			gl.activeTexture(gl.TEXTURE0);
 			gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-			gl.uniform1i(_program$15.uniform.uTexture, 0);
+			gl.uniform1i(_program$16.uniform.uTexture, 0);
 			gl.drawArrays(gl.TRIANGLES, 0, 6);
 			PostProcess.afterRenderPass(gl);
 		}
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$15 = WebGL_default.createShaderProgram(gl, Common_default, Blind_default);
+				_program$16 = WebGL_default.createShaderProgram(gl, Common_default, Blind_default);
 			} catch (e) {
 				console.error("Error compiling Blind shader.", e);
 				return;
@@ -261200,8 +261430,8 @@ var init_Blind = __esmMin((() => {
 				1,
 				1
 			]);
-			_buffer$14 = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$14);
+			_buffer$15 = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$15);
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
 		static isActive() {
@@ -261211,11 +261441,11 @@ var init_Blind = __esmMin((() => {
 			_active = bool;
 		}
 		static program() {
-			return _program$15;
+			return _program$16;
 		}
 		static clean(gl) {
-			if (_buffer$14) gl.deleteBuffer(_buffer$14);
-			_program$15 = _buffer$14 = null;
+			if (_buffer$15) gl.deleteBuffer(_buffer$15);
+			_program$16 = _buffer$15 = null;
 		}
 	};
 }));
@@ -261424,8 +261654,8 @@ function init$6(gl, mapname) {
 	if (_color) _display = true;
 	else _display = false;
 	gl.clearColor(color[0], color[1], color[2], color[3]);
-	if (!_textures.length && _display) {
-		_textures.length = 8;
+	if (!_textures$1.length && _display) {
+		_textures$1.length = 8;
 		for (i = 0; i < 7; i++) loadCloudTexture(gl, i);
 	}
 }
@@ -261438,7 +261668,7 @@ function init$6(gl, mapname) {
 function loadCloudTexture(gl, i) {
 	Client.loadFile("data/texture/effect/cloud" + (i + 1) + ".tga", function(buffer) {
 		WebGL_default.texture(gl, buffer, function(texture) {
-			_textures[i] = texture;
+			_textures$1[i] = texture;
 		});
 	});
 }
@@ -261455,7 +261685,7 @@ function setUpCloudData() {
 			death_tick: 0
 		};
 		cloudInit(_clouds[i]);
-		_clouds[i].sprite = Math.random() * (_textures.length - 1) | 0;
+		_clouds[i].sprite = Math.random() * (_textures$1.length - 1) | 0;
 		_clouds[i].death_tick = _clouds[i].born_tick + Math.random() * 8e3;
 		_clouds[i].born_tick -= 2e3;
 	}
@@ -261510,7 +261740,7 @@ function render$6(gl, modelView, projection, fog, tick) {
 		else opacity = 1;
 		SpriteRenderer.zIndex = 0;
 		SpriteRenderer.color[3] = opacity;
-		SpriteRenderer.image.texture = _textures[cloud.sprite];
+		SpriteRenderer.image.texture = _textures$1[cloud.sprite];
 		const dt = Math.min(tick - (cloud._lastTick || cloud.born_tick), 250);
 		cloud._lastTick = tick;
 		vec3$8.scaleAndAdd(cloud.position, cloud.position, cloud.direction, dt / 25);
@@ -261521,7 +261751,7 @@ function render$6(gl, modelView, projection, fog, tick) {
 	}
 	SpriteRenderer.unbind(gl);
 }
-var MAX_CLOUDS, _clouds, _textures, _color, _display, Sky_default;
+var MAX_CLOUDS, _clouds, _textures$1, _color, _display, Sky_default;
 var init_Sky = __esmMin((() => {
 	init_WebGL();
 	init_WeatherEffect();
@@ -261531,7 +261761,7 @@ var init_Sky = __esmMin((() => {
 	init_gl_matrix();
 	MAX_CLOUDS = 150;
 	_clouds = new Array(MAX_CLOUDS);
-	_textures = [];
+	_textures$1 = [];
 	_color = null;
 	_display = true;
 	Sky_default = {
@@ -261540,6 +261770,83 @@ var init_Sky = __esmMin((() => {
 		render: render$6
 	};
 }));
+//#endregion
+//#region src/DB/Map/CustomMaps.js
+/**
+* DB/Map/CustomMaps.js
+*
+* What the client config says about maps the client's own tables do not
+* know: the `customMaps` entry, keyed by '<map>.rsw'.
+*
+*   customMaps: {
+*     'my_isle.rsw': {
+*       skyColor: [0.4, 0.6, 0.8, 1.0],  // RGBA, 0 to 1: the colour behind the map
+*       cloudColor: [1.0, 1.0, 1.0],     // RGB, 0 to 1: clouds across it; none without
+*       weather: 'snow',                 // a screen effect ScreenEffectManager starts
+*       bgm: 'my_isle.mp3'               // played from BGM/, as mp3nametable.txt names one
+*     }
+*   }
+*
+* The sky and weather come from DB/Effects/WeatherEffect.js, a fixed list of a
+* dozen official maps, and the music from data/mp3nametable.txt, one table for
+* the whole game. Official clients keep the first in the executable, so a
+* custom map could have neither a sky nor music of its own. A map named here
+* gets what its entry gives and keeps the rest; every other map is unchanged.
+*
+* This file is part of ROBrowser, (http://www.robrowser.com/).
+*/
+/**
+* Whether `color` is a list of `size` numbers from 0 to 1.
+*/
+function isColor(color, size) {
+	return Array.isArray(color) && color.length === size && color.every((c) => typeof c === "number" && Number.isFinite(c) && c >= 0 && c <= 1);
+}
+/**
+* The entries of a `customMaps` config, by lower-case '<map>.rsw'.
+*
+* @param {object} config the `customMaps` config, or undefined
+* @return {Map<string, object>}
+*/
+function entries(config) {
+	const out = /* @__PURE__ */ new Map();
+	if (!config || typeof config !== "object") return out;
+	for (const [key, entry] of Object.entries(config)) {
+		if (!entry || typeof entry !== "object") continue;
+		const name = key.toLowerCase();
+		out.set(name.endsWith(".rsw") ? name : `${name}.rsw`, entry);
+	}
+	return out;
+}
+/**
+* Add the sky and weather of each map in `config` to the weather tables
+* (`WeatherEffect.js`): a map named there replaces what they say about it.
+*
+* @param {object} weather the tables, `{ sky, effects }`
+* @param {object} config the `customMaps` config, or undefined
+* @return {object} weather
+*/
+function addCustomMapWeather(weather, config) {
+	for (const [map, entry] of entries(config)) {
+		if (isColor(entry.skyColor, 4)) weather.sky[map] = {
+			skyColor: entry.skyColor.slice(),
+			cloudColor: isColor(entry.cloudColor, 3) ? entry.cloudColor.slice() : null
+		};
+		if (typeof entry.weather === "string" && entry.weather) weather.effects[map] = { weather: entry.weather };
+	}
+	return weather;
+}
+/**
+* The music `config` gives a map, or null for the map's own.
+*
+* @param {object} config the `customMaps` config, or undefined
+* @param {string} worldResource '<map>.rsw'
+* @return {string|null}
+*/
+function customMapBgm(config, worldResource) {
+	const entry = entries(config).get(String(worldResource).toLowerCase());
+	return entry && typeof entry.bgm === "string" && entry.bgm ? entry.bgm : null;
+}
+var init_CustomMaps = __esmMin((() => {}));
 //#endregion
 //#region src/Renderer/Effects/Damage.js
 var EndureSound, dpr$1, procCanvas$1, procCtx$1, _skin, _damageSkins, _loadedSkinsData, _enableSuffix, _msgNames, _list$1, _rgbaFrame, prevCombo, Damage;
@@ -262255,7 +262562,7 @@ var init_BloomUpsampling = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/Shaders/Bloom.js
-var _programs, _buffer$13, _internalFbo, _downsampleFactor, _downsampleFactorPerformance, Bloom;
+var _programs, _buffer$14, _internalFbo, _downsampleFactor, _downsampleFactorPerformance, Bloom;
 var init_Bloom = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
@@ -262274,7 +262581,7 @@ var init_Bloom = __esmMin((() => {
 		* @param {WebGLFramebuffer} outputFbo - Destination (Screen or next effect)
 		*/
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$13 || !_programs.prefilter || !Bloom.isActive()) return;
+			if (!_buffer$14 || !_programs.prefilter || !Bloom.isActive()) return;
 			const scale = GraphicsSettings.performanceMode ? .75 : 1;
 			const scaledWidth = Math.floor(gl.canvas.width * scale);
 			const scaledHeight = Math.floor(gl.canvas.height * scale);
@@ -262289,7 +262596,7 @@ var init_Bloom = __esmMin((() => {
 			gl.uniform1f(_programs.prefilter.uniform.uBloomSoftKnee, .45);
 			const boxsampleFactor = 4;
 			gl.uniform2f(_programs.prefilter.uniform.uTexelSize, 1 / _internalFbo.width * boxsampleFactor, 1 / _internalFbo.height * boxsampleFactor);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$13);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$14);
 			let posLoc = _programs.prefilter.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
 			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
@@ -262342,8 +262649,8 @@ var init_Bloom = __esmMin((() => {
 				1,
 				1
 			]);
-			_buffer$13 = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$13);
+			_buffer$14 = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$14);
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 			this.recreateFbo(gl, gl.canvas.width, gl.canvas.height);
 		}
@@ -262364,8 +262671,8 @@ var init_Bloom = __esmMin((() => {
 		/** Clears memory references */
 		static clean(gl) {
 			_programs = {};
-			if (_buffer$13) gl.deleteBuffer(_buffer$13);
-			_buffer$13 = null;
+			if (_buffer$14) gl.deleteBuffer(_buffer$14);
+			_buffer$14 = null;
 			if (_internalFbo) {
 				if (gl.isTexture(_internalFbo.texture)) gl.deleteTexture(_internalFbo.texture);
 				if (gl.isRenderbuffer(_internalFbo.rbo)) gl.deleteRenderbuffer(_internalFbo.rbo);
@@ -262383,7 +262690,7 @@ var init_GaussianBlur$1 = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/Shaders/GaussianBlur.js
-var _program$14, _buffer$12, GaussianBlur;
+var _program$15, _buffer$13, GaussianBlur;
 var init_GaussianBlur = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
@@ -262398,15 +262705,86 @@ var init_GaussianBlur = __esmMin((() => {
 		* @param {WebGLFramebuffer} outputFbo - Target buffer
 		*/
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$12 || !_program$14 || !GaussianBlur.isActive()) return;
+			if (!_buffer$13 || !_program$15 || !GaussianBlur.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
-			gl.useProgram(_program$14);
+			gl.useProgram(_program$15);
 			const focusRadius = GraphicsSettings.blurArea / 100;
 			const focusFalloff = .5;
-			gl.uniform1f(_program$14.uniform.uFocusRadius, focusRadius);
-			gl.uniform1f(_program$14.uniform.uFocusFalloff, focusFalloff);
+			gl.uniform1f(_program$15.uniform.uFocusRadius, focusRadius);
+			gl.uniform1f(_program$15.uniform.uFocusFalloff, focusFalloff);
 			const boxsampleFactor = GraphicsSettings.blurIntensity;
-			gl.uniform2f(_program$14.uniform.uTexelSize, 1 / gl.canvas.width * boxsampleFactor, 1 / gl.canvas.height * boxsampleFactor);
+			gl.uniform2f(_program$15.uniform.uTexelSize, 1 / gl.canvas.width * boxsampleFactor, 1 / gl.canvas.height * boxsampleFactor);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$13);
+			const posLoc = _program$15.attribute.aPosition;
+			gl.enableVertexAttribArray(posLoc);
+			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+			gl.activeTexture(gl.TEXTURE0);
+			gl.bindTexture(gl.TEXTURE_2D, inputTexture);
+			gl.uniform1i(_program$15.uniform.uTexture, 0);
+			gl.drawArrays(gl.TRIANGLES, 0, 6);
+			PostProcess.afterRenderPass(gl);
+		}
+		static init(gl) {
+			if (!gl) return;
+			try {
+				_program$15 = WebGL_default.createShaderProgram(gl, Common_default, GaussianBlur_default);
+			} catch (e) {
+				console.error("Error compiling Lens Blur shader.", e);
+				return;
+			}
+			const quadVertices = new Float32Array([
+				-1,
+				-1,
+				1,
+				-1,
+				-1,
+				1,
+				-1,
+				1,
+				1,
+				-1,
+				1,
+				1
+			]);
+			_buffer$13 = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$13);
+			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
+		}
+		static isActive() {
+			return GraphicsSettings.blur;
+		}
+		static program() {
+			return _program$15;
+		}
+		static clean(gl) {
+			if (_buffer$13) gl.deleteBuffer(_buffer$13);
+			_program$15 = _buffer$13 = null;
+		}
+	};
+}));
+//#endregion
+//#region src/Renderer/Effects/Shaders/GLSL/CAS.fs?raw
+var CAS_default;
+var init_CAS$1 = __esmMin((() => {
+	CAS_default = "#version 300 es \r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uContrast;  \r\nuniform float uSharpening;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    // Sampling 3x3  \r\n    //  a b c  \r\n    //  d(e)f  \r\n    //  g h i  \r\n      \r\n    vec3 a = texture(uTexture, vUv + vec2(-uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 b = texture(uTexture, vUv + vec2(0.0, -uTexelSize.y)).rgb;  \r\n    vec3 c = texture(uTexture, vUv + vec2(uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 d = texture(uTexture, vUv + vec2(-uTexelSize.x, 0.0)).rgb;  \r\n    vec3 e = texture(uTexture, vUv).rgb;  \r\n    vec3 f = texture(uTexture, vUv + vec2(uTexelSize.x, 0.0)).rgb;  \r\n    vec3 g = texture(uTexture, vUv + vec2(-uTexelSize.x, uTexelSize.y)).rgb;  \r\n    vec3 h = texture(uTexture, vUv + vec2(0.0, uTexelSize.y)).rgb;  \r\n    vec3 i = texture(uTexture, vUv + vec2(uTexelSize.x, uTexelSize.y)).rgb;  \r\n\r\n    // Soft min e max \r\n    vec3 mnRGB = min(min(min(d, e), min(f, b)), h);  \r\n    vec3 mnRGB2 = min(mnRGB, min(min(a, c), min(g, i)));  \r\n    mnRGB += mnRGB2;  \r\n\r\n    vec3 mxRGB = max(max(max(d, e), max(f, b)), h);  \r\n    vec3 mxRGB2 = max(mxRGB, max(max(a, c), max(g, i)));  \r\n    mxRGB += mxRGB2;  \r\n\r\n    vec3 rcpMRGB = 1.0 / mxRGB;  \r\n    vec3 ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) * rcpMRGB, 0.0, 1.0);  \r\n\r\n    ampRGB = inversesqrt(ampRGB);  \r\n\r\n    float peak = -3.0 * uContrast + 8.0;  \r\n    vec3 wRGB = -1.0 / (ampRGB * peak);  \r\n    vec3 rcpWeightRGB = 1.0 / (4.0 * wRGB + 1.0);  \r\n\r\n    // Cross Filter \r\n    //  0 w 0  \r\n    //  w 1 w  \r\n    //  0 w 0  \r\n    vec3 window = (b + d) + (f + h);  \r\n    vec3 outColor = clamp((window * wRGB + e) * rcpWeightRGB, 0.0, 1.0);  \r\n\r\n    // Blend \r\n    fragColor = vec4(mix(e, outColor, uSharpening), 1.0);  \r\n}";
+}));
+//#endregion
+//#region src/Renderer/Effects/Shaders/CAS.js
+var _program$14, _buffer$12, CAS;
+var init_CAS = __esmMin((() => {
+	init_Graphics();
+	init_WebGL();
+	init_PostProcess();
+	init_Common();
+	init_CAS$1();
+	CAS = class CAS {
+		static render(gl, inputTexture, outputFbo) {
+			if (!_buffer$12 || !_program$14 || !CAS.isActive()) return;
+			PostProcess.beforeRenderPass(gl, outputFbo);
+			gl.useProgram(_program$14);
+			gl.uniform1f(_program$14.uniform.uContrast, GraphicsSettings.casContrast || 0);
+			gl.uniform1f(_program$14.uniform.uSharpening, GraphicsSettings.casSharpening || 1);
+			gl.uniform2f(_program$14.uniform.uTexelSize, 1 / gl.canvas.width, 1 / gl.canvas.height);
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$12);
 			const posLoc = _program$14.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
@@ -262420,9 +262798,9 @@ var init_GaussianBlur = __esmMin((() => {
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$14 = WebGL_default.createShaderProgram(gl, Common_default, GaussianBlur_default);
+				_program$14 = WebGL_default.createShaderProgram(gl, Common_default, CAS_default);
 			} catch (e) {
-				console.error("Error compiling Lens Blur shader.", e);
+				console.error("Error compiling CAS shader.", e);
 				return;
 			}
 			const quadVertices = new Float32Array([
@@ -262444,7 +262822,7 @@ var init_GaussianBlur = __esmMin((() => {
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
 		static isActive() {
-			return GraphicsSettings.blur;
+			return GraphicsSettings.casEnabled;
 		}
 		static program() {
 			return _program$14;
@@ -262456,27 +262834,28 @@ var init_GaussianBlur = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/GLSL/CAS.fs?raw
-var CAS_default;
-var init_CAS$1 = __esmMin((() => {
-	CAS_default = "#version 300 es \r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uContrast;  \r\nuniform float uSharpening;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    // Sampling 3x3  \r\n    //  a b c  \r\n    //  d(e)f  \r\n    //  g h i  \r\n      \r\n    vec3 a = texture(uTexture, vUv + vec2(-uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 b = texture(uTexture, vUv + vec2(0.0, -uTexelSize.y)).rgb;  \r\n    vec3 c = texture(uTexture, vUv + vec2(uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 d = texture(uTexture, vUv + vec2(-uTexelSize.x, 0.0)).rgb;  \r\n    vec3 e = texture(uTexture, vUv).rgb;  \r\n    vec3 f = texture(uTexture, vUv + vec2(uTexelSize.x, 0.0)).rgb;  \r\n    vec3 g = texture(uTexture, vUv + vec2(-uTexelSize.x, uTexelSize.y)).rgb;  \r\n    vec3 h = texture(uTexture, vUv + vec2(0.0, uTexelSize.y)).rgb;  \r\n    vec3 i = texture(uTexture, vUv + vec2(uTexelSize.x, uTexelSize.y)).rgb;  \r\n\r\n    // Soft min e max \r\n    vec3 mnRGB = min(min(min(d, e), min(f, b)), h);  \r\n    vec3 mnRGB2 = min(mnRGB, min(min(a, c), min(g, i)));  \r\n    mnRGB += mnRGB2;  \r\n\r\n    vec3 mxRGB = max(max(max(d, e), max(f, b)), h);  \r\n    vec3 mxRGB2 = max(mxRGB, max(max(a, c), max(g, i)));  \r\n    mxRGB += mxRGB2;  \r\n\r\n    vec3 rcpMRGB = 1.0 / mxRGB;  \r\n    vec3 ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) * rcpMRGB, 0.0, 1.0);  \r\n\r\n    ampRGB = inversesqrt(ampRGB);  \r\n\r\n    float peak = -3.0 * uContrast + 8.0;  \r\n    vec3 wRGB = -1.0 / (ampRGB * peak);  \r\n    vec3 rcpWeightRGB = 1.0 / (4.0 * wRGB + 1.0);  \r\n\r\n    // Cross Filter \r\n    //  0 w 0  \r\n    //  w 1 w  \r\n    //  0 w 0  \r\n    vec3 window = (b + d) + (f + h);  \r\n    vec3 outColor = clamp((window * wRGB + e) * rcpWeightRGB, 0.0, 1.0);  \r\n\r\n    // Blend \r\n    fragColor = vec4(mix(e, outColor, uSharpening), 1.0);  \r\n}";
+//#region src/Renderer/Effects/Shaders/GLSL/FXAA.fs?raw
+var FXAA_default;
+var init_FXAA$1 = __esmMin((() => {
+	FXAA_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uSubpix;  \r\nuniform float uEdgeThreshold;  \r\nuniform float uEdgeThresholdMin;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nfloat luminance(vec3 rgb) {  \r\n    return dot(rgb, vec3(0.299, 0.587, 0.114));  \r\n}  \r\n\r\nvoid main() {  \r\n    vec3 rgbM = texture(uTexture, vUv).rgb;  \r\n      \r\n    vec3 rgbNW = texture(uTexture, vUv + vec2(-uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 rgbNE = texture(uTexture, vUv + vec2(uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 rgbSW = texture(uTexture, vUv + vec2(-uTexelSize.x, uTexelSize.y)).rgb;  \r\n    vec3 rgbSE = texture(uTexture, vUv + vec2(uTexelSize.x, uTexelSize.y)).rgb;  \r\n\r\n    float lumaM = luminance(rgbM);  \r\n    float lumaNW = luminance(rgbNW);  \r\n    float lumaNE = luminance(rgbNE);  \r\n    float lumaSW = luminance(rgbSW);  \r\n    float lumaSE = luminance(rgbSE);  \r\n\r\n    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));  \r\n    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));  \r\n\r\n    float lumaRange = lumaMax - lumaMin;  \r\n    if(lumaRange < max(uEdgeThresholdMin, lumaMax * uEdgeThreshold)) {  \r\n        fragColor = vec4(rgbM, 1.0);  \r\n        return;  \r\n    }  \r\n\r\n    vec2 dir;  \r\n    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));  \r\n    dir.y = ((lumaNW + lumaSW) - (lumaNE + lumaSE));  \r\n\r\n    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.03125, 0.0078125);  \r\n    float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);  \r\n    dir = min(vec2(8.0), max(vec2(-8.0), dir * rcpDirMin)) * uTexelSize;  \r\n\r\n    vec3 rgbA = 0.5 * (  \r\n        texture(uTexture, vUv + dir * (1.0/3.0 - 0.5)).rgb +  \r\n        texture(uTexture, vUv + dir * (2.0/3.0 - 0.5)).rgb);  \r\n    vec3 rgbB = rgbA * 0.5 + 0.25 * (  \r\n        texture(uTexture, vUv + dir * -0.5).rgb +  \r\n        texture(uTexture, vUv + dir * 0.5).rgb);  \r\n\r\n    float lumaB = luminance(rgbB);  \r\n    if((lumaB < lumaMin) || (lumaB > lumaMax)) {  \r\n        fragColor = vec4(rgbA, 1.0);  \r\n    } else {  \r\n        fragColor = vec4(rgbB, 1.0);  \r\n    }  \r\n}";
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/CAS.js
-var _program$13, _buffer$11, CAS;
-var init_CAS = __esmMin((() => {
+//#region src/Renderer/Effects/Shaders/FXAA.js
+var _program$13, _buffer$11, FXAA;
+var init_FXAA = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
 	init_PostProcess();
 	init_Common();
-	init_CAS$1();
-	CAS = class CAS {
+	init_FXAA$1();
+	FXAA = class FXAA {
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$11 || !_program$13 || !CAS.isActive()) return;
+			if (!_buffer$11 || !_program$13 || !FXAA.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
 			gl.useProgram(_program$13);
-			gl.uniform1f(_program$13.uniform.uContrast, GraphicsSettings.casContrast || 0);
-			gl.uniform1f(_program$13.uniform.uSharpening, GraphicsSettings.casSharpening || 1);
+			gl.uniform1f(_program$13.uniform.uSubpix, GraphicsSettings.fxaaSubpix || .25);
+			gl.uniform1f(_program$13.uniform.uEdgeThreshold, GraphicsSettings.fxaaEdgeThreshold || .125);
+			gl.uniform1f(_program$13.uniform.uEdgeThresholdMin, 0);
 			gl.uniform2f(_program$13.uniform.uTexelSize, 1 / gl.canvas.width, 1 / gl.canvas.height);
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$11);
 			const posLoc = _program$13.attribute.aPosition;
@@ -262491,9 +262870,9 @@ var init_CAS = __esmMin((() => {
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$13 = WebGL_default.createShaderProgram(gl, Common_default, CAS_default);
+				_program$13 = WebGL_default.createShaderProgram(gl, Common_default, FXAA_default);
 			} catch (e) {
-				console.error("Error compiling CAS shader.", e);
+				console.error("Error compiling FXAA shader.", e);
 				return;
 			}
 			const quadVertices = new Float32Array([
@@ -262515,7 +262894,7 @@ var init_CAS = __esmMin((() => {
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
 		static isActive() {
-			return GraphicsSettings.casEnabled;
+			return GraphicsSettings.fxaaEnabled;
 		}
 		static program() {
 			return _program$13;
@@ -262527,29 +262906,27 @@ var init_CAS = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/GLSL/FXAA.fs?raw
-var FXAA_default;
-var init_FXAA$1 = __esmMin((() => {
-	FXAA_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uSubpix;  \r\nuniform float uEdgeThreshold;  \r\nuniform float uEdgeThresholdMin;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nfloat luminance(vec3 rgb) {  \r\n    return dot(rgb, vec3(0.299, 0.587, 0.114));  \r\n}  \r\n\r\nvoid main() {  \r\n    vec3 rgbM = texture(uTexture, vUv).rgb;  \r\n      \r\n    vec3 rgbNW = texture(uTexture, vUv + vec2(-uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 rgbNE = texture(uTexture, vUv + vec2(uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 rgbSW = texture(uTexture, vUv + vec2(-uTexelSize.x, uTexelSize.y)).rgb;  \r\n    vec3 rgbSE = texture(uTexture, vUv + vec2(uTexelSize.x, uTexelSize.y)).rgb;  \r\n\r\n    float lumaM = luminance(rgbM);  \r\n    float lumaNW = luminance(rgbNW);  \r\n    float lumaNE = luminance(rgbNE);  \r\n    float lumaSW = luminance(rgbSW);  \r\n    float lumaSE = luminance(rgbSE);  \r\n\r\n    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));  \r\n    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));  \r\n\r\n    float lumaRange = lumaMax - lumaMin;  \r\n    if(lumaRange < max(uEdgeThresholdMin, lumaMax * uEdgeThreshold)) {  \r\n        fragColor = vec4(rgbM, 1.0);  \r\n        return;  \r\n    }  \r\n\r\n    vec2 dir;  \r\n    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));  \r\n    dir.y = ((lumaNW + lumaSW) - (lumaNE + lumaSE));  \r\n\r\n    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.03125, 0.0078125);  \r\n    float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);  \r\n    dir = min(vec2(8.0), max(vec2(-8.0), dir * rcpDirMin)) * uTexelSize;  \r\n\r\n    vec3 rgbA = 0.5 * (  \r\n        texture(uTexture, vUv + dir * (1.0/3.0 - 0.5)).rgb +  \r\n        texture(uTexture, vUv + dir * (2.0/3.0 - 0.5)).rgb);  \r\n    vec3 rgbB = rgbA * 0.5 + 0.25 * (  \r\n        texture(uTexture, vUv + dir * -0.5).rgb +  \r\n        texture(uTexture, vUv + dir * 0.5).rgb);  \r\n\r\n    float lumaB = luminance(rgbB);  \r\n    if((lumaB < lumaMin) || (lumaB > lumaMax)) {  \r\n        fragColor = vec4(rgbA, 1.0);  \r\n    } else {  \r\n        fragColor = vec4(rgbB, 1.0);  \r\n    }  \r\n}";
+//#region src/Renderer/Effects/Shaders/GLSL/Vibrance.fs?raw
+var Vibrance_default;
+var init_Vibrance$1 = __esmMin((() => {
+	Vibrance_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uVibrance;  \r\nuniform vec3 uVibranceRGBBalance;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    vec3 color = texture(uTexture, vUv).rgb;  \r\n      \r\n    // (Rec. 709)  \r\n    vec3 coefLuma = vec3(0.212656, 0.715158, 0.072186);  \r\n    float luma = dot(coefLuma, color);  \r\n\r\n    float max_color = max(color.r, max(color.g, color.b));  \r\n    float min_color = min(color.r, min(color.g, color.b));  \r\n    float color_saturation = max_color - min_color;  \r\n\r\n    vec3 coeffVibrance = uVibranceRGBBalance * uVibrance;  \r\n\r\n    float strength = 1.0 + (coeffVibrance.r * (1.0 - (sign(coeffVibrance.r) * color_saturation)));  \r\n    color.r = mix(luma, color.r, strength);  \r\n      \r\n    strength = 1.0 + (coeffVibrance.g * (1.0 - (sign(coeffVibrance.g) * color_saturation)));  \r\n    color.g = mix(luma, color.g, strength);  \r\n      \r\n    strength = 1.0 + (coeffVibrance.b * (1.0 - (sign(coeffVibrance.b) * color_saturation)));  \r\n    color.b = mix(luma, color.b, strength);  \r\n\r\n    fragColor = vec4(color, 1.0);  \r\n} ";
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/FXAA.js
-var _program$12, _buffer$10, FXAA;
-var init_FXAA = __esmMin((() => {
+//#region src/Renderer/Effects/Shaders/Vibrance.js
+var _program$12, _buffer$10, Vibrance;
+var init_Vibrance = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
 	init_PostProcess();
 	init_Common();
-	init_FXAA$1();
-	FXAA = class FXAA {
+	init_Vibrance$1();
+	Vibrance = class Vibrance {
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$10 || !_program$12 || !FXAA.isActive()) return;
+			if (!_buffer$10 || !_program$12 || !Vibrance.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
 			gl.useProgram(_program$12);
-			gl.uniform1f(_program$12.uniform.uSubpix, GraphicsSettings.fxaaSubpix || .25);
-			gl.uniform1f(_program$12.uniform.uEdgeThreshold, GraphicsSettings.fxaaEdgeThreshold || .125);
-			gl.uniform1f(_program$12.uniform.uEdgeThresholdMin, 0);
-			gl.uniform2f(_program$12.uniform.uTexelSize, 1 / gl.canvas.width, 1 / gl.canvas.height);
+			gl.uniform1f(_program$12.uniform.uVibrance, GraphicsSettings.vibrance || .15);
+			gl.uniform3f(_program$12.uniform.uVibranceRGBBalance, 1, 1, 1);
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$10);
 			const posLoc = _program$12.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
@@ -262563,9 +262940,9 @@ var init_FXAA = __esmMin((() => {
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$12 = WebGL_default.createShaderProgram(gl, Common_default, FXAA_default);
+				_program$12 = WebGL_default.createShaderProgram(gl, Common_default, Vibrance_default);
 			} catch (e) {
-				console.error("Error compiling FXAA shader.", e);
+				console.error("Error compiling Vibrance shader.", e);
 				return;
 			}
 			const quadVertices = new Float32Array([
@@ -262587,7 +262964,7 @@ var init_FXAA = __esmMin((() => {
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
 		static isActive() {
-			return GraphicsSettings.fxaaEnabled;
+			return GraphicsSettings.vibranceEnabled;
 		}
 		static program() {
 			return _program$12;
@@ -262599,27 +262976,28 @@ var init_FXAA = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/GLSL/Vibrance.fs?raw
-var Vibrance_default;
-var init_Vibrance$1 = __esmMin((() => {
-	Vibrance_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uVibrance;  \r\nuniform vec3 uVibranceRGBBalance;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    vec3 color = texture(uTexture, vUv).rgb;  \r\n      \r\n    // (Rec. 709)  \r\n    vec3 coefLuma = vec3(0.212656, 0.715158, 0.072186);  \r\n    float luma = dot(coefLuma, color);  \r\n\r\n    float max_color = max(color.r, max(color.g, color.b));  \r\n    float min_color = min(color.r, min(color.g, color.b));  \r\n    float color_saturation = max_color - min_color;  \r\n\r\n    vec3 coeffVibrance = uVibranceRGBBalance * uVibrance;  \r\n\r\n    float strength = 1.0 + (coeffVibrance.r * (1.0 - (sign(coeffVibrance.r) * color_saturation)));  \r\n    color.r = mix(luma, color.r, strength);  \r\n      \r\n    strength = 1.0 + (coeffVibrance.g * (1.0 - (sign(coeffVibrance.g) * color_saturation)));  \r\n    color.g = mix(luma, color.g, strength);  \r\n      \r\n    strength = 1.0 + (coeffVibrance.b * (1.0 - (sign(coeffVibrance.b) * color_saturation)));  \r\n    color.b = mix(luma, color.b, strength);  \r\n\r\n    fragColor = vec4(color, 1.0);  \r\n} ";
+//#region src/Renderer/Effects/Shaders/GLSL/Cartoon.fs?raw
+var Cartoon_default;
+var init_Cartoon$1 = __esmMin((() => {
+	Cartoon_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uPower;  \r\nuniform float uEdgeSlope;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    vec3 color = texture(uTexture, vUv).rgb;  \r\n\r\n    const vec3 coefLuma = vec3(0.2126, 0.7152, 0.0722);  \r\n\r\n    float diff1 = dot(coefLuma, texture(uTexture, vUv + uTexelSize).rgb);  \r\n    diff1 = dot(vec4(coefLuma, -1.0), vec4(texture(uTexture, vUv - uTexelSize).rgb, diff1));  \r\n      \r\n    float diff2 = dot(coefLuma, texture(uTexture, vUv + uTexelSize * vec2(1, -1)).rgb);  \r\n    diff2 = dot(vec4(coefLuma, -1.0), vec4(texture(uTexture, vUv + uTexelSize * vec2(-1, 1)).rgb, diff2));  \r\n\r\n    float edge = dot(vec2(diff1, diff2), vec2(diff1, diff2));  \r\n\r\n    vec3 result = clamp(pow(abs(edge), uEdgeSlope) * -uPower + color, 0.0, 1.0);  \r\n    fragColor = vec4(result, 1.0);  \r\n}";
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/Vibrance.js
-var _program$11, _buffer$9, Vibrance;
-var init_Vibrance = __esmMin((() => {
+//#region src/Renderer/Effects/Shaders/Cartoon.js
+var _program$11, _buffer$9, Cartoon;
+var init_Cartoon = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
 	init_PostProcess();
 	init_Common();
-	init_Vibrance$1();
-	Vibrance = class Vibrance {
+	init_Cartoon$1();
+	Cartoon = class Cartoon {
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$9 || !_program$11 || !Vibrance.isActive()) return;
+			if (!_buffer$9 || !_program$11 || !Cartoon.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
 			gl.useProgram(_program$11);
-			gl.uniform1f(_program$11.uniform.uVibrance, GraphicsSettings.vibrance || .15);
-			gl.uniform3f(_program$11.uniform.uVibranceRGBBalance, 1, 1, 1);
+			gl.uniform1f(_program$11.uniform.uPower, GraphicsSettings.cartoonPower || 1.5);
+			gl.uniform1f(_program$11.uniform.uEdgeSlope, GraphicsSettings.cartoonEdgeSlope || 1.5);
+			gl.uniform2f(_program$11.uniform.uTexelSize, 1 / gl.canvas.width, 1 / gl.canvas.height);
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$9);
 			const posLoc = _program$11.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
@@ -262633,9 +263011,9 @@ var init_Vibrance = __esmMin((() => {
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$11 = WebGL_default.createShaderProgram(gl, Common_default, Vibrance_default);
+				_program$11 = WebGL_default.createShaderProgram(gl, Common_default, Cartoon_default);
 			} catch (e) {
-				console.error("Error compiling Vibrance shader.", e);
+				console.error("Error compiling Cartoon shader.", e);
 				return;
 			}
 			const quadVertices = new Float32Array([
@@ -262657,7 +263035,7 @@ var init_Vibrance = __esmMin((() => {
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
 		static isActive() {
-			return GraphicsSettings.vibranceEnabled;
+			return GraphicsSettings.cartoonEnabled;
 		}
 		static program() {
 			return _program$11;
@@ -262669,44 +263047,52 @@ var init_Vibrance = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/GLSL/Cartoon.fs?raw
-var Cartoon_default;
-var init_Cartoon$1 = __esmMin((() => {
-	Cartoon_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uPower;  \r\nuniform float uEdgeSlope;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    vec3 color = texture(uTexture, vUv).rgb;  \r\n\r\n    const vec3 coefLuma = vec3(0.2126, 0.7152, 0.0722);  \r\n\r\n    float diff1 = dot(coefLuma, texture(uTexture, vUv + uTexelSize).rgb);  \r\n    diff1 = dot(vec4(coefLuma, -1.0), vec4(texture(uTexture, vUv - uTexelSize).rgb, diff1));  \r\n      \r\n    float diff2 = dot(coefLuma, texture(uTexture, vUv + uTexelSize * vec2(1, -1)).rgb);  \r\n    diff2 = dot(vec4(coefLuma, -1.0), vec4(texture(uTexture, vUv + uTexelSize * vec2(-1, 1)).rgb, diff2));  \r\n\r\n    float edge = dot(vec2(diff1, diff2), vec2(diff1, diff2));  \r\n\r\n    vec3 result = clamp(pow(abs(edge), uEdgeSlope) * -uPower + color, 0.0, 1.0);  \r\n    fragColor = vec4(result, 1.0);  \r\n}";
+//#region src/Renderer/Effects/Shaders/GLSL/CommonUpsampling.fs?raw
+var CommonUpsampling_default;
+var init_CommonUpsampling = __esmMin((() => {
+	CommonUpsampling_default = "#version 300 es\r\nprecision mediump float;\r\nuniform sampler2D uSceneTexture;\r\n\r\nin vec2 vUv;\r\nout vec4 fragColor;\r\n\r\nvoid main() {\r\n	vec3 original = texture(uSceneTexture, vUv).rgb; \r\n	fragColor = vec4(original, 1.0);\r\n}";
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/Cartoon.js
-var _program$10, _buffer$8, Cartoon;
-var init_Cartoon = __esmMin((() => {
+//#region src/Renderer/Effects/Shaders/Upsampling.js
+var _program$10, _buffer$8, Upsampling;
+var init_Upsampling = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
 	init_PostProcess();
 	init_Common();
-	init_Cartoon$1();
-	Cartoon = class Cartoon {
+	init_CommonUpsampling();
+	Upsampling = class Upsampling {
+		/**
+		* Renders the Upsampling effect
+		* @param {WebGLRenderingContext} gl - WebGL Context
+		* @param {WebGLTexture} inputTexture - Low resolution scene texture
+		* @param {WebGLFramebuffer} outputFramebuffer - Destination (Screen or next effect)
+		*/
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$8 || !_program$10 || !Cartoon.isActive()) return;
+			if (!_buffer$8 || !_program$10 || !Upsampling.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
 			gl.useProgram(_program$10);
-			gl.uniform1f(_program$10.uniform.uPower, GraphicsSettings.cartoonPower || 1.5);
-			gl.uniform1f(_program$10.uniform.uEdgeSlope, GraphicsSettings.cartoonEdgeSlope || 1.5);
-			gl.uniform2f(_program$10.uniform.uTexelSize, 1 / gl.canvas.width, 1 / gl.canvas.height);
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$8);
 			const posLoc = _program$10.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
 			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 			gl.activeTexture(gl.TEXTURE0);
 			gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-			gl.uniform1i(_program$10.uniform.uTexture, 0);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+			gl.uniform1i(_program$10.uniform.uSceneTexture, 0);
 			gl.drawArrays(gl.TRIANGLES, 0, 6);
 			PostProcess.afterRenderPass(gl);
 		}
+		/**
+		* Initializes shaders and buffers
+		*/
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$10 = WebGL_default.createShaderProgram(gl, Common_default, Cartoon_default);
+				_program$10 = WebGL_default.createShaderProgram(gl, Common_default, CommonUpsampling_default);
 			} catch (e) {
-				console.error("Error compiling Cartoon shader.", e);
+				console.error("Error compiling Upsampling shader.", e);
 				return;
 			}
 			const quadVertices = new Float32Array([
@@ -262727,98 +263113,19 @@ var init_Cartoon = __esmMin((() => {
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$8);
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
-		static isActive() {
-			return GraphicsSettings.cartoonEnabled;
-		}
-		static program() {
-			return _program$10;
-		}
-		static clean(gl) {
-			if (_buffer$8) gl.deleteBuffer(_buffer$8);
-			_program$10 = _buffer$8 = null;
-		}
-	};
-}));
-//#endregion
-//#region src/Renderer/Effects/Shaders/GLSL/CommonUpsampling.fs?raw
-var CommonUpsampling_default;
-var init_CommonUpsampling = __esmMin((() => {
-	CommonUpsampling_default = "#version 300 es\r\nprecision mediump float;\r\nuniform sampler2D uSceneTexture;\r\n\r\nin vec2 vUv;\r\nout vec4 fragColor;\r\n\r\nvoid main() {\r\n	vec3 original = texture(uSceneTexture, vUv).rgb; \r\n	fragColor = vec4(original, 1.0);\r\n}";
-}));
-//#endregion
-//#region src/Renderer/Effects/Shaders/Upsampling.js
-var _program$9, _buffer$7, Upsampling;
-var init_Upsampling = __esmMin((() => {
-	init_Graphics();
-	init_WebGL();
-	init_PostProcess();
-	init_Common();
-	init_CommonUpsampling();
-	Upsampling = class Upsampling {
-		/**
-		* Renders the Upsampling effect
-		* @param {WebGLRenderingContext} gl - WebGL Context
-		* @param {WebGLTexture} inputTexture - Low resolution scene texture
-		* @param {WebGLFramebuffer} outputFramebuffer - Destination (Screen or next effect)
-		*/
-		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$7 || !_program$9 || !Upsampling.isActive()) return;
-			PostProcess.beforeRenderPass(gl, outputFbo);
-			gl.useProgram(_program$9);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$7);
-			const posLoc = _program$9.attribute.aPosition;
-			gl.enableVertexAttribArray(posLoc);
-			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
-			gl.activeTexture(gl.TEXTURE0);
-			gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-			gl.uniform1i(_program$9.uniform.uSceneTexture, 0);
-			gl.drawArrays(gl.TRIANGLES, 0, 6);
-			PostProcess.afterRenderPass(gl);
-		}
-		/**
-		* Initializes shaders and buffers
-		*/
-		static init(gl) {
-			if (!gl) return;
-			try {
-				_program$9 = WebGL_default.createShaderProgram(gl, Common_default, CommonUpsampling_default);
-			} catch (e) {
-				console.error("Error compiling Upsampling shader.", e);
-				return;
-			}
-			const quadVertices = new Float32Array([
-				-1,
-				-1,
-				1,
-				-1,
-				-1,
-				1,
-				-1,
-				1,
-				1,
-				-1,
-				1,
-				1
-			]);
-			_buffer$7 = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$7);
-			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
-		}
 		/** @returns {boolean} always false here */
 		static isActive() {
 			return GraphicsSettings.performanceMode;
 		}
 		/** @returns {WebGLProgram} The loaded shader program (returning one for validation check) */
 		static program() {
-			return _program$9;
+			return _program$10;
 		}
 		/** Clears memory references */
 		static clean(gl) {
-			_program$9 = null;
-			if (_buffer$7) gl.deleteBuffer(_buffer$7);
-			_buffer$7 = null;
+			_program$10 = null;
+			if (_buffer$8) gl.deleteBuffer(_buffer$8);
+			_buffer$8 = null;
 		}
 	};
 }));
@@ -263009,7 +263316,7 @@ function onMapComplete(success, error) {
 		UIManager.showErrorBox(error).ui.css("zIndex", 1e3);
 		return;
 	}
-	BGM.play(mapInfo && mapInfo.mp3 || "01.mp3");
+	BGM.play(customMapBgm(Configs.get("customMaps"), worldResource) || mapInfo && mapInfo.mp3 || "01.mp3");
 	this.fog.exist = !!(mapInfo && mapInfo.fog);
 	if (this.fog.exist) {
 		this.fog.near = mapInfo.fog.near * 240;
@@ -263020,6 +263327,7 @@ function onMapComplete(success, error) {
 	Renderer.init();
 	const gl = Renderer.getContext();
 	SpriteRenderer.init(gl);
+	addCustomMapWeather(Weather, Configs.get("customMaps"));
 	Sky_default.init(gl, worldResource);
 	Damage.init(gl);
 	EffectManager.init(gl);
@@ -263067,6 +263375,9 @@ var init_MapRenderer = __esmMin((() => {
 	init_SignboardManager();
 	init_ScreenEffectManager();
 	init_Sky();
+	init_WeatherEffect();
+	init_CustomMaps();
+	init_Configs();
 	init_Damage();
 	init_Graphics();
 	init_Map();
@@ -264825,8 +265136,56 @@ var init_SwirlingAura$1 = __esmMin((() => {
 	SwirlingAura_default = "#version 300 es\r\nprecision highp float;\r\n\r\nin vec2 vTextureCoord;\r\nout vec4 fragColor;\r\n\r\nuniform sampler2D uDiffuse;\r\nuniform vec4 uColor;\r\n\r\nuniform bool  uFogUse;\r\nuniform float uFogNear;\r\nuniform float uFogFar;\r\nuniform vec3  uFogColor;\r\n\r\nvoid main(void) {\r\n	vec4 texColor = texture(uDiffuse, vTextureCoord);\r\n\r\n	if (texColor.a < 0.01) {\r\n		discard;\r\n	}\r\n\r\n	// Discard near-black pixels\r\n	if (texColor.r < 0.01 && texColor.g < 0.01 && texColor.b < 0.01) {\r\n		discard;\r\n	}\r\n\r\n	fragColor = texColor * uColor;\r\n\r\n	if (uFogUse) {\r\n		float depth = gl_FragCoord.z / gl_FragCoord.w;\r\n		float fogFactor = smoothstep(uFogNear, uFogFar, depth);\r\n		fragColor = mix(fragColor, vec4(uFogColor, fragColor.w), fogFactor);\r\n	}\r\n}";
 }));
 //#endregion
+//#region src/Renderer/Effects/AuraBlend.js
+/**
+* Renderer/Effects/AuraBlend.js
+*
+* Colour and blending for the aura effects, shared by the level-99 aura's
+* three parts and the high-level aura (MaxLevelAura).
+*
+* The auras add light (SRC_ALPHA, ONE), which can make any colour but black:
+* black added is nothing. A dark colour (AuraTiers.auraColor marks it) is
+* drawn by darkening what is behind instead, by how bright the texture is.
+*
+* This file is part of ROBrowser, (http://www.robrowser.com/).
+*/
+/**
+* The colour to give the shader's uColor for `color`.
+*
+* @param {{r: number, g: number, b: number, dark: boolean}} color
+* @param {number} alpha
+* @return {number[]} r, g, b, a
+*/
+function auraUniform(color, alpha) {
+	return color.dark ? [
+		1,
+		1,
+		1,
+		alpha
+	] : [
+		color.r,
+		color.g,
+		color.b,
+		alpha
+	];
+}
+/**
+* Switch to the blending `color` needs before drawing it. A no-op for every
+* colour but a dark one.
+*/
+function beginAuraBlend(gl, color) {
+	if (color && color.dark) gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
+}
+/**
+* Put back the additive blending the auras share, after beginAuraBlend.
+*/
+function endAuraBlend(gl, color) {
+	if (color && color.dark) gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+}
+var init_AuraBlend = __esmMin((() => {}));
+//#endregion
 //#region src/Renderer/Effects/SwirlingAura.js
-var mat4$8, _program$8, _modelMatrix, E_DIVISION, FULL_DISPLAY_ANGLE, DEG_TO_RAD$1, SwirlingAura;
+var mat4$8, _program$9, _modelMatrix, E_DIVISION, FULL_DISPLAY_ANGLE, DEG_TO_RAD$2, SwirlingAura;
 var init_SwirlingAura = __esmMin((() => {
 	init_SwirlingAura$2();
 	init_SwirlingAura$1();
@@ -264835,13 +265194,17 @@ var init_SwirlingAura = __esmMin((() => {
 	init_Client();
 	init_Altitude();
 	init_SpriteRenderer();
+	init_AuraBlend();
 	mat4$8 = gl_matrix_default.mat4;
 	_modelMatrix = mat4$8.create();
 	E_DIVISION = 21;
 	FULL_DISPLAY_ANGLE = 315;
-	DEG_TO_RAD$1 = Math.PI / 180;
+	DEG_TO_RAD$2 = Math.PI / 180;
 	SwirlingAura = class {
-		constructor(position, textureName, tick, sizeType) {
+		/**
+		* @param {object} color optional tint from AuraTiers.auraColor, over the blue or green
+		*/
+		constructor(position, textureName, tick, sizeType, color) {
 			this.position = position;
 			this.textureName = textureName;
 			this.tick = tick;
@@ -264857,6 +265220,7 @@ var init_SwirlingAura = __esmMin((() => {
 				g: 100 / 255,
 				b: 1
 			};
+			if (color) this.color = color;
 			this.alphaB = 120 / 255;
 			const INNER_CIRCLE_SCALE = .6;
 			this.bands = [];
@@ -264866,7 +265230,7 @@ var init_SwirlingAura = __esmMin((() => {
 				rotStart: ec * 90,
 				maxHeight: (15 - 2 * ec) * GAME_TO_WORLD,
 				distance: (3.9 + .2 * ec) * GAME_TO_WORLD * INNER_CIRCLE_SCALE,
-				riseAngle: (55 - 5 * ec) * DEG_TO_RAD$1,
+				riseAngle: (55 - 5 * ec) * DEG_TO_RAD$2,
 				spinSpeed: ec + 3,
 				height: new Float32Array(E_DIVISION)
 			});
@@ -264884,11 +265248,11 @@ var init_SwirlingAura = __esmMin((() => {
 			const middle = 10;
 			const step = 9;
 			for (let i = 0; i < E_DIVISION; i++) {
-				const sinLimit = (90 + (i - middle) * step) * DEG_TO_RAD$1;
+				const sinLimit = (90 + (i - middle) * step) * DEG_TO_RAD$2;
 				const sinLimitValue = Math.sin(sinLimit);
 				const maxPossible = band.maxHeight * sinLimitValue;
 				if (process <= 90) {
-					const sinProcess = Math.sin(process * DEG_TO_RAD$1);
+					const sinProcess = Math.sin(process * DEG_TO_RAD$2);
 					band.height[i] = Math.max(0, Math.min(band.maxHeight * sinLimitValue * sinProcess, maxPossible));
 				} else band.height[i] = maxPossible;
 			}
@@ -264902,7 +265266,7 @@ var init_SwirlingAura = __esmMin((() => {
 			const sinRise = Math.sin(band.riseAngle);
 			let offset = 0;
 			for (let k = 0; k < E_DIVISION; k++) {
-				const angle = (band.rotStart + k * this.basicAngle) * DEG_TO_RAD$1;
+				const angle = (band.rotStart + k * this.basicAngle) * DEG_TO_RAD$2;
 				const cosAngle = Math.cos(angle);
 				const sinAngle = Math.sin(angle);
 				const baseX = band.distance * cosAngle;
@@ -264981,8 +265345,8 @@ var init_SwirlingAura = __esmMin((() => {
 		* Render all three bands
 		*/
 		render(gl, tick) {
-			const uniform = _program$8.uniform;
-			const attribute = _program$8.attribute;
+			const uniform = _program$9.uniform;
+			const attribute = _program$9.attribute;
 			const groundZ = Altitude.getCellHeight(this.position[0], this.position[1]);
 			mat4$8.identity(_modelMatrix);
 			mat4$8.translate(_modelMatrix, _modelMatrix, [
@@ -264996,6 +265360,7 @@ var init_SwirlingAura = __esmMin((() => {
 			gl.enableVertexAttribArray(attribute.aTextureCoord);
 			const self = this;
 			const process = (tick - this.tick) / 25;
+			beginAuraBlend(gl, this.color);
 			SpriteRenderer.runWithDepth(true, false, false, function() {
 				for (let ec = 0; ec < self.bands.length; ec++) {
 					const band = self.bands[ec];
@@ -265007,18 +265372,19 @@ var init_SwirlingAura = __esmMin((() => {
 					gl.bufferSubData(gl.ARRAY_BUFFER, 0, self.vertices);
 					gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 20, 0);
 					gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 20, 12);
-					gl.uniform4f(uniform.uColor, self.color.r, self.color.g, self.color.b, self.alphaB);
+					gl.uniform4f(uniform.uColor, ...auraUniform(self.color, self.alphaB));
 					gl.uniform1f(uniform.uZIndex, .01 + ec * .001);
 					gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, self.indexBuffer);
 					gl.drawElements(gl.TRIANGLES, self.indexCount, gl.UNSIGNED_SHORT, 0);
 				}
 			});
+			endAuraBlend(gl, this.color);
 		}
 		/**
 		* Initialize static resources
 		*/
 		static init(gl) {
-			_program$8 = WebGL_default.createShaderProgram(gl, SwirlingAura_default$1, SwirlingAura_default);
+			_program$9 = WebGL_default.createShaderProgram(gl, SwirlingAura_default$1, SwirlingAura_default);
 			this.ready = true;
 			this.renderBeforeEntities = true;
 		}
@@ -265026,9 +265392,9 @@ var init_SwirlingAura = __esmMin((() => {
 		* Free static resources
 		*/
 		static free(gl) {
-			if (_program$8) {
-				gl.deleteProgram(_program$8);
-				_program$8 = null;
+			if (_program$9) {
+				gl.deleteProgram(_program$9);
+				_program$9 = null;
 			}
 			this.ready = false;
 		}
@@ -265036,9 +265402,9 @@ var init_SwirlingAura = __esmMin((() => {
 		* Before render setup
 		*/
 		static beforeRender(gl, modelView, projection, fog, tick) {
-			const uniform = _program$8.uniform;
+			const uniform = _program$9.uniform;
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-			gl.useProgram(_program$8);
+			gl.useProgram(_program$9);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -265053,8 +265419,8 @@ var init_SwirlingAura = __esmMin((() => {
 		*/
 		static afterRender(gl) {
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-			gl.disableVertexAttribArray(_program$8.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$8.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$9.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$9.attribute.aTextureCoord);
 		}
 	};
 }));
@@ -265129,7 +265495,7 @@ function calculateSize(self, aura, auraAngle, i) {
 	const endY = sin * (aura[i].distance * .8 + riseFactor);
 	return [Math.abs(endX - startX), Math.abs(endY - startY)];
 }
-var _program$7, _buffer$6, GroundAura;
+var _program$8, _buffer$7, GroundAura;
 var init_GroundAura = __esmMin((() => {
 	init_GroundAura$2();
 	init_GroundAura$1();
@@ -265137,8 +265503,18 @@ var init_GroundAura = __esmMin((() => {
 	init_Client();
 	init_Altitude();
 	init_SpriteRenderer();
+	init_AuraBlend();
 	GroundAura = class {
-		constructor(position, size, distance, textureName, tick) {
+		/**
+		* @param {object} color optional tint from AuraTiers.auraColor; white when left out
+		*/
+		constructor(position, size, distance, textureName, tick, color) {
+			this.color = color || {
+				r: 1,
+				g: 1,
+				b: 1,
+				dark: false
+			};
 			this.position = position;
 			this.textureName = textureName;
 			this.tick = tick;
@@ -265184,7 +265560,7 @@ var init_GroundAura = __esmMin((() => {
 			this.ready = false;
 		}
 		render(gl, tick) {
-			const uniform = _program$7.uniform;
+			const uniform = _program$8.uniform;
 			gl.bindTexture(gl.TEXTURE_2D, this.texture);
 			const RAG_TICK_MS = 25;
 			const dt = Math.min(tick - (this._lastTick || tick), 250);
@@ -265218,26 +265594,28 @@ var init_GroundAura = __esmMin((() => {
 			];
 			gl.uniform3fv(uniform.uWorldPosition, worldPos);
 			const self = this;
+			beginAuraBlend(gl, this.color);
 			SpriteRenderer.runWithDepth(true, false, false, function() {
 				for (let i = 0; i < self.aura.length; i++) {
 					if (!self.aura[i].life) continue;
 					const auraAngle = i * 23;
 					gl.uniform2f(uniform.uSize, self.aura[i].size[0], self.aura[i].size[1]);
 					gl.uniform1f(uniform.uAngle, auraAngle * Math.PI / 180);
-					gl.uniform4f(uniform.uColor, 1, 1, 1, .8);
+					gl.uniform4f(uniform.uColor, ...auraUniform(self.color, .8));
 					gl.uniform1f(uniform.uZIndex, 1 + i);
 					gl.drawArrays(gl.TRIANGLES, 0, 6);
 				}
 			});
+			endAuraBlend(gl, this.color);
 		}
 		/**
 		* Initialize static resources
 		*/
 		static init(gl) {
-			_program$7 = WebGL_default.createShaderProgram(gl, GroundAura_default$1, GroundAura_default);
+			_program$8 = WebGL_default.createShaderProgram(gl, GroundAura_default$1, GroundAura_default);
 			const vertices = generateGroundQuad();
-			_buffer$6 = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$6);
+			_buffer$7 = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$7);
 			gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
 			this.ready = true;
 			this.renderBeforeEntities = true;
@@ -265246,13 +265624,13 @@ var init_GroundAura = __esmMin((() => {
 		* Free static resources
 		*/
 		static free(gl) {
-			if (_program$7) {
-				gl.deleteProgram(_program$7);
-				_program$7 = null;
+			if (_program$8) {
+				gl.deleteProgram(_program$8);
+				_program$8 = null;
 			}
-			if (_buffer$6) {
-				gl.deleteBuffer(_buffer$6);
-				_buffer$6 = null;
+			if (_buffer$7) {
+				gl.deleteBuffer(_buffer$7);
+				_buffer$7 = null;
 			}
 			this.ready = false;
 		}
@@ -265260,10 +265638,10 @@ var init_GroundAura = __esmMin((() => {
 		* Before render setup
 		*/
 		static beforeRender(gl, modelView, projection, fog, tick) {
-			const uniform = _program$7.uniform;
-			const attribute = _program$7.attribute;
+			const uniform = _program$8.uniform;
+			const attribute = _program$8.attribute;
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-			gl.useProgram(_program$7);
+			gl.useProgram(_program$8);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -265272,7 +265650,7 @@ var init_GroundAura = __esmMin((() => {
 			gl.uniform3fv(uniform.uFogColor, fog.color);
 			gl.activeTexture(gl.TEXTURE0);
 			gl.uniform1i(uniform.uDiffuse, 0);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$6);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$7);
 			gl.enableVertexAttribArray(attribute.aPosition);
 			gl.enableVertexAttribArray(attribute.aTextureCoord);
 			gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 20, 0);
@@ -265283,8 +265661,8 @@ var init_GroundAura = __esmMin((() => {
 		*/
 		static afterRender(gl) {
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-			gl.disableVertexAttribArray(_program$7.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$7.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$8.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$8.attribute.aTextureCoord);
 		}
 	};
 }));
@@ -265354,7 +265732,7 @@ function createAnchor(isGhost, seedMaxUnits) {
 		z: 0
 	};
 }
-var DEG_TO_RAD, GAME_TO_WORLD, NUM_COLUMNS, ANCHORS_PER_COL, BASE_LIFT, REF_RADIUS, REF_SPEED, REF_DRIFT_K, REF_SEED_MAX, REF_RESET_Y, REF_ALPHA_OFFSET, REF_ALPHA_GAIN, ANCHOR_SIGNS, ANCHOR_PHASE_OFFSETS, debugConfig, _program$6, _buffer$5, BILLBOARD_CORNERS, Level99Bubble;
+var DEG_TO_RAD$1, GAME_TO_WORLD, NUM_COLUMNS, ANCHORS_PER_COL, BASE_LIFT$1, REF_RADIUS, REF_SPEED, REF_DRIFT_K, REF_SEED_MAX, REF_RESET_Y, REF_ALPHA_OFFSET, REF_ALPHA_GAIN, ANCHOR_SIGNS, ANCHOR_PHASE_OFFSETS, debugConfig, _program$7, _buffer$6, BILLBOARD_CORNERS, Level99Bubble;
 var init_Level99Bubble = __esmMin((() => {
 	init_Level99Bubble$2();
 	init_Level99Bubble$1();
@@ -265363,11 +265741,12 @@ var init_Level99Bubble = __esmMin((() => {
 	init_Camera();
 	init_Altitude();
 	init_SpriteRenderer();
-	DEG_TO_RAD = Math.PI / 180;
+	init_AuraBlend();
+	DEG_TO_RAD$1 = Math.PI / 180;
 	GAME_TO_WORLD = .1 * 2.2;
 	NUM_COLUMNS = 4;
 	ANCHORS_PER_COL = 4;
-	BASE_LIFT = .05;
+	BASE_LIFT$1 = .05;
 	REF_RADIUS = 2.4;
 	REF_SPEED = .15;
 	REF_DRIFT_K = .15;
@@ -265443,7 +265822,7 @@ var init_Level99Bubble = __esmMin((() => {
 		}
 	];
 	Level99Bubble = class {
-		constructor(position, textureName, tick, flag1) {
+		constructor(position, textureName, tick, flag1, color) {
 			this.position = position;
 			this.textureName = textureName || "whitelight.tga";
 			this.tick = tick || 0;
@@ -265455,7 +265834,7 @@ var init_Level99Bubble = __esmMin((() => {
 			this.seedMax = isGhost ? debugConfig.ghostSeedMax : debugConfig.seedMax;
 			this.resetY = isGhost ? -debugConfig.ghostSeedMax : REF_RESET_Y;
 			this.driftK = REF_DRIFT_K;
-			this.color = pickColor(this.flag1);
+			this.color = color || pickColor(this.flag1);
 			this.isGhost = isGhost;
 			this.passCount = this.flag1 === 1 ? 2 : 1;
 			this.columns = [];
@@ -265545,8 +265924,8 @@ var init_Level99Bubble = __esmMin((() => {
 			const signs = ANCHOR_SIGNS[anchorIndex];
 			const phaseOffsets = ANCHOR_PHASE_OFFSETS[anchorIndex];
 			if (anchor.y < 0) {
-				const phaseA = column.phases[phaseOffsets.pa] * DEG_TO_RAD;
-				const phaseB = column.phases[phaseOffsets.pb] * DEG_TO_RAD;
+				const phaseA = column.phases[phaseOffsets.pa] * DEG_TO_RAD$1;
+				const phaseB = column.phases[phaseOffsets.pb] * DEG_TO_RAD$1;
 				anchor.x += signs.kx * this.driftK * Math.sin(phaseA) * stepScale;
 				anchor.z += signs.kz * this.driftK * Math.sin(phaseB) * stepScale;
 			}
@@ -265596,17 +265975,17 @@ var init_Level99Bubble = __esmMin((() => {
 		}
 		render(gl, tick) {
 			if (!this.ready || !this.texture) return;
-			const uniform = _program$6.uniform;
+			const uniform = _program$7.uniform;
 			const groundZ = Altitude.getCellHeight(this.position[0], this.position[1]);
 			const basePos = [
 				this.position[0] + .5,
-				-groundZ - BASE_LIFT,
+				-groundZ - BASE_LIFT$1,
 				this.position[1] + .5
 			];
 			const viewPitch = Camera.angle[0];
 			const viewYaw = Camera.angle[1];
-			const beta = (360 - viewPitch + 90) % 360 * DEG_TO_RAD;
-			const alpha = (360 - viewYaw) % 360 * DEG_TO_RAD;
+			const beta = (360 - viewPitch + 90) % 360 * DEG_TO_RAD$1;
+			const alpha = (360 - viewYaw) % 360 * DEG_TO_RAD$1;
 			const sinBeta = Math.sin(beta);
 			const cosBeta = Math.cos(beta);
 			const sinAlpha = Math.sin(alpha);
@@ -265649,18 +266028,20 @@ var init_Level99Bubble = __esmMin((() => {
 					this.fillQuad(this.tmpPoints, this.quadData);
 					gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.quadData);
 					const self = this;
+					beginAuraBlend(gl, this.color);
 					SpriteRenderer.runWithDepth(true, false, false, function() {
 						for (let pass = 0; pass < self.passCount; pass++) {
-							gl.uniform4f(uniform.uColor, self.color.r, self.color.g, self.color.b, alphaValue);
+							gl.uniform4f(uniform.uColor, ...auraUniform(self.color, alphaValue));
 							gl.uniform1f(uniform.uZIndex, .01 + ec * .002 + ai * 1e-4 + pass * 5e-5);
 							gl.drawArrays(gl.TRIANGLES, 0, 6);
 						}
 					});
+					endAuraBlend(gl, this.color);
 				}
 			}
 		}
 		renderBackground(gl, basePos) {
-			const uniform = _program$6.uniform;
+			const uniform = _program$7.uniform;
 			const radius = this.baseRadius * GAME_TO_WORLD * debugConfig.bgRadiusFactor;
 			const height = this.seedMax * GAME_TO_WORLD;
 			function drawQuad(v0, v1, v2, v3) {
@@ -265790,6 +266171,280 @@ var init_Level99Bubble = __esmMin((() => {
 			gl.uniform1i(uniform.uSolidBg, 0);
 		}
 		static init(gl) {
+			_program$7 = WebGL_default.createShaderProgram(gl, Level99Bubble_default$1, Level99Bubble_default);
+			_buffer$6 = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$6);
+			gl.bufferData(gl.ARRAY_BUFFER, 120, gl.DYNAMIC_DRAW);
+			this.ready = true;
+			this.renderBeforeEntities = true;
+		}
+		static free(gl) {
+			if (_program$7) {
+				gl.deleteProgram(_program$7);
+				_program$7 = null;
+			}
+			if (_buffer$6) {
+				gl.deleteBuffer(_buffer$6);
+				_buffer$6 = null;
+			}
+			this.ready = false;
+		}
+		static beforeRender(gl, modelView, projection, fog) {
+			const uniform = _program$7.uniform;
+			const attribute = _program$7.attribute;
+			gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+			gl.useProgram(_program$7);
+			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
+			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
+			gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
+			gl.uniform1f(uniform.uFogNear, fog.near);
+			gl.uniform1f(uniform.uFogFar, fog.far);
+			gl.uniform3fv(uniform.uFogColor, fog.color);
+			gl.activeTexture(gl.TEXTURE0);
+			gl.uniform1i(uniform.uDiffuse, 0);
+			gl.uniform1i(uniform.uSolidBg, 0);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$6);
+			gl.enableVertexAttribArray(attribute.aPosition);
+			gl.enableVertexAttribArray(attribute.aTextureCoord);
+			gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 20, 0);
+			gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 20, 12);
+		}
+		static afterRender(gl) {
+			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+			gl.disableVertexAttribArray(_program$7.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$7.attribute.aTextureCoord);
+		}
+	};
+}));
+//#endregion
+//#region src/Renderer/Effects/MaxLevelAura.js
+function loadTexture$1(gl, name) {
+	if (_textures.has(name)) return;
+	_textures.set(name, null);
+	Client.loadFile(`data/texture/effect/${name}`, (buffer) => {
+		WebGL_default.texture(gl, buffer, (texture) => {
+			_textures.set(name, texture);
+		});
+	});
+}
+function bubbleName(frame) {
+	return `w_bubble${String(frame + 1).padStart(2, "0")}.tga`;
+}
+var DEG_TO_RAD, BASE_LIFT, BUBBLE_FRAMES, FRAME_MS, RINGS, GROUND_RINGS, CORNERS, _program$6, _buffer$5, _textures, MaxLevelAura;
+var init_MaxLevelAura = __esmMin((() => {
+	init_Level99Bubble$2();
+	init_Level99Bubble$1();
+	init_WebGL();
+	init_Client();
+	init_Altitude();
+	init_SpriteRenderer();
+	init_AuraBlend();
+	DEG_TO_RAD = Math.PI / 180;
+	BASE_LIFT = .05;
+	BUBBLE_FRAMES = 27;
+	FRAME_MS = 55;
+	RINGS = [
+		{
+			count: 18,
+			radius: .95,
+			height: 2.6,
+			spin: 30
+		},
+		{
+			count: 18,
+			radius: 1.3,
+			height: 2,
+			spin: -24
+		},
+		{
+			count: 18,
+			radius: 1.65,
+			height: 1.4,
+			spin: 18
+		}
+	];
+	GROUND_RINGS = [{
+		texture: "cir0002.tga",
+		size: 6.4,
+		spin: 40
+	}, {
+		texture: "emp shock.tga",
+		size: 5,
+		spin: -55
+	}];
+	CORNERS = [
+		{
+			x: -1,
+			y: -1
+		},
+		{
+			x: 1,
+			y: -1
+		},
+		{
+			x: 1,
+			y: 1
+		},
+		{
+			x: -1,
+			y: 1
+		}
+	];
+	_textures = /* @__PURE__ */ new Map();
+	MaxLevelAura = class {
+		/**
+		* @param {vec3} position entity position (kept by reference, so it follows)
+		* @param {string} part 'bubbles' (the main effect) or 'rings' (the _SUB effect)
+		* @param {{r: number, g: number, b: number, dark: boolean}} color the tier's tint, from AuraTiers
+		* @param {number} tick start tick
+		*/
+		constructor(position, part, color, tick) {
+			this.position = position;
+			this.part = part === "rings" ? "rings" : "bubbles";
+			this.color = color || {
+				r: 1,
+				g: 1,
+				b: 1,
+				dark: false
+			};
+			this.startTick = tick || 0;
+			this.quadData = /* @__PURE__ */ new Float32Array(30);
+			this.points = [
+				[
+					0,
+					0,
+					0
+				],
+				[
+					0,
+					0,
+					0
+				],
+				[
+					0,
+					0,
+					0
+				],
+				[
+					0,
+					0,
+					0
+				]
+			];
+		}
+		init(gl) {
+			if (this.part === "rings") GROUND_RINGS.forEach((r) => loadTexture$1(gl, r.texture));
+			else for (let i = 0; i < BUBBLE_FRAMES; i++) loadTexture$1(gl, bubbleName(i));
+			this.ready = true;
+		}
+		free() {
+			this.ready = false;
+		}
+		/**
+		* Two triangles from four corners, with the texture across them.
+		*/
+		fillQuad(points) {
+			const q = this.quadData;
+			const order = [
+				0,
+				1,
+				2,
+				2,
+				3,
+				0
+			];
+			const uv = [
+				[0, 0],
+				[1, 0],
+				[1, 1],
+				[0, 1]
+			];
+			for (let v = 0; v < 6; v++) {
+				const p = points[order[v]];
+				q[v * 5] = p[0];
+				q[v * 5 + 1] = p[1];
+				q[v * 5 + 2] = p[2];
+				q[v * 5 + 3] = uv[order[v]][0];
+				q[v * 5 + 4] = uv[order[v]][1];
+			}
+		}
+		draw(gl, texture, alpha, zIndex) {
+			if (!texture) return;
+			const uniform = _program$6.uniform;
+			gl.bindTexture(gl.TEXTURE_2D, texture);
+			gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.quadData);
+			gl.uniform4f(uniform.uColor, ...auraUniform(this.color, alpha));
+			gl.uniform1f(uniform.uZIndex, zIndex);
+			gl.drawArrays(gl.TRIANGLES, 0, 6);
+		}
+		render(gl, tick) {
+			if (!this.ready) return;
+			const elapsed = Math.max(0, tick - this.startTick);
+			const groundZ = Altitude.getCellHeight(this.position[0], this.position[1]);
+			const base = [
+				this.position[0] + .5,
+				-groundZ - BASE_LIFT,
+				this.position[1] + .5
+			];
+			const self = this;
+			beginAuraBlend(gl, this.color);
+			SpriteRenderer.runWithDepth(true, false, false, function() {
+				if (self.part === "rings") self.renderRings(gl, base, elapsed);
+				else self.renderBubbles(gl, base, elapsed);
+			});
+			endAuraBlend(gl, this.color);
+		}
+		renderRings(gl, base, elapsed) {
+			for (let i = 0; i < GROUND_RINGS.length; i++) {
+				const ring = GROUND_RINGS[i];
+				const angle = (elapsed / 1e3 * ring.spin + i * 45) * DEG_TO_RAD;
+				const half = ring.size / 2;
+				const cos = Math.cos(angle) * half;
+				const sin = Math.sin(angle) * half;
+				for (let k = 0; k < 4; k++) {
+					const x = CORNERS[k].x;
+					const z = CORNERS[k].y;
+					this.points[k][0] = base[0] + x * cos - z * sin;
+					this.points[k][1] = base[1] - .01 * (i + 1);
+					this.points[k][2] = base[2] + x * sin + z * cos;
+				}
+				this.fillQuad(this.points);
+				this.draw(gl, _textures.get(ring.texture), 1, .002 * (i + 1));
+			}
+		}
+		renderBubbles(gl, base, elapsed) {
+			const frame = Math.floor(elapsed / FRAME_MS);
+			for (let r = 0; r < RINGS.length; r++) {
+				const ring = RINGS[r];
+				const turn = elapsed / 1e3 * ring.spin * DEG_TO_RAD;
+				const step = Math.PI * 2 / ring.count;
+				const top = base[1] - ring.height * (.9 + .1 * Math.sin(elapsed / 400 + r));
+				for (let b = 0; b < ring.count; b++) {
+					const a0 = turn + b * step;
+					const a1 = a0 + step;
+					const x0 = base[0] + Math.cos(a0) * ring.radius;
+					const z0 = base[2] + Math.sin(a0) * ring.radius;
+					const x1 = base[0] + Math.cos(a1) * ring.radius;
+					const z1 = base[2] + Math.sin(a1) * ring.radius;
+					this.points[0][0] = x0;
+					this.points[0][1] = top;
+					this.points[0][2] = z0;
+					this.points[1][0] = x1;
+					this.points[1][1] = top;
+					this.points[1][2] = z1;
+					this.points[2][0] = x1;
+					this.points[2][1] = base[1];
+					this.points[2][2] = z1;
+					this.points[3][0] = x0;
+					this.points[3][1] = base[1];
+					this.points[3][2] = z0;
+					this.fillQuad(this.points);
+					const texture = _textures.get(bubbleName((frame + b * 3 + r * 9) % BUBBLE_FRAMES));
+					this.draw(gl, texture, .55, .01 + r * .002 + b * 1e-4);
+				}
+			}
+		}
+		static init(gl) {
 			_program$6 = WebGL_default.createShaderProgram(gl, Level99Bubble_default$1, Level99Bubble_default);
 			_buffer$5 = gl.createBuffer();
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$5);
@@ -265806,6 +266461,8 @@ var init_Level99Bubble = __esmMin((() => {
 				gl.deleteBuffer(_buffer$5);
 				_buffer$5 = null;
 			}
+			for (const texture of _textures.values()) if (texture) gl.deleteTexture(texture);
+			_textures.clear();
 			this.ready = false;
 		}
 		static beforeRender(gl, modelView, projection, fog) {
@@ -265834,6 +266491,253 @@ var init_Level99Bubble = __esmMin((() => {
 			gl.disableVertexAttribArray(_program$6.attribute.aTextureCoord);
 		}
 	};
+}));
+//#endregion
+//#region src/DB/Effects/AuraTiers.js
+/** Transcendent second jobs: Lord Knight (4008) to Paladin riding (4022). */
+function isTranscendentSecond(job) {
+	return job >= 4008 && job <= 4022;
+}
+/** Fourth jobs: Dragon Knight (4252) to Imperial Guard 2 (4281), and Sky Emperor (4302) to Sky Emperor 2 (4316). */
+function isFourthJob(job) {
+	return job >= 4252 && job <= 4281 || job >= 4302 && job <= 4316;
+}
+/**
+* The aura settings: the defaults with the server's `aura` config over them.
+*
+* @param {object} server the server's `aura` config, or undefined
+*/
+function auraSettings(server) {
+	return Object.assign({}, DEFAULTS, server && typeof server === "object" ? server : {});
+}
+/**
+* The tier a character wears: 99, 150, 185 or 'fourth', or null for none.
+*
+* @param {number} level base level
+* @param {number} job job id
+* @param {object} settings from auraSettings
+* @return {number|string|null}
+*/
+function auraTier(level, job, settings) {
+	if (!(level >= settings.defaultLv)) return null;
+	if (isFourthJob(job) && level >= settings.fourthLv) return "fourth";
+	if (level >= settings.lv160) return 185;
+	if (level >= settings.lv150) return 150;
+	if (settings.upperJob && isTranscendentSecond(job)) return 185;
+	return 99;
+}
+/**
+* A 0-255 RGB list as the colour the aura effects take, or null for none or
+* one that is not three numbers. Black (or near it) cannot be drawn by adding
+* light, so it is marked `dark`, and the effects darken instead.
+*
+* @param {Array} rgb [r, g, b], 0-255
+* @return {{r: number, g: number, b: number, dark: boolean}|null}
+*/
+function auraColor(rgb) {
+	if (!Array.isArray(rgb) || rgb.length !== 3 || !rgb.every((c) => typeof c === "number" && Number.isFinite(c))) return null;
+	const [r, g, b] = rgb.map((c) => Math.min(255, Math.max(0, c)) / 255);
+	return {
+		r,
+		g,
+		b,
+		dark: r + g + b < .15
+	};
+}
+/**
+* The colour a tier is drawn in: the server's for that tier, else its `color`
+* for all, else the tier's own. Null for the 99 aura with nothing set, which
+* keeps its own blue.
+*
+* @param {number|string} tier from auraTier
+* @param {object} settings from auraSettings
+*/
+function tierColor(tier, settings) {
+	return auraColor(settings.colors && typeof settings.colors === "object" ? settings.colors[tier] : void 0) || auraColor(settings.color) || auraColor(TIER_COLORS[tier]);
+}
+var TIER_EFFECTS, ALL_TIER_EFFECTS, TIER_COLORS, NAMED_COLORS, DEFAULTS;
+var init_AuraTiers = __esmMin((() => {
+	TIER_EFFECTS = {
+		99: {
+			full: [
+				200,
+				201,
+				202
+			],
+			simple: [202]
+		},
+		150: {
+			full: [978, 979],
+			simple: [979]
+		},
+		185: {
+			full: [1226, 1227],
+			simple: [1227]
+		},
+		fourth: {
+			full: [2275, 2276],
+			simple: [2276]
+		}
+	};
+	ALL_TIER_EFFECTS = [...new Set(Object.values(TIER_EFFECTS).flatMap((t) => t.full))];
+	TIER_COLORS = {
+		150: [
+			90,
+			140,
+			255
+		],
+		160: [
+			255,
+			220,
+			70
+		],
+		185: [
+			255,
+			80,
+			150
+		],
+		fourth: [
+			255,
+			155,
+			0
+		]
+	};
+	NAMED_COLORS = {
+		red: [
+			255,
+			40,
+			40
+		],
+		ultramarine: [
+			40,
+			70,
+			255
+		],
+		cyan: [
+			0,
+			225,
+			255
+		],
+		lime: [
+			140,
+			255,
+			40
+		],
+		violet: [
+			160,
+			60,
+			255
+		],
+		lilac: [
+			215,
+			150,
+			255
+		],
+		sun_orange: [
+			255,
+			140,
+			0
+		],
+		deep_pink: [
+			255,
+			30,
+			140
+		],
+		black: [
+			0,
+			0,
+			0
+		],
+		white: [
+			255,
+			255,
+			255
+		]
+	};
+	DEFAULTS = {
+		defaultLv: 99,
+		lv150: 150,
+		lv160: 160,
+		fourthLv: 250,
+		upperJob: true
+	};
+}));
+//#endregion
+//#region src/DB/Effects/LevelAuraEffects.js
+/**
+* One part of the high-level aura: 'bubbles' for a main effect, 'rings' for a
+* _SUB one.
+*/
+function maxPart(part, rgb) {
+	return {
+		type: "FUNC",
+		attachedEntity: true,
+		func: function(Params) {
+			this.add(new MaxLevelAura(Params.Init.ownerEntity.position, part, Params.Init.auraColor || auraColor(rgb), Params.Inst.startTick), Params);
+		}
+	};
+}
+/** The level-99 aura's three parts (EF_LEVEL99, _2 and _3), in one colour. */
+function classic(rgb) {
+	const color = (Params) => Params.Init.auraColor || auraColor(rgb);
+	return [
+		{
+			type: "FUNC",
+			attachedEntity: true,
+			func: function(Params) {
+				this.add(new SwirlingAura(Params.Init.ownerEntity.position, "ring_blue.tga", Params.Inst.startTick, void 0, color(Params)), Params);
+			}
+		},
+		{
+			type: "FUNC",
+			attachedEntity: true,
+			func: function(Params) {
+				this.add(new GroundAura(Params.Init.ownerEntity.position, 100, 15, "pikapika2.bmp", Params.Inst.startTick, color(Params)), Params);
+			}
+		},
+		{
+			type: "FUNC",
+			attachedEntity: true,
+			func: function(Params) {
+				this.add(new Level99Bubble(Params.Init.ownerEntity.position, "whitelight.tga", Params.Inst.startTick, 1, color(Params)), Params);
+			}
+		}
+	];
+}
+var COLOR_ORDER, table;
+var init_LevelAuraEffects = __esmMin((() => {
+	init_MaxLevelAura();
+	init_SwirlingAura();
+	init_GroundAura();
+	init_Level99Bubble();
+	init_AuraTiers();
+	COLOR_ORDER = [
+		"red",
+		"ultramarine",
+		"cyan",
+		"lime",
+		"violet",
+		"lilac",
+		"sun_orange",
+		"deep_pink",
+		"black",
+		"white"
+	];
+	table = {
+		881: [maxPart("bubbles", TIER_COLORS[150]), maxPart("rings", TIER_COLORS[150])],
+		978: [maxPart("bubbles", TIER_COLORS[150])],
+		979: [maxPart("rings", TIER_COLORS[150])],
+		1022: [maxPart("bubbles", TIER_COLORS[160])],
+		1023: [maxPart("rings", TIER_COLORS[160])],
+		1226: [maxPart("bubbles", TIER_COLORS[185])],
+		1227: [maxPart("rings", TIER_COLORS[185])],
+		2275: [maxPart("bubbles", TIER_COLORS.fourth)],
+		2276: [maxPart("rings", TIER_COLORS.fourth)]
+	};
+	COLOR_ORDER.forEach((name, i) => {
+		table[1164 + i] = classic(NAMED_COLORS[name]);
+		table[1174 + i] = [maxPart("bubbles", NAMED_COLORS[name]), maxPart("rings", NAMED_COLORS[name])];
+	});
 }));
 //#endregion
 //#region src/Renderer/Effects/Tiles.vs?raw
@@ -267664,6 +268568,7 @@ var init_EffectTable = __esmMin((() => {
 	init_SwirlingAura();
 	init_GroundAura();
 	init_Level99Bubble();
+	init_LevelAuraEffects();
 	init_Songs();
 	init_SoundManager();
 	init_Events();
@@ -270857,14 +271762,14 @@ var init_EffectTable = __esmMin((() => {
 			type: "FUNC",
 			attachedEntity: true,
 			func: function(Params) {
-				this.add(new SwirlingAura(Params.Init.ownerEntity.position, "ring_blue.tga", Params.Inst.startTick), Params);
+				this.add(new SwirlingAura(Params.Init.ownerEntity.position, "ring_blue.tga", Params.Inst.startTick, void 0, Params.Init.auraColor), Params);
 			}
 		}],
 		201: [{
 			type: "FUNC",
 			attachedEntity: true,
 			func: function(Params) {
-				this.add(new GroundAura(Params.Init.ownerEntity.position, 100, 15, "pikapika2.bmp", Params.Inst.startTick), Params);
+				this.add(new GroundAura(Params.Init.ownerEntity.position, 100, 15, "pikapika2.bmp", Params.Inst.startTick, Params.Init.auraColor), Params);
 			}
 		}],
 		202: [{
@@ -270874,7 +271779,7 @@ var init_EffectTable = __esmMin((() => {
 				let flag1 = 1;
 				if (typeof Params.effect.flag1 !== "undefined") flag1 = Params.effect.flag1;
 				else if (Params.Inst && typeof Params.Inst.flag1 !== "undefined") flag1 = Params.Inst.flag1;
-				this.add(new Level99Bubble(Params.Init.ownerEntity.position, "whitelight.tga", Params.Inst.startTick, flag1), Params);
+				this.add(new Level99Bubble(Params.Init.ownerEntity.position, "whitelight.tga", Params.Inst.startTick, flag1, Params.Init.auraColor), Params);
 			}
 		}],
 		203: [
@@ -276743,10 +277648,26 @@ var init_EffectTable = __esmMin((() => {
 			min: "sky_emperor/ske_all_in_the_sky/min_ske_all_in_the_sky",
 			wav: "effect/sky_emperor/ske_all_in_the_sky"
 		}],
-		ef_ske_enchanting_sky: [{
-			wav: "effect/sky_emperor/ske_enchanting_sky",
-			attachedEntity: true
-		}],
+		ef_ske_enchanting_sky: [
+			{
+				wav: "effect/sky_emperor/ske_enchanting_sky",
+				attachedEntity: true
+			},
+			{
+				type: "STR",
+				file: "sky_emperor/ske_enchanting_sky/ske_enchanting_sky_00",
+				texturePath: "sky_emperor/ske_enchanting_sky/",
+				min: "sky_emperor/ske_enchanting_sky/min_ske_enchanting_sky_00",
+				attachedEntity: true
+			},
+			{
+				type: "STR",
+				file: "sky_emperor/ske_enchanting_sky/ske_enchanting_sky_01",
+				texturePath: "sky_emperor/ske_enchanting_sky/",
+				min: "sky_emperor/ske_enchanting_sky/min_ske_enchanting_sky_01",
+				attachedEntity: true
+			}
+		],
 		ef_ske_sky_sun: [{
 			type: "STR",
 			file: "sky_emperor/ske_sky_sun/sky_sun/sky_sun",
@@ -279075,10 +279996,26 @@ var init_EffectTable = __esmMin((() => {
 			min: "shinkiro_shiranui/ss_hitouakumu/hitouakumu/min_hitouakumu",
 			wav: "effect/shinkiro_shiranui/ss_hitouakumu"
 		}],
-		ef_ss_ankokuryuuakumu: [{
-			wav: "effect/shinkiro_shiranui/ss_ankokuryuuakumu",
-			attachedEntity: true
-		}],
+		ef_ss_ankokuryuuakumu: [
+			{
+				wav: "effect/shinkiro_shiranui/ss_ankokuryuuakumu",
+				attachedEntity: true
+			},
+			{
+				type: "STR",
+				file: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/ankokuryuuakumu_00",
+				texturePath: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/",
+				min: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/min_ankokuryuuakumu_00",
+				attachedEntity: true
+			},
+			{
+				type: "STR",
+				file: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/ankokuryuuakumu_01",
+				texturePath: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/",
+				min: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/min_ankokuryuuakumu_01",
+				attachedEntity: true
+			}
+		],
 		ef_ss_four_charm: [{
 			type: "STR",
 			file: "shinkiro_shiranui/ss_four_charm/four_charm_ice/four_charm_ice",
@@ -283981,6 +284918,19 @@ var init_EffectTable = __esmMin((() => {
 			texturePath: "night_watch/nw_mission_bombard/mission_bombard/",
 			min: "night_watch/nw_mission_bombard/mission_bombard/min_mission_bombard_hit"
 		}],
+		ef_nw_hasty_fire_in_the_hole: [{
+			type: "STR",
+			file: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/hasty_fire_in_the_hole_5x5",
+			texturePath: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/",
+			min: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/min_hasty_fire_in_the_hole_5x5",
+			wav: "effect/night_watch/nw_hasty_fire_in_the_hole_0"
+		}, {
+			type: "STR",
+			file: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/hasty_fire_in_the_hole_5x5",
+			texturePath: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/",
+			min: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/min_hasty_fire_in_the_hole_5x5",
+			renderBeforeEntities: true
+		}],
 		ef_nw_wild_shot: [{
 			type: "STR",
 			file: "night_watch/nw_wild_shot/wild_shot/wild_shot",
@@ -285067,7 +286017,8 @@ var init_EffectTable = __esmMin((() => {
 			file: "help_angel/help_angel_bottom/help_angel_bottom",
 			texturePath: "help_angel/help_angel_bottom/",
 			renderBeforeEntities: true
-		}]
+		}],
+		...table
 	};
 }));
 //#endregion
@@ -307487,10 +308438,10 @@ var init_DBManager = __esmMin((() => {
 					loadPetInfo(DB.LUA_PATH + "datainfo/petinfo.lub", null, function() {
 						tryLoadLuaAliases(loadPetEvolution, getSystemAliases("System/PetEvolutionCln.lub"), null, onLoad());
 					});
-				});
+				}, true);
 				else loadLuaTableWithCustom([DB.LUA_PATH + "datainfo/npcidentity.lub", DB.LUA_PATH + "datainfo/jobname.lub"], "JobNameTable", "monster", function(json) {
 					Object.assign(MonsterTable_default, json);
-				}, onLoad());
+				}, onLoad(), null, true);
 				loadLuaTable([DB.LUA_PATH + "datainfo/enumvar.lub", DB.LUA_PATH + "datainfo/addrandomoptionnametable.lub"], "NameTable_VAR", function(json) {
 					Object.assign(ItemRandomOptionTable_default, json);
 				}, onLoad());
@@ -315481,55 +316432,56 @@ var init_EntityAnimations = __esmMin((() => {
 function init$2() {
 	this.aura = new Aura(this);
 }
-var _auraSettings, normalEffects, simpleEffects, Aura;
+var Aura;
 var init_EntityAura = __esmMin((() => {
-	init_EffectConst();
 	init_Map();
 	init_Configs();
-	_auraSettings = { defaultLv: 99 };
-	normalEffects = [
-		EffectConst_default.EF_LEVEL99,
-		EffectConst_default.EF_LEVEL99_2,
-		EffectConst_default.EF_LEVEL99_3
-	];
-	simpleEffects = [EffectConst_default.EF_LEVEL99_3];
+	init_AuraTiers();
 	Aura = class {
 		constructor(entity) {
 			this.isLoaded = false;
 			this.entity = entity;
 			this.lastAuraState = 0;
+			this.loadedKey = null;
 		}
 		/**
 		* Show aura
 		*/
 		load(effectManager) {
 			const server = Configs.getServer();
-			/** @type {TAuraSettings} - merge server aura config with default settings */
-			const settings = server != null ? Object.assign({}, _auraSettings, server.aura) : Object.assign({}, _auraSettings);
-			if (Map_default.aura > 0 && this.entity.clevel >= settings.defaultLv) {
-				if (this.entity.isVisible()) {
-					if (this.lastAuraState !== Map_default.aura && this.isLoaded) this.remove(effectManager);
-					if (!this.isLoaded) {
-						const effects = Map_default.aura < 2 ? simpleEffects : normalEffects;
-						for (let effectIndex = 0; effectIndex < effects.length; effectIndex++) effectManager.spam({
-							ownerAID: this.entity.GID,
-							position: this.entity.position,
-							effectId: effects[effectIndex]
-						});
-						this.isLoaded = true;
-						this.lastAuraState = Map_default.aura;
-					}
-				} else this.remove(effectManager);
-			} else if (this.isLoaded) {
-				this.remove(effectManager);
+			/** @type {TAuraSettings} - server aura config over the defaults */
+			const settings = auraSettings(server != null ? server.aura : void 0);
+			const job = this.entity._job !== void 0 ? this.entity._job : this.entity.job;
+			const tier = Map_default.aura > 0 ? auraTier(this.entity.clevel, job, settings) : null;
+			if (tier === null || !this.entity.isVisible()) {
+				if (this.isLoaded) this.remove(effectManager);
 				this.lastAuraState = Map_default.aura;
+				return;
 			}
+			const color = tier === 99 && !settings.color && !(settings.colors && settings.colors[99]) ? null : tierColor(tier, settings);
+			const key = `${tier}:${Map_default.aura}:${color ? [
+				color.r,
+				color.g,
+				color.b
+			].join(",") : ""}`;
+			if (this.isLoaded && this.loadedKey === key) return;
+			if (this.isLoaded) this.remove(effectManager);
+			const effects = Map_default.aura < 2 ? TIER_EFFECTS[tier].simple : TIER_EFFECTS[tier].full;
+			for (let i = 0; i < effects.length; i++) effectManager.spam({
+				ownerAID: this.entity.GID,
+				position: this.entity.position,
+				effectId: effects[i],
+				auraColor: color || void 0
+			});
+			this.isLoaded = true;
+			this.loadedKey = key;
+			this.lastAuraState = Map_default.aura;
 		}
 		/**
 		* Hide aura
 		*/
 		remove(effectManager) {
-			effectManager.remove(null, this.entity.GID, normalEffects);
+			effectManager.remove(null, this.entity.GID, ALL_TIER_EFFECTS);
 			this.free();
 		}
 		/**
@@ -315537,6 +316489,7 @@ var init_EntityAura = __esmMin((() => {
 		*/
 		free() {
 			this.isLoaded = false;
+			this.loadedKey = null;
 		}
 	};
 }));
@@ -317080,6 +318033,7 @@ var init_Scrollbar = __esmMin((() => {
 	init_DBManager();
 	init_Client();
 	init_UIScale();
+	init_WheelSteps();
 	ScrollBar = class ScrollBar {
 		/**
 		* @var {boolean} does the scrollbar completely loaded ?
@@ -317377,8 +318331,11 @@ var init_Scrollbar = __esmMin((() => {
 			element.addEventListener("wheel", (e) => {
 				const h = element.clientHeight;
 				if (element.scrollHeight <= h) return;
-				const delta = e.deltaY > 0 ? 1 : -1;
-				element.scrollTop += delta * 20;
+				if (e.defaultPrevented) {
+					e.stopPropagation();
+					return;
+				}
+				element.scrollTop += WheelSteps_default.steps(e, element) * 20;
 				updateThumb();
 				e.preventDefault();
 				e.stopPropagation();
@@ -318019,6 +318976,16 @@ var init_GUIComponent = __esmMin((() => {
 				}
 			});
 		}
+		/**
+		* Tell the window's mouse guard the pointer has left.
+		*
+		* Hiding is display:none, and a browser fires no mouseleave for an element
+		* that disappears under the pointer. A STOP-mode window hidden while hovered
+		* kept the map from taking clicks until it was shown and left again.
+		*/
+		_releaseMouse() {
+			(this.__mouseStopBlock || this._host).dispatchEvent(new Event("mouseleave"));
+		}
 		_setupMouseMode() {
 			const element = this.__mouseStopBlock || this._host;
 			if (this.mouseMode === GUIComponent.MouseMode.STOP) {
@@ -318315,13 +319282,17 @@ var init_GUIComponent = __esmMin((() => {
 				},
 				hide() {
 					host.style.display = "none";
+					component._releaseMouse();
 					return proxy;
 				},
 				toggle() {
 					if (host.style.display === "none") {
 						host.style.display = "";
 						component._fixPositionOverflow();
-					} else host.style.display = "none";
+					} else {
+						host.style.display = "none";
+						component._releaseMouse();
+					}
 					return proxy;
 				},
 				parent() {
@@ -322164,6 +323135,45 @@ var init_Vending$1 = __esmMin((() => {
 	Vending_default$1 = ":host {\r\n	width: 100%;\r\n	height: 100%;\r\n	top: 0;\r\n	left: 0;\r\n}\r\n\r\n#vending {\r\n	position: absolute;\r\n	width: 100%;\r\n	height: 100%;\r\n}\r\n#vending .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n	text-shadow: 1px 1px white;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#vending .titlebar .text {\r\n	position: relative;\r\n	top: 2px;\r\n	left: 15px;\r\n	white-space: nowrap;\r\n}\r\n#vending .footer {\r\n	width: 100%;\r\n	height: 27px;\r\n	background-repeat: repeat-x;\r\n	background-color: transparent;\r\n	position: relative;\r\n	border-radius: 0px 0px 3px 3px;\r\n}\r\n#vending .resize {\r\n	position: absolute;\r\n	right: 1px;\r\n	bottom: 1px;\r\n	width: 13px;\r\n	height: 13px;\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n#vending .btn {\r\n	width: 42px;\r\n	height: 20px;\r\n	border: none;\r\n	margin: 0;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#vending .selectall {\r\n	vertical-align: 2px;\r\n	width: 10px;\r\n	height: 10px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#vending .ask_quantity {\r\n	padding-top: 7px;\r\n	padding-left: 20px;\r\n}\r\n\r\n#vending .nstore {\r\n	position: absolute;\r\n	top: 24px;\r\n	border: none;\r\n	padding-left: 2px;\r\n	outline: none;\r\n}\r\n#vending .limit {\r\n	position: absolute;\r\n	top: 8px;\r\n	border: none;\r\n	padding-left: 5px;\r\n	outline: none;\r\n}\r\n#vending input.shopname {\r\n	position: absolute;\r\n	left: 55px;\r\n	width: 310px;\r\n	border: none;\r\n	background-color: #e9e9e9;\r\n	padding-left: 2px;\r\n	outline: none;\r\n}\r\n#vending input.shopname {\r\n	top: 22px;\r\n}\r\n#vending input.limitZeny {\r\n	top: 6px;\r\n}\r\n#vending input.limitZeny {\r\n	position: absolute;\r\n	left: 120px;\r\n	width: 100px;\r\n	border: none;\r\n	background-color: #e9e9e9;\r\n	padding-left: 2px;\r\n	outline: none;\r\n}\r\n\r\n#vending .content .item-container {\r\n	width: 32px;\r\n	height: 32px;\r\n	display: block;\r\n	float: left;\r\n	clear: both;\r\n}\r\n#vending .content .damaged {\r\n	background-color: red;\r\n	background-blend-mode: luminosity;\r\n}\r\n#vending .container {\r\n	padding-left: 16px;\r\n	border-right: 1px solid #ccc;\r\n	background: white;\r\n	background-repeat: repeat-y;\r\n	padding-right: 2px;\r\n	padding-top: 5px;\r\n	padding-bottom: 5px;\r\n}\r\n#vending .container .overlay {\r\n	position: absolute;\r\n	display: none;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 15px;\r\n	line-height: 15px;\r\n	border-radius: 3px;\r\n	padding: 4px;\r\n	background: rgba(0, 0, 0, 0.7);\r\n	color: white;\r\n	text-shadow: 1px 1px black;\r\n}\r\n#vending .content {\r\n	overflow-y: auto;\r\n	width: 100%;\r\n	height: 100%;\r\n	min-height: 65px;\r\n	background-color: transparent;\r\n	background-repeat: repeat-y;\r\n}\r\n#vending .content .add_shop {\r\n	margin-top: 10px;\r\n}\r\n#vending .content .item {\r\n	display: block;\r\n	position: relative;\r\n	height: 28px;\r\n	padding-top: 4px;\r\n}\r\n#vending .content .item.selected {\r\n	background-color: #346ae180;\r\n}\r\n\r\n#vending .content.available {\r\n	width: 100%;\r\n	height: 100%;\r\n	min-height: 65px;\r\n	background-color: transparent;\r\n	background-repeat: repeat;\r\n}\r\n#vending .content.available .item {\r\n	display: block;\r\n	float: left;\r\n	width: 28px;\r\n	position: relative;\r\n	height: 28px;\r\n	padding-top: 4px;\r\n}\r\n#vending .content.available .item.selected {\r\n	background-color: transparent;\r\n}\r\n\r\n#vending .content .item .icon {\r\n	position: absolute;\r\n	top: 6px;\r\n	left: 4px;\r\n	width: 24px;\r\n	height: 24px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#vending .content .item .amount {\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	top: 18px;\r\n	left: 18px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n}\r\n#vending .content .item .amount_ {\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	top: 13px;\r\n	left: 200px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n}\r\n#vending .content .item .name {\r\n	position: absolute;\r\n	top: 13px;\r\n	left: 32px;\r\n	width: 115px;\r\n	white-space: nowrap;\r\n}\r\n#vending .content .item .price {\r\n	position: absolute;\r\n	top: 13px;\r\n	left: 260px;\r\n	white-space: nowrap;\r\n	text-align: right;\r\n}\r\n#vending .content .item .unity {\r\n	position: absolute;\r\n	top: 13px;\r\n	right: 2px;\r\n	width: 10px;\r\n}\r\n\r\n#vending .footer .total,\r\n#vending .footer .totalP,\r\n#vending .footer .cashuser {\r\n	padding-left: 10px;\r\n	padding-top: 8px;\r\n}\r\n#vending .footer .extend {\r\n	position: absolute;\r\n	right: 0px;\r\n	bottom: 1px;\r\n	width: 13px;\r\n	height: 13px;\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n#vending .InputWindow {\r\n	width: 280px;\r\n	position: absolute;\r\n	z-index: 50;\r\n}\r\n#vending .OutputWindow {\r\n	width: 400px;\r\n	position: absolute;\r\n	z-index: 50;\r\n}\r\n#vending .btn.buy,\r\n#vending .btn.sell {\r\n	position: absolute;\r\n	top: 4px;\r\n	right: 62px;\r\n}\r\n#vending .zeny {\r\n	position: absolute;\r\n	top: 8px;\r\n	left: 230px;\r\n}\r\n#vending .btn.cancel {\r\n	position: absolute;\r\n	top: 4px;\r\n	right: 15px;\r\n}\r\n#vending .zenyLabel,\r\n#vending .zenySpan,\r\n#vending .weightLabel,\r\n#vending .weightSpan {\r\n	position: absolute;\r\n	top: 10px;\r\n}\r\n#vending .zenyLabel {\r\n	left: 5px;\r\n}\r\n#vending .zenySpan {\r\n	left: 40px;\r\n}\r\n#vending .weightLabel {\r\n	left: 215px;\r\n}\r\n#vending .weightSpan {\r\n	left: 260px;\r\n}\r\n";
 }));
 //#endregion
+//#region src/UI/ItemDoubleClick.js
+/**
+* Call `handler(item, event)` when an item matching `selector` inside
+* `container` is double-clicked.
+*
+* @param {HTMLElement} container the list
+* @param {string} selector the items, e.g. '.item'
+* @param {function(HTMLElement, MouseEvent)} handler
+* @param {object} [options]
+* @param {number} [options.gap] milliseconds between the two clicks
+* @param {function(): number} [options.now] the clock, for tests
+* @return {function} removes the listener
+*/
+function onItemDoubleClick(container, selector, handler, options = {}) {
+	const gap = options.gap ?? 500;
+	const now = options.now ?? (() => performance.now());
+	let last = null;
+	const onClick = (event) => {
+		if (event.button !== 0) return;
+		const item = event.target.closest && event.target.closest(selector);
+		if (!item || !container.contains(item)) {
+			last = null;
+			return;
+		}
+		const key = item.getAttribute("data-index");
+		const time = now();
+		if (last && last.key === key && time - last.time <= gap) {
+			last = null;
+			handler(item, event);
+		} else last = {
+			key,
+			time
+		};
+	};
+	container.addEventListener("click", onClick);
+	return () => container.removeEventListener("click", onClick);
+}
+var init_ItemDoubleClick = __esmMin((() => {}));
+//#endregion
 //#region src/UI/Components/Vending/Vending.js
 function escapeHtml(text) {
 	const div = document.createElement("div");
@@ -322338,12 +323348,7 @@ function onItemFocus$1() {
 	this.classList.add("selected");
 }
 function onScroll$4(event) {
-	let delta;
-	if (event.wheelDelta) {
-		delta = event.wheelDelta / 120;
-		if (window.opera) delta = -delta;
-	} else if (event.detail) delta = -event.detail;
-	this.scrollTop = Math.floor(this.scrollTop / 32) * 32 - delta * 32;
+	WheelSteps_default.scrollRows(event, this, 32);
 	event.preventDefault();
 }
 function onDragStart$1(event) {
@@ -322432,6 +323437,8 @@ var init_Vending = __esmMin((() => {
 	init_Renderer();
 	init_Inventory();
 	init_BasicInfo();
+	init_ItemDoubleClick();
+	init_WheelSteps();
 	Vending = new GUIComponent("Vending", Vending_default$1);
 	Vending.render = () => Vending_default$2;
 	Vending.isOpen = false;
@@ -322495,10 +323502,7 @@ var init_Vending = __esmMin((() => {
 			content.addEventListener("mouseout", (e) => {
 				if (e.target.closest(".item")) onItemOut$9();
 			});
-			content.addEventListener("dblclick", (e) => {
-				const item = e.target.closest(".item");
-				if (item) onItemSelected$1.call(item);
-			});
+			onItemDoubleClick(content, ".item", (item) => onItemSelected$1.call(item));
 			content.addEventListener("mousedown", (e) => {
 				const item = e.target.closest(".item");
 				if (item) onItemFocus$1.call(item);
@@ -322800,13 +323804,7 @@ function onDrop$4(event) {
 * Block the scroll to move 32px at each move
 */
 function onScroll$3(event) {
-	let delta;
-	if (event.wheelDelta) {
-		delta = event.wheelDelta / 120;
-		if (window.opera) delta = -delta;
-	} else if (event.detail) delta = -event.detail;
-	else if (event.deltaY) delta = -event.deltaY / 100;
-	event.currentTarget.scrollTop = Math.floor(event.currentTarget.scrollTop / 32) * 32 - delta * 32;
+	WheelSteps_default.scrollRows(event, event.currentTarget, 32);
 	event.stopImmediatePropagation();
 	event.preventDefault();
 }
@@ -322887,6 +323885,8 @@ var init_VendingShop = __esmMin((() => {
 	init_VendingShop$2();
 	init_VendingShop$1();
 	init_VendingReport();
+	init_ItemDoubleClick();
+	init_WheelSteps();
 	VendingShop = new GUIComponent("VendingShop", VendingShop_default$1);
 	VendingShop.render = () => VendingShop_default$2;
 	/**
@@ -322943,10 +323943,7 @@ var init_VendingShop = __esmMin((() => {
 				const itemEl = e.target.closest(".item");
 				if (itemEl) onItemInfo$10(e, itemEl);
 			});
-			content.addEventListener("dblclick", (e) => {
-				const itemEl = e.target.closest(".item");
-				if (itemEl) onItemUsed(e, itemEl);
-			});
+			onItemDoubleClick(content, ".item", (itemEl, e) => onItemUsed(e, itemEl));
 		}
 		this.draggable(".titlebar");
 		this._host.style.display = "none";
@@ -323211,10 +324208,9 @@ function onScrollWheel(event) {
 	event.preventDefault();
 	event.stopImmediatePropagation();
 	const ROW_HEIGHT = 24;
-	let delta = 0;
-	if (event.wheelDelta) delta = event.wheelDelta > 0 ? 1 : -1;
-	else if (event.deltaY) delta = event.deltaY < 0 ? 1 : -1;
-	let target = this.scrollTop - delta * ROW_HEIGHT;
+	const steps = WheelSteps_default.steps(event, this);
+	if (!steps) return;
+	let target = this.scrollTop + steps * ROW_HEIGHT;
 	const maxScroll = this.scrollHeight - this.clientHeight;
 	target = Math.max(0, Math.min(target, maxScroll));
 	target = Math.round(target / ROW_HEIGHT) * ROW_HEIGHT;
@@ -323295,6 +324291,7 @@ var init_VendingReport = __esmMin((() => {
 	init_Elements();
 	init_VendingReport$2();
 	init_VendingReport$1();
+	init_WheelSteps();
 	VendingReport = new GUIComponent("VendingReport", VendingReport_default$1);
 	VendingReportTable = {
 		list: [],
@@ -329301,6 +330298,7 @@ function onParameterChange$1(pkt) {
 			WinStatsController.getUI().update("aspd", amount);
 			break;
 		case StatusProperty_default.JOBLEVEL:
+			SessionStorage_default.Entity.joblevel = amount;
 			BasicInfoController.getUI().update("jlvl", amount);
 			Controller$4.getUI().onLevelUp();
 			break;
@@ -331360,15 +332358,32 @@ function onEntityViewChange(pkt) {
 				else entity.job = pkt.value;
 				if (entity === SessionStorage_default.Entity) {
 					if (PacketVerManager_default.value >= 20200520) {
-						BasicInfoController.getUI().remove();
+						const previous = BasicInfoController.getUI();
+						previous.remove();
 						BasicInfoController.selectUIVersionWithJob(DB.getJobClass(pkt.value));
-						BasicInfoController.getUI().prepare();
-						BasicInfoController.getUI().update("blvl", SessionStorage_default.Entity.clevel);
-						BasicInfoController.getUI().update("jlvl", SessionStorage_default.Entity.joblevel);
-						BasicInfoController.getUI().update("zeny", SessionStorage_default.Entity.money);
-						BasicInfoController.getUI().update("name", SessionStorage_default.Entity.display.name);
-						BasicInfoController.getUI().update("bexp", BasicInfoController.getUI().base_exp, BasicInfoController.getUI().base_exp_next);
-						BasicInfoController.getUI().append();
+						const ui = BasicInfoController.getUI();
+						if (ui !== previous) {
+							ui.base_exp = previous.base_exp;
+							ui.base_exp_next = previous.base_exp_next;
+							ui.job_exp = previous.job_exp;
+							ui.job_exp_next = previous.job_exp_next;
+						}
+						ui.prepare();
+						ui.update("blvl", SessionStorage_default.Entity.clevel);
+						ui.update("jlvl", SessionStorage_default.Entity.joblevel);
+						ui.update("zeny", SessionStorage_default.Entity.money);
+						ui.update("name", SessionStorage_default.Entity.display.name);
+						ui.update("bexp", ui.base_exp, ui.base_exp_next);
+						if (ui.job_exp_next > -1) ui.update("jexp", ui.job_exp, ui.job_exp_next);
+						const life = SessionStorage_default.Entity.life;
+						if (life.hp > -1 && life.hp_max > -1) ui.update("hp", life.hp, life.hp_max);
+						if (life.sp > -1 && life.sp_max > -1) ui.update("sp", life.sp, life.sp_max);
+						if (life.ap > -1 && life.ap_max > -1) ui.update("ap", life.ap, life.ap_max);
+						if (SessionStorage_default.Entity.max_weight) {
+							ui.weight_max = SessionStorage_default.Entity.max_weight;
+							ui.update("weight", SessionStorage_default.Entity.weight, ui.weight_max);
+						}
+						ui.append();
 					}
 					BasicInfoController.getUI().update("job", pkt.value);
 				}
@@ -333464,13 +334479,8 @@ function stopPropagation$2(event) {
 * Update scroll by block (32px)
 */
 function onScroll$2(event) {
-	let delta;
-	if (event.wheelDelta) {
-		delta = event.wheelDelta / 120;
-		if (window.opera) delta = -delta;
-	} else if (event.detail) delta = -event.detail;
-	this.scrollTop = Math.floor(this.scrollTop / 32) * 32 - delta * 32;
-	return false;
+	WheelSteps_default.scrollRows(event, this, 32);
+	event.preventDefault();
 }
 /**
 * Mouse over item, display name and informations
@@ -333506,6 +334516,7 @@ var init_ConvertItems = __esmMin((() => {
 	init_Elements();
 	init_ConvertItems$2();
 	init_ConvertItems$1();
+	init_WheelSteps();
 	_preferences$6 = Preferences.get("ConvertItems", {
 		x: 200,
 		y: 500,
@@ -333839,13 +334850,8 @@ function stopPropagation$1(event) {
 * Update scroll by block (32px)
 */
 function onScroll$1(event) {
-	let delta;
-	if (event.wheelDelta) {
-		delta = event.wheelDelta / 120;
-		if (window.opera) delta = -delta;
-	} else if (event.detail) delta = -event.detail;
-	this.scrollTop = Math.floor(this.scrollTop / 32) * 32 - delta * 32;
-	return false;
+	WheelSteps_default.scrollRows(event, this, 32);
+	event.preventDefault();
 }
 /**
 * Mouse over item, display name and informations
@@ -333881,6 +334887,7 @@ var init_ItemListWindowSelection = __esmMin((() => {
 	init_Elements();
 	init_ItemListWindowSelection$2();
 	init_ItemListWindowSelection$1();
+	init_WheelSteps();
 	_preferences$5 = Preferences.get("ItemListWindowSelection", {
 		x: 200,
 		y: 500,
@@ -338155,11 +339162,7 @@ function onItemFocus() {
 * Update scroll by block (32px)
 */
 function onScroll(event) {
-	let delta;
-	if (event.deltaY) delta = event.deltaY > 0 ? -1 : 1;
-	else if (event.wheelDelta) delta = event.wheelDelta / 120;
-	else if (event.detail) delta = -event.detail;
-	this.scrollTop = Math.floor(this.scrollTop / 32) * 32 - delta * 32;
+	WheelSteps_default.scrollRows(event, this, 32);
 	event.preventDefault();
 }
 /**
@@ -338226,6 +339229,8 @@ var init_NpcStore = __esmMin((() => {
 	init_InventoryItemTransfer();
 	init_NpcStore$2();
 	init_NpcStore$1();
+	init_ItemDoubleClick();
+	init_WheelSteps();
 	NpcStore = new GUIComponent("NpcStore", NpcStore_default$1);
 	NpcStore.render = () => NpcStore_default$2;
 	/**
@@ -338331,10 +339336,7 @@ var init_NpcStore = __esmMin((() => {
 					onItemInfo.call(icon, e);
 				}
 			});
-			content.addEventListener("dblclick", (e) => {
-				const item = e.target.closest(".item");
-				if (item) onItemSelected.call(item);
-			});
+			onItemDoubleClick(content, ".item", (item) => onItemSelected.call(item));
 			content.addEventListener("mousedown", (e) => {
 				const item = e.target.closest(".item");
 				if (item) onItemFocus.call(item);
@@ -343548,7 +344550,7 @@ var init_CharSelectV4$2 = __esmMin((() => {
 //#region src/UI/Components/CharSelect/CharSelectV4/CharSelectV4.css?raw
 var CharSelectV4_default$1;
 var init_CharSelectV4$1 = __esmMin((() => {
-	CharSelectV4_default$1 = ":host {\r\n	top: 0;\r\n	left: 0;\r\n	min-width: 100%;\r\n	min-height: 100%;\r\n}\r\n\r\n#CharSelectV4 {\r\n	position: absolute;\r\n	min-width: 100%;\r\n	min-height: 100%;\r\n	top: 0;\r\n	left: 0;\r\n	display: flex;\r\n	justify-content: center;\r\n	align-items: center;\r\n	flex-direction: column;\r\n}\r\n\r\n#CharSelectV4 .char_select_container {\r\n	position: absolute;\r\n	display: flex;\r\n	flex-direction: row;\r\n	background-color: rgba(0, 0, 0, 0.1);\r\n	border-radius: 5px;\r\n	padding-top: 20px;\r\n	padding-left: 5px;\r\n}\r\n\r\n/** Box **/\r\n#CharSelectV4 .char_list {\r\n	flex: 1;\r\n	max-width: 800px;\r\n	min-width: 157px;\r\n	height: 595px;\r\n	max-height: 80vh;\r\n	display: flex;\r\n	flex-direction: row;\r\n	flex-wrap: wrap;\r\n	overflow-y: auto;\r\n}\r\n\r\n#CharSelectV4 .box_select {\r\n	position: absolute;\r\n	width: 157px;\r\n	height: 159px;\r\n	top: 40px;\r\n	margin-left: -5px;\r\n}\r\n#CharSelectV4 .char_canvas {\r\n	width: 157px;\r\n	height: 195px;\r\n	position: relative;\r\n	z-index: 10;\r\n}\r\n#CharSelectV4 .char_canvas .name {\r\n	position: absolute;\r\n	bottom: 17px;\r\n	width: 100%;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #15154a;\r\n}\r\n\r\n#CharSelectV4 .char_canvas .job_icon {\r\n	position: absolute;\r\n	top: 15px;\r\n	right: 12px;\r\n	width: 25px;\r\n	height: 25px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n/** Slot info **/\r\n#CharSelectV4 .slotinfo {\r\n	position: absolute;\r\n	top: 195px;\r\n	right: 10px;\r\n	height: 20px;\r\n	display: block;\r\n	border: 1px solid #c6cee7;\r\n	border-radius: 4px;\r\n	padding-left: 10px;\r\n	padding-right: 10px;\r\n}\r\n#CharSelectV4 .slotinfo .number {\r\n	color: #58709e;\r\n	font-weight: bold;\r\n	margin-right: 10px;\r\n}\r\n#CharSelectV4 .slotinfo .content {\r\n	color: #555;\r\n	top: 6px;\r\n	right: 8px;\r\n}\r\n\r\n/** Page info **/\r\n#CharSelectV4 .pageinfo {\r\n	position: absolute;\r\n	left: 275px;\r\n	top: 185px;\r\n	font-weight: bold;\r\n	color: #646464;\r\n}\r\n#CharSelectV4 .pageinfo .current {\r\n	color: #fe3b7d;\r\n}\r\n\r\n/** Characters infos **/\r\n#CharSelectV4 .charinfo {\r\n	height: 585px;\r\n	max-height: 80vh;\r\n	width: 185px;\r\n	background-repeat: no-repeat;\r\n	margin-top: 10px;\r\n	margin-left: 10px;\r\n	position: relative;\r\n}\r\n#CharSelectV4 .charinfo div {\r\n	position: absolute;\r\n	width: 90px;\r\n	height: 13px;\r\n}\r\n#CharSelectV4 .charinfo .name {\r\n	left: 52px;\r\n	top: 2px;\r\n	white-space: nowrap;\r\n}\r\n#CharSelectV4 .charinfo .job {\r\n	left: 60px;\r\n	top: 105px;\r\n}\r\n#CharSelectV4 .charinfo .lvl {\r\n	left: 60px;\r\n	top: 123px;\r\n}\r\n#CharSelectV4 .charinfo .exp {\r\n	left: 60px;\r\n	top: 140px;\r\n}\r\n#CharSelectV4 .charinfo .hp {\r\n	left: 60px;\r\n	top: 157px;\r\n}\r\n#CharSelectV4 .charinfo .sp {\r\n	left: 60px;\r\n	top: 174px;\r\n}\r\n#CharSelectV4 .charinfo .map {\r\n	left: 60px;\r\n	top: 89px;\r\n	white-space: nowrap;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n}\r\n#CharSelectV4 .charinfo .str {\r\n	left: 60px;\r\n	top: 191px;\r\n}\r\n#CharSelectV4 .charinfo .agi {\r\n	left: 60px;\r\n	top: 208px;\r\n}\r\n#CharSelectV4 .charinfo .vit {\r\n	left: 60px;\r\n	top: 225px;\r\n}\r\n#CharSelectV4 .charinfo .int {\r\n	left: 60px;\r\n	top: 242px;\r\n}\r\n#CharSelectV4 .charinfo .dex {\r\n	left: 60px;\r\n	top: 259px;\r\n}\r\n#CharSelectV4 .charinfo .luk {\r\n	left: 60px;\r\n	top: 276px;\r\n}\r\n\r\n/** Buttons **/\r\n#CharSelectV4 .btn.delete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.canceldelete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.finaldelete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.delete,\r\n#CharSelectV4 .btn.canceldelete,\r\n#CharSelectV4 .btn.finaldelete {\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: 0;\r\n	text-align: center;\r\n	line-height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.ok {\r\n	position: absolute;\r\n	width: 165px;\r\n	height: 110px;\r\n	color: white;\r\n	padding-top: 20px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: 0;\r\n	text-align: center;\r\n}\r\n\r\n#CharSelectV4 .btn.ok:hover {\r\n	text-shadow: #000 1px 1px;\r\n}\r\n\r\n#CharSelectV4 .ok,\r\n#CharSelectV4 .make {\r\n	right: 15px;\r\n	top: 380px;\r\n}\r\n#CharSelectV4 .cancel {\r\n	position: absolute;\r\n	top: 5px;\r\n	right: 5px;\r\n	width: 17px;\r\n	height: 18px;\r\n}\r\n#CharSelectV4 .delete {\r\n	right: 33px;\r\n	top: 300px;\r\n}\r\n\r\n#CharSelectV4 .canceldelete {\r\n	right: 33px;\r\n	top: 300px;\r\n}\r\n\r\n#CharSelectV4 .finaldelete {\r\n	right: 33px;\r\n	top: 330px;\r\n}\r\n\r\n#CharSelectV4 .timedelete {\r\n	position: relative;\r\n	height: 20px;\r\n	width: 100px;\r\n	top: -150px;\r\n	left: 55px;\r\n}\r\n\r\n#CharSelectV4 .hidden {\r\n	display: none;\r\n}\r\n";
+	CharSelectV4_default$1 = ":host {\r\n	top: 0;\r\n	left: 0;\r\n	min-width: 100%;\r\n	min-height: 100%;\r\n}\r\n\r\n#CharSelectV4 {\r\n	position: absolute;\r\n	min-width: 100%;\r\n	min-height: 100%;\r\n	top: 0;\r\n	left: 0;\r\n	display: flex;\r\n	justify-content: center;\r\n	align-items: center;\r\n	flex-direction: column;\r\n}\r\n\r\n#CharSelectV4 .char_select_container {\r\n	position: absolute;\r\n	display: flex;\r\n	flex-direction: row;\r\n	background-color: rgba(0, 0, 0, 0.1);\r\n	border-radius: 5px;\r\n	padding-top: 20px;\r\n	padding-left: 5px;\r\n}\r\n\r\n/** Box **/\r\n#CharSelectV4 .char_list {\r\n	flex: 1;\r\n	max-width: 800px;\r\n	min-width: 157px;\r\n	height: 595px;\r\n	max-height: 80vh;\r\n	display: flex;\r\n	flex-direction: row;\r\n	flex-wrap: wrap;\r\n	overflow-y: auto;\r\n}\r\n\r\n#CharSelectV4 .box_select {\r\n	position: absolute;\r\n	width: 157px;\r\n	height: 159px;\r\n	top: 40px;\r\n	margin-left: -5px;\r\n}\r\n#CharSelectV4 .char_canvas {\r\n	width: 157px;\r\n	height: 195px;\r\n	position: relative;\r\n	z-index: 10;\r\n}\r\n#CharSelectV4 .char_canvas .name {\r\n	position: absolute;\r\n	bottom: 17px;\r\n	width: 100%;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #15154a;\r\n}\r\n\r\n#CharSelectV4 .char_canvas .job_icon {\r\n	position: absolute;\r\n	top: 15px;\r\n	right: 12px;\r\n	width: 25px;\r\n	height: 25px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n/** Slot info **/\r\n#CharSelectV4 .slotinfo {\r\n	position: absolute;\r\n	top: 195px;\r\n	right: 10px;\r\n	height: 20px;\r\n	display: block;\r\n	border: 1px solid #c6cee7;\r\n	border-radius: 4px;\r\n	padding-left: 10px;\r\n	padding-right: 10px;\r\n}\r\n#CharSelectV4 .slotinfo .number {\r\n	color: #58709e;\r\n	font-weight: bold;\r\n	margin-right: 10px;\r\n}\r\n#CharSelectV4 .slotinfo .content {\r\n	color: #555;\r\n	top: 6px;\r\n	right: 8px;\r\n}\r\n\r\n/** Page info **/\r\n#CharSelectV4 .pageinfo {\r\n	position: absolute;\r\n	left: 275px;\r\n	top: 185px;\r\n	font-weight: bold;\r\n	color: #646464;\r\n}\r\n#CharSelectV4 .pageinfo .current {\r\n	color: #fe3b7d;\r\n}\r\n\r\n/** Characters infos **/\r\n#CharSelectV4 .charinfo {\r\n	height: 585px;\r\n	max-height: 80vh;\r\n	width: 185px;\r\n	background-repeat: no-repeat;\r\n	margin-top: 10px;\r\n	margin-left: 10px;\r\n	position: relative;\r\n}\r\n#CharSelectV4 .charinfo div {\r\n	position: absolute;\r\n	width: 90px;\r\n	height: 13px;\r\n}\r\n#CharSelectV4 .charinfo .name {\r\n	left: 52px;\r\n	top: 2px;\r\n	white-space: nowrap;\r\n}\r\n#CharSelectV4 .charinfo .job {\r\n	left: 60px;\r\n	top: 105px;\r\n}\r\n#CharSelectV4 .charinfo .lvl {\r\n	left: 60px;\r\n	top: 123px;\r\n}\r\n#CharSelectV4 .charinfo .exp {\r\n	left: 60px;\r\n	top: 140px;\r\n}\r\n#CharSelectV4 .charinfo .hp {\r\n	left: 60px;\r\n	top: 157px;\r\n}\r\n#CharSelectV4 .charinfo .sp {\r\n	left: 60px;\r\n	top: 174px;\r\n}\r\n#CharSelectV4 .charinfo .map {\r\n	left: 60px;\r\n	top: 89px;\r\n	white-space: nowrap;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n}\r\n#CharSelectV4 .charinfo .str {\r\n	left: 60px;\r\n	top: 191px;\r\n}\r\n#CharSelectV4 .charinfo .agi {\r\n	left: 60px;\r\n	top: 208px;\r\n}\r\n#CharSelectV4 .charinfo .vit {\r\n	left: 60px;\r\n	top: 225px;\r\n}\r\n#CharSelectV4 .charinfo .int {\r\n	left: 60px;\r\n	top: 242px;\r\n}\r\n#CharSelectV4 .charinfo .dex {\r\n	left: 60px;\r\n	top: 259px;\r\n}\r\n#CharSelectV4 .charinfo .luk {\r\n	left: 60px;\r\n	top: 276px;\r\n}\r\n\r\n/** Buttons **/\r\n#CharSelectV4 .btn.delete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.canceldelete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.finaldelete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.delete,\r\n#CharSelectV4 .btn.canceldelete,\r\n#CharSelectV4 .btn.finaldelete {\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: 0;\r\n	text-align: center;\r\n	line-height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.ok {\r\n	position: absolute;\r\n	width: 165px;\r\n	height: 110px;\r\n	color: white;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: 0;\r\n	text-align: center;\r\n}\r\n\r\n/* The label sits on the middle of the Poring, not at its crown. Centred on\r\n   its own: the button's display is set inline when it is shown. */\r\n#CharSelectV4 .btn.ok ui-text {\r\n	position: absolute;\r\n	left: 0;\r\n	right: 0;\r\n	top: 50%;\r\n	transform: translateY(-50%);\r\n}\r\n\r\n#CharSelectV4 .btn.ok:hover {\r\n	text-shadow: #000 1px 1px;\r\n}\r\n\r\n#CharSelectV4 .ok,\r\n#CharSelectV4 .make {\r\n	right: 15px;\r\n	top: 380px;\r\n}\r\n#CharSelectV4 .cancel {\r\n	position: absolute;\r\n	top: 5px;\r\n	right: 5px;\r\n	width: 17px;\r\n	height: 18px;\r\n}\r\n#CharSelectV4 .delete {\r\n	right: 33px;\r\n	top: 300px;\r\n}\r\n\r\n#CharSelectV4 .canceldelete {\r\n	right: 33px;\r\n	top: 300px;\r\n}\r\n\r\n#CharSelectV4 .finaldelete {\r\n	right: 33px;\r\n	top: 330px;\r\n}\r\n\r\n#CharSelectV4 .timedelete {\r\n	position: relative;\r\n	height: 20px;\r\n	width: 100px;\r\n	top: -150px;\r\n	left: 55px;\r\n}\r\n\r\n#CharSelectV4 .hidden {\r\n	display: none;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/CharSelect/CharSelectV4/CharSelectV4.js
@@ -352118,6 +353120,13 @@ async function onFileLoaded(data, error, input) {
 	let i, count, j, size;
 	let gl, frames, texture, layers, palette;
 	let precision;
+	if (error && ClothPalette_default.canBuild(input.filename)) {
+		ClothPalette_default.build(input.filename, function(built) {
+			if (built) onFileLoaded(built.buffer, null, input);
+			else MemoryManager.set(input.filename, data, error);
+		});
+		return;
+	}
 	if (data && !error) switch (input.filename.substr(-3)) {
 		case "bmp":
 			Texture.load(data, function() {
@@ -352198,6 +353207,7 @@ var init_Client = __esmMin((() => {
 	init_Configs();
 	init_Thread();
 	init_MemoryManager();
+	init_ClothPalette();
 	init_PacketVerManager();
 	init_Texture();
 	init_WebGL();
