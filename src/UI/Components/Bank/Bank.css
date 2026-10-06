@@ -284,9 +284,23 @@
 }
 
 /* The rest are too small for theirs, which stays the hover tooltip. */
-#Bank .plus.no-texture::before { content: '\25B2'; font-size: 6px; }
-#Bank .minus.no-texture::before { content: '\25BC'; font-size: 6px; }
-#Bank .max.no-texture::before { content: 'Max'; }
-#Bank .tenmil.no-texture::before { content: '+10M'; }
-#Bank .onemil.no-texture::before { content: '+1M'; }
-#Bank .hundtsn.no-texture::before { content: '+100K'; }
+#Bank .plus.no-texture::before {
+	content: '\25B2';
+	font-size: 6px;
+}
+#Bank .minus.no-texture::before {
+	content: '\25BC';
+	font-size: 6px;
+}
+#Bank .max.no-texture::before {
+	content: 'Max';
+}
+#Bank .tenmil.no-texture::before {
+	content: '+10M';
+}
+#Bank .onemil.no-texture::before {
+	content: '+1M';
+}
+#Bank .hundtsn.no-texture::before {
+	content: '+100K';
+}

@@ -403,7 +403,17 @@ class PostProcess {
 			if (typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext) {
 				depthTexture = gl.createTexture();
 				gl.bindTexture(gl.TEXTURE_2D, depthTexture);
-				gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+				gl.texImage2D(
+					gl.TEXTURE_2D,
+					0,
+					gl.DEPTH_COMPONENT24,
+					width,
+					height,
+					0,
+					gl.DEPTH_COMPONENT,
+					gl.UNSIGNED_INT,
+					null
+				);
 				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
 				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
 				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
