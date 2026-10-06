@@ -45,9 +45,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 }) : target, mod));
 //#endregion
 //#region src/Core/Configs.js
-var _global$2, _server$2, Configs;
+var _global$1, _server$2, Configs;
 var init_Configs = __esmMin((() => {
-	_global$2 = {};
+	_global$1 = {};
 	_server$2 = {};
 	Configs = class {
 		/**
@@ -59,7 +59,7 @@ var init_Configs = __esmMin((() => {
 		*/
 		static get = (key, defaultValue) => {
 			if (key in _server$2) return _server$2[key];
-			if (key in _global$2) return _global$2[key];
+			if (key in _global$1) return _global$1[key];
 			return defaultValue;
 		};
 		/**
@@ -69,7 +69,7 @@ var init_Configs = __esmMin((() => {
 		* @param {?} data
 		*/
 		static set = (key, value) => {
-			_global$2[key] = value;
+			_global$1[key] = value;
 		};
 		/**
 		* Store the server informations
@@ -10806,14 +10806,14 @@ function BinaryReader(mixed, start, end) {
 	this.offset = 0;
 	this.length = (end || buffer.byteLength) - (start || 0);
 }
-var _global$1, bf_byteBuff, bf_wba, bf_wia;
+var _global, bf_byteBuff, bf_wba, bf_wia;
 var init_BinaryReader = __esmMin((() => {
 	init_Struct();
 	init_CodepageManager();
-	_global$1 = typeof self !== "undefined" ? self : window;
-	_global$1.SEEK_CUR = 1;
-	_global$1.SEEK_SET = 2;
-	_global$1.SEEK_END = 3;
+	_global = typeof self !== "undefined" ? self : window;
+	_global.SEEK_CUR = 1;
+	_global.SEEK_SET = 2;
+	_global.SEEK_END = 3;
 	/**
 	* Read Int8 from buffer
 	* @return int8
@@ -11323,149 +11323,6 @@ var init_MemoryManager = __esmMin((() => {
 		static search = (regex) => {
 			return Object.keys(_memory).filter((k) => k.match(regex));
 		};
-	};
-}));
-//#endregion
-//#region src/Core/ClothPalette.js
-/**
-* Whether a palette that failed to load is one this can build.
-*
-* @param {string} filename
-* @return {boolean}
-*/
-function canBuild(filename) {
-	return filename.startsWith(BODY_DIR) && NAME.test(filename.slice(16));
-}
-/**
-* Build the palette for a missing body palette file.
-*
-* @param {string} filename - the missing .pal
-* @param {function} callback - called with a 1024-byte Uint8Array, or null
-*/
-function build(filename, callback) {
-	const match = filename.match(NAME);
-	const colour = parseInt(match[2], 10);
-	const names = SIBLINGS.filter((n) => n !== colour).map((n) => match[1] + n + (match[3] || "") + ".pal");
-	const found = new Array(names.length).fill(null);
-	let pending = names.length;
-	names.forEach((name, i) => {
-		Thread.send("GET_FILE", {
-			filename: name,
-			args: null
-		}, (data, error) => {
-			if (!error && data && data.byteLength >= 1024) found[i] = new Uint8Array(data, 0, 1024);
-			if (--pending === 0) callback(recolour(found.filter(Boolean), colour));
-		});
-	});
-}
-/**
-* @param {Uint8Array[]} palettes - the job's own, first one first
-* @param {number} colour
-* @return {Uint8Array|null}
-*/
-function recolour(palettes, colour) {
-	if (palettes.length < 2) return null;
-	const base = palettes[0];
-	const cloth = [];
-	for (let i = FIRST_CLOTH_INDEX; i < 256; ++i) {
-		const o = i * 4;
-		if (palettes.some((p) => p[o] !== base[o] || p[o + 1] !== base[o + 1] || p[o + 2] !== base[o + 2])) cloth.push(i);
-	}
-	if (!cloth.length) return null;
-	const [hue, saturation, lightness] = LOOKS[((colour - 4) % LOOKS.length + LOOKS.length) % LOOKS.length];
-	const out = new Uint8Array(base);
-	for (const i of cloth) {
-		const o = i * 4;
-		const hls = rgbToHls(base[o] / 255, base[o + 1] / 255, base[o + 2] / 255);
-		const rgb = hlsToRgb(hue === null ? hls[0] : hue / 360, Math.min(1, hls[1] * lightness), hue === null ? 0 : Math.min(1, Math.max(hls[2], .35) * saturation));
-		out[o] = Math.round(rgb[0] * 255);
-		out[o + 1] = Math.round(rgb[1] * 255);
-		out[o + 2] = Math.round(rgb[2] * 255);
-	}
-	return out;
-}
-/** Python's colorsys.rgb_to_hls: all values 0..1. */
-function rgbToHls(r, g, b) {
-	const max = Math.max(r, g, b);
-	const min = Math.min(r, g, b);
-	const l = (max + min) / 2;
-	if (max === min) return [
-		0,
-		l,
-		0
-	];
-	const d = max - min;
-	const s = l <= .5 ? d / (max + min) : d / (2 - max - min);
-	const rc = (max - r) / d;
-	const gc = (max - g) / d;
-	const bc = (max - b) / d;
-	let h = r === max ? bc - gc : g === max ? 2 + rc - bc : 4 + gc - rc;
-	h = (h / 6 % 1 + 1) % 1;
-	return [
-		h,
-		l,
-		s
-	];
-}
-/** Python's colorsys.hls_to_rgb: all values 0..1. */
-function hlsToRgb(h, l, s) {
-	if (s === 0) return [
-		l,
-		l,
-		l
-	];
-	const m2 = l <= .5 ? l * (1 + s) : l + s - l * s;
-	const m1 = 2 * l - m2;
-	return [
-		channel(m1, m2, h + 1 / 3),
-		channel(m1, m2, h),
-		channel(m1, m2, h - 1 / 3)
-	];
-}
-function channel(m1, m2, h) {
-	h = (h % 1 + 1) % 1;
-	if (h < 1 / 6) return m1 + (m2 - m1) * h * 6;
-	if (h < .5) return m2;
-	if (h < 2 / 3) return m1 + (m2 - m1) * (2 / 3 - h) * 6;
-	return m1;
-}
-var BODY_DIR, NAME, SIBLINGS, LOOKS, FIRST_CLOTH_INDEX, ClothPalette_default;
-var init_ClothPalette = __esmMin((() => {
-	init_Thread();
-	BODY_DIR = "data/palette/¸ö/";
-	NAME = /^(.*_)(\d+)(_1)?\.pal$/i;
-	SIBLINGS = [
-		1,
-		2,
-		3
-	];
-	LOOKS = [
-		[
-			105,
-			.85,
-			1.05
-		],
-		[
-			28,
-			.6,
-			.65
-		],
-		[
-			null,
-			0,
-			.45
-		],
-		[
-			275,
-			.75,
-			.95
-		]
-	];
-	FIRST_CLOTH_INDEX = 2;
-	ClothPalette_default = {
-		canBuild,
-		build,
-		recolour
 	};
 }));
 //#endregion
@@ -78023,7 +77880,7 @@ var init_preload_helper = __esmMin((() => {
 //#region src/UI/Common.css?raw
 var Common_default$1;
 var init_Common$1 = __esmMin((() => {
-	Common_default$1 = "/* Avoid input focus border */\r\n:focus {\r\n	outline: none;\r\n}\r\n::-moz-focus-inner {\r\n	border: 0;\r\n}\r\n\r\n* {\r\n	-moz-user-select: none;\r\n}\r\n\r\nhtml,\r\nbody {\r\n	touch-action: manipulation;\r\n	margin: 0;\r\n}\r\n\r\n/* Reference for the viewport sized body below */\r\nhtml {\r\n	height: 100%;\r\n}\r\n\r\n/* Prevent mobile browser auto-zoom on input focus and double-tap */\r\n:host {\r\n	touch-action: manipulation;\r\n}\r\n\r\ninput,\r\ntextarea,\r\nselect {\r\n	touch-action: manipulation;\r\n}\r\n\r\ncanvas {\r\n	touch-action: none;\r\n}\r\n\r\n/* Page zoomed in (browser pinch / input focus zoom, tracked by Core/Mobile.js): hand the\r\n   touches back to the browser so the user can pan and pinch the page back out */\r\nbody.ro-page-zoomed canvas {\r\n	touch-action: auto;\r\n}\r\n\r\nbody {\r\n	background-color: black;\r\n	font-size: 12px;\r\n	/* 'SCDream' first: wins only when the server actually serves the client font (loaded via\r\n	   @font-face in DBManager). When it isn't served it resolves to Arial — the official client's\r\n	   window UI font for intl/america servicetype (Ragexe draws window text with CreateFontA on the\r\n	   Gulim/Arial face table). Liberation Sans / Arimo provide Arial metrics on Linux. */\r\n	font-family: 'SCDream', Arial, 'Liberation Sans', Arimo, sans-serif;\r\n	/* Normalize any resolved font's x-height to Arial's (sxHeight 1062 / unitsPerEm 2048 = 0.5186),\r\n	   so text keeps Arial's apparent size on every OS/font. It's inherited and crosses Shadow DOM\r\n	   hosts, so it also rescales elements that use a non-Arial face; those opt out with\r\n	   `font-size-adjust: none` on the selector declaring that font (Intro, GrfViewer, JoystickUI\r\n	   header). SCDream, when a server serves it, is normalized to Arial on purpose.\r\n	   Progressive enhancement: engines that don't support the numeric form ignore it\r\n	   and render at the resolved font's native x-height (no JS fallback needed — Arial\r\n	   / Liberation Sans already carry correct metrics, only annex fonts degrade). */\r\n	font-size-adjust: 0.5186;\r\n	overflow: hidden;\r\n	-webkit-user-select: none;\r\n	user-select: none;\r\n	min-width: 100vw;\r\n	min-height: 100vh;\r\n	letter-spacing: 0;\r\n	line-height: 1.2;\r\n}\r\n\r\n/* Apps owning the 3D viewport (set by Renderer.init) are a fixed viewport: size the body to it and\r\n   contain it. `overflow: hidden` alone doesn't clip the body box — it propagates to the viewport —\r\n   so content positioned off screen (entity overlays, signboards, dragged windows) still extends the\r\n   document's scrollable area, and the browser scrolls, or on mobile lays the page out at its\r\n   fallback width and scales it down, to reveal it. Paint containment clips the box for real. */\r\nbody.ro-viewport {\r\n	width: 100%;\r\n	height: 100%;\r\n	min-width: 0;\r\n	min-height: 0;\r\n	contain: paint;\r\n}\r\n\r\n.title {\r\n	font-size: 12px;\r\n}\r\n\r\nbutton,\r\nui-button {\r\n	padding: 0;\r\n}\r\n\r\nui-button {\r\n	display: inline-block;\r\n}\r\n\r\n.ui-btn {\r\n	-webkit-appearance: none;\r\n	appearance: none;\r\n	display: inline-flex;\r\n	align-items: center;\r\n	justify-content: center;\r\n\r\n	height: 20px;\r\n	min-width: 52px;\r\n	padding: 0 10px;\r\n\r\n	font-size: 12px;\r\n	line-height: 1;\r\n	color: #3f3f3f;\r\n	text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.85);\r\n\r\n	border-radius: 4px;\r\n	border: 1px solid;\r\n\r\n	/* 3D border: top right bottom left */\r\n	border-color: #cfcfcf #a9a9a9 #5f5f5f #bdbdbd;\r\n\r\n	/* glossy + subtle depth */\r\n	background: linear-gradient(to bottom, #ffffff 0%, #f2f2f2 35%, #dcdcdc 55%, #f9f9f9 100%);\r\n\r\n	box-shadow:\r\n		inset 0 1px 0 rgba(255, 255, 255, 0.95),\r\n		/* top highlight */ inset 0 -1px 0 rgba(0, 0, 0, 0.12),\r\n		/* bottom inner edge */ 0 1px 0 rgba(0, 0, 0, 0.12); /* outer bottom shadow */\r\n\r\n	cursor: pointer;\r\n}\r\n\r\n/* Hover: hơi xanh nhẹ giống button Reset */\r\n.ui-btn:hover {\r\n	border-color: #c9d1dd #8ea2c4 #4d5f86 #b1bfd5;\r\n	background: linear-gradient(to bottom, #f7fbff 0%, #dfe8f6 35%, #c0d0ee 55%, #f0f6ff 100%);\r\n\r\n	box-shadow:\r\n		inset 0 1px 0 rgba(255, 255, 255, 0.95),\r\n		inset 0 -1px 0 rgba(0, 0, 0, 0.12),\r\n		0 1px 0 rgba(0, 0, 0, 0.12);\r\n}\r\n\r\n/* Active: giống \"ấn xuống\" */\r\n.ui-btn:active {\r\n	border-color: #9fb0c9 #6f86a6 #3b4b67 #7f96b6;\r\n\r\n	background: linear-gradient(to bottom, #cdd8eb 0%, #b7c8e5 45%, #dfe9fb 100%);\r\n\r\n	box-shadow:\r\n		inset 0 2px 3px rgba(0, 0, 0, 0.18),\r\n		inset 0 1px 0 rgba(255, 255, 255, 0.35);\r\n\r\n	transform: translateY(1px); /* cảm giác bị nhấn */\r\n}\r\n\r\n/* Disabled */\r\n.ui-btn:disabled,\r\n.ui-btn.is-disabled {\r\n	cursor: default;\r\n	color: #8f8f8f;\r\n	text-shadow: none;\r\n\r\n	border-color: #d3d3d3 #bdbdbd #9b9b9b #c9c9c9;\r\n\r\n	background: linear-gradient(to bottom, #f6f6f6 0%, #e7e7e7 55%, #fafafa 100%);\r\n\r\n	box-shadow:\r\n		inset 0 1px 0 rgba(255, 255, 255, 0.9),\r\n		inset 0 -1px 0 rgba(0, 0, 0, 0.08),\r\n		0 1px 0 rgba(0, 0, 0, 0.08);\r\n\r\n	transform: none;\r\n}\r\n\r\n/* Hide native cursor inside Shadow DOM when custom cursor is active */\r\n:host-context(.custom-cursor) * {\r\n	cursor: none !important;\r\n}\r\n\r\n/* The shadow container every component's markup sits in.\r\n\r\n   It had no size of its own, so a component asking for `height: 100%`\r\n   resolved it against `auto` and collapsed to its content -- a title bar and\r\n   nothing else, with the rest clipped by any `overflow: hidden` beneath it.\r\n   Inert where the host has no definite height, which is most components. */\r\n.ui-component-root {\r\n	height: 100%;\r\n}\r\n";
+	Common_default$1 = "/* Avoid input focus border */\r\n:focus {\r\n	outline: none;\r\n}\r\n::-moz-focus-inner {\r\n	border: 0;\r\n}\r\n\r\n* {\r\n	-moz-user-select: none;\r\n}\r\n\r\nhtml,\r\nbody {\r\n	touch-action: manipulation;\r\n	margin: 0;\r\n}\r\n\r\n/* Reference for the viewport sized body below */\r\nhtml {\r\n	height: 100%;\r\n}\r\n\r\n/* Prevent mobile browser auto-zoom on input focus and double-tap */\r\n:host {\r\n	touch-action: manipulation;\r\n}\r\n\r\ninput,\r\ntextarea,\r\nselect {\r\n	touch-action: manipulation;\r\n}\r\n\r\ncanvas {\r\n	touch-action: none;\r\n}\r\n\r\n/* Page zoomed in (browser pinch / input focus zoom, tracked by Core/Mobile.js): hand the\r\n   touches back to the browser so the user can pan and pinch the page back out */\r\nbody.ro-page-zoomed canvas {\r\n	touch-action: auto;\r\n}\r\n\r\nbody {\r\n	background-color: black;\r\n	font-size: 12px;\r\n	/* 'SCDream' first: wins only when the server actually serves the client font (loaded via\r\n	   @font-face in DBManager). When it isn't served it resolves to Arial — the official client's\r\n	   window UI font for intl/america servicetype (Ragexe draws window text with CreateFontA on the\r\n	   Gulim/Arial face table). Liberation Sans / Arimo provide Arial metrics on Linux. */\r\n	font-family: 'SCDream', Arial, 'Liberation Sans', Arimo, sans-serif;\r\n	/* Normalize any resolved font's x-height to Arial's (sxHeight 1062 / unitsPerEm 2048 = 0.5186),\r\n	   so text keeps Arial's apparent size on every OS/font. It's inherited and crosses Shadow DOM\r\n	   hosts, so it also rescales elements that use a non-Arial face; those opt out with\r\n	   `font-size-adjust: none` on the selector declaring that font (Intro, GrfViewer, JoystickUI\r\n	   header). SCDream, when a server serves it, is normalized to Arial on purpose.\r\n	   Progressive enhancement: engines that don't support the numeric form ignore it\r\n	   and render at the resolved font's native x-height (no JS fallback needed — Arial\r\n	   / Liberation Sans already carry correct metrics, only annex fonts degrade). */\r\n	font-size-adjust: 0.5186;\r\n	overflow: hidden;\r\n	-webkit-user-select: none;\r\n	user-select: none;\r\n	min-width: 100vw;\r\n	min-height: 100vh;\r\n	letter-spacing: 0;\r\n	line-height: 1.2;\r\n}\r\n\r\n/* Apps owning the 3D viewport (set by Renderer.init) are a fixed viewport: size the body to it and\r\n   contain it. `overflow: hidden` alone doesn't clip the body box — it propagates to the viewport —\r\n   so content positioned off screen (entity overlays, signboards, dragged windows) still extends the\r\n   document's scrollable area, and the browser scrolls, or on mobile lays the page out at its\r\n   fallback width and scales it down, to reveal it. Paint containment clips the box for real. */\r\nbody.ro-viewport {\r\n	width: 100%;\r\n	height: 100%;\r\n	min-width: 0;\r\n	min-height: 0;\r\n	contain: paint;\r\n}\r\n\r\n.title {\r\n	font-size: 12px;\r\n}\r\n\r\nbutton,\r\nui-button {\r\n	padding: 0;\r\n}\r\n\r\nui-button {\r\n	display: inline-block;\r\n}\r\n\r\n.ui-btn {\r\n	-webkit-appearance: none;\r\n	appearance: none;\r\n	display: inline-flex;\r\n	align-items: center;\r\n	justify-content: center;\r\n\r\n	height: 20px;\r\n	min-width: 52px;\r\n	padding: 0 10px;\r\n\r\n	font-size: 12px;\r\n	line-height: 1;\r\n	color: #3f3f3f;\r\n	text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.85);\r\n\r\n	border-radius: 4px;\r\n	border: 1px solid;\r\n\r\n	/* 3D border: top right bottom left */\r\n	border-color: #cfcfcf #a9a9a9 #5f5f5f #bdbdbd;\r\n\r\n	/* glossy + subtle depth */\r\n	background: linear-gradient(to bottom, #ffffff 0%, #f2f2f2 35%, #dcdcdc 55%, #f9f9f9 100%);\r\n\r\n	box-shadow:\r\n		inset 0 1px 0 rgba(255, 255, 255, 0.95),\r\n		/* top highlight */ inset 0 -1px 0 rgba(0, 0, 0, 0.12),\r\n		/* bottom inner edge */ 0 1px 0 rgba(0, 0, 0, 0.12); /* outer bottom shadow */\r\n\r\n	cursor: pointer;\r\n}\r\n\r\n/* Hover: hơi xanh nhẹ giống button Reset */\r\n.ui-btn:hover {\r\n	border-color: #c9d1dd #8ea2c4 #4d5f86 #b1bfd5;\r\n	background: linear-gradient(to bottom, #f7fbff 0%, #dfe8f6 35%, #c0d0ee 55%, #f0f6ff 100%);\r\n\r\n	box-shadow:\r\n		inset 0 1px 0 rgba(255, 255, 255, 0.95),\r\n		inset 0 -1px 0 rgba(0, 0, 0, 0.12),\r\n		0 1px 0 rgba(0, 0, 0, 0.12);\r\n}\r\n\r\n/* Active: giống \"ấn xuống\" */\r\n.ui-btn:active {\r\n	border-color: #9fb0c9 #6f86a6 #3b4b67 #7f96b6;\r\n\r\n	background: linear-gradient(to bottom, #cdd8eb 0%, #b7c8e5 45%, #dfe9fb 100%);\r\n\r\n	box-shadow:\r\n		inset 0 2px 3px rgba(0, 0, 0, 0.18),\r\n		inset 0 1px 0 rgba(255, 255, 255, 0.35);\r\n\r\n	transform: translateY(1px); /* cảm giác bị nhấn */\r\n}\r\n\r\n/* Disabled */\r\n.ui-btn:disabled,\r\n.ui-btn.is-disabled {\r\n	cursor: default;\r\n	color: #8f8f8f;\r\n	text-shadow: none;\r\n\r\n	border-color: #d3d3d3 #bdbdbd #9b9b9b #c9c9c9;\r\n\r\n	background: linear-gradient(to bottom, #f6f6f6 0%, #e7e7e7 55%, #fafafa 100%);\r\n\r\n	box-shadow:\r\n		inset 0 1px 0 rgba(255, 255, 255, 0.9),\r\n		inset 0 -1px 0 rgba(0, 0, 0, 0.08),\r\n		0 1px 0 rgba(0, 0, 0, 0.08);\r\n\r\n	transform: none;\r\n}\r\n\r\n/* Hide native cursor inside Shadow DOM when custom cursor is active */\r\n:host-context(.custom-cursor) * {\r\n	cursor: none !important;\r\n}\r\n";
 }));
 //#endregion
 //#region src/Controls/MouseEventHandler.js
@@ -78170,28 +78027,6 @@ var init_SessionStorage = __esmMin((() => {
 		/** @type {Player|Entity|null} The entity currently controlled by the client */
 		Entity: null,
 		AdminList: [],
-		/**
-		* Which parts of the GM look an account on AdminList gets: the GM sprite
-		* in place of its class body, the GM name style, and GM-styled chat. All
-		* on by default, as before; a plugin can turn each off (a GM who wants to
-		* look like their class). Read through showsAdmin.
-		*/
-		AdminLook: {
-			sprite: true,
-			name: true,
-			chat: true
-		},
-		/**
-		* Whether an entity gets one part of the GM look: only an admin does, and
-		* only the parts AdminLook has not turned off.
-		*
-		* @param {{isAdmin?: boolean}} entity
-		* @param {'sprite'|'name'|'chat'} part
-		* @return {boolean}
-		*/
-		showsAdmin(entity, part) {
-			return Boolean(entity?.isAdmin) && this.AdminLook?.[part] !== false;
-		},
 		underAutoCounter: false,
 		moveAction: null,
 		/**
@@ -78226,7 +78061,6 @@ var init_SessionStorage = __esmMin((() => {
 			value: 0
 		},
 		serverTick: 0,
-		serverTickSynced: false,
 		mapState: {
 			property: 0,
 			type: 0,
@@ -78556,240 +78390,6 @@ function UIClamp(el, WIDTH, HEIGHT, magnet) {
 	}
 }
 var init_ClampToViewport = __esmMin((() => {}));
-//#endregion
-//#region src/UI/UIScale.js
-/**
-* The name a component is scaled by: the window it was cloned from (every
-* WhisperBox is one), without a version suffix (InventoryV3 is Inventory).
-*/
-function scaleName(component) {
-	const name = String(component.scaleName || component.name);
-	const base = name.replace(/V\d+$/, "");
-	return Object.hasOwn(SCALABLE, base) ? base : name;
-}
-/**
-* Throw unless `name` is a scalable window.
-*/
-function checkName(name) {
-	if (typeof name !== "string" || !Object.hasOwn(SCALABLE, name)) throw new TypeError(`UIScale: "${name}" is not a scalable window`);
-}
-/**
-* A finite number, kept between MIN and MAX.
-*/
-function checkValue(value) {
-	if (typeof value !== "number" || !Number.isFinite(value)) throw new TypeError("UIScale: a scale is a finite number");
-	return Math.min(MAX, Math.max(MIN, value));
-}
-/**
-* The names of the windows that can be scaled.
-*/
-function names$1() {
-	return Object.keys(SCALABLE);
-}
-/**
-* A window's own factor (1 when none was set).
-*/
-function get$2(name) {
-	checkName(name);
-	return _scales.get(name) ?? 1;
-}
-/**
-* The global factor.
-*/
-function getGlobal() {
-	return _global;
-}
-/**
-* The factor a window is drawn at: global times its own.
-*/
-function effective(name) {
-	checkName(name);
-	return _global * (_scales.get(name) ?? 1);
-}
-/**
-* The factor a component is drawn at; 1 for a window that cannot be scaled.
-*/
-function of(component) {
-	if (!component || !component.name) return 1;
-	const name = scaleName(component);
-	return Object.hasOwn(SCALABLE, name) ? effective(name) : 1;
-}
-/**
-* The factor of the window an element is drawn in; 1 outside any window.
-*/
-function ofElement(element) {
-	const root = element?.getRootNode?.();
-	const component = root?.host ? _mounted.get(root.host) : null;
-	return component ? of(component) : 1;
-}
-/**
-* Draw a component's host at its factor. At 1 the host is left as it was.
-*/
-function apply$1(component) {
-	const host = component._host;
-	if (!host) return;
-	const scale = of(component);
-	if (scale === 1) {
-		host.style.removeProperty("scale");
-		host.style.removeProperty("transform-origin");
-	} else {
-		host.style.setProperty("scale", String(scale));
-		host.style.setProperty("transform-origin", SCALABLE[scaleName(component)]);
-	}
-}
-/**
-* Apply a change to the mounted windows it touches, keep them on screen,
-* and let them adjust (`onScale`).
-*/
-function refresh(name) {
-	_mounted.forEach((component) => {
-		if (name !== null && scaleName(component) !== name) return;
-		apply$1(component);
-		try {
-			component._fixPositionOverflow?.();
-			component.onScale?.(of(component));
-		} catch (error) {
-			console.error(`[UIScale] ${component.name} failed to adjust:`, error);
-		}
-	});
-}
-/**
-* Tell the listeners. A listener that throws is reported and the rest
-* still run.
-*/
-function emit$1(name, scale) {
-	const event = Object.freeze({
-		name,
-		scale
-	});
-	_listeners$3.slice().forEach((listener) => {
-		try {
-			listener(event);
-		} catch (error) {
-			console.error("[UIScale] a listener failed:", error);
-		}
-	});
-}
-/**
-* Set a window's own factor; 1 takes it back to the global factor.
-* Kept between 0.5 and 3. Returns the value set.
-*/
-function set$1(name, value) {
-	checkName(name);
-	const scale = checkValue(value);
-	if (scale === get$2(name)) return scale;
-	if (scale === 1) _scales.delete(name);
-	else _scales.set(name, scale);
-	refresh(name);
-	emit$1(name, scale);
-	return scale;
-}
-/**
-* Set the factor every scalable window is multiplied by. Kept between 0.5
-* and 3. Returns the value set.
-*/
-function setGlobal(value) {
-	const scale = checkValue(value);
-	if (scale === _global) return scale;
-	_global = scale;
-	refresh(null);
-	emit$1(null, scale);
-	return scale;
-}
-/**
-* Be told when a factor changes: `{ name, scale }`, with `name` null for the
-* global factor. Returns a function that stops it.
-*/
-function on$2(listener) {
-	if (typeof listener !== "function") throw new Error("UIScale.on takes a function");
-	_listeners$3.push(listener);
-	return () => {
-		const index = _listeners$3.indexOf(listener);
-		if (index > -1) _listeners$3.splice(index, 1);
-	};
-}
-/**
-* A component is going on screen (GUIComponent.append). Draws it at its
-* factor before it places itself.
-*/
-function attach$2(component) {
-	if (!component?._host) return;
-	_mounted.set(component._host, component);
-	apply$1(component);
-}
-/**
-* A component left the screen (GUIComponent.remove).
-*/
-function detach$1(component) {
-	if (component?._host) _mounted.delete(component._host);
-}
-var MIN, MAX, TOP_LEFT, TOP_RIGHT, TOP_CENTER, SCALABLE, _scales, _global, _mounted, _listeners$3, UIScale_default;
-var init_UIScale = __esmMin((() => {
-	MIN = .5;
-	MAX = 3;
-	TOP_LEFT = "0 0";
-	TOP_RIGHT = "100% 0";
-	TOP_CENTER = "50% 0";
-	SCALABLE = Object.freeze({
-		BasicInfo: TOP_LEFT,
-		ChatBox: TOP_LEFT,
-		ShortCut: TOP_LEFT,
-		ShortCuts: TOP_LEFT,
-		MiniMap: TOP_RIGHT,
-		StatusIcons: TOP_RIGHT,
-		MapName: TOP_CENTER,
-		PvPTimer: TOP_CENTER,
-		CashShopIcon: TOP_RIGHT,
-		RodexIcon: TOP_RIGHT,
-		PCGoldTimer: TOP_RIGHT,
-		Inventory: TOP_LEFT,
-		Equipment: TOP_LEFT,
-		SkillList: TOP_LEFT,
-		SkillDescription: TOP_LEFT,
-		Storage: TOP_LEFT,
-		PartyFriends: TOP_LEFT,
-		WhisperBox: TOP_LEFT,
-		NpcBox: TOP_LEFT,
-		NpcMenu: TOP_LEFT,
-		ItemInfo: TOP_LEFT,
-		ItemPreview: TOP_LEFT,
-		ItemCompare: TOP_LEFT,
-		ItemObtain: TOP_LEFT,
-		WinStats: TOP_LEFT,
-		Escape: TOP_LEFT,
-		GraphicsOption: TOP_LEFT,
-		SoundOption: TOP_LEFT,
-		InputBox: TOP_LEFT,
-		Emoticons: TOP_LEFT,
-		CardIllustration: TOP_LEFT,
-		PlayerViewEquip: TOP_LEFT,
-		WinLogin: TOP_LEFT,
-		WinList: TOP_LEFT,
-		CharSelect: TOP_LEFT,
-		CharCreate: TOP_LEFT,
-		PincodeWindow: TOP_LEFT
-	});
-	_scales = /* @__PURE__ */ new Map();
-	_global = 1;
-	_mounted = /* @__PURE__ */ new Map();
-	_listeners$3 = [];
-	UIScale_default = {
-		MIN,
-		MAX,
-		SCALABLE,
-		names: names$1,
-		get: get$2,
-		set: set$1,
-		getGlobal,
-		setGlobal,
-		effective,
-		of,
-		ofElement,
-		on: on$2,
-		attach: attach$2,
-		detach: detach$1
-	};
-}));
 //#endregion
 //#region src/Preferences/Graphics.js
 var defaultGraphicsSettings, cleanDefaults, GraphicsSettings;
@@ -79304,22 +78904,8 @@ var init_Controls = __esmMin((() => {
 		snap: false,
 		itemsnap: false,
 		attackTargetMode: 0,
-		joyCycleMode: 0,
-		joyEmoteFavorites: [],
-		joyButtonMap: null,
-		joyAimEnabled: false,
-		joyAimRing: false,
-		joyAimLine: false,
-		joyAimHideCursor: false,
-		joyRightStickMode: 0,
 		joyQuick: 0,
 		joyDeadline: .1,
-		joyDriftLX: 0,
-		joyDriftLY: 0,
-		joyDriftRX: 0,
-		joyDriftRY: 0,
-		joyStickCenter: null,
-		joyCameraSpeed: 90,
 		joyDisableVirtualMouse: false,
 		joyAutoHide: false,
 		joyReverseStick: false,
@@ -83626,7 +83212,7 @@ var init_Texture = __esmMin((() => {
 *
 * @return {object} webgl context
 */
-function getContext$3(canvas, parameters) {
+function getContext$1(canvas, parameters) {
 	let gl = null;
 	let i;
 	if (!parameters) parameters = {
@@ -83796,7 +83382,7 @@ var init_WebGL = __esmMin((() => {
 	init_Texture();
 	init_Configs();
 	WebGL_default = {
-		getContext: getContext$3,
+		getContext: getContext$1,
 		compileShader,
 		createShaderProgram,
 		detectBadWebGL,
@@ -83807,25 +83393,14 @@ var init_WebGL = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/PostProcess.js
-var _effects, _activeEffects, _external, _externalAt, _gl$4, _sceneDepth, _inPasses, _readFbo, _writeFbo, PostProcess;
+var _effects, _activeEffects, _readFbo, _writeFbo, PostProcess;
 var init_PostProcess = __esmMin((() => {
 	init_Graphics();
 	_effects = [];
 	_activeEffects = [];
-	_external = [];
-	_externalAt = -1;
-	_gl$4 = null;
-	_sceneDepth = null;
-	_inPasses = false;
 	_readFbo = null;
 	_writeFbo = null;
 	PostProcess = class PostProcess {
-		/**
-		* What the frame being drawn looks like, for passes that need more than
-		* the image: { modelView, projection, light, lights, tick, near, far }.
-		* Set by MapRenderer before render().
-		*/
-		static scene = null;
 		/**
 		* Register module in pass priority order and init
 		* @param {ShaderModule} module - Post Process Modular effect.
@@ -83836,59 +83411,8 @@ var init_PostProcess = __esmMin((() => {
 				console.error("[PostProcess] Incorrect modular Post-Process format registered - please Fix");
 				return;
 			}
-			_gl$4 = gl;
 			_effects.push(module);
 			module.init(gl);
-		}
-		/**
-		* Register the external passes here, in the order they were added.
-		* @param {WebGLRenderingContext} gl - The WebGL context.
-		*/
-		static registerExternal(gl) {
-			_gl$4 = gl;
-			_externalAt = _effects.length;
-			_external.forEach((module) => {
-				_effects.push(module);
-				module.init(gl);
-			});
-		}
-		/**
-		* Add a pass from outside the renderer -- a client plugin. Same module
-		* format as register(); it runs where registerExternal was called, and
-		* stays across map changes until removeExternal.
-		* @param {ShaderModule} module
-		*/
-		static addExternal(module) {
-			if (!module || !module.program || !module.isActive || !module.init || !module.render || !module.clean) {
-				console.error("[PostProcess] Incorrect modular Post-Process format added - please Fix");
-				return;
-			}
-			if (_external.includes(module)) return;
-			_external.push(module);
-			if (_gl$4 && _externalAt >= 0) {
-				_effects.splice(_externalAt + _external.length - 1, 0, module);
-				module.init(_gl$4);
-			}
-		}
-		/**
-		* Remove a pass added with addExternal.
-		* @param {ShaderModule} module
-		*/
-		static removeExternal(module) {
-			_external = _external.filter((m) => m !== module);
-			const index = _effects.indexOf(module);
-			if (index >= 0) {
-				_effects.splice(index, 1);
-				if (_gl$4) module.clean(_gl$4);
-			}
-		}
-		/**
-		* The scene's depth buffer as a texture, for a pass that needs distance
-		* (fog, depth of field). Null outside the passes, or on WebGL 1.
-		* @return {WebGLTexture|null}
-		*/
-		static sceneDepth() {
-			return _sceneDepth;
 		}
 		/**
 		* Prepare the pipeline for the scene rendering.
@@ -83908,10 +83432,6 @@ var init_PostProcess = __esmMin((() => {
 		static render(gl) {
 			if (_activeEffects.length === 0) return;
 			this.swapBuffers();
-			_sceneDepth = _readFbo ? _readFbo.depthTexture || null : null;
-			_inPasses = true;
-			const depthTest = gl.isEnabled(gl.DEPTH_TEST);
-			gl.disable(gl.DEPTH_TEST);
 			for (let i = 0; i < _activeEffects.length; i++) {
 				const effect = _activeEffects[i];
 				const isLast = i === _activeEffects.length - 1;
@@ -83919,9 +83439,6 @@ var init_PostProcess = __esmMin((() => {
 				effect.render(gl, _readFbo.texture, targetFbo);
 				if (!isLast) this.swapBuffers();
 			}
-			_inPasses = false;
-			_sceneDepth = null;
-			if (depthTest) gl.enable(gl.DEPTH_TEST);
 		}
 		/**
 		* Set up the FBO and viewport for the next render pass
@@ -83936,7 +83453,7 @@ var init_PostProcess = __esmMin((() => {
 				gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 				gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 			}
-			gl.clear(_inPasses ? gl.COLOR_BUFFER_BIT : gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+			gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 		}
 		/**
 		* Cleans up bindings
@@ -83979,13 +83496,11 @@ var init_PostProcess = __esmMin((() => {
 			if (_readFbo) {
 				if (gl.isTexture(_readFbo.texture)) gl.deleteTexture(_readFbo.texture);
 				if (gl.isRenderbuffer(_readFbo.rbo)) gl.deleteRenderbuffer(_readFbo.rbo);
-				if (_readFbo.depthTexture && gl.isTexture(_readFbo.depthTexture)) gl.deleteTexture(_readFbo.depthTexture);
 				if (gl.isFramebuffer(_readFbo.framebuffer)) gl.deleteFramebuffer(_readFbo.framebuffer);
 			}
 			if (_writeFbo) {
 				if (gl.isTexture(_writeFbo.texture)) gl.deleteTexture(_writeFbo.texture);
 				if (gl.isRenderbuffer(_writeFbo.rbo)) gl.deleteRenderbuffer(_writeFbo.rbo);
-				if (_writeFbo.depthTexture && gl.isTexture(_writeFbo.depthTexture)) gl.deleteTexture(_writeFbo.depthTexture);
 				if (gl.isFramebuffer(_writeFbo.framebuffer)) gl.deleteFramebuffer(_writeFbo.framebuffer);
 			}
 			_readFbo = null;
@@ -84011,17 +83526,14 @@ var init_PostProcess = __esmMin((() => {
 			_effects.forEach((module) => module.clean(gl));
 			_effects = [];
 			_activeEffects = [];
-			_externalAt = -1;
 			if (_readFbo) {
 				if (gl.isTexture(_readFbo.texture)) gl.deleteTexture(_readFbo.texture);
 				if (gl.isRenderbuffer(_readFbo.rbo)) gl.deleteRenderbuffer(_readFbo.rbo);
-				if (_readFbo.depthTexture && gl.isTexture(_readFbo.depthTexture)) gl.deleteTexture(_readFbo.depthTexture);
 				if (gl.isFramebuffer(_readFbo.framebuffer)) gl.deleteFramebuffer(_readFbo.framebuffer);
 			}
 			if (_writeFbo) {
 				if (gl.isTexture(_writeFbo.texture)) gl.deleteTexture(_writeFbo.texture);
 				if (gl.isRenderbuffer(_writeFbo.rbo)) gl.deleteRenderbuffer(_writeFbo.rbo);
-				if (_writeFbo.depthTexture && gl.isTexture(_writeFbo.depthTexture)) gl.deleteTexture(_writeFbo.depthTexture);
 				if (gl.isFramebuffer(_writeFbo.framebuffer)) gl.deleteFramebuffer(_writeFbo.framebuffer);
 			}
 			_readFbo = null;
@@ -84061,7 +83573,6 @@ var init_PostProcess = __esmMin((() => {
 				if (oldfbo) {
 					if (gl.isTexture(oldfbo.texture)) gl.deleteTexture(oldfbo.texture);
 					if (gl.isRenderbuffer(oldfbo.rbo)) gl.deleteRenderbuffer(oldfbo.rbo);
-					if (oldfbo.depthTexture && gl.isTexture(oldfbo.depthTexture)) gl.deleteTexture(oldfbo.depthTexture);
 					if (gl.isFramebuffer(oldfbo.framebuffer)) gl.deleteFramebuffer(oldfbo.framebuffer);
 				}
 				const fbo = gl.createFramebuffer();
@@ -84074,23 +83585,10 @@ var init_PostProcess = __esmMin((() => {
 				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 				gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-				let rbo = null;
-				let depthTexture = null;
-				if (typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext) {
-					depthTexture = gl.createTexture();
-					gl.bindTexture(gl.TEXTURE_2D, depthTexture);
-					gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, width, height, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-					gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, depthTexture, 0);
-				} else {
-					rbo = gl.createRenderbuffer();
-					gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
-					gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
-					gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
-				}
+				const rbo = gl.createRenderbuffer();
+				gl.bindRenderbuffer(gl.RENDERBUFFER, rbo);
+				gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
+				gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbo);
 				const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
 				if (status !== gl.FRAMEBUFFER_COMPLETE) throw new Error("WebGL::createFramebuffer() - Incomplete Framebuffer! Status: " + status);
 				gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -84100,7 +83598,6 @@ var init_PostProcess = __esmMin((() => {
 					framebuffer: fbo,
 					texture,
 					rbo,
-					depthTexture,
 					width,
 					height
 				};
@@ -84116,7 +83613,7 @@ var init_PostProcess = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/Shaders/VerticalFlip.js
-var _program$30, _buffer$22, _active$3, VerticalFlip;
+var _program$29, _buffer$21, _active$3, VerticalFlip;
 var init_VerticalFlip = __esmMin((() => {
 	init_VerticalFlip$2();
 	init_VerticalFlip$1();
@@ -84125,15 +83622,15 @@ var init_VerticalFlip = __esmMin((() => {
 	_active$3 = false;
 	VerticalFlip = class {
 		static init(gl) {
-			if (_program$30) return;
+			if (_program$29) return;
 			try {
-				_program$30 = WebGL_default.createShaderProgram(gl, VerticalFlip_default$1, VerticalFlip_default);
+				_program$29 = WebGL_default.createShaderProgram(gl, VerticalFlip_default$1, VerticalFlip_default);
 			} catch (e) {
 				console.error("Error when compiling shader VerticalFlip.", e);
 				return;
 			}
-			_buffer$22 = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$22);
+			_buffer$21 = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$21);
 			gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
 				-1,
 				-1,
@@ -84160,19 +83657,19 @@ var init_VerticalFlip = __esmMin((() => {
 		* @param {WebGLFramebuffer} outputFbo - Target
 		*/
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$22 || !_program$30 || !_active$3) return;
+			if (!_buffer$21 || !_program$29 || !_active$3) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
-			gl.useProgram(_program$30);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$22);
-			let posLoc = _program$30.attribute.aPosition;
+			gl.useProgram(_program$29);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$21);
+			let posLoc = _program$29.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
 			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 16, 0);
-			posLoc = _program$30.attribute.aTextureCoord;
+			posLoc = _program$29.attribute.aTextureCoord;
 			gl.enableVertexAttribArray(posLoc);
 			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 16, 8);
 			gl.activeTexture(gl.TEXTURE0);
 			gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-			gl.uniform1i(_program$30.uniform.uTexture, 0);
+			gl.uniform1i(_program$29.uniform.uTexture, 0);
 			gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 			PostProcess.afterRenderPass(gl);
 		}
@@ -84180,13 +83677,13 @@ var init_VerticalFlip = __esmMin((() => {
 		* @returns {WebGLProgram} Shader program
 		*/
 		static program() {
-			return _program$30;
+			return _program$29;
 		}
 		/** Resets effect state */
 		static clean(gl) {
 			_active$3 = false;
-			if (_buffer$22) gl.deleteBuffer(_buffer$22);
-			_program$30 = _buffer$22 = null;
+			if (_buffer$21) gl.deleteBuffer(_buffer$21);
+			_program$29 = _buffer$21 = null;
 		}
 		/** @returns {boolean} Whether the effect is active */
 		static isActive() {
@@ -89494,7 +88991,6 @@ var init_MonsterTable = __esmMin((() => {
 		3507: "DR_POM_SPIDER",
 		3508: "DR_EGGRING",
 		3509: "lunatic",
-		3528: "MER_POPE_CASUAL",
 		3529: "KHALITZBURG",
 		3530: "MG_M_UNDEAD_KNIGHT",
 		3531: "KNIGHT_OF_ABYSS",
@@ -89575,8 +89071,6 @@ var init_MonsterTable = __esmMin((() => {
 		3747: "e_cowraiders1",
 		3748: "e_cowraiders2",
 		3749: "e_cowraiders3",
-		3752: "ILL_ZOMBIE",
-		3755: "ILL_BLACK_MUSHROOM",
 		3787: "ARCLOUSE",
 		3788: "CRAMP",
 		3789: "escaped_letter",
@@ -89976,37 +89470,9 @@ var init_MonsterTable = __esmMin((() => {
 		10111: "4_JP_EDGA_H",
 		10112: "4_JP_BRAGOLEM_H",
 		10113: "4_EL_AQUA",
-		10114: "4_EP16_NIHIL",
-		10115: "4_EP16_SPICA",
-		10116: "4_EP16_SKIA",
-		10117: "4_EP16_PETER",
-		10118: "4_EP16_CRUX",
-		10119: "4_EP16_GRANZ",
-		10120: "4_EP16_STOLZ",
-		10121: "4_EP16_EGEO",
-		10122: "4_EP16_COOK",
-		10123: "4_EP16_MARK",
-		10124: "4_EP16_TAMARIN",
-		10125: "4_EP16_POE",
-		10126: "4_EP16_ISAAC",
-		10127: "4_EP16_HELMUT",
-		10128: "4_EP16_WOLF",
-		10129: "4_EP16_MEYER",
-		10130: "4_EP16_AGNES",
-		10131: "4_EP16_FOOD",
-		10132: "4_EP16_LOUVIERE",
-		10133: "4_EP16_MAX",
-		10134: "4_EP16_SPIEGEL",
-		10135: "4_MOONLIGHT",
-		10136: "4_MISTRESS",
-		10137: "4_DRACULA",
-		10138: "4_STORMKNIGHT",
 		10140: "4_AS_RAGGED_GOLEM",
 		10141: "4_AS_BLOODY_KNIGHT",
 		10142: "4_AS_WIND_GHOST",
-		10143: "4_F_BIJOU",
-		10144: "4_EP16_COOK2",
-		10147: "4_SCR_AT_ROBOTS",
 		10148: "4_F_RANGER",
 		10149: "4_WAG",
 		10150: "4_NPC_TRAP",
@@ -90028,12 +89494,7 @@ var init_MonsterTable = __esmMin((() => {
 		10166: "4_dr_f_02",
 		10167: "4_dr_kid_01",
 		10172: "4_cenere",
-		10173: "4_f_aruna_pop2",
 		10174: "4_jack_head",
-		10175: "4_injustice",
-		10176: "4_bloodyman",
-		10177: "4_gibbet",
-		10178: "4_dullahan",
 		10179: "4_m_lazy",
 		10180: "4_m_gony",
 		10181: "4_m_rookie",
@@ -90062,31 +89523,6 @@ var init_MonsterTable = __esmMin((() => {
 		10205: "4_elder",
 		10206: "4_lunatic",
 		10207: "4_f_novice2",
-		10210: "4_m_costell",
-		10211: "4_m_yattwarp",
-		10212: "4_m_evokascudi",
-		10213: "4_m_johnnyjames",
-		10214: "4_m_albertford",
-		10215: "4_m_seanmccurdy",
-		10217: "4_m_cactusman1",
-		10218: "4_m_cactusman2",
-		10219: "4_m_cactusman3",
-		10220: "4_m_cactuslady",
-		10222: "4_m_cactuschild",
-		10224: "4_f_bomi",
-		10225: "4_m_cactuschief",
-		10226: "4_f_cactuschild2",
-		10227: "4_f_cactuslady2",
-		10228: "4_f_cactuslady3",
-		10230: "4_m_cowraiders1",
-		10231: "4_m_cowraiders2",
-		10232: "4_m_cowraiders3",
-		10234: "4_m_poorscholar",
-		10237: "4_PURPLE_WARP",
-		10238: "4_F_NARIN",
-		10239: "4_M_URGENT_MAN",
-		10240: "4_M_KEEN_SOLDIER",
-		10241: "4_F_SLOPPY_WOMAN",
 		10242: "4_f_drkafra01",
 		10243: "4_m_drzonda01",
 		10244: "4_m_swd_reno",
@@ -90098,123 +89534,7 @@ var init_MonsterTable = __esmMin((() => {
 		10250: "4_woodbox",
 		10251: "4_m_popfesta",
 		10252: "4_bonfire",
-		10253: "clear_npc",
-		10285: "4_hen",
-		10290: "4_teddy_bear",
-		10291: "4_teddy_bear_em",
-		10292: "4_teddy_bear_w",
-		10293: "4_teddy_bear_b",
-		10294: "4_teddy_bear_b_l",
-		10299: "4_ep17_kaya",
-		10300: "4_ep17_as",
-		10301: "4_ep17_elyumina",
-		10302: "4_ep17_morning",
-		10304: "4_ep17_nihil_k",
-		10305: "4_ep17_miguel_d",
-		10313: "4_f_anes_d",
-		10315: "4_m_silvano_d",
-		10317: "4_f_cecilia_d",
-		10344: "4_ep17_master_a",
-		10345: "4_ep17_basic_b",
-		10346: "4_ep17_guard_b",
-		10347: "4_ep17_basic_b_ng",
-		10349: "4_ep17_sweety",
-		10350: "4_ep17_boy_a",
-		10351: "4_ep17_boy_b",
-		10352: "4_ep17_tamarin",
-		10353: "4_ep17_scissore",
-		10354: "4_ep17_tablet",
-		10355: "4_ep17_buckets",
-		10356: "4_ep17_cleaner",
-		10357: "4_ep17_basket",
-		10358: "4_ep17_brokenbeta",
-		10359: "4_ep17_cleaner_w",
-		10360: "4_ep17_mermaid",
-		10365: "4_4job_maggi",
-		10368: "4_4job_leticia",
-		10375: "4_vending_machine",
-		10376: "4_ep18_maram",
-		10377: "4_ep18_miriam",
-		10378: "4_ep18_suad",
-		10379: "4_ep18_imril",
-		10380: "4_ep18_merchant",
-		10381: "4_ep18_tamarin",
-		10383: "4_ep18_mark",
-		10385: "4_ep18_shulang",
-		10386: "4_ep18_bagot",
-		10387: "4_ep18_demifreya",
-		10388: "4_ep18_kamil",
-		10390: "4_ep18_wagon",
-		10392: "4_ep18_halfflower",
-		10393: "4_ep18_gw_old01",
-		10394: "4_ep18_gw_old02",
-		10395: "4_ep18_gw_middle01",
-		10396: "4_ep18_gw_middle02",
-		10397: "4_ep18_gw_man01",
-		10398: "4_ep18_gw_man02",
-		10399: "4_ep18_gw_woman01",
-		10400: "4_ep18_gw_woman02",
-		10401: "4_ep18_gw_child01",
-		10402: "4_ep18_gw_child02",
-		10428: "4_point_red",
-		10429: "4_point_blue",
-		10430: "4_point_yellow",
-		10432: "4_point_white",
-		10439: "4_exjob_chul_ho",
-		10440: "4_exjob_ki_sul",
-		10443: "1_journey_stone_f",
-		10527: "invisible",
-		20353: "dolor",
-		20355: "bellare",
-		20357: "sanare",
-		20361: "dolor",
-		20363: "venenum",
-		20365: "caput",
-		20543: "md_ed_m_science",
-		20620: "redpepper",
-		20621: "redpepper",
-		20622: "assistant",
-		20629: "beta_basic",
-		20640: "omega_cleaner",
-		20653: "pitaya_g",
-		20661: "pitaya_y",
-		20662: "pitaya_b",
-		20681: "heart_hunter_n",
-		20696: "child_admin1",
-		20698: "assistant",
-		20847: "invisible",
-		20936: "disguiser",
-		20938: "ghost_cube",
-		20939: "lude_gal",
-		20941: "grote",
-		21292: "ep18_armed_villager01",
-		21293: "ep18_armed_villager02",
-		21294: "ep18_armed_villager03",
-		21295: "ep18_ash_toad",
-		21308: "ep18_md_hearthunter_a",
-		21310: "ep18_md_guard_a",
-		21312: "ep18_md_hearthunter_r",
-		21314: "ep18_md_schulang",
-		21316: "ep18_md_schulang",
-		21321: "ep18_npc_miriam",
-		21323: "ep18_grey_goat",
-		21324: "ep18_grey_wolf_baby",
-		21394: "ILL_VITATA",
-		21395: "ILL_MAYA"
-	};
-}));
-//#endregion
-//#region src/DB/Monsters/BodyFallbackTable.js
-var BodyFallbackTable_default;
-var init_BodyFallbackTable = __esmMin((() => {
-	BodyFallbackTable_default = {
-		10149: ["4056_WUG"],
-		10175: [1257],
-		10176: [1507],
-		10177: [1503],
-		10178: [1504],
-		10205: [1377],
-		10243: [874]
+		10253: "clear_npc"
 	};
 }));
 //#endregion
@@ -157097,39 +156417,6 @@ var init_MapTable = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/DB/Map/SignboardMerge.js
-/**
-* DB/Map/SignboardMerge.js
-*
-* Organise SignBoardList.lub rows by map and cell, merging each table over the
-* ones loaded before it.
-*
-* This file is part of ROBrowser, (http://www.robrowser.com/).
-*/
-/**
-* Add signboard rows to a table keyed `[mapname][x][y]`.
-*
-* The base SignBoardList.lub is loaded first and each customSignBoardList
-* table after it, so a row on a cell that already has a sign replaces it and
-* every other sign is kept: a table only has to carry its own signs.
-*
-* @param {Array} signboardArray - rows as AddSignBoard builds them
-* @param {Object} [signboardDict] - signboards already loaded, changed in place
-* @return {Object} the table, with the rows added
-*/
-function mergeSignboards(signboardArray, signboardDict = {}) {
-	for (const signboard of signboardArray) {
-		if (!signboard.mapname) continue;
-		const { x, y } = signboard;
-		const mapname = signboard.mapname.toLowerCase();
-		if (!signboardDict[mapname]) signboardDict[mapname] = {};
-		if (!signboardDict[mapname][x]) signboardDict[mapname][x] = {};
-		signboardDict[mapname][x][y] = signboard;
-	}
-	return signboardDict;
-}
-var init_SignboardMerge = __esmMin((() => {}));
-//#endregion
 //#region src/Utils/BinaryWriter.js
 /**
 * BinaryWriter
@@ -160336,8 +159623,7 @@ var init_PacketStructure = __esmMin((() => {
 	};
 	PACKET.CZ.REQ_TRADE_BUYING_STORE.prototype.build = function() {
 		const ver = this.getPacketVersion();
-		const itemSize = PacketVerManager_default.value >= 20181121 ? 8 : 6;
-		const len = 12 + this.itemList.length * itemSize;
+		const len = 12 + this.itemList.length * 6;
 		const pkt = new BinaryWriter(len);
 		let i, count;
 		pkt.writeShort(ver[1]);
@@ -160346,8 +159632,7 @@ var init_PacketStructure = __esmMin((() => {
 		pkt.writeULong(this.UniqueID);
 		for (i = 0, count = this.itemList.length; i < count; ++i) {
 			pkt.writeUShort(this.itemList[i].index);
-			if (PacketVerManager_default.value >= 20181121) pkt.writeULong(this.itemList[i].ITID);
-			else pkt.writeUShort(this.itemList[i].ITID);
+			pkt.writeUShort(this.itemList[i].ITID);
 			pkt.writeShort(this.itemList[i].count);
 		}
 		return pkt;
@@ -160476,10 +159761,10 @@ var init_PacketStructure = __esmMin((() => {
 		return pkt;
 	};
 	PACKET.ZC.SE_PC_BUY_CASHITEM_RESULT = function PACKET_ZC_SE_PC_BUY_CASHITEM_RESULT(fp, end) {
-		this.itemId = fp.readULong();
-		this.result = fp.readUShort();
-		this.cashPoints = fp.readULong();
-		this.kafraPoints = fp.readULong();
+		this.kafraPoints = fp.readUShort();
+		this.itemId = fp.readShort();
+		this.result = fp.readShort();
+		this.cashPoints = fp.readUShort();
 	};
 	PACKET.ZC.SE_PC_BUY_CASHITEM_RESULT.size = 16;
 	PACKET.CA.SSO_LOGIN_REQa = function PACKET_CA_SSO_LOGIN_REQa() {
@@ -206640,7 +205925,7 @@ function onClose$9() {
 * Close connection with server
 * Is this needed ?
 */
-function close$1() {
+function close() {
 	let idx;
 	if (_socket) {
 		const s = _socket;
@@ -206741,7 +206026,7 @@ var init_NetworkManager = __esmMin((() => {
 			setPing,
 			connect,
 			hookPacket,
-			close: close$1,
+			close,
 			read: read$1,
 			set onDisconnect(callback) {
 				_onDisconnect = callback;
@@ -206895,8 +206180,8 @@ var init_HtmlHelper = __esmMin((() => {
 /**
 * Render background (or a black background if no image is loaded yet)
 */
-function render$17() {
-	_ctx$7.clearRect(0, 0, _canvas.width, _canvas.height);
+function render$16() {
+	_ctx$6.clearRect(0, 0, _canvas.width, _canvas.height);
 	if (_progress > -1) Background.setPercent(_progress);
 }
 /**
@@ -206907,24 +206192,24 @@ function render$17() {
 function transition(callback) {
 	const transitionDuration = Configs.get("transitionDuration") ? Configs.get("transitionDuration") : 500;
 	if (_overlayAnim) _overlayAnim.stop();
-	_overlay$1.style.opacity = "0.01";
-	document.body.appendChild(_overlay$1);
-	_overlayAnim = animateElement(_overlay$1, { opacity: 1 }, transitionDuration, () => {
+	_overlay.style.opacity = "0.01";
+	document.body.appendChild(_overlay);
+	_overlayAnim = animateElement(_overlay, { opacity: 1 }, transitionDuration, () => {
 		callback();
-		_overlayAnim = animateElement(_overlay$1, { opacity: .01 }, transitionDuration, () => {
-			if (_overlay$1.parentNode) _overlay$1.parentNode.removeChild(_overlay$1);
+		_overlayAnim = animateElement(_overlay, { opacity: .01 }, transitionDuration, () => {
+			if (_overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
 		});
 	});
 }
-var _overlay$1, _container, _canvas, _ctx$7, _progress, _overlayAnim, _loading$1, Background;
+var _overlay, _container, _canvas, _ctx$6, _progress, _overlayAnim, _loading, Background;
 var init_Background = __esmMin((() => {
 	init_DBManager();
 	init_Client();
 	init_Configs();
 	init_PacketVerManager();
 	init_HtmlHelper();
-	_overlay$1 = document.createElement("div");
-	Object.assign(_overlay$1.style, {
+	_overlay = document.createElement("div");
+	Object.assign(_overlay.style, {
 		position: "absolute",
 		top: "0",
 		left: "0",
@@ -206949,10 +206234,10 @@ var init_Background = __esmMin((() => {
 		left: "0",
 		zIndex: "2"
 	});
-	_ctx$7 = _canvas.getContext("2d");
+	_ctx$6 = _canvas.getContext("2d");
 	_progress = -1;
 	_overlayAnim = null;
-	_loading$1 = [];
+	_loading = [];
 	Background = class Background {
 		/**
 		* Initialize Background component
@@ -206963,13 +206248,13 @@ var init_Background = __esmMin((() => {
 			let i;
 			_progress = 0;
 			_canvas.style.zIndex = "1";
-			render$17();
+			render$16();
 			if (loading) {
-				_loading$1 = loading;
+				_loading = loading;
 				return;
 			}
-			_loading$1.length = 10;
-			for (i = 1; i <= 10; ++i) _loading$1[i - 1] = `loading${i < 10 ? "0" + i : i}.jpg`;
+			_loading.length = 10;
+			for (i = 1; i <= 10; ++i) _loading[i - 1] = `loading${i < 10 ? "0" + i : i}.jpg`;
 		}
 		/**
 		* Resize the background
@@ -206977,7 +206262,7 @@ var init_Background = __esmMin((() => {
 		static resize(width, height) {
 			_canvas.width = width;
 			_canvas.height = height;
-			Object.assign(_overlay$1.style, {
+			Object.assign(_overlay.style, {
 				width: width + "px",
 				height: height + "px"
 			});
@@ -206985,8 +206270,8 @@ var init_Background = __esmMin((() => {
 				width: width + "px",
 				height: height + "px"
 			});
-			_ctx$7.clearRect(0, 0, width, height);
-			render$17();
+			_ctx$6.clearRect(0, 0, width, height);
+			render$16();
 		}
 		/**
 		* Set an image as background
@@ -206999,7 +206284,7 @@ var init_Background = __esmMin((() => {
 			_progress = -1;
 			_container.innerHTML = "";
 			_container.style.backgroundImage = "none";
-			render$17();
+			render$16();
 			if (Array.isArray(filename)) {
 				let loadedCount = 0;
 				const total = filename.length;
@@ -207083,8 +206368,8 @@ var init_Background = __esmMin((() => {
 		* @param {function} callback once the loading is display (optional)
 		*/
 		static setLoading(callback) {
-			const index = Math.floor(Math.random() * _loading$1.length);
-			Background.setImage(_loading$1[index] || "loading01.jpg", () => {
+			const index = Math.floor(Math.random() * _loading.length);
+			Background.setImage(_loading[index] || "loading01.jpg", () => {
 				_canvas.style.zIndex = "999";
 				Background.setPercent(0);
 				if (callback) callback();
@@ -207121,14 +206406,14 @@ var init_Background = __esmMin((() => {
 			const height = 15;
 			const x = Math.floor((_canvas.width - width) * .5);
 			const y = Math.floor(_canvas.height * .75);
-			_ctx$7.fillStyle = "rgb(0,255,255)";
-			_ctx$7.fillRect(x, y, width, height);
-			_ctx$7.fillStyle = "rgb(140,140,140)";
-			_ctx$7.fillRect(x + 1, y + 1, 238, 13);
-			_ctx$7.fillStyle = "rgb(66,99,165)";
-			_ctx$7.fillRect(x + 2, y + 2, Math.floor(percent * 236 * .01), 11);
-			_ctx$7.fillStyle = "rgb(255,255,0)";
-			_ctx$7.fillText(percent + "%", Math.floor((_canvas.width - _ctx$7.measureText(percent + "%").width) * .5), y + 11);
+			_ctx$6.fillStyle = "rgb(0,255,255)";
+			_ctx$6.fillRect(x, y, width, height);
+			_ctx$6.fillStyle = "rgb(140,140,140)";
+			_ctx$6.fillRect(x + 1, y + 1, 238, 13);
+			_ctx$6.fillStyle = "rgb(66,99,165)";
+			_ctx$6.fillRect(x + 2, y + 2, Math.floor(percent * 236 * .01), 11);
+			_ctx$6.fillStyle = "rgb(255,255,0)";
+			_ctx$6.fillText(percent + "%", Math.floor((_canvas.width - _ctx$6.measureText(percent + "%").width) * .5), y + 11);
 		}
 	};
 }));
@@ -207354,7 +206639,7 @@ var init_Audio = __esmMin((() => {
 }));
 //#endregion
 //#region src/Audio/SoundManager.js
-function getContext$2() {
+function getContext() {
 	if (!_context) {
 		const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 		if (!AudioContextClass) return null;
@@ -207383,7 +206668,7 @@ function getContext$2() {
 */
 function getBuffer(filename) {
 	if (!(filename in _buffers)) {
-		const context = getContext$2();
+		const context = getContext();
 		const promise = new Promise((resolve) => {
 			Client.loadFile(`data/wav/${filename}`, (url) => {
 				fetch(url).then((response) => response.arrayBuffer()).then((data) => new Promise((ok, fail) => context.decodeAudioData(data, ok, fail))).then(resolve).catch((err) => {
@@ -207443,7 +206728,7 @@ var init_SoundManager = __esmMin((() => {
 		static play(filename, vol) {
 			if (typeof vol !== "number" || !isFinite(vol) || vol <= 0) vol = 1;
 			if (vol * this.volume <= 0 || !Audio_default.Sound.play) return;
-			const context = getContext$2();
+			const context = getContext();
 			if (!context) return;
 			const myGen = _playGen;
 			const myFileGen = _fileGen[filename] || 0;
@@ -207690,9 +206975,9 @@ function init$14(gl) {
 			if (enableMipmap) gl.generateMipmap(gl.TEXTURE_2D);
 		});
 	});
-	_buffer$21 = gl.createBuffer();
-	_program$29 = WebGL_default.createShaderProgram(gl, GridSelector_default$2, GridSelector_default$1);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$21);
+	_buffer$20 = gl.createBuffer();
+	_program$28 = WebGL_default.createShaderProgram(gl, GridSelector_default$2, GridSelector_default$1);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$20);
 	gl.bufferData(gl.ARRAY_BUFFER, _buffer_data.byteLength, gl.DYNAMIC_DRAW);
 }
 /**
@@ -207705,12 +206990,12 @@ function init$14(gl) {
 * @param {number} x
 * @param {number} y
 */
-function render$16(gl, modelView, projection, fog, x, y) {
+function render$15(gl, modelView, projection, fog, x, y) {
 	if (!_texture$5) return;
-	const uniform = _program$29.uniform;
-	const attribute = _program$29.attribute;
+	const uniform = _program$28.uniform;
+	const attribute = _program$28.attribute;
 	let z;
-	gl.useProgram(_program$29);
+	gl.useProgram(_program$28);
 	gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -207719,7 +207004,7 @@ function render$16(gl, modelView, projection, fog, x, y) {
 	gl.uniform3fv(uniform.uFogColor, fog.color);
 	gl.enableVertexAttribArray(attribute.aPosition);
 	gl.enableVertexAttribArray(attribute.aTextCoord);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$21);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$20);
 	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 20, 0);
 	gl.vertexAttribPointer(attribute.aTextCoord, 2, gl.FLOAT, false, 20, 12);
 	gl.activeTexture(gl.TEXTURE0);
@@ -207748,20 +207033,20 @@ function render$16(gl, modelView, projection, fog, x, y) {
 * @param {object} gl context
 */
 function free$9(gl) {
-	if (_buffer$21) {
-		gl.deleteBuffer(_buffer$21);
-		_buffer$21 = null;
+	if (_buffer$20) {
+		gl.deleteBuffer(_buffer$20);
+		_buffer$20 = null;
 	}
 	if (_texture$5) {
 		gl.deleteTexture(_texture$5);
 		_texture$5 = null;
 	}
-	if (_program$29) {
-		gl.deleteProgram(_program$29);
-		_program$29 = null;
+	if (_program$28) {
+		gl.deleteProgram(_program$28);
+		_program$28 = null;
 	}
 }
-var _program$29, _buffer$21, _texture$5, _xy, _buffer_data, GridSelector_default;
+var _program$28, _buffer$20, _texture$5, _xy, _buffer_data, GridSelector_default;
 var init_GridSelector = __esmMin((() => {
 	init_Altitude();
 	init_Client();
@@ -207770,8 +207055,8 @@ var init_GridSelector = __esmMin((() => {
 	init_Configs();
 	init_GridSelector$2();
 	init_GridSelector$1();
-	_program$29 = null;
-	_buffer$21 = null;
+	_program$28 = null;
+	_buffer$20 = null;
 	_texture$5 = null;
 	_xy = null;
 	_buffer_data = new Float32Array([
@@ -207799,7 +207084,7 @@ var init_GridSelector = __esmMin((() => {
 	GridSelector_default = {
 		init: init$14,
 		free: free$9,
-		render: render$16
+		render: render$15
 	};
 }));
 //#endregion
@@ -207821,13 +207106,11 @@ var init_Map = __esmMin((() => {
 		*/
 		lightmap: true,
 		/**
-		* How the map's baked light is drawn: 0 posterized into 16 steps, as the
-		* original client does (visible bands across lit floors); 1 smooth;
-		* 2 smooth with a slight gamma curve.
+		* Posterize lightmap ?
 		*
-		* Set in Graphics Settings, or cycle with "/smoothlight" in the chatbox.
+		* Toggle using "/smoothlight" in the chatbox
 		*/
-		smoothlight: 1,
+		smoothlight: 0,
 		/**
 		* Display effects ?
 		*
@@ -207884,10 +207167,10 @@ var init_Ground$1 = __esmMin((() => {
 * @param {object} fog structure
 * @param {object} light structure
 */
-function render$15(gl, modelView, projection, normalMat, fog, light) {
-	const uniform = _program$28.uniform;
-	const attribute = _program$28.attribute;
-	gl.useProgram(_program$28);
+function render$14(gl, modelView, projection, normalMat, fog, light) {
+	const uniform = _program$27.uniform;
+	const attribute = _program$27.attribute;
+	gl.useProgram(_program$27);
 	gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniform3fv(uniform.uLightDirection, light.direction);
@@ -207907,7 +207190,7 @@ function render$15(gl, modelView, projection, normalMat, fog, light) {
 	gl.enableVertexAttribArray(attribute.aTextureCoord);
 	gl.enableVertexAttribArray(attribute.aLightmapCoord);
 	gl.enableVertexAttribArray(attribute.aTileColorCoord);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$20);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$19);
 	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 48, 0);
 	gl.vertexAttribPointer(attribute.aVertexNormal, 3, gl.FLOAT, false, 48, 12);
 	gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 48, 24);
@@ -208057,9 +207340,9 @@ function init$13(gl, data) {
 	_width = data.width;
 	data.height;
 	_shadowMap = data.shadowMap;
-	if (!_buffer$20) _buffer$20 = gl.createBuffer();
-	if (!_program$28) _program$28 = WebGL_default.createShaderProgram(gl, Ground_default$2, Ground_default$1);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$20);
+	if (!_buffer$19) _buffer$19 = gl.createBuffer();
+	if (!_program$27) _program$27 = WebGL_default.createShaderProgram(gl, Ground_default$2, Ground_default$1);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$19);
 	gl.bufferData(gl.ARRAY_BUFFER, data.mesh, gl.STATIC_DRAW);
 	initLightmap(gl, data.lightmap, data.lightmapSize);
 	initTileColor(gl, data.tileColor, data.width, data.height);
@@ -208083,9 +207366,9 @@ function free$8(gl) {
 		gl.deleteTexture(_textureAtlas);
 		_textureAtlas = null;
 	}
-	if (_buffer$20) {
-		gl.deleteBuffer(_buffer$20);
-		_buffer$20 = null;
+	if (_buffer$19) {
+		gl.deleteBuffer(_buffer$19);
+		_buffer$19 = null;
 	}
 	_shadowMap = null;
 	_vertCount$1 = 0;
@@ -208109,20 +207392,7 @@ function getShadowFactor(x, y) {
 	for (y = -3; y < 3; ++y) for (x = -3; x < 3; ++x) factor += _shadowMap[_x + x + (_y + y) * _width * 8];
 	return factor / 36 / 255;
 }
-/**
-* Export
-*/
-/**
-* The ground's texture atlas and lightmap, for things drawn on the ground
-* that should take its colour and its light (MapHooks).
-*/
-function textures() {
-	return {
-		atlas: _textureAtlas,
-		lightmap: _lightmap
-	};
-}
-var procCanvas$2, procCtx$2, _program$28, _buffer$20, _lightmap, _tileColor, _textureAtlas, _shadowMap, _vertCount$1, _width, Ground_default;
+var procCanvas$2, procCtx$2, _program$27, _buffer$19, _lightmap, _tileColor, _textureAtlas, _shadowMap, _vertCount$1, _width, Ground_default;
 var init_Ground = __esmMin((() => {
 	init_WebGL();
 	init_Texture();
@@ -208132,8 +207402,8 @@ var init_Ground = __esmMin((() => {
 	init_Ground$1();
 	procCanvas$2 = document.createElement("canvas");
 	procCtx$2 = procCanvas$2.getContext("2d", { willReadFrequently: true });
-	_program$28 = null;
-	_buffer$20 = null;
+	_program$27 = null;
+	_buffer$19 = null;
 	_lightmap = null;
 	_tileColor = null;
 	_textureAtlas = null;
@@ -208143,147 +207413,15 @@ var init_Ground = __esmMin((() => {
 	Ground_default = {
 		init: init$13,
 		free: free$8,
-		render: render$15,
-		getShadowFactor,
-		textures
-	};
-}));
-//#endregion
-//#region src/Renderer/MapHooks.js
-function fail$1(hook, what, error) {
-	console.error(`[MapHooks] ${hook.name || "a hook"} failed in ${what}, and is switched off:`, error);
-	remove$1(hook);
-}
-function call(hook, what, ...args) {
-	try {
-		return hook[what](...args);
-	} catch (error) {
-		fail$1(hook, what, error);
-		return;
-	}
-}
-function remove$1(hook) {
-	const index = _hooks$1.indexOf(hook);
-	if (index < 0) return;
-	_hooks$1.splice(index, 1);
-	if (_map$1 && typeof hook.free === "function") try {
-		hook.free(_gl$3);
-	} catch (error) {
-		console.error(`[MapHooks] ${hook.name || "a hook"} failed to free:`, error);
-	}
-}
-/**
-* Add a hook. If a map is up, its init runs now. Returns a function that
-* takes it out again (and frees it).
-*/
-function register$1(hook) {
-	if (!hook || typeof hook !== "object") throw new Error("MapHooks.register takes an object");
-	_hooks$1.push(hook);
-	if (_map$1 && typeof hook.init === "function") call(hook, "init", _gl$3, _map$1);
-	return () => remove$1(hook);
-}
-/** The map's ground is ready: init every hook. */
-function mapReady(gl, map) {
-	_gl$3 = gl;
-	_map$1 = map;
-	for (const hook of _hooks$1.slice()) if (typeof hook.init === "function") call(hook, "init", gl, map);
-}
-/** The map is going away: free every hook. */
-function mapFree(gl) {
-	if (!_map$1) return;
-	for (const hook of _hooks$1.slice()) if (typeof hook.free === "function") try {
-		hook.free(gl);
-	} catch (error) {
-		console.error(`[MapHooks] ${hook.name || "a hook"} failed to free:`, error);
-	}
-	_map$1 = null;
-}
-function modelKey(name) {
-	return String(name).replace(/\\/g, "/").replace(/^data\/model\//i, "").toLowerCase();
-}
-/** Every model some hook draws itself, for the map loader. */
-function modelNames() {
-	const names = /* @__PURE__ */ new Set();
-	for (const hook of _hooks$1) if (Array.isArray(hook.replacesModels)) hook.replacesModels.forEach((name) => names.add(modelKey(name)));
-	return Array.from(names);
-}
-/** The map's replaced models are loaded: each hook gets its own. */
-function modelsReady(gl, list) {
-	for (const hook of _hooks$1.slice()) {
-		if (typeof hook.models !== "function" || !Array.isArray(hook.replacesModels)) continue;
-		const mine = new Set(hook.replacesModels.map(modelKey));
-		const models = list.filter((model) => mine.has(model.name));
-		if (models.length) call(hook, "models", gl, models);
-	}
-}
-/** Run a stage. For 'water', only the hooks that replace it. */
-function stage(name, ctx) {
-	for (const hook of _hooks$1.slice()) {
-		if (typeof hook.render !== "function") continue;
-		const replacing = Array.isArray(hook.replaces) && hook.replaces.includes(name);
-		if (name === "water" ? replacing : true) call(hook, "render", name, ctx);
-	}
-}
-/** Whether some hook draws `name` in the client's place. */
-function replaces(name) {
-	return _hooks$1.some((hook) => Array.isArray(hook.replaces) && hook.replaces.includes(name));
-}
-function rgb(value) {
-	return Array.isArray(value) || ArrayBuffer.isView(value) ? value.length === 3 && Array.from(value).every((v) => Number.isFinite(v)) : false;
-}
-/**
-* The light to draw with: the map's, or the last hook's that gives one.
-* Direction and opacity always stay the map's.
-*/
-function light(mapLight) {
-	if (!mapLight) return mapLight;
-	let over = null;
-	for (const hook of _hooks$1.slice()) if (typeof hook.light === "function") {
-		const value = call(hook, "light", mapLight);
-		if (value && typeof value === "object") over = value;
-	}
-	if (!over) return mapLight;
-	const ambient = rgb(over.ambient) ? over.ambient : mapLight.ambient;
-	const diffuse = rgb(over.diffuse) ? over.diffuse : mapLight.diffuse;
-	for (let i = 0; i < 3; i++) {
-		_lit.ambient[i] = ambient[i];
-		_lit.diffuse[i] = diffuse[i];
-		_lit.env[i] = 1 - (1 - Math.min(1, diffuse[i])) * (1 - Math.min(1, ambient[i]));
-	}
-	if (_litFor !== mapLight) {
-		_litFor = mapLight;
-		_litView = Object.assign(Object.create(mapLight), _lit);
-	}
-	return _litView;
-}
-var _hooks$1, _gl$3, _map$1, _lit, _litFor, _litView, MapHooks_default;
-var init_MapHooks = __esmMin((() => {
-	_hooks$1 = [];
-	_gl$3 = null;
-	_map$1 = null;
-	_lit = {
-		ambient: /* @__PURE__ */ new Float32Array(3),
-		diffuse: /* @__PURE__ */ new Float32Array(3),
-		env: /* @__PURE__ */ new Float32Array(3)
-	};
-	_litFor = null;
-	_litView = null;
-	MapHooks_default = {
-		register: register$1,
-		mapReady,
-		mapFree,
-		stage,
-		replaces,
-		light,
-		modelNames,
-		modelsReady
+		render: render$14,
+		getShadowFactor
 	};
 }));
 //#endregion
 //#region src/Renderer/SpriteRenderer.vs?raw
 var SpriteRenderer_default$1;
 var init_SpriteRenderer$2 = __esmMin((() => {
-	SpriteRenderer_default$1 = "#version 300 es\r\nprecision highp float;\r\n\r\nin vec2 aPosition;\r\nin vec2 aTextureCoord;\r\n\r\nout vec2 vTextureCoord;\r\n\r\nuniform mat4 uModelViewMat;\r\nuniform mat4 uViewModelMat;\r\nuniform mat4 uProjectionMat;\r\n\r\nuniform float uCameraZoom;\r\nuniform float uCameraLatitude;\r\n\r\nuniform vec2 uSpriteRendererSize;\r\nuniform vec2 uSpriteRendererOffset;\r\nuniform mat4 uSpriteRendererAngle;\r\nuniform vec3 uSpriteRendererPosition;\r\nuniform float uSpriteRendererDepth;\r\nuniform float uSpriteRendererZindex;\r\nuniform bool  uDisableDepthCorrection;\r\nuniform bool  uFullPlaneDepth;\r\n\r\nmat4 Project( mat4 mat, vec3 pos) {\r\n\r\n    // xyz = x(-z)y + middle of cell (0.5)\r\n    float x =  pos.x + 0.5;\r\n    float y = -pos.z;\r\n    float z =  pos.y + 0.5;\r\n\r\n    // Matrix translation\r\n    mat[3].x += mat[0].x * x + mat[1].x * y + mat[2].x * z;\r\n    mat[3].y += mat[0].y * x + mat[1].y * y + mat[2].y * z;\r\n    mat[3].z += (mat[0].z * x + mat[1].z * y + mat[2].z * z);\r\n    mat[3].w += mat[0].w * x + mat[1].w * y + mat[2].w * z;\r\n\r\n    // Spherical billboard\r\n    mat[0].xyz = vec3( 1.0, 0.0, 0.0 );\r\n    mat[1].xyz = vec3( 0.0, 1.0, 0.0 );\r\n    mat[2].xyz = vec3( 0.0, 0.0, 1.0 );\r\n\r\n    return mat;\r\n}\r\n\r\nvec3 getCameraPosition() {\r\n    return (uViewModelMat * vec4(0.0, 0.0, 0.0, 1.0)).xyz;\r\n}\r\n\r\nvec3 getCameraForward() {\r\n    return normalize((uViewModelMat * vec4(0.0, 0.0, -1.0, 0.0)).xyz);\r\n}\r\n\r\nvoid main(void) {\r\n    // Calculate position base on angle and sprite offset/size\r\n    vec4 position = uSpriteRendererAngle * vec4( aPosition.x * uSpriteRendererSize.x, aPosition.y * uSpriteRendererSize.y, 0.0, 1.0 );\r\n    position.x   += uSpriteRendererOffset.x;\r\n    position.y   -= uSpriteRendererOffset.y + 0.5;\r\n\r\n    mat4 modelView = Project(uModelViewMat, uSpriteRendererPosition);\r\n    vec4 viewPosition = modelView * position;\r\n    vec4 viewCenter   = modelView * vec4( 0.0, 0.0, 0.0, 1.0 );\r\n\r\n    gl_Position = uProjectionMat * viewPosition;\r\n\r\n    vec3 cameraPos     = getCameraPosition();\r\n    vec3 cameraForward = getCameraForward();\r\n\r\n    if (!uDisableDepthCorrection) {\r\n        // Vertical billboard depth correction (per-vertex), plane anchored at sprite center.\r\n        // Plane normal uses camera forward (flattened Y) for stability.\r\n        // A pass that writes depth takes the vertical plane depth for the whole quad, so\r\n        // the part of the sprite below the water surface sorts behind the (later drawn)\r\n        // water pass. A pass that only tests depth keeps the nearer of the two: on the\r\n        // vertical plane, anything drawn below the feet (a magic circle, a shadow, a\r\n        // spread cape) lies under the ground and the ground would cut it off.\r\n        vec3 planePoint = (uViewModelMat * viewCenter).xyz;\r\n        vec3 planeNormal = normalize(vec3(cameraForward.x, 0.0, cameraForward.z));\r\n        if (length(planeNormal) < 0.000001) {\r\n            planeNormal = cameraForward;\r\n        }\r\n\r\n        vec3 worldVertex = (uViewModelMat * viewPosition).xyz;\r\n        vec3 rayDir      = normalize(worldVertex - cameraPos);\r\n        float denom      = max(dot(planeNormal, rayDir), 0.000001);\r\n        float dist       = dot(planePoint - cameraPos, planeNormal) / denom;\r\n\r\n        vec4 planeClip       = uProjectionMat * (uModelViewMat * vec4(cameraPos + rayDir * dist, 1.0));\r\n        float correctedZBase = planeClip.z * (gl_Position.w / max(planeClip.w, 0.000001));\r\n\r\n        gl_Position.z = uFullPlaneDepth ? correctedZBase : min(gl_Position.z, correctedZBase);\r\n    }\r\n    gl_Position.z -= (uSpriteRendererZindex * 0.01 + uSpriteRendererDepth) / max(uCameraZoom, 1.0);\r\n\r\n    vTextureCoord = aTextureCoord;\r\n}";
+	SpriteRenderer_default$1 = "#version 300 es\r\nprecision highp float;\r\n\r\nin vec2 aPosition;\r\nin vec2 aTextureCoord;\r\n\r\nout vec2 vTextureCoord;\r\n\r\nuniform mat4 uModelViewMat;\r\nuniform mat4 uViewModelMat;\r\nuniform mat4 uProjectionMat;\r\n\r\nuniform float uCameraZoom;\r\nuniform float uCameraLatitude;\r\n\r\nuniform vec2 uSpriteRendererSize;\r\nuniform vec2 uSpriteRendererOffset;\r\nuniform mat4 uSpriteRendererAngle;\r\nuniform vec3 uSpriteRendererPosition;\r\nuniform float uSpriteRendererDepth;\r\nuniform float uSpriteRendererZindex;\r\nuniform bool  uDisableDepthCorrection;\r\n\r\nmat4 Project( mat4 mat, vec3 pos) {\r\n\r\n    // xyz = x(-z)y + middle of cell (0.5)\r\n    float x =  pos.x + 0.5;\r\n    float y = -pos.z;\r\n    float z =  pos.y + 0.5;\r\n\r\n    // Matrix translation\r\n    mat[3].x += mat[0].x * x + mat[1].x * y + mat[2].x * z;\r\n    mat[3].y += mat[0].y * x + mat[1].y * y + mat[2].y * z;\r\n    mat[3].z += (mat[0].z * x + mat[1].z * y + mat[2].z * z);\r\n    mat[3].w += mat[0].w * x + mat[1].w * y + mat[2].w * z;\r\n\r\n    // Spherical billboard\r\n    mat[0].xyz = vec3( 1.0, 0.0, 0.0 );\r\n    mat[1].xyz = vec3( 0.0, 1.0, 0.0 );\r\n    mat[2].xyz = vec3( 0.0, 0.0, 1.0 );\r\n\r\n    return mat;\r\n}\r\n\r\nvec3 getCameraPosition() {\r\n    return (uViewModelMat * vec4(0.0, 0.0, 0.0, 1.0)).xyz;\r\n}\r\n\r\nvec3 getCameraForward() {\r\n    return normalize((uViewModelMat * vec4(0.0, 0.0, -1.0, 0.0)).xyz);\r\n}\r\n\r\nvoid main(void) {\r\n    // Calculate position base on angle and sprite offset/size\r\n    vec4 position = uSpriteRendererAngle * vec4( aPosition.x * uSpriteRendererSize.x, aPosition.y * uSpriteRendererSize.y, 0.0, 1.0 );\r\n    position.x   += uSpriteRendererOffset.x;\r\n    position.y   -= uSpriteRendererOffset.y + 0.5;\r\n\r\n    mat4 modelView = Project(uModelViewMat, uSpriteRendererPosition);\r\n    vec4 viewPosition = modelView * position;\r\n    vec4 viewCenter   = modelView * vec4( 0.0, 0.0, 0.0, 1.0 );\r\n\r\n    gl_Position = uProjectionMat * viewPosition;\r\n\r\n    vec3 cameraPos     = getCameraPosition();\r\n    vec3 cameraForward = getCameraForward();\r\n\r\n    if (!uDisableDepthCorrection) {\r\n        // Vertical billboard depth correction (per-vertex), plane anchored at sprite center.\r\n        // Plane normal uses camera forward (flattened Y) for stability.\r\n        // The whole quad takes the vertical plane depth so the part of the sprite below\r\n        // the water surface sorts behind the (later drawn) water pass.\r\n        vec3 planePoint = (uViewModelMat * viewCenter).xyz;\r\n        vec3 planeNormal = normalize(vec3(cameraForward.x, 0.0, cameraForward.z));\r\n        if (length(planeNormal) < 0.000001) {\r\n            planeNormal = cameraForward;\r\n        }\r\n\r\n        vec3 worldVertex = (uViewModelMat * viewPosition).xyz;\r\n        vec3 rayDir      = normalize(worldVertex - cameraPos);\r\n        float denom      = max(dot(planeNormal, rayDir), 0.000001);\r\n        float dist       = dot(planePoint - cameraPos, planeNormal) / denom;\r\n\r\n        vec4 planeClip       = uProjectionMat * (uModelViewMat * vec4(cameraPos + rayDir * dist, 1.0));\r\n        float correctedZBase = planeClip.z * (gl_Position.w / max(planeClip.w, 0.000001));\r\n\r\n        gl_Position.z = correctedZBase;\r\n    }\r\n    gl_Position.z -= (uSpriteRendererZindex * 0.01 + uSpriteRendererDepth) / max(uCameraZoom, 1.0);\r\n\r\n    vTextureCoord = aTextureCoord;\r\n}";
 }));
 //#endregion
 //#region src/Renderer/SpriteRenderer.fs?raw
@@ -208298,7 +207436,7 @@ var init_SpriteRenderer$1 = __esmMin((() => {
 */
 function RenderCanvas3D(isBlendModeOne) {
 	if (!this.image.texture || !this.color[3]) return;
-	const uniform = _program$27.uniform;
+	const uniform = _program$26.uniform;
 	const gl = _gl$2;
 	const use_pal = this.image.palette !== null;
 	if (isBlendModeOne) gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
@@ -208317,10 +207455,6 @@ function RenderCanvas3D(isBlendModeOne) {
 	if (_disableDepthCorrection !== disableDepthCorrection) {
 		_disableDepthCorrection = disableDepthCorrection;
 		gl.uniform1i(uniform.uDisableDepthCorrection, disableDepthCorrection);
-	}
-	if (_fullPlaneDepth !== _depthMask) {
-		_fullPlaneDepth = _depthMask;
-		gl.uniform1i(uniform.uFullPlaneDepth, _fullPlaneDepth);
 	}
 	gl.uniform1f(uniform.uSpriteRendererZindex, this.zIndex++);
 	if (this.angle !== _angle) {
@@ -208406,7 +207540,7 @@ function fillImageData(imageData, frame, pal, color) {
 		}
 	}
 }
-var mat4$24, RenderCanvas2D, _program$27, _buffer$19, _ctx$6, _gl$2, _groupId, _lastGroupId, _shadow, _angle, _depth, _disableDepthCorrection, _depthMask, _fullPlaneDepth, _depthTest, _texture$4, _usepal, _pos$8, _matrix$7, _size$7, _offset, SpriteRenderer;
+var mat4$24, RenderCanvas2D, _program$26, _buffer$18, _ctx$5, _gl$2, _groupId, _lastGroupId, _shadow, _angle, _depth, _disableDepthCorrection, _depthMask, _depthTest, _texture$4, _usepal, _pos$8, _matrix$7, _size$7, _offset, SpriteRenderer;
 var init_SpriteRenderer = __esmMin((() => {
 	init_WebGL();
 	init_gl_matrix();
@@ -208471,17 +207605,17 @@ var init_SpriteRenderer = __esmMin((() => {
 				_size$7[1] *= -1;
 			}
 			const canvas = getFrameCanvas(frame, pal, this.color);
-			_ctx$6.save();
-			_ctx$6.translate(_x | 0, _y | 0);
-			_ctx$6.rotate(this.angle / 180 * Math.PI);
-			_ctx$6.scale(scale_x, scale_y);
-			_ctx$6.drawImage(canvas, 0, 0, width, height, -_size$7[0] >> 1, -_size$7[1] >> 1, _size$7[0] | 0, _size$7[1] | 0);
-			_ctx$6.restore();
+			_ctx$5.save();
+			_ctx$5.translate(_x | 0, _y | 0);
+			_ctx$5.rotate(this.angle / 180 * Math.PI);
+			_ctx$5.scale(scale_x, scale_y);
+			_ctx$5.drawImage(canvas, 0, 0, width, height, -_size$7[0] >> 1, -_size$7[1] >> 1, _size$7[0] | 0, _size$7[1] | 0);
+			_ctx$5.restore();
 		};
 	})();
-	_program$27 = null;
-	_buffer$19 = null;
-	_ctx$6 = null;
+	_program$26 = null;
+	_buffer$18 = null;
+	_ctx$5 = null;
 	_gl$2 = null;
 	_groupId = 0;
 	_lastGroupId = 0;
@@ -208490,7 +207624,6 @@ var init_SpriteRenderer = __esmMin((() => {
 	_depth = null;
 	_disableDepthCorrection = false;
 	_depthMask = true;
-	_fullPlaneDepth = true;
 	_depthTest = true;
 	_texture$4 = null;
 	_usepal = null;
@@ -208569,9 +207702,9 @@ var init_SpriteRenderer = __esmMin((() => {
 		* @param {object} gl context
 		*/
 		static init(gl) {
-			if (!_buffer$19) {
-				_buffer$19 = gl.createBuffer();
-				gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$19);
+			if (!_buffer$18) {
+				_buffer$18 = gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$18);
 				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
 					-.5,
 					.5,
@@ -208591,7 +207724,7 @@ var init_SpriteRenderer = __esmMin((() => {
 					1
 				]), gl.STATIC_DRAW);
 			}
-			if (!_program$27) _program$27 = WebGL_default.createShaderProgram(gl, SpriteRenderer_default$1, SpriteRenderer_default);
+			if (!_program$26) _program$26 = WebGL_default.createShaderProgram(gl, SpriteRenderer_default$1, SpriteRenderer_default);
 		}
 		/**
 		* Initialize 3D Context
@@ -208602,9 +207735,9 @@ var init_SpriteRenderer = __esmMin((() => {
 		* @param {object} fog structure
 		*/
 		static bind3DContext(gl, modelView, projection, fog) {
-			const attribute = _program$27.attribute;
-			const uniform = _program$27.uniform;
-			gl.useProgram(_program$27);
+			const attribute = _program$26.attribute;
+			const uniform = _program$26.uniform;
+			gl.useProgram(_program$26);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uViewModelMat, false, mat4$24.invert(_matrix$7, modelView));
@@ -208618,10 +207751,9 @@ var init_SpriteRenderer = __esmMin((() => {
 			gl.uniform1f(uniform.uCameraZoom, Camera.zoom);
 			gl.uniform1f(uniform.uCameraLatitude, Camera.getLatitude());
 			gl.uniform1i(uniform.uDisableDepthCorrection, _disableDepthCorrection = false);
-			gl.uniform1i(uniform.uFullPlaneDepth, _fullPlaneDepth = true);
 			gl.enableVertexAttribArray(attribute.aPosition);
 			gl.enableVertexAttribArray(attribute.aTextureCoord);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$19);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$18);
 			gl.vertexAttribPointer(attribute.aPosition, 2, gl.FLOAT, false, 16, 0);
 			gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 16, 8);
 			this.render = RenderCanvas3D;
@@ -208637,7 +207769,7 @@ var init_SpriteRenderer = __esmMin((() => {
 		* @param {object} gl context
 		*/
 		static unbind(gl) {
-			const attribute = _program$27.attribute;
+			const attribute = _program$26.attribute;
 			gl.disableVertexAttribArray(attribute.aPosition);
 			gl.disableVertexAttribArray(attribute.aTextureCoord);
 		}
@@ -208649,7 +207781,7 @@ var init_SpriteRenderer = __esmMin((() => {
 		* @param {number} y position
 		*/
 		static bind2DContext(ctx, x, y) {
-			_ctx$6 = ctx;
+			_ctx$5 = ctx;
 			_pos$8[0] = x;
 			_pos$8[1] = y;
 			this.render = RenderCanvas2D;
@@ -208734,12 +207866,12 @@ function init$12(gl, water) {
 	_wavePitch = water.wavePitch;
 	_waterOpacity = water.type !== 4 && water.type !== 6 ? .8 : 1;
 	if (!_vertCount) return;
-	if (!_program$26) _program$26 = WebGL_default.createShaderProgram(gl, Water_default$2, Water_default$1);
-	_buffer$18 = gl.createBuffer();
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$18);
+	if (!_program$25) _program$25 = WebGL_default.createShaderProgram(gl, Water_default$2, Water_default$1);
+	_buffer$17 = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$17);
 	gl.bufferData(gl.ARRAY_BUFFER, water.mesh, gl.STATIC_DRAW);
 	function onTextureLoaded(texture, index) {
-		_textures$3[index] = texture;
+		_textures$2[index] = texture;
 	}
 	for (let i = 0; i < 32; ++i) WebGL_default.texture(gl, water.images[i], onTextureLoaded, i);
 }
@@ -208753,12 +207885,12 @@ function init$12(gl, water) {
 * @param {object} light structure
 * @param {number} tick (game tick)
 */
-function render$14(gl, modelView, projection, fog, light, tick) {
+function render$13(gl, modelView, projection, fog, light, tick) {
 	if (!_vertCount) return;
-	const uniform = _program$26.uniform;
-	const attribute = _program$26.attribute;
+	const uniform = _program$25.uniform;
+	const attribute = _program$25.attribute;
 	const frame = tick / (1e3 / 60);
-	gl.useProgram(_program$26);
+	gl.useProgram(_program$25);
 	gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -208767,7 +207899,7 @@ function render$14(gl, modelView, projection, fog, light, tick) {
 	gl.uniform3fv(uniform.uFogColor, fog.color);
 	gl.enableVertexAttribArray(attribute.aPosition);
 	gl.enableVertexAttribArray(attribute.aTextureCoord);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$18);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$17);
 	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 20, 0);
 	gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 20, 12);
 	gl.activeTexture(gl.TEXTURE0);
@@ -208776,7 +207908,7 @@ function render$14(gl, modelView, projection, fog, light, tick) {
 	gl.uniform1f(uniform.uOpacity, _waterOpacity);
 	gl.uniform1f(uniform.uWavePitch, _wavePitch);
 	gl.uniform1f(uniform.uWaterOffset, frame * _waveSpeed % 360 - 180);
-	gl.bindTexture(gl.TEXTURE_2D, _textures$3[frame / _animSpeed % 32 | 0]);
+	gl.bindTexture(gl.TEXTURE_2D, _textures$2[frame / _animSpeed % 32 | 0]);
 	gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 	SpriteRenderer.runWithDepth(true, false, false, function() {
 		gl.drawArrays(gl.TRIANGLES, 0, _vertCount);
@@ -208791,17 +207923,17 @@ function render$14(gl, modelView, projection, fog, light, tick) {
 */
 function free$7(gl) {
 	let i;
-	if (_buffer$18) {
-		gl.deleteBuffer(_buffer$18);
-		_buffer$18 = null;
+	if (_buffer$17) {
+		gl.deleteBuffer(_buffer$17);
+		_buffer$17 = null;
 	}
-	if (_program$26) {
-		gl.deleteProgram(_program$26);
-		_program$26 = null;
+	if (_program$25) {
+		gl.deleteProgram(_program$25);
+		_program$25 = null;
 	}
-	for (i = 0; i < 32; ++i) if (_textures$3[i]) {
-		gl.deleteTexture(_textures$3[i]);
-		_textures$3[i] = null;
+	for (i = 0; i < 32; ++i) if (_textures$2[i]) {
+		gl.deleteTexture(_textures$2[i]);
+		_textures$2[i] = null;
 	}
 	_vertCount = 0;
 }
@@ -208825,39 +207957,17 @@ function isSubmerged(x, y) {
 function hasWater() {
 	return _vertCount > 0;
 }
-/**
-* Export
-*/
-/**
-* The water as the client has it, for a hook that draws water in its place
-* (MapHooks): the mesh (x, y, z, u, v per vertex), the 32 animation frames,
-* and the map's wave settings. Null with no water.
-*/
-function state() {
-	if (!_vertCount) return null;
-	return {
-		buffer: _buffer$18,
-		vertCount: _vertCount,
-		textures: _textures$3,
-		level: _waterLevel,
-		waveHeight: _waveHeight,
-		waveSpeed: _waveSpeed,
-		wavePitch: _wavePitch,
-		animSpeed: _animSpeed,
-		opacity: _waterOpacity
-	};
-}
-var _program$26, _buffer$18, _vertCount, _textures$3, _waveSpeed, _waveHeight, _wavePitch, _waterLevel, _animSpeed, _waterOpacity, Water_default;
+var _program$25, _buffer$17, _vertCount, _textures$2, _waveSpeed, _waveHeight, _wavePitch, _waterLevel, _animSpeed, _waterOpacity, Water_default;
 var init_Water = __esmMin((() => {
 	init_WebGL();
 	init_SpriteRenderer();
 	init_Altitude();
 	init_Water$2();
 	init_Water$1();
-	_program$26 = null;
-	_buffer$18 = null;
+	_program$25 = null;
+	_buffer$17 = null;
 	_vertCount = 0;
-	_textures$3 = new Array(32);
+	_textures$2 = new Array(32);
 	_waveSpeed = 0;
 	_waveHeight = 0;
 	_wavePitch = 0;
@@ -208867,10 +207977,9 @@ var init_Water = __esmMin((() => {
 	Water_default = {
 		init: init$12,
 		free: free$7,
-		render: render$14,
+		render: render$13,
 		isSubmerged,
-		hasWater,
-		state
+		hasWater
 	};
 }));
 //#endregion
@@ -208893,7 +208002,7 @@ var init_OccluderFade$1 = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Map/OccluderFade.js
-var mat4$23, vec3$6, SHADER_INCLUDE, MODE$1, SETTING, QUERY, QUERY_RADIUS, FADE_IN_MS, FADE_OUT_MS, _inverse, _eye, _queries, _queryPending, _queryHit, _strength, _lastTick, OccluderFade;
+var mat4$23, vec3$6, SHADER_INCLUDE, MODE, SETTING, QUERY, QUERY_RADIUS, FADE_IN_MS, FADE_OUT_MS, _inverse, _eye, _queries, _queryPending, _queryHit, _strength, _lastTick, OccluderFade;
 var init_OccluderFade = __esmMin((() => {
 	init_OccluderFade$1();
 	init_Camera();
@@ -208902,7 +208011,7 @@ var init_OccluderFade = __esmMin((() => {
 	init_gl_matrix();
 	({mat4: mat4$23, vec3: vec3$6} = gl_matrix_default);
 	SHADER_INCLUDE = "// #include OccluderFade.glsl";
-	MODE$1 = {
+	MODE = {
 		OFF: 0,
 		DITHER: 1,
 		ALPHA_OPAQUE: 2,
@@ -208929,7 +208038,7 @@ var init_OccluderFade = __esmMin((() => {
 	_strength = 0;
 	_lastTick = 0;
 	OccluderFade = class OccluderFade {
-		static MODE = MODE$1;
+		static MODE = MODE;
 		static SETTING = SETTING;
 		static QUERY = QUERY;
 		/**
@@ -209019,10 +208128,10 @@ var init_OccluderFade = __esmMin((() => {
 		*/
 		static setUniforms(gl, uniform, mode) {
 			gl.uniform1i(uniform.uOccluderFadeMode, mode);
-			if (mode === MODE$1.OFF) return;
+			if (mode === MODE.OFF) return;
 			gl.uniform3fv(uniform.uOccluderFadeEye, _eye);
 			gl.uniform3fv(uniform.uOccluderFadeFocus, Camera.focus);
-			gl.uniform1f(uniform.uOccluderFadeRadius, mode === MODE$1.QUERY ? QUERY_RADIUS : GraphicsSettings.occluderFadeRadius);
+			gl.uniform1f(uniform.uOccluderFadeRadius, mode === MODE.QUERY ? QUERY_RADIUS : GraphicsSettings.occluderFadeRadius);
 			gl.uniform1f(uniform.uOccluderFadeOpacity, GraphicsSettings.occluderFadeOpacity);
 			gl.uniform1f(uniform.uOccluderFadeStrength, _strength);
 		}
@@ -209041,8 +208150,8 @@ var init_OccluderFade = __esmMin((() => {
 		* @return {number} one of MODE
 		*/
 		static opaqueMode() {
-			if (!OccluderFade.isFading()) return MODE$1.OFF;
-			return OccluderFade.useAlpha() ? MODE$1.ALPHA_OPAQUE : MODE$1.DITHER;
+			if (!OccluderFade.isFading()) return MODE.OFF;
+			return OccluderFade.useAlpha() ? MODE.ALPHA_OPAQUE : MODE.DITHER;
 		}
 		/**
 		* Opaque model pass: untouched, dithered, or with the fade capsule cut out.
@@ -209068,7 +208177,7 @@ var init_OccluderFade = __esmMin((() => {
 		static renderQuery(gl, uniform, draw, slot) {
 			if (!OccluderFade.isActive() || _queryPending[slot]) return;
 			if (!_queries[slot]) _queries[slot] = gl.createQuery();
-			OccluderFade.setUniforms(gl, uniform, MODE$1.QUERY);
+			OccluderFade.setUniforms(gl, uniform, MODE.QUERY);
 			gl.colorMask(false, false, false, false);
 			gl.beginQuery(gl.ANY_SAMPLES_PASSED_CONSERVATIVE, _queries[slot]);
 			SpriteRenderer.runWithDepth(false, false, true, draw);
@@ -209086,7 +208195,7 @@ var init_OccluderFade = __esmMin((() => {
 		* @param {function} draw issues the draw calls
 		*/
 		static renderBlend(gl, uniform, draw) {
-			OccluderFade.setUniforms(gl, uniform, MODE$1.ALPHA_BLEND);
+			OccluderFade.setUniforms(gl, uniform, MODE.ALPHA_BLEND);
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 			SpriteRenderer.runWithDepth(true, false, true, draw);
 		}
@@ -209144,9 +208253,9 @@ function init$11(gl, data) {
 	_objects.length = count;
 	_batchesReady = false;
 	_pendingTextures = count;
-	if (!_buffer$17) _buffer$17 = gl.createBuffer();
-	if (!_program$25) _program$25 = WebGL_default.createShaderProgram(gl, Models_default$2, OccluderFade.injectShader(Models_default$1));
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$17);
+	if (!_buffer$16) _buffer$16 = gl.createBuffer();
+	if (!_program$24) _program$24 = WebGL_default.createShaderProgram(gl, Models_default$2, OccluderFade.injectShader(Models_default$1));
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$16);
 	gl.bufferData(gl.ARRAY_BUFFER, data.buffer, gl.STATIC_DRAW);
 	function onTextureLoaded(texture, index) {
 		_objects[index].texture = texture;
@@ -209193,9 +208302,9 @@ function drawMeshes(gl) {
 * @param {object} light structure
 */
 function bind$1(gl, modelView, projection, fog, light) {
-	const uniform = _program$25.uniform;
-	const attribute = _program$25.attribute;
-	gl.useProgram(_program$25);
+	const uniform = _program$24.uniform;
+	const attribute = _program$24.attribute;
+	gl.useProgram(_program$24);
 	gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniform3fv(uniform.uLightDirection, light.direction);
@@ -209212,7 +208321,7 @@ function bind$1(gl, modelView, projection, fog, light) {
 	gl.enableVertexAttribArray(attribute.aVertexNormal);
 	gl.enableVertexAttribArray(attribute.aTextureCoord);
 	gl.enableVertexAttribArray(attribute.aAlpha);
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$17);
+	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$16);
 	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 36, 0);
 	gl.vertexAttribPointer(attribute.aVertexNormal, 3, gl.FLOAT, false, 36, 12);
 	gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 36, 24);
@@ -209226,7 +208335,7 @@ function bind$1(gl, modelView, projection, fog, light) {
 * @param {object} gl context
 */
 function unbind(gl) {
-	const attribute = _program$25.attribute;
+	const attribute = _program$24.attribute;
 	gl.disableVertexAttribArray(attribute.aPosition);
 	gl.disableVertexAttribArray(attribute.aVertexNormal);
 	gl.disableVertexAttribArray(attribute.aTextureCoord);
@@ -209242,28 +208351,10 @@ function unbind(gl) {
 * @param {object} fog structure
 * @param {object} light structure
 */
-/**
-* Draw the models with someone else's program bound -- a hook's shadow map
-* (Renderer/MapHooks.js): the same buffer and batches, position and texture
-* coordinates only.
-*/
-function renderDepth(gl, program) {
-	if (!_buffer$17 || !_objects.length) return;
-	const attribute = program.attribute;
-	gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$17);
-	gl.enableVertexAttribArray(attribute.aPosition);
-	gl.enableVertexAttribArray(attribute.aTextureCoord);
-	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 36, 0);
-	gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 36, 24);
-	gl.activeTexture(gl.TEXTURE0);
-	drawMeshes(gl);
-	gl.disableVertexAttribArray(attribute.aPosition);
-	gl.disableVertexAttribArray(attribute.aTextureCoord);
-}
-function render$13(gl, modelView, projection, normalMat, fog, light) {
+function render$12(gl, modelView, projection, normalMat, fog, light) {
 	bind$1(gl, modelView, projection, fog, light);
-	OccluderFade.renderOpaque(gl, _program$25.uniform, () => drawMeshes(gl));
-	OccluderFade.renderQuery(gl, _program$25.uniform, () => drawMeshes(gl), OccluderFade.QUERY.MODELS);
+	OccluderFade.renderOpaque(gl, _program$24.uniform, () => drawMeshes(gl));
+	OccluderFade.renderQuery(gl, _program$24.uniform, () => drawMeshes(gl), OccluderFade.QUERY.MODELS);
 	unbind(gl);
 }
 /**
@@ -209280,7 +208371,7 @@ function render$13(gl, modelView, projection, normalMat, fog, light) {
 function renderFaded$1(gl, modelView, projection, normalMat, fog, light) {
 	if (!OccluderFade.needsBlendPass()) return;
 	bind$1(gl, modelView, projection, fog, light);
-	OccluderFade.renderBlend(gl, _program$25.uniform, () => drawMeshes(gl));
+	OccluderFade.renderBlend(gl, _program$24.uniform, () => drawMeshes(gl));
 	unbind(gl);
 }
 /**
@@ -209290,37 +208381,36 @@ function renderFaded$1(gl, modelView, projection, normalMat, fog, light) {
 */
 function free$6(gl) {
 	let i, count;
-	if (_buffer$17) {
-		gl.deleteBuffer(_buffer$17);
-		_buffer$17 = null;
+	if (_buffer$16) {
+		gl.deleteBuffer(_buffer$16);
+		_buffer$16 = null;
 	}
-	if (_program$25) {
-		gl.deleteProgram(_program$25);
-		_program$25 = null;
+	if (_program$24) {
+		gl.deleteProgram(_program$24);
+		_program$24 = null;
 	}
 	for (i = 0, count = _objects.length; i < count; ++i) gl.deleteTexture(_objects[i].texture);
 	_objects.length = 0;
 	_batches.length = 0;
 	_batchesReady = false;
 }
-var _program$25, _buffer$17, _objects, _batches, _batchesReady, _pendingTextures, Models_default;
+var _program$24, _buffer$16, _objects, _batches, _batchesReady, _pendingTextures, Models_default;
 var init_Models = __esmMin((() => {
 	init_Models$2();
 	init_Models$1();
 	init_WebGL();
 	init_Map();
 	init_OccluderFade();
-	_program$25 = null;
-	_buffer$17 = null;
+	_program$24 = null;
+	_buffer$16 = null;
 	_objects = [];
 	_batches = [];
 	_batchesReady = false;
 	_pendingTextures = 0;
 	Models_default = {
 		init: init$11,
-		render: render$13,
+		render: render$12,
 		renderFaded: renderFaded$1,
-		renderDepth,
 		free: free$6
 	};
 }));
@@ -209342,33 +208432,33 @@ var init_AnimatedModels$1 = __esmMin((() => {
 * Initialize shader program
 */
 function init$10(gl) {
-	_program$24 = WebGL_default.createShaderProgram(gl, AnimatedModels_default$2, OccluderFade.injectShader(AnimatedModels_default$1));
-	_program$24.uniform = {
-		uModelViewMat: gl.getUniformLocation(_program$24, "uModelViewMat"),
-		uProjectionMat: gl.getUniformLocation(_program$24, "uProjectionMat"),
-		uNormalMat: gl.getUniformLocation(_program$24, "uNormalMat"),
-		uLightDirection: gl.getUniformLocation(_program$24, "uLightDirection"),
-		uLightOpacity: gl.getUniformLocation(_program$24, "uLightOpacity"),
-		uLightAmbient: gl.getUniformLocation(_program$24, "uLightAmbient"),
-		uLightDiffuse: gl.getUniformLocation(_program$24, "uLightDiffuse"),
-		uLightEnv: gl.getUniformLocation(_program$24, "uLightEnv"),
-		uFogUse: gl.getUniformLocation(_program$24, "uFogUse"),
-		uFogNear: gl.getUniformLocation(_program$24, "uFogNear"),
-		uFogFar: gl.getUniformLocation(_program$24, "uFogFar"),
-		uFogColor: gl.getUniformLocation(_program$24, "uFogColor"),
-		uDiffuse: gl.getUniformLocation(_program$24, "uDiffuse"),
-		uOccluderFadeMode: gl.getUniformLocation(_program$24, "uOccluderFadeMode"),
-		uOccluderFadeEye: gl.getUniformLocation(_program$24, "uOccluderFadeEye"),
-		uOccluderFadeFocus: gl.getUniformLocation(_program$24, "uOccluderFadeFocus"),
-		uOccluderFadeRadius: gl.getUniformLocation(_program$24, "uOccluderFadeRadius"),
-		uOccluderFadeOpacity: gl.getUniformLocation(_program$24, "uOccluderFadeOpacity"),
-		uOccluderFadeStrength: gl.getUniformLocation(_program$24, "uOccluderFadeStrength")
+	_program$23 = WebGL_default.createShaderProgram(gl, AnimatedModels_default$2, OccluderFade.injectShader(AnimatedModels_default$1));
+	_program$23.uniform = {
+		uModelViewMat: gl.getUniformLocation(_program$23, "uModelViewMat"),
+		uProjectionMat: gl.getUniformLocation(_program$23, "uProjectionMat"),
+		uNormalMat: gl.getUniformLocation(_program$23, "uNormalMat"),
+		uLightDirection: gl.getUniformLocation(_program$23, "uLightDirection"),
+		uLightOpacity: gl.getUniformLocation(_program$23, "uLightOpacity"),
+		uLightAmbient: gl.getUniformLocation(_program$23, "uLightAmbient"),
+		uLightDiffuse: gl.getUniformLocation(_program$23, "uLightDiffuse"),
+		uLightEnv: gl.getUniformLocation(_program$23, "uLightEnv"),
+		uFogUse: gl.getUniformLocation(_program$23, "uFogUse"),
+		uFogNear: gl.getUniformLocation(_program$23, "uFogNear"),
+		uFogFar: gl.getUniformLocation(_program$23, "uFogFar"),
+		uFogColor: gl.getUniformLocation(_program$23, "uFogColor"),
+		uDiffuse: gl.getUniformLocation(_program$23, "uDiffuse"),
+		uOccluderFadeMode: gl.getUniformLocation(_program$23, "uOccluderFadeMode"),
+		uOccluderFadeEye: gl.getUniformLocation(_program$23, "uOccluderFadeEye"),
+		uOccluderFadeFocus: gl.getUniformLocation(_program$23, "uOccluderFadeFocus"),
+		uOccluderFadeRadius: gl.getUniformLocation(_program$23, "uOccluderFadeRadius"),
+		uOccluderFadeOpacity: gl.getUniformLocation(_program$23, "uOccluderFadeOpacity"),
+		uOccluderFadeStrength: gl.getUniformLocation(_program$23, "uOccluderFadeStrength")
 	};
-	_program$24.attribute = {
-		aPosition: gl.getAttribLocation(_program$24, "aPosition"),
-		aNormal: gl.getAttribLocation(_program$24, "aNormal"),
-		aTextureCoord: gl.getAttribLocation(_program$24, "aTextureCoord"),
-		aAlpha: gl.getAttribLocation(_program$24, "aAlpha")
+	_program$23.attribute = {
+		aPosition: gl.getAttribLocation(_program$23, "aPosition"),
+		aNormal: gl.getAttribLocation(_program$23, "aNormal"),
+		aTextureCoord: gl.getAttribLocation(_program$23, "aTextureCoord"),
+		aAlpha: gl.getAttribLocation(_program$23, "aAlpha")
 	};
 }
 /**
@@ -209389,9 +208479,9 @@ function isNodeStatic(node) {
 /**
 * Add an animated model
 */
-function add$3(gl, modelData) {
+function add$2(gl, modelData) {
 	if (!modelData || !modelData.nodes || modelData.nodes.length === 0) return;
-	if (!_program$24) init$10(gl);
+	if (!_program$23) init$10(gl);
 	const instances = [];
 	for (let i = 0; i < modelData.instances.length; i++) {
 		const instArray = modelData.instances[i];
@@ -209545,11 +208635,11 @@ function add$3(gl, modelData) {
 	}
 	gl.bindBuffer(gl.ARRAY_BUFFER, animModel.buffer);
 	gl.bufferData(gl.ARRAY_BUFFER, animModel._gpuBuffer.byteLength, gl.DYNAMIC_DRAW);
-	for (let t = 0; t < modelData.textures.length; t++) loadTexture$2(gl, animModel, "data\\texture\\" + modelData.textures[t], t);
+	for (let t = 0; t < modelData.textures.length; t++) loadTexture$1(gl, animModel, "data\\texture\\" + modelData.textures[t], t);
 	animModel.vao = gl.createVertexArray();
 	gl.bindVertexArray(animModel.vao);
 	gl.bindBuffer(gl.ARRAY_BUFFER, animModel.buffer);
-	const attribute = _program$24.attribute;
+	const attribute = _program$23.attribute;
 	const stride = 36;
 	gl.enableVertexAttribArray(attribute.aPosition);
 	gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, stride, 0);
@@ -209566,7 +208656,7 @@ function add$3(gl, modelData) {
 /**
 * Load a texture for a model
 */
-function loadTexture$2(gl, model, path, index) {
+function loadTexture$1(gl, model, path, index) {
 	Client.loadFile(path, function(data) {
 		WebGL_default.texture(gl, data, function(texture) {
 			model.textureObjects[index] = texture;
@@ -209746,8 +208836,8 @@ function updateModelBuffer(gl, model, frame, force) {
 * Bind program and per-frame uniforms shared by both model passes
 */
 function bind(gl, modelView, projection, normalMat, fog, light) {
-	const uniform = _program$24.uniform;
-	gl.useProgram(_program$24);
+	const uniform = _program$23.uniform;
+	gl.useProgram(_program$23);
 	gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniformMatrix3fv(uniform.uNormalMat, false, normalMat);
@@ -209784,16 +208874,16 @@ function drawModels(gl) {
 /**
 * Render animated models (opaque pass)
 */
-function render$12(gl, modelView, projection, normalMat, fog, light, tick) {
+function render$11(gl, modelView, projection, normalMat, fog, light, tick) {
 	if (_animatedModels.length === 0) return;
-	if (!_program$24) init$10(gl);
+	if (!_program$23) init$10(gl);
 	bind(gl, modelView, projection, normalMat, fog, light);
 	for (let m = 0; m < _animatedModels.length; m++) {
 		const model = _animatedModels[m];
 		updateModelBuffer(gl, model, tick % (model.animLen || 1), false);
 	}
-	OccluderFade.renderOpaque(gl, _program$24.uniform, () => drawModels(gl));
-	OccluderFade.renderQuery(gl, _program$24.uniform, () => drawModels(gl), OccluderFade.QUERY.ANIMATED);
+	OccluderFade.renderOpaque(gl, _program$23.uniform, () => drawModels(gl));
+	OccluderFade.renderQuery(gl, _program$23.uniform, () => drawModels(gl), OccluderFade.QUERY.ANIMATED);
 	gl.bindVertexArray(null);
 }
 /**
@@ -209801,9 +208891,9 @@ function render$12(gl, modelView, projection, normalMat, fog, light, tick) {
 * Reuses the vertex data uploaded by render() this frame.
 */
 function renderFaded(gl, modelView, projection, normalMat, fog, light) {
-	if (_animatedModels.length === 0 || !_program$24 || !OccluderFade.needsBlendPass()) return;
+	if (_animatedModels.length === 0 || !_program$23 || !OccluderFade.needsBlendPass()) return;
 	bind(gl, modelView, projection, normalMat, fog, light);
-	OccluderFade.renderBlend(gl, _program$24.uniform, () => drawModels(gl));
+	OccluderFade.renderBlend(gl, _program$23.uniform, () => drawModels(gl));
 	gl.bindVertexArray(null);
 }
 /**
@@ -209812,7 +208902,7 @@ function renderFaded(gl, modelView, projection, normalMat, fog, light) {
 function hasAnimatedModels() {
 	return _animatedModels.length > 0;
 }
-var mat3$5, mat4$22, vec3$5, quat$1, _tempVec3, _tempVec3Scale, _tempQuat, _tempMat4, _program$24, _animatedModels, AnimatedModels_default;
+var mat3$5, mat4$22, vec3$5, quat$1, _tempVec3, _tempVec3Scale, _tempQuat, _tempMat4, _program$23, _animatedModels, AnimatedModels_default;
 var init_AnimatedModels = __esmMin((() => {
 	init_Client();
 	init_gl_matrix();
@@ -209829,13 +208919,13 @@ var init_AnimatedModels = __esmMin((() => {
 	_tempVec3Scale = vec3$5.create();
 	_tempQuat = quat$1.create();
 	_tempMat4 = mat4$22.create();
-	_program$24 = null;
+	_program$23 = null;
 	_animatedModels = [];
 	AnimatedModels_default = {
 		init: init$10,
 		free: free$5,
-		add: add$3,
-		render: render$12,
+		add: add$2,
+		render: render$11,
 		renderFaded,
 		hasAnimatedModels
 	};
@@ -211172,7 +210262,7 @@ function Ot(e, t, n, r, i, a) {
 }
 function kt(e, t, n) {
 	let r = Z(e, n + 1);
-	for (let i = 0; i < n; i++) an(e, n) >= r ? (t[i] = 1, on$1(e, r, n - r, n)) : (t[i] = 0, on$1(e, 0, r, n));
+	for (let i = 0; i < n; i++) an(e, n) >= r ? (t[i] = 1, on(e, r, n - r, n)) : (t[i] = 0, on(e, 0, r, n));
 }
 function At(e, t, n, r, i, a, o) {
 	if (H(t)) {
@@ -211707,7 +210797,7 @@ function Z(e, t) {
 function an(e, t) {
 	return q ? q.bitsGet(e, t) : ct(e, t);
 }
-function on$1(e, t, n, r) {
+function on(e, t, n, r) {
 	q ? q.bitsRemove(e, t, n, r) : lt(e, t, n, r);
 }
 function sn(e, t, n, r) {
@@ -213541,31 +212631,31 @@ function grayBroadcast(src, out) {
 * Initialize the shader program.
 */
 function init$9(gl) {
-	_program$23 = WebGL_default.createShaderProgram(gl, GR2Model_default$1, GR2Model_default);
-	_program$23.uniform = {
-		uModelViewMat: gl.getUniformLocation(_program$23, "uModelViewMat"),
-		uProjectionMat: gl.getUniformLocation(_program$23, "uProjectionMat"),
-		uNormalMat: gl.getUniformLocation(_program$23, "uNormalMat"),
-		uBones: gl.getUniformLocation(_program$23, "uBones[0]"),
-		uLightDirection: gl.getUniformLocation(_program$23, "uLightDirection"),
-		uLightOpacity: gl.getUniformLocation(_program$23, "uLightOpacity"),
-		uLightAmbient: gl.getUniformLocation(_program$23, "uLightAmbient"),
-		uLightDiffuse: gl.getUniformLocation(_program$23, "uLightDiffuse"),
-		uLightEnv: gl.getUniformLocation(_program$23, "uLightEnv"),
-		uAlphaRef: gl.getUniformLocation(_program$23, "uAlphaRef"),
-		uAlpha: gl.getUniformLocation(_program$23, "uAlpha"),
-		uFogUse: gl.getUniformLocation(_program$23, "uFogUse"),
-		uFogNear: gl.getUniformLocation(_program$23, "uFogNear"),
-		uFogFar: gl.getUniformLocation(_program$23, "uFogFar"),
-		uFogColor: gl.getUniformLocation(_program$23, "uFogColor"),
-		uDiffuse: gl.getUniformLocation(_program$23, "uDiffuse")
+	_program$22 = WebGL_default.createShaderProgram(gl, GR2Model_default$1, GR2Model_default);
+	_program$22.uniform = {
+		uModelViewMat: gl.getUniformLocation(_program$22, "uModelViewMat"),
+		uProjectionMat: gl.getUniformLocation(_program$22, "uProjectionMat"),
+		uNormalMat: gl.getUniformLocation(_program$22, "uNormalMat"),
+		uBones: gl.getUniformLocation(_program$22, "uBones[0]"),
+		uLightDirection: gl.getUniformLocation(_program$22, "uLightDirection"),
+		uLightOpacity: gl.getUniformLocation(_program$22, "uLightOpacity"),
+		uLightAmbient: gl.getUniformLocation(_program$22, "uLightAmbient"),
+		uLightDiffuse: gl.getUniformLocation(_program$22, "uLightDiffuse"),
+		uLightEnv: gl.getUniformLocation(_program$22, "uLightEnv"),
+		uAlphaRef: gl.getUniformLocation(_program$22, "uAlphaRef"),
+		uAlpha: gl.getUniformLocation(_program$22, "uAlpha"),
+		uFogUse: gl.getUniformLocation(_program$22, "uFogUse"),
+		uFogNear: gl.getUniformLocation(_program$22, "uFogNear"),
+		uFogFar: gl.getUniformLocation(_program$22, "uFogFar"),
+		uFogColor: gl.getUniformLocation(_program$22, "uFogColor"),
+		uDiffuse: gl.getUniformLocation(_program$22, "uDiffuse")
 	};
-	_program$23.attribute = {
-		aPosition: gl.getAttribLocation(_program$23, "aPosition"),
-		aNormal: gl.getAttribLocation(_program$23, "aNormal"),
-		aTextureCoord: gl.getAttribLocation(_program$23, "aTextureCoord"),
-		aBoneIndex: gl.getAttribLocation(_program$23, "aBoneIndex"),
-		aBoneWeight: gl.getAttribLocation(_program$23, "aBoneWeight")
+	_program$22.attribute = {
+		aPosition: gl.getAttribLocation(_program$22, "aPosition"),
+		aNormal: gl.getAttribLocation(_program$22, "aNormal"),
+		aTextureCoord: gl.getAttribLocation(_program$22, "aTextureCoord"),
+		aBoneIndex: gl.getAttribLocation(_program$22, "aBoneIndex"),
+		aBoneWeight: gl.getAttribLocation(_program$22, "aBoneWeight")
 	};
 }
 /**
@@ -213723,7 +212813,7 @@ function acquire(path) {
 */
 function buildTypeGL(gl, type) {
 	type.textures = makeTypeTextures(gl, type.parsed);
-	const attr = _program$23.attribute;
+	const attr = _program$22.attribute;
 	type.submeshes = type.meshes.map(function(mesh) {
 		const vao = gl.createVertexArray();
 		gl.bindVertexArray(vao);
@@ -213840,16 +212930,16 @@ function normalize3(v) {
 * sits next to): (gl, modelView, projection, normalMat, fog, light, tick). modelView is
 * Camera.modelView (the view matrix); the per-instance world is composed on top.
 */
-function render$11(gl, modelView, projection, normalMat, fog, light, tick) {
+function render$10(gl, modelView, projection, normalMat, fog, light, tick) {
 	_gl$1 = gl;
 	if (_instances.length === 0 || !light) return;
-	if (!_program$23) init$9(gl);
+	if (!_program$22) init$9(gl);
 	for (const path in _types) {
 		const type = _types[path];
 		if (type.cpuReady && !type.glReady) buildTypeGL(gl, type);
 	}
-	const uniform = _program$23.uniform;
-	gl.useProgram(_program$23);
+	const uniform = _program$22.uniform;
+	gl.useProgram(_program$22);
 	gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 	gl.uniform1f(uniform.uLightOpacity, light.opacity != null ? light.opacity : 1);
 	gl.uniform3fv(uniform.uLightEnv, light.env || _phaseEnv);
@@ -214194,7 +213284,7 @@ function clear() {
 	for (let i = 0; i < insts.length; i++) detach(insts[i]);
 	_poseCache = {};
 }
-var mat3$4, mat4$21, ALPHA_REF$1, _phaseDiffuse, _phaseAmbient, _phaseEnv, _gr2FlagDiffuse, _gr2EmpDiffuse, _gr2EmpAmbient, _gr2FlagAmbient, GR2_ROSTER, _program$23, _gl$1, _types, _missing, _instances, _poseCache, _dbgCellTile, _dbgTileInst, _dbgCellInited, _debugCell, BASE_SPHERE_HALF_EXTENT, _readyPromise, _mv$1, _mvp, _nmat$1, _lightView$1, _clip, CULL_MARGIN, CLIP_W_EPS, DIR_STEP_DEG, FADE, TEX_MISSING_PX$1, TEX_GREY_PX$1, A4_NIBBLE_EXPAND, _emblemCanvas, GR2_VERTEX_STRIDE$1, GR2_VERTEX_LAYOUT$1, GR2ModelRenderer_default;
+var mat3$4, mat4$21, ALPHA_REF$1, _phaseDiffuse, _phaseAmbient, _phaseEnv, _gr2FlagDiffuse, _gr2EmpDiffuse, _gr2EmpAmbient, _gr2FlagAmbient, GR2_ROSTER, _program$22, _gl$1, _types, _missing, _instances, _poseCache, _dbgCellTile, _dbgTileInst, _dbgCellInited, _debugCell, BASE_SPHERE_HALF_EXTENT, _readyPromise, _mv$1, _mvp, _nmat$1, _lightView$1, _clip, CULL_MARGIN, CLIP_W_EPS, DIR_STEP_DEG, FADE, TEX_MISSING_PX$1, TEX_GREY_PX$1, A4_NIBBLE_EXPAND, _emblemCanvas, GR2_VERTEX_STRIDE$1, GR2_VERTEX_LAYOUT$1, GR2ModelRenderer_default;
 var init_GR2ModelRenderer = __esmMin((() => {
 	init_Client();
 	init_gl_matrix();
@@ -214253,7 +213343,7 @@ var init_GR2ModelRenderer = __esmMin((() => {
 		sguardian90_9: "emp",
 		treasurebox_2: "emp"
 	};
-	_program$23 = null;
+	_program$22 = null;
 	_gl$1 = null;
 	_types = {};
 	_missing = {};
@@ -214331,7 +213421,7 @@ var init_GR2ModelRenderer = __esmMin((() => {
 	GR2ModelRenderer_default = {
 		init: init$9,
 		free: free$4,
-		render: render$11,
+		render: render$10,
 		attach: attach$1,
 		detach,
 		isMissing: function(path) {
@@ -214357,22 +213447,22 @@ var init_GR2ModelRenderer = __esmMin((() => {
 /**
 * Add 3D sound to the list
 */
-function add$2(sound) {
-	_list$6.push(sound);
+function add$1(sound) {
+	_list$5.push(sound);
 }
 /**
 * Remove data from memory
 */
 function free$3() {
-	_list$6.length = 0;
+	_list$5.length = 0;
 }
 /**
 * Rendering sounds
 *
 * @param {vec2} position
 */
-function render$10(position, tick) {
-	_list$6.forEach((sound) => {
+function render$9(position, tick) {
+	_list$5.forEach((sound) => {
 		const dist = Math.floor(vec2$3.dist(sound.pos, position));
 		if (sound.tick < tick && dist <= sound.range) {
 			SoundManager.playPosition(sound.file, sound.pos);
@@ -214380,16 +213470,16 @@ function render$10(position, tick) {
 		}
 	});
 }
-var vec2$3, _list$6, Sounds_default;
+var vec2$3, _list$5, Sounds_default;
 var init_Sounds = __esmMin((() => {
 	init_gl_matrix();
 	init_SoundManager();
 	vec2$3 = gl_matrix_default.vec2;
-	_list$6 = [];
+	_list$5 = [];
 	Sounds_default = {
-		add: add$2,
+		add: add$1,
 		free: free$3,
-		render: render$10
+		render: render$9
 	};
 }));
 //#endregion
@@ -215667,7 +214757,6 @@ var init_SkillEffect = __esmMin((() => {
 		effectId: "ef_nw_mission_bombard",
 		hitEffectId: "ef_nw_mission_bombard_hit"
 	};
-	SkillEffect[SkillConst_default.NW_HASTY_FIRE_IN_THE_HOLE] = { effectId: "ef_nw_hasty_fire_in_the_hole" };
 	SkillEffect[5500] = {
 		effectId: "ef_nw_wild_shot",
 		effectIdOnCaster: "ef_nw_wild_shot_cast",
@@ -218505,9 +217594,9 @@ var init_ItemEffect = __esmMin((() => {
 }));
 //#endregion
 //#region src/DB/Emotions.js
-var list$1, i, j, count, size, commands, names, indexes, order, Emotions_default;
+var list, i, j, count, size, commands, names, indexes, order, Emotions_default;
 var init_Emotions = __esmMin((() => {
-	list$1 = [
+	list = [
 		[
 			0,
 			0,
@@ -218954,12 +218043,12 @@ var init_Emotions = __esmMin((() => {
 	names = {};
 	indexes = {};
 	order = {};
-	for (i = 0, count = list$1.length; i < count; ++i) {
-		size = list$1[i].length;
-		for (j = 2; j < size; ++j) commands[list$1[i][j]] = i;
-		if (size > 0) indexes[i] = list$1[i][0];
-		if (size > 1 && list$1[i][1] > -1) order[list$1[i][1]] = list$1[i][0];
-		if (size > 2) names[list$1[i][0]] = list$1[i][2];
+	for (i = 0, count = list.length; i < count; ++i) {
+		size = list[i].length;
+		for (j = 2; j < size; ++j) commands[list[i][j]] = i;
+		if (size > 0) indexes[i] = list[i][0];
+		if (size > 1 && list[i][1] > -1) order[list[i][1]] = list[i][0];
+		if (size > 2) names[list[i][0]] = list[i][2];
 	}
 	Emotions_default = {
 		commands,
@@ -220819,71 +219908,11 @@ var init_ChatBoxSettings = __esmMin((() => {
 	ChatBoxSettings_default = UIManager.addComponent(ChatBoxSettings);
 }));
 //#endregion
-//#region src/UI/WheelSteps.js
-/**
-* How many steps this wheel event moves `element`: positive down, negative
-* up, often 0 while a smooth gesture is still adding up.
-*
-* @param {WheelEvent} event
-* @param {HTMLElement} element - the list being scrolled; each keeps its own count
-* @return {number}
-*/
-function steps(event, element) {
-	let dy = event.deltaY || 0;
-	if (!dy && event.wheelDelta) dy = -event.wheelDelta;
-	if (!dy) return 0;
-	if (event.deltaMode === 1) dy *= LINE;
-	else if (event.deltaMode === 2) dy *= element.clientHeight || NOTCH;
-	const now = typeof event.timeStamp === "number" && event.timeStamp > 0 ? event.timeStamp : performance.now();
-	const sign = Math.sign(dy);
-	const state = _gestures.get(element);
-	if (!state || now - state.time > GESTURE_GAP || state.sign !== sign) {
-		_gestures.set(element, {
-			acc: 0,
-			time: now,
-			sign
-		});
-		return sign;
-	}
-	state.time = now;
-	state.acc += dy;
-	const whole = Math.trunc(state.acc / NOTCH);
-	state.acc -= whole * NOTCH;
-	return whole;
-}
-/**
-* Scroll `element` by this wheel event, `rowHeight` pixels a step, snapped to
-* whole rows. Returns the number of steps taken.
-*
-* @param {WheelEvent} event
-* @param {HTMLElement} element
-* @param {number} rowHeight
-* @return {number}
-*/
-function scrollRows(event, element, rowHeight) {
-	const n = steps(event, element);
-	if (n) element.scrollTop = Math.floor(element.scrollTop / rowHeight) * rowHeight + n * rowHeight;
-	return n;
-}
-var NOTCH, LINE, GESTURE_GAP, _gestures, WheelSteps_default;
-var init_WheelSteps = __esmMin((() => {
-	NOTCH = 100;
-	LINE = 33;
-	GESTURE_GAP = 150;
-	_gestures = /* @__PURE__ */ new WeakMap();
-	WheelSteps_default = {
-		steps,
-		scrollRows,
-		NOTCH,
-		GESTURE_GAP
-	};
-}));
-//#endregion
 //#region src/UI/Components/ChatBox/ChatBox.js
 /**
 * Helper: query inside shadow root
 */
-function _root$20() {
+function _root$19() {
 	return ChatBox._shadow || ChatBox._host;
 }
 /**
@@ -220927,7 +219956,7 @@ function extractChatMessage$1(inputEl) {
 */
 function flushMessageBuffer() {
 	if (_messageBuffer.length === 0) return;
-	const root = _root$20();
+	const root = _root$19();
 	const messages = _messageBuffer.slice();
 	_messageBuffer = [];
 	const messagesByTab = {};
@@ -221019,7 +220048,14 @@ function shouldLetChatInputHandleVerticalArrows(inputEl, direction) {
 * Update scroll by block (14px)
 */
 function onScroll$6(event) {
-	WheelSteps_default.scrollRows(event, this, getScrollLineHeightPx(this));
+	let delta;
+	if (event.wheelDelta) {
+		delta = event.wheelDelta / 120;
+		if (window.opera) delta = -delta;
+	} else if (event.detail) delta = -event.detail;
+	else if (event.deltaY) delta = -event.deltaY / Math.abs(event.deltaY);
+	const lineHeight = getScrollLineHeightPx(this);
+	this.scrollTop = Math.floor(this.scrollTop / lineHeight) * lineHeight - (delta || 0) * lineHeight;
 	event.preventDefault();
 }
 /**
@@ -221049,7 +220085,7 @@ function stopPropagation$12(event) {
 */
 function onPrivateMessageUserSelection(name) {
 	return function onPrivateMessageUserSelectionClosure() {
-		const nickBox = _root$20().querySelector(".input .username");
+		const nickBox = _root$19().querySelector(".input .username");
 		if (nickBox) nickBox.value = name;
 	};
 }
@@ -221058,7 +220094,7 @@ function onPrivateMessageUserSelection(name) {
 */
 function onChangeTargetMessage(type) {
 	return function onChangeTargetMessageClosure() {
-		const $input = _root$20().querySelector(".input-chatbox");
+		const $input = _root$19().querySelector(".input-chatbox");
 		if ($input) {
 			$input.classList.remove("guild", "party", "clan");
 			if (type & ChatBox.TYPE.PARTY) $input.classList.add("party");
@@ -221104,18 +220140,17 @@ function getScrollLineHeightPx(element) {
 	return 14;
 }
 function makeResizableDiv() {
-	const root = _root$20();
+	const root = _root$19();
 	const resizer = root.querySelector(".event_add_cursor");
 	if (!resizer) return;
 	let originalHeight = 0;
 	let originalAnchorY = 0;
 	let originalMouseY = 0;
-	let scale = 1;
 	const fixHeight = (height) => Math.floor(height / MAGIC_NUMBER) * MAGIC_NUMBER;
 	const resize = (e) => {
-		let height = fixHeight(originalHeight - (e.pageY - originalMouseY) / scale);
+		let height = fixHeight(originalHeight - (e.pageY - originalMouseY));
 		height = Math.max(MAGIC_NUMBER, Math.min(210, height));
-		ChatBox._host.style.top = `${originalAnchorY - height * scale}px`;
+		ChatBox._host.style.top = `${originalAnchorY - height}px`;
 		const contentWrapper = root.querySelector(".contentwrapper");
 		if (contentWrapper) contentWrapper.style.height = `${height}px`;
 		_heightIndex = Math.max(2, Math.min(6, height / MAGIC_NUMBER + 1));
@@ -221130,8 +220165,7 @@ function makeResizableDiv() {
 		e.preventDefault();
 		const contentWrapper = root.querySelector(".contentwrapper");
 		originalHeight = contentWrapper ? contentWrapper.offsetHeight : 0;
-		scale = ChatBox.scale;
-		originalAnchorY = (parseInt(ChatBox._host.style.top, 10) || 0) + originalHeight * scale;
+		originalAnchorY = (parseInt(ChatBox._host.style.top, 10) || 0) + originalHeight;
 		originalMouseY = e.pageY;
 		window.addEventListener("mousemove", resize);
 		window.addEventListener("mouseup", stopResize);
@@ -221159,7 +220193,6 @@ var init_ChatBox = __esmMin((() => {
 	init_ChatBoxSettings();
 	init_Configs();
 	init_EntityManager();
-	init_WheelSteps();
 	MAX_MSG = 400;
 	MAX_LENGTH = 100;
 	MAGIC_NUMBER = 42;
@@ -221250,14 +220283,13 @@ var init_ChatBox = __esmMin((() => {
 	* Initialize UI
 	*/
 	ChatBox.init = function init() {
-		const root = _root$20();
+		const root = _root$19();
 		if (!ContextMenu_default.__loaded) ContextMenu_default.prepare();
 		_heightIndex = _preferences$41.height - 1;
 		ChatBox.updateHeight();
 		ChatBox.applyFontScale();
-		const hostRect = this._host.getBoundingClientRect();
-		this._host.style.top = `${Math.min(Math.max(0, _preferences$41.y - hostRect.height), Renderer.height - hostRect.height)}px`;
-		this._host.style.left = `${Math.min(Math.max(0, _preferences$41.x), Renderer.width - hostRect.width)}px`;
+		this._host.style.top = `${Math.min(Math.max(0, _preferences$41.y - (this._host.offsetHeight || 0)), Renderer.height - (this._host.offsetHeight || 0))}px`;
+		this._host.style.left = `${Math.min(Math.max(0, _preferences$41.x), Renderer.width - (this._host.offsetWidth || 0))}px`;
 		this.magnet.TOP = _preferences$41.magnet_top;
 		this.magnet.BOTTOM = _preferences$41.magnet_bottom;
 		this.magnet.LEFT = _preferences$41.magnet_left;
@@ -221582,7 +220614,7 @@ var init_ChatBox = __esmMin((() => {
 	* Clean up the box
 	*/
 	ChatBox.clean = function Clean() {
-		const root = _root$20();
+		const root = _root$19();
 		root.querySelectorAll(".content").forEach((content) => {
 			const matches = content.innerHTML.match(/(blob:[^"]+)/g);
 			if (matches) for (let i = 0, count = matches.length; i < count; ++i) window.URL.revokeObjectURL(matches[i]);
@@ -221596,13 +220628,13 @@ var init_ChatBox = __esmMin((() => {
 		_historyNickName.clear();
 	};
 	ChatBox.toggleChatBattleOption = function toggleChatBattleOption() {
-		const onInput = _root$20().querySelector(".header tr td div.on input");
+		const onInput = _root$19().querySelector(".header tr td div.on input");
 		const tabName = onInput ? onInput.value : "";
 		ChatBoxSettings_default.toggle();
 		ChatBoxSettings_default.updateTab(this.activeTab, tabName);
 	};
 	ChatBox.removeTab = function removeTab() {
-		const root = _root$20();
+		const root = _root$19();
 		const tabEl = root.querySelector(`table.header tr td.tab[data-tab="${this.activeTab}"]`);
 		if (tabEl) tabEl.remove();
 		const contentEl = root.querySelector(`.body .content[data-content="${this.activeTab}"]`);
@@ -221618,7 +220650,7 @@ var init_ChatBox = __esmMin((() => {
 		ChatBoxSettings_default.updateTab(this.activeTab, tabName);
 	};
 	ChatBox.addNewTab = function addNewTab(name, settings) {
-		const root = _root$20();
+		const root = _root$19();
 		if (!name) name = "New Tab";
 		if (!settings) settings = [
 			ChatBox.FILTER.PUBLIC_LOG,
@@ -221675,7 +220707,7 @@ var init_ChatBox = __esmMin((() => {
 		return tabID;
 	};
 	ChatBox.switchTab = function switchTab(tabID) {
-		const root = _root$20();
+		const root = _root$19();
 		root.querySelectorAll("table.header tr td.tab div").forEach((el) => el.classList.remove("on"));
 		root.querySelectorAll(".body .content").forEach((el) => el.classList.remove("active"));
 		this.activeTab = tabID;
@@ -221694,7 +220726,7 @@ var init_ChatBox = __esmMin((() => {
 	* Once append to HTML
 	*/
 	ChatBox.onAppend = function OnAppend() {
-		const root = _root$20();
+		const root = _root$19();
 		const inputEl = root.querySelector(".input");
 		if (inputEl) inputEl.style.display = "none";
 		const bmEl = root.querySelector(".battlemode");
@@ -221706,7 +220738,7 @@ var init_ChatBox = __esmMin((() => {
 	* Stop custom scroll
 	*/
 	ChatBox.onRemove = function OnRemove() {
-		_preferences$41.y = (parseInt(this._host.style.top, 10) || 0) + this._host.getBoundingClientRect().height;
+		_preferences$41.y = (parseInt(this._host.style.top, 10) || 0) + (this._host.offsetHeight || 0);
 		_preferences$41.x = parseInt(this._host.style.left, 10) || 0;
 		_preferences$41.height = _heightIndex;
 		_preferences$41.magnet_top = this.magnet.TOP;
@@ -221725,7 +220757,7 @@ var init_ChatBox = __esmMin((() => {
 	* @return {boolean} found a shortcut ?
 	*/
 	ChatBox.processBattleMode = function processBattleMode(keyId) {
-		const bmEl = _root$20().querySelector(".battlemode");
+		const bmEl = _root$19().querySelector(".battlemode");
 		if (bmEl && bmEl.style.display !== "none" || KEYS.ALT || KEYS.SHIFT || KEYS.CTRL || keyId >= KEYS.F1 && keyId <= KEYS.F24 || KEYS.INSERT) return BattleMode.process(keyId);
 		return false;
 	};
@@ -221733,7 +220765,7 @@ var init_ChatBox = __esmMin((() => {
 	* Key Event Handler
 	*/
 	ChatBox.onKeyDown = function OnKeyDown(event) {
-		const root = _root$20();
+		const root = _root$19();
 		const messageBox = root.querySelector(".input-chatbox");
 		const nickBox = root.querySelector(".input .username");
 		const onInput = root.querySelector(".header tr td div.on input");
@@ -221876,7 +220908,7 @@ var init_ChatBox = __esmMin((() => {
 		return false;
 	};
 	ChatBox.toggleChat = function toggleChat() {
-		const messageBox = _root$20().querySelector(".input-chatbox");
+		const messageBox = _root$19().querySelector(".input-chatbox");
 		const activeElement = KEYS.getDeepActiveElement();
 		if (activeElement.tagName === "INPUT" && activeElement !== messageBox) return true;
 		if (document.querySelector("#NpcMenu, #NpcBox")) return true;
@@ -221887,7 +220919,7 @@ var init_ChatBox = __esmMin((() => {
 	* Process ChatBox message
 	*/
 	ChatBox.submit = function Submit() {
-		const root = _root$20();
+		const root = _root$19();
 		const inputEl = root.querySelector(".input");
 		const $user = root.querySelector(".input .username");
 		const $text = root.querySelector(".input-chatbox");
@@ -221953,7 +220985,7 @@ var init_ChatBox = __esmMin((() => {
 	* Change chatbox's height
 	*/
 	ChatBox.updateHeight = function changeHeight(AlwaysVisible) {
-		const root = _root$20();
+		const root = _root$19();
 		const HeightList = [
 			0,
 			0,
@@ -222009,7 +221041,7 @@ var init_ChatBox = __esmMin((() => {
 	* Save chat from current tab into a file.
 	*/
 	ChatBox.saveCurrentTabChat = function saveCurrentTabChat() {
-		const root = _root$20();
+		const root = _root$19();
 		let data;
 		const tzoffset = (/* @__PURE__ */ new Date()).getTimezoneOffset() * 6e4;
 		let localISOTime = new Date(Date.now() - tzoffset).toISOString().slice(0, -1);
@@ -222024,7 +221056,7 @@ var init_ChatBox = __esmMin((() => {
 		ChatBox.addText(`Chat History [${ChatBox.tabs[ChatBox.activeTab].name}] ${date} can be saved by <a style="color:#F88" download="ChatHistory [${ChatBox.tabs[ChatBox.activeTab].name}] (${date.replace("/", "-")}).html" href="${url}" target="_blank">clicking here</a>.`, ChatBox.TYPE.PUBLIC, ChatBox.FILTER.PUBLIC_LOG, null, true);
 	};
 	ChatBox.applyFontScale = function applyFontScale() {
-		const root = _root$20();
+		const root = _root$19();
 		const scale = clampChatFontScale(_preferences$41.fontScale || 1);
 		const baseFont = 12;
 		const baseLineHeight = 14;
@@ -222045,7 +221077,7 @@ var init_ChatBox = __esmMin((() => {
 		if (message) message.style.lineHeight = `${inputLineHeight}px`;
 	};
 	ChatBox._setupItemLinkHandler = function _setupItemLinkHandler() {
-		const root = _root$20();
+		const root = _root$19();
 		if (!root) return;
 		root.addEventListener("click", (event) => {
 			const link = event.target.closest(".item-link");
@@ -222076,7 +221108,7 @@ var init_ChatBox = __esmMin((() => {
 		ItemInfo.setItem(item);
 	});
 	ChatBox.insertText = function(text) {
-		const input = _root$20().querySelector(".input-chatbox");
+		const input = _root$19().querySelector(".input-chatbox");
 		if (!input) return;
 		input.appendChild(document.createTextNode(text));
 		input.focus();
@@ -222390,7 +221422,7 @@ var init_ItemCompare$2 = __esmMin((() => {
 //#region src/UI/Components/ItemCompare/ItemCompare.css?raw
 var ItemCompare_default$1;
 var init_ItemCompare$1 = __esmMin((() => {
-	ItemCompare_default$1 = ":host {\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n.ItemCompare {\r\n	position: relative;\r\n	width: 280px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n.ItemCompare .container {\r\n	height: 120px;\r\n	position: relative;\r\n	box-shadow:\r\n		white 0px 0px 0px 3px inset,\r\n		rgb(192, 192, 192) 0px 0px 0px 4px inset;\r\n	background-repeat: no-repeat;\r\n	background-color: #c5ddf6;\r\n	border-radius: 5px;\r\n}\r\n.ItemCompare .event_view {\r\n	position: absolute;\r\n}\r\n.ItemCompare .event_view .view {\r\n	position: absolute;\r\n	width: 42px;\r\n	height: 20px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n	top: 6px;\r\n	left: 6px;\r\n}\r\n.ItemCompare .collection {\r\n	position: absolute;\r\n	top: 11px;\r\n	left: 10px;\r\n	width: 75px;\r\n	height: 100px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n.ItemCompare .title {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 86px;\r\n	width: 185px;\r\n	height: 14px;\r\n	padding-left: 4px;\r\n	padding-top: 6px;\r\n	text-shadow: 1px 1px 0px white;\r\n	white-space: nowrap;\r\n	overflow: hidden;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n.ItemCompare .close {\r\n	position: absolute;\r\n	top: 3px;\r\n	right: 3px;\r\n	width: 11px;\r\n	height: 11px;\r\n	display: block;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n}\r\n.ItemCompare .description {\r\n	position: absolute;\r\n	background-color: white;\r\n	top: 35px;\r\n	left: 100px;\r\n	line-height: 18px;\r\n	width: 170px;\r\n	height: 75px;\r\n	overflow-y: auto;\r\n}\r\n.ItemCompare .description .description-inner {\r\n	width: 150px;\r\n	white-space: pre-wrap;\r\n}\r\n.ItemCompare .extend {\r\n	position: absolute;\r\n	right: 4px;\r\n	bottom: 3px;\r\n	width: 13px;\r\n	height: 13px;\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n.ItemCompare .cardlist {\r\n	border-radius: 5px;\r\n	background-color: white;\r\n	padding: 2px;\r\n	margin-top: 3px;\r\n}\r\n.ItemCompare .cardlist .border {\r\n	border: 1px solid #c1c6c2;\r\n	background-color: #c5ddf6;\r\n	padding-top: 2px;\r\n	padding-left: 5px;\r\n	border-radius: 5px;\r\n}\r\n.ItemCompare .cardlist .item {\r\n	position: relative;\r\n	display: inline-block;\r\n}\r\n.ItemCompare .cardlist .item .icon {\r\n	width: 24px;\r\n	height: 24px;\r\n}\r\n.ItemCompare .cardlist .item .name {\r\n	position: absolute;\r\n	top: -20px;\r\n	left: -20px;\r\n	display: none;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 13px;\r\n	padding: 5px;\r\n	background: rgba(0, 0, 0, 0.7);\r\n	color: white;\r\n	text-shadow: 1px 1px black;\r\n}\r\n.ItemCompare .cardlist .item:hover .name {\r\n	display: block;\r\n}\r\n\r\n.ItemCompare .book_open {\r\n	margin-top: 6px;\r\n	margin-left: 7px;\r\n}\r\n.ItemCompare .book_read {\r\n	position: absolute;\r\n	margin-top: 7px;\r\n}\r\n\r\n.ItemCompare .overlay_open {\r\n	pointer-events: none;\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 13px;\r\n	background: rgba(0, 0, 0, 0.5);\r\n	color: white;\r\n	text-shadow: black 1px 1px;\r\n	top: -7px;\r\n	left: 7px;\r\n	text-align: center;\r\n	padding: 3px 4px 1px 4px;\r\n	display: none;\r\n}\r\n.ItemCompare .overlay_read {\r\n	pointer-events: none;\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 13px;\r\n	background: rgba(0, 0, 0, 0.5);\r\n	color: white;\r\n	text-shadow: black 1px 1px;\r\n	top: -7px;\r\n	left: 27px;\r\n	text-align: center;\r\n	padding: 3px 4px 1px 4px;\r\n	display: none;\r\n}\r\n\r\n.ItemCompare .optionlist {\r\n	border-radius: 5px;\r\n	background-color: white;\r\n	padding: 2px;\r\n	margin-top: 3px;\r\n}\r\n.ItemCompare .optionlist .border {\r\n	border: 1px solid #c1c6c2;\r\n	background-color: #c5ddf6;\r\n	padding-top: 2px;\r\n	padding-left: 5px;\r\n	border-radius: 5px;\r\n}\r\n.ItemCompare .optionlist .item {\r\n	position: relative;\r\n	display: inline-block;\r\n}\r\n.ItemCompare .optionlist .item .icon {\r\n	width: 24px;\r\n	height: 24px;\r\n}\r\n.ItemCompare .optionlist .item .name {\r\n	position: absolute;\r\n	top: -20px;\r\n	left: -20px;\r\n	display: none;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 13px;\r\n	padding: 5px;\r\n	background: rgba(0, 0, 0, 0.7);\r\n	color: white;\r\n	text-shadow: 1px 1px black;\r\n}\r\n.ItemCompare .optionlist .item:hover .name {\r\n	display: block;\r\n}\r\n\r\n.ItemCompare .title.damaged {\r\n	text-shadow: red 1px 1px 0px;\r\n}\r\n";
+	ItemCompare_default$1 = ":host {\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n.ItemCompare {\r\n	position: relative;\r\n	width: 280px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n.ItemCompare .container {\r\n	height: 120px;\r\n	position: relative;\r\n	box-shadow:\r\n		white 0px 0px 0px 3px inset,\r\n		rgb(192, 192, 192) 0px 0px 0px 4px inset;\r\n	background-repeat: no-repeat;\r\n	background-color: #c5ddf6;\r\n	border-radius: 5px;\r\n}\r\n.ItemCompare .event_view {\r\n	position: absolute;\r\n}\r\n.ItemCompare .event_view .view {\r\n	position: absolute;\r\n	width: 42px;\r\n	height: 20px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n	top: 6px;\r\n	left: 6px;\r\n}\r\n.ItemCompare .collection {\r\n	position: absolute;\r\n	top: 11px;\r\n	left: 10px;\r\n	width: 75px;\r\n	height: 100px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n.ItemCompare .title {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 86px;\r\n	width: 185px;\r\n	height: 14px;\r\n	padding-left: 4px;\r\n	padding-top: 6px;\r\n	text-shadow: 1px 1px 0px white;\r\n	white-space: nowrap;\r\n	overflow: hidden;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n.ItemCompare .close {\r\n	position: absolute;\r\n	top: 3px;\r\n	right: 3px;\r\n	width: 11px;\r\n	height: 11px;\r\n	display: block;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n}\r\n.ItemCompare .description {\r\n	position: absolute;\r\n	background-color: white;\r\n	top: 35px;\r\n	left: 100px;\r\n	line-height: 18px;\r\n	width: 170px;\r\n	height: 75px;\r\n	overflow-y: auto;\r\n}\r\n.ItemCompare .description .description-inner {\r\n	width: 150px;\r\n}\r\n.ItemCompare .extend {\r\n	position: absolute;\r\n	right: 4px;\r\n	bottom: 3px;\r\n	width: 13px;\r\n	height: 13px;\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n.ItemCompare .cardlist {\r\n	border-radius: 5px;\r\n	background-color: white;\r\n	padding: 2px;\r\n	margin-top: 3px;\r\n}\r\n.ItemCompare .cardlist .border {\r\n	border: 1px solid #c1c6c2;\r\n	background-color: #c5ddf6;\r\n	padding-top: 2px;\r\n	padding-left: 5px;\r\n	border-radius: 5px;\r\n}\r\n.ItemCompare .cardlist .item {\r\n	position: relative;\r\n	display: inline-block;\r\n}\r\n.ItemCompare .cardlist .item .icon {\r\n	width: 24px;\r\n	height: 24px;\r\n}\r\n.ItemCompare .cardlist .item .name {\r\n	position: absolute;\r\n	top: -20px;\r\n	left: -20px;\r\n	display: none;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 13px;\r\n	padding: 5px;\r\n	background: rgba(0, 0, 0, 0.7);\r\n	color: white;\r\n	text-shadow: 1px 1px black;\r\n}\r\n.ItemCompare .cardlist .item:hover .name {\r\n	display: block;\r\n}\r\n\r\n.ItemCompare .book_open {\r\n	margin-top: 6px;\r\n	margin-left: 7px;\r\n}\r\n.ItemCompare .book_read {\r\n	position: absolute;\r\n	margin-top: 7px;\r\n}\r\n\r\n.ItemCompare .overlay_open {\r\n	pointer-events: none;\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 13px;\r\n	background: rgba(0, 0, 0, 0.5);\r\n	color: white;\r\n	text-shadow: black 1px 1px;\r\n	top: -7px;\r\n	left: 7px;\r\n	text-align: center;\r\n	padding: 3px 4px 1px 4px;\r\n	display: none;\r\n}\r\n.ItemCompare .overlay_read {\r\n	pointer-events: none;\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 13px;\r\n	background: rgba(0, 0, 0, 0.5);\r\n	color: white;\r\n	text-shadow: black 1px 1px;\r\n	top: -7px;\r\n	left: 27px;\r\n	text-align: center;\r\n	padding: 3px 4px 1px 4px;\r\n	display: none;\r\n}\r\n\r\n.ItemCompare .optionlist {\r\n	border-radius: 5px;\r\n	background-color: white;\r\n	padding: 2px;\r\n	margin-top: 3px;\r\n}\r\n.ItemCompare .optionlist .border {\r\n	border: 1px solid #c1c6c2;\r\n	background-color: #c5ddf6;\r\n	padding-top: 2px;\r\n	padding-left: 5px;\r\n	border-radius: 5px;\r\n}\r\n.ItemCompare .optionlist .item {\r\n	position: relative;\r\n	display: inline-block;\r\n}\r\n.ItemCompare .optionlist .item .icon {\r\n	width: 24px;\r\n	height: 24px;\r\n}\r\n.ItemCompare .optionlist .item .name {\r\n	position: absolute;\r\n	top: -20px;\r\n	left: -20px;\r\n	display: none;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 13px;\r\n	padding: 5px;\r\n	background: rgba(0, 0, 0, 0.7);\r\n	color: white;\r\n	text-shadow: 1px 1px black;\r\n}\r\n.ItemCompare .optionlist .item:hover .name {\r\n	display: block;\r\n}\r\n\r\n.ItemCompare .title.damaged {\r\n	text-shadow: red 1px 1px 0px;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/ItemCompare/ItemCompare.js
@@ -222443,7 +221475,7 @@ function onResize$7() {
 	const top = ItemCompare._host.offsetTop;
 	let lastHeight = 0;
 	function resizing() {
-		const h = Math.floor((Mouse.screen.y - top) / ItemCompare.scale);
+		const h = Math.floor(Mouse.screen.y - top);
 		if (h === lastHeight) return;
 		resize$4(h);
 		lastHeight = h;
@@ -222512,13 +221544,13 @@ function eventsBooks$1() {
 	if (!event) return;
 	Client.getFiles(["data/sprite/book/Ã¥ÀÐ±â.spr", "data/sprite/book/Ã¥ÀÐ±â.act"], function(spr, act) {
 		try {
-			_sprite$5 = new SPR(spr);
-			_action$5 = new ACT(act);
+			_sprite$4 = new SPR(spr);
+			_action$4 = new ACT(act);
 		} catch (e) {
 			console.error("Book::init() - " + e.message);
 			return;
 		}
-		const canvas = _sprite$5.getCanvasFromFrame(0);
+		const canvas = _sprite$4.getCanvasFromFrame(0);
 		canvas.className = "book_open event_add_cursor";
 		event.appendChild(canvas);
 		const bookOpen = root.querySelector(".book_open");
@@ -222543,7 +221575,7 @@ function eventsBooks$1() {
 		readCanvas.height = 15;
 		readCanvas.className = "book_read event_add_cursor";
 		event.appendChild(readCanvas);
-		_ctx$5 = readCanvas.getContext("2d");
+		_ctx$4 = readCanvas.getContext("2d");
 		const bookRead = root.querySelector(".book_read");
 		if (bookRead) {
 			bookRead.addEventListener("mouseover", (e) => {
@@ -222576,7 +221608,7 @@ function validateFieldsExist$1(event) {
 	if (!event.querySelector("button")) event.insertAdjacentHTML("beforeend", "<button class=\"view\" data-background=\"btn_view.bmp\" data-down=\"btn_view_a.bmp\" data-hover=\"btn_view_b.bmp\"></button>");
 	return true;
 }
-var _sprite$5, _action$5, _ctx$5, _type$7, _start$2, ItemCompare, rendering$3, ItemCompare_default;
+var _sprite$4, _action$4, _ctx$4, _type$7, _start$2, ItemCompare, rendering$3, ItemCompare_default;
 var init_ItemCompare = __esmMin((() => {
 	init_DBManager();
 	init_ItemType();
@@ -222611,9 +221643,9 @@ var init_ItemCompare = __esmMin((() => {
 		if (descInner) resize$4(descInner.offsetHeight + 45);
 		if (ItemInfo_default._host) {
 			const itemInfoRect = ItemInfo_default._host.getBoundingClientRect();
-			const width = this._host.getBoundingClientRect().width;
+			const itemInfoWidth = itemInfoRect.width;
 			this._host.style.top = `${itemInfoRect.top ? itemInfoRect.top : 200}px`;
-			this._host.style.left = `${itemInfoRect.left ? itemInfoRect.left - width : 200}px`;
+			this._host.style.left = `${itemInfoRect.left ? itemInfoRect.left - itemInfoWidth : 200}px`;
 		}
 	};
 	/**
@@ -222671,10 +221703,7 @@ var init_ItemCompare = __esmMin((() => {
 			if (optionContainer) optionContainer.style.display = "block";
 		} else if (optionContainer) optionContainer.style.display = "none";
 		const descInner = root.querySelector(".description-inner");
-		if (descInner) {
-			const rawDesc = item.IsIdentified ? it.identifiedDescriptionName : it.unidentifiedDescriptionName;
-			descInner.innerHTML = DB.formatMsgToHtml(_escapeHTML$5(rawDesc));
-		}
+		if (descInner) descInner.textContent = item.IsIdentified ? it.identifiedDescriptionName : it.unidentifiedDescriptionName;
 		addEvent$1(item);
 		let hideslots = false;
 		if (item.slot) {
@@ -222714,14 +221743,14 @@ var init_ItemCompare = __esmMin((() => {
 		const position = new Uint16Array([0, 0]);
 		return function render() {
 			const _entity = new Entity();
-			const action = _action$5.actions[_type$7];
+			const action = _action$4.actions[_type$7];
 			const anim = Math.floor((Renderer.tick - _start$2) / action.delay);
 			const animation = action.animations[anim % action.animations.length];
 			let i, count;
 			count = animation.layers.length;
-			SpriteRenderer.bind2DContext(_ctx$5, 10, 25);
-			_ctx$5.clearRect(0, 0, _ctx$5.canvas.width, _ctx$5.canvas.height);
-			for (i = 0, count = animation.layers.length; i < count; ++i) _entity.renderLayer(animation.layers[i], _sprite$5, _sprite$5, 1, position, false);
+			SpriteRenderer.bind2DContext(_ctx$4, 10, 25);
+			_ctx$4.clearRect(0, 0, _ctx$4.canvas.width, _ctx$4.canvas.height);
+			for (i = 0, count = animation.layers.length; i < count; ++i) _entity.renderLayer(animation.layers[i], _sprite$4, _sprite$4, 1, position, false);
 		};
 	})();
 	ItemCompare_default = UIManager.addComponent(ItemCompare);
@@ -222794,7 +221823,7 @@ function applyPreviewItem(entity) {
 	if (_previewLocation & EquipmentLocation_default.COSTUME_HEAD_TOP) entity.accessory2 = _previewSpriteId;
 	if (_previewLocation & EquipmentLocation_default.COSTUME_ROBE) entity.robe = _previewSpriteId;
 }
-var ItemPreview, _ctx$4, _direction, _previewLocation, _previewSpriteId, _rendering, _remove, renderPreview, ItemPreview_default;
+var ItemPreview, _ctx$3, _direction, _previewLocation, _previewSpriteId, _rendering, _remove, renderPreview, ItemPreview_default;
 var init_ItemPreview = __esmMin((() => {
 	init_DBManager();
 	init_EquipmentLocation();
@@ -222828,7 +221857,7 @@ var init_ItemPreview = __esmMin((() => {
 	*/
 	ItemPreview.init = function init() {
 		const root = this.getRoot();
-		_ctx$4 = root.querySelector("canvas").getContext("2d");
+		_ctx$3 = root.querySelector("canvas").getContext("2d");
 		root.querySelector(".close").addEventListener("click", () => {
 			ItemPreview.remove();
 		});
@@ -222853,9 +221882,8 @@ var init_ItemPreview = __esmMin((() => {
 		if (ItemInfo_default.ui) {
 			const itemInfoPosition = ItemInfo_default.ui.offset();
 			const itemInfoWidth = ItemInfo_default.ui.width();
-			const hostRect = this._host.getBoundingClientRect();
-			const hostWidth = hostRect.width;
-			const hostHeight = hostRect.height;
+			const hostWidth = this._host.offsetWidth;
+			const hostHeight = this._host.offsetHeight;
 			let left = itemInfoPosition.left + itemInfoWidth + 10;
 			let top = itemInfoPosition.top;
 			if (left + hostWidth > Renderer.width) left = Math.max(0, itemInfoPosition.left - hostWidth - 10);
@@ -222913,8 +221941,8 @@ var init_ItemPreview = __esmMin((() => {
 			save: false
 		};
 		return function render() {
-			if (!_ctx$4) return;
-			_ctx$4.clearRect(0, 0, _ctx$4.canvas.width, _ctx$4.canvas.height);
+			if (!_ctx$3) return;
+			_ctx$3.clearRect(0, 0, _ctx$3.canvas.width, _ctx$3.canvas.height);
 			if (!_previewSpriteId || !_previewLocation || !SessionStorage_default.Entity) return;
 			const previewCharacter = new Entity();
 			previewCharacter.set({
@@ -222940,8 +221968,8 @@ var init_ItemPreview = __esmMin((() => {
 			previewCharacter.headDir = 0;
 			previewCharacter.action = previewCharacter.ACTION.IDLE;
 			previewCharacter.animation = _animation;
-			SpriteRenderer.bind2DContext(_ctx$4, Math.floor(_ctx$4.canvas.width / 2), _ctx$4.canvas.height);
-			previewCharacter.renderEntity(_ctx$4);
+			SpriteRenderer.bind2DContext(_ctx$3, Math.floor(_ctx$3.canvas.width / 2), _ctx$3.canvas.height);
+			previewCharacter.renderEntity(_ctx$3);
 			previewCharacter.effectColor.set(_savedColor);
 		};
 	})();
@@ -223088,9 +222116,8 @@ var init_InputBox = __esmMin((() => {
 	*/
 	InputBox.init = function init() {
 		this.draggable();
-		const scale = this.scale;
-		this._host.style.top = `${(Renderer.height - 120 * scale) / 1.5 - 49}px`;
-		this._host.style.left = `${(Renderer.width - 280 * scale) / 2 + 1}px`;
+		this._host.style.top = `${(Renderer.height - 120) / 1.5 - 49}px`;
+		this._host.style.left = `${(Renderer.width - 280) / 2 + 1}px`;
 		const root = InputBox.getRoot();
 		const btn = root.querySelector("ui-button");
 		if (btn) btn.addEventListener("click", () => validate$1());
@@ -223336,7 +222363,7 @@ function onDrop$12(event) {
 	try {
 		data = JSON.parse(event.dataTransfer.getData("Text"));
 	} catch (_e) {}
-	if (data && data.type === "item" && data.from !== "Equipment") {
+	if (data && data.type === "item") {
 		const item = data.data;
 		if ((item.type === ItemType_default.WEAPON || item.type === ItemType_default.ARMOR || item.type === ItemType_default.AMMO) && item.IsIdentified && !item.IsDamaged) {
 			SwitchEquip.getRoot().querySelectorAll("td").forEach((td) => {
@@ -224559,7 +223586,7 @@ function resetPathFindingWorker() {
 	terminatePathFindingWorker();
 	initializePathFindingWorker();
 }
-var Navigation, _arrow, _toolDealer, _weaponDealer, _armorDealer, _blacksmith, _guide, _inn, _kafra, _map, _ctx$3, _towninfo, _markers, _path, _lastPathUpdate, _pathUpdateThrottle, _pathUpdateLock, _pathFindingWorker, _mapData, _targetData, _finalTargetData, _isMapClickTarget, _blinking, _fadeInterval, _originalColor, _documentClickHandler, Navigation_default;
+var Navigation, _arrow, _toolDealer, _weaponDealer, _armorDealer, _blacksmith, _guide, _inn, _kafra, _map, _ctx$2, _towninfo, _markers, _path, _lastPathUpdate, _pathUpdateThrottle, _pathUpdateLock, _pathFindingWorker, _mapData, _targetData, _finalTargetData, _isMapClickTarget, _blinking, _fadeInterval, _originalColor, _documentClickHandler, Navigation_default;
 var init_Navigation = __esmMin((() => {
 	init_KeyEventHandler();
 	init_Renderer();
@@ -224585,7 +223612,7 @@ var init_Navigation = __esmMin((() => {
 	_inn = createAsyncImage();
 	_kafra = createAsyncImage();
 	_map = createAsyncImage();
-	_ctx$3 = null;
+	_ctx$2 = null;
 	_towninfo = [];
 	_markers = [];
 	_path = [];
@@ -224634,7 +223661,7 @@ var init_Navigation = __esmMin((() => {
 		const canvas = document.createElement("canvas");
 		canvas.width = 280;
 		canvas.height = 230;
-		_ctx$3 = canvas.getContext("2d");
+		_ctx$2 = canvas.getContext("2d");
 		const mapDisplay = root.querySelector(".map-display");
 		if (mapDisplay) mapDisplay.appendChild(canvas);
 		Client.loadFile(`${DB.INTERFACE_PATH}map/map_arrow.bmp`, (dataURI) => {
@@ -224913,7 +223940,7 @@ var init_Navigation = __esmMin((() => {
 		if ((this._host ? getComputedStyle(this._host).display : "none") === "none") return;
 		const width = 280;
 		const height = 230;
-		const ctx = _ctx$3;
+		const ctx = _ctx$2;
 		if (!ctx) return;
 		const currentMap = getCurrentMap();
 		const currentPos = getPlayerPosition();
@@ -226264,9 +225291,8 @@ function initResizable(instance) {
 	if (!resizer) return;
 	const resize = (e) => {
 		const rect = instance._host.getBoundingClientRect();
-		const scale = instance.scale;
-		const width = Math.max(150, (e.pageX - rect.left) / scale);
-		const height = Math.max(100, (e.pageY - rect.top) / scale);
+		const width = Math.max(150, e.pageX - rect.left);
+		const height = Math.max(100, e.pageY - rect.top);
 		instance._host.style.width = `${width}px`;
 		instance._host.style.height = `${height}px`;
 		const container = root.querySelector(".whisper-container");
@@ -226455,9 +225481,8 @@ var init_WhisperBox = __esmMin((() => {
 		initResizable(instance);
 		const offset = this._spawnCounter % 10 * 20;
 		this._spawnCounter++;
-		const scale = instance.scale;
-		instance._host.style.top = `${Math.min(Math.max(0, _preferences$38.y + offset), Renderer.height - 156 * scale)}px`;
-		instance._host.style.left = `${Math.min(Math.max(0, _preferences$38.x + offset), Renderer.width - 280 * scale)}px`;
+		instance._host.style.top = `${Math.min(Math.max(0, _preferences$38.y + offset), Renderer.height - 156)}px`;
+		instance._host.style.left = `${Math.min(Math.max(0, _preferences$38.x + offset), Renderer.width - 280)}px`;
 		this.instances[nickname] = instance;
 		return instance;
 	};
@@ -226497,14 +225522,14 @@ var init_WhisperBox = __esmMin((() => {
 /**
 * Helper: query inside shadow root
 */
-function _root$19() {
+function _root$18() {
 	return PartyHelper._shadow || PartyHelper._host;
 }
 /**
 * Validate and process form data
 */
 function onValidate$1() {
-	const root = _root$19();
+	const root = _root$18();
 	const PartyFriends = UIManager.getComponent("PartyFriends");
 	switch (_type$6) {
 		case PartyHelper.Type.CREATE: {
@@ -226567,7 +225592,7 @@ var init_PartyHelper = __esmMin((() => {
 	* Initialize component event listeners
 	*/
 	PartyHelper.init = function init() {
-		const root = _root$19();
+		const root = _root$18();
 		const baseBtn = root.querySelector(".base");
 		if (baseBtn) baseBtn.addEventListener("mousedown", (e) => {
 			e.stopImmediatePropagation();
@@ -226603,7 +225628,7 @@ var init_PartyHelper = __esmMin((() => {
 				off.classList.remove("off");
 				off.classList.add("on");
 				const prefs = WhisperBox.preferences;
-				const rootEl = _root$19();
+				const rootEl = _root$18();
 				const strangerOn = rootEl.querySelector(".open1to1Stranger .on");
 				const friendOn = rootEl.querySelector(".open1to1Friend .on");
 				const alarmOn = rootEl.querySelector(".alarm1to1 .on");
@@ -226666,7 +225691,7 @@ var init_PartyHelper = __esmMin((() => {
 	*/
 	PartyHelper.onAppend = function onAppend() {
 		const base = UIManager.getComponent("PartyFriends");
-		const root = _root$19();
+		const root = _root$18();
 		const partyContent = root.querySelector(".party-content");
 		const friendContent = root.querySelector(".friend-content");
 		if (partyContent) partyContent.style.display = "none";
@@ -226683,7 +225708,7 @@ var init_PartyHelper = __esmMin((() => {
 	* Cleanup on window removal
 	*/
 	PartyHelper.onRemove = function onRemove() {
-		const root = _root$19();
+		const root = _root$18();
 		const partyContent = root.querySelector(".party-content");
 		const friendContent = root.querySelector(".friend-content");
 		if (partyContent) partyContent.style.display = "none";
@@ -226697,7 +225722,7 @@ var init_PartyHelper = __esmMin((() => {
 	* @param {number} type
 	*/
 	PartyHelper.setType = function setType(type) {
-		const root = _root$19();
+		const root = _root$18();
 		root.querySelectorAll(".content").forEach((el) => el.classList.remove("disabled"));
 		const footer = root.querySelector(".footer");
 		if (footer) footer.style.display = "block";
@@ -226782,7 +225807,7 @@ var init_PartyHelper = __esmMin((() => {
 	* @param {boolean} editable
 	*/
 	PartyHelper.setOptions = function setOptions(options, editable) {
-		const root = _root$19();
+		const root = _root$18();
 		function swap(off) {
 			const on = off.parentNode.querySelector(".on");
 			const tmp = on.style.backgroundImage;
@@ -226813,7 +225838,7 @@ var init_PartyHelper = __esmMin((() => {
 	* @param {object} options
 	*/
 	PartyHelper.setFriendOptions = function setFriendOptions(options) {
-		const root = _root$19();
+		const root = _root$18();
 		function swap(off) {
 			const on = off.parentNode.querySelector(".on");
 			on.className = "off";
@@ -227129,13 +226154,6 @@ var init_SkillTargetSelection = __esmMin((() => {
 		return !intersectEntities(event);
 	};
 	/**
-	* Target types the pending skill accepts (SkillTargetSelection.TYPE bits),
-	* or 0 when no skill is waiting for a target.
-	*/
-	SkillTargetSelection.getFlag = function getFlag() {
-		return Mouse.state === Mouse.MOUSE_STATE.USESKILL ? _flag : 0;
-	};
-	/**
 	* Intersect with an entity ID
 	* (used in party UI)
 	*/
@@ -227205,7 +226223,7 @@ var init_Rodex$2 = __esmMin((() => {
 /**
 * Helper: query inside shadow root
 */
-function _root$18() {
+function _root$17() {
 	return Rodex._shadow || Rodex._host;
 }
 function onClickClose$2(e) {
@@ -227227,13 +226245,13 @@ function onClickWriteMail(e) {
 }
 function onClickDeleteAll(e) {
 	e.stopImmediatePropagation();
-	UIManager.showPromptBox(DB.getMessage(3590).replace("%s", Rodex.getMailboxName()), "ok", "cancel", () => {
+	UIManager.showPromptBox(DB.getMessage(3590), "ok", "cancel", () => {
 		Rodex.deleteAll();
 	});
 }
 function onClickRetrieveAll(e) {
 	e.stopImmediatePropagation();
-	UIManager.showPromptBox(DB.getMessage(3594).replace("%s", Rodex.getMailboxName()), "ok", "cancel", () => {
+	UIManager.showPromptBox(DB.getMessage(3594), "ok", "cancel", () => {
 		Rodex.getAll();
 	});
 }
@@ -227255,7 +226273,7 @@ function onClickTab(e) {
 	Rodex.page = 0;
 	const element = e.currentTarget;
 	const id = element.id.replace("tab_", "");
-	const root = _root$18();
+	const root = _root$17();
 	root.querySelectorAll(".nav-item.active").forEach((el) => el.classList.remove("active"));
 	element.classList.add("active");
 	if (id >= 0 && id <= 2) {
@@ -227266,7 +226284,7 @@ function onClickTab(e) {
 function onClickSearchTitle(e) {
 	e.stopImmediatePropagation();
 	Rodex.searchType = 1;
-	const root = _root$18();
+	const root = _root$17();
 	Client.loadFile(DB.INTERFACE_PATH + "basic_interface/rodexsystem/renewal/checkbox_search_off.bmp", (data) => {
 		const el = root.querySelector(".search-sender");
 		if (el) el.style.backgroundImage = `url(${data})`;
@@ -227279,7 +226297,7 @@ function onClickSearchTitle(e) {
 function onClickSearchSender(e) {
 	e.stopImmediatePropagation();
 	Rodex.searchType = 2;
-	const root = _root$18();
+	const root = _root$17();
 	Client.loadFile(DB.INTERFACE_PATH + "basic_interface/rodexsystem/renewal/checkbox_search_on.bmp", (data) => {
 		const el = root.querySelector(".search-sender");
 		if (el) el.style.backgroundImage = `url(${data})`;
@@ -227291,7 +226309,7 @@ function onClickSearchSender(e) {
 }
 function onClickSearchButton(e) {
 	e.stopImmediatePropagation();
-	const root = _root$18();
+	const root = _root$17();
 	const search = root.querySelector(".search").value;
 	root.querySelectorAll(".nav-item.active").forEach((el) => el.classList.remove("active"));
 	root.querySelector("#tab_3").classList.add("active");
@@ -227347,29 +226365,12 @@ var init_Rodex$1 = __esmMin((() => {
 	* know what to search
 	*/
 	Rodex.searchType = 1;
-	/**
-	* A mail's type is a set of flags (rAthena enum mail_type), so a mail from an
-	* NPC or the server, such as an achievement reward, carries NPC on top of what
-	* it holds: 12 is an item sent by the server.
-	*/
-	Rodex.MAIL_TYPE = {
-		ZENY: 2,
-		ITEM: 4,
-		NPC: 8
-	};
-	/**
-	* Icon for what a mail holds
-	*
-	* @param {number} type - the mail's type flags
-	* @return {string} image path, or '' for a letter with nothing attached
-	*/
-	Rodex.getAttachmentIcon = function getAttachmentIcon(type) {
-		const zeny = type & Rodex.MAIL_TYPE.ZENY;
-		const item = type & Rodex.MAIL_TYPE.ITEM;
-		if (zeny && item) return "basic_interface/rodexsystem/renewal/icon_zeny_n_item.bmp";
-		if (item) return "basic_interface/rodexsystem/renewal/icon_item.bmp";
-		if (zeny) return "basic_interface/rodexsystem/renewal/icon_zeny.bmp";
-		return "";
+	Rodex.attachmentType = {
+		0: "",
+		2: "basic_interface/rodexsystem/renewal/icon_zeny.bmp",
+		4: "basic_interface/rodexsystem/renewal/icon_item.bmp",
+		6: "basic_interface/rodexsystem/renewal/icon_zeny_n_item.bmp",
+		12: "basic_interface/rodexsystem/renewal/icon_zeny_n_item.bmp"
 	};
 	_preferences$37 = Preferences.get("Rodex", {
 		x: 350,
@@ -227384,7 +226385,7 @@ var init_Rodex$1 = __esmMin((() => {
 	* Apply preferences once append to body
 	*/
 	Rodex.onAppend = function OnAppend() {
-		const root = _root$18();
+		const root = _root$17();
 		this._host.style.top = `${Math.min(Math.max(0, _preferences$37.y), Renderer.height - this._host.offsetHeight)}px`;
 		this._host.style.left = `${Math.min(Math.max(0, _preferences$37.x), Renderer.width - this._host.offsetWidth)}px`;
 		this.draggable(root.querySelector(".titlebar"));
@@ -227431,7 +226432,7 @@ var init_Rodex$1 = __esmMin((() => {
 		this.focus();
 	};
 	Rodex.createRodexList = function createRodexList(tabID = 0, search = false, term = "") {
-		const root = _root$18();
+		const root = _root$17();
 		const content = root.querySelector(".mail-list");
 		content.innerHTML = "";
 		let mail_list = [];
@@ -227449,7 +226450,7 @@ var init_Rodex$1 = __esmMin((() => {
 			const title = mail.title.length > 18 ? mail.title.substring(0, 18) + "..." : mail.title;
 			const sender = mail.SenderName.length > 18 ? mail.SenderName.substring(0, 18) + "..." : mail.SenderName;
 			const mail_image = mail.Isread ? "icon_status_mail_read" : "icon_status_mail_received";
-			const mail_content = Rodex.getAttachmentIcon(mail.type);
+			const mail_content = Rodex.attachmentType[mail.type];
 			const remaining_days = parseInt(mail.expireDateTime / 60 / 60 / 24);
 			const mail_html = `<li class="mail-item">
 				<div class="mail-checkbox" data-background="basic_interface/rodexsystem/renewal/checkbox_off.bmp">
@@ -227486,43 +226487,22 @@ var init_Rodex$1 = __esmMin((() => {
 	Rodex.getMailByID = function getMailByID(mailID) {
 		return Rodex.list.find((mail) => mail.MailID == mailID);
 	};
-	/**
-	* Name of the open mailbox, as its tab shows it
-	*
-	* @return {string}
-	*/
-	Rodex.getMailboxName = function getMailboxName() {
-		const tabText = {
-			0: 3547,
-			1: 3546,
-			2: 3548
-		}[Number(Rodex.openType)];
-		return tabText ? DB.getMessage(tabText) : "";
-	};
-	/**
-	* Claim every attachment in the open mailbox
-	*/
 	Rodex.getAll = function getAll() {
-		const mails = Rodex.getMailsByTabID(Rodex.openType);
-		for (let i = 0; i < mails.length; i++) {
-			const mail = mails[i];
-			if (mail.type & Rodex.MAIL_TYPE.ITEM) Rodex.requestItemsFromRodex(mail.openType, mail.MailID);
-			if (mail.type & Rodex.MAIL_TYPE.ZENY) Rodex.requestZenyFromRodex(mail.openType, mail.MailID);
+		for (let i = 0; i < Rodex.list.length; i++) {
+			const mail = Rodex.list[i];
+			if (mail.type > 0 && (mail.type === 4 || mail.type === 6)) Rodex.requestItemsFromRodex(mail.openType, mail.MailID);
+			if (mail.type > 0 && (mail.type === 2 || mail.type === 6)) Rodex.requestZenyFromRodex(mail.openType, mail.MailID);
 		}
 	};
-	/**
-	* Delete every mail in the open mailbox that has nothing left to claim
-	*/
 	Rodex.deleteAll = function deleteAll() {
-		const mails = Rodex.getMailsByTabID(Rodex.openType);
-		for (let i = 0; i < mails.length; i++) {
-			const mail = mails[i];
-			if (!(mail.type & (Rodex.MAIL_TYPE.ZENY | Rodex.MAIL_TYPE.ITEM))) Rodex.requestDeleteRodex(mail.openType, mail.MailID);
+		for (let i = 0; i < Rodex.list.length; i++) {
+			const mail = Rodex.list[i];
+			if (mail.type === 0) Rodex.requestDeleteRodex(mail.openType, mail.MailID);
 			else ChatBox_default.addText(DB.getMessage(2612), ChatBox_default.TYPE.INFO_MAIL, ChatBox_default.FILTER.PUBLIC_LOG);
 		}
 	};
 	Rodex.updateDeletedMailContent = function updateDeletedMailContent(openType, MailID) {
-		const root = _root$18();
+		const root = _root$17();
 		const mailEl = root.querySelector(`#mail_${MailID}`);
 		if (mailEl) {
 			mailEl.textContent = DB.getMessage(2907);
@@ -227555,7 +226535,7 @@ var init_Rodex$1 = __esmMin((() => {
 /**
 * Helper: query inside shadow root
 */
-function _root$17(comp) {
+function _root$16(comp) {
 	return comp._shadow || comp._host;
 }
 /**
@@ -227646,7 +226626,7 @@ var init_PartyMemberExternal = __esmMin((() => {
 	*/
 	PartyMemberExternal.init = function init() {
 		const self = this;
-		const root = _root$17(this);
+		const root = _root$16(this);
 		root.addEventListener("mousedown", (event) => {
 			self._lastPos = {
 				top: self._host.offsetTop,
@@ -227739,7 +226719,7 @@ var init_PartyMemberExternal = __esmMin((() => {
 	* @param {object} player
 	*/
 	PartyMemberExternal.update = function update(player) {
-		const root = _root$17(this);
+		const root = _root$16(this);
 		if (!root) return;
 		const level = player.baseLevel || player.level || player.Level || 0;
 		const jobID = player.class_ || player.job || player.Job || 0;
@@ -227791,7 +226771,7 @@ var init_PartyMemberExternal = __esmMin((() => {
 	* @param {number} maxhp
 	*/
 	PartyMemberExternal.updateMemberLife = function updateMemberLife(hp, maxhp) {
-		const root = _root$17(this);
+		const root = _root$16(this);
 		if (root) updateCanvasLife(root, hp, maxhp);
 	};
 	PartyMemberExternal_default = UIManager.addComponent(PartyMemberExternal);
@@ -227813,11 +226793,11 @@ var init_Mail$2 = __esmMin((() => {
 /**
 * Helper: query inside shadow root
 */
-function _root$16() {
+function _root$15() {
 	return Mail._shadow || Mail._host;
 }
 function updatePageMailItems() {
-	const root = _root$16();
+	const root = _root$15();
 	const nextBtn = root.querySelector(".next");
 	if (nextBtn) nextBtn.addEventListener("click", (e) => {
 		e.stopImmediatePropagation();
@@ -227842,7 +226822,7 @@ function updatePageMailItems() {
 * Create messages window size
 */
 function onWindowMailbox() {
-	const root = _root$16();
+	const root = _root$15();
 	Mail.parseMailrefreshinbox();
 	const sendBtn = root.querySelector("#create_mail_send");
 	if (sendBtn) sendBtn.disabled = false;
@@ -227870,7 +226850,7 @@ function onWindowMailbox() {
 	if (title) title.textContent = DB.getMessage(1025);
 }
 function createMailList() {
-	const root = _root$16();
+	const root = _root$15();
 	const content = root.querySelector(".list_item_mail");
 	root.querySelectorAll(".item_mail").forEach((el) => el.remove());
 	if (Mail.list.length == 0) return;
@@ -227925,7 +226905,7 @@ function createMailList() {
 	adjustButtons();
 }
 function adjustButtons() {
-	const root = _root$16();
+	const root = _root$15();
 	if (Mail.list.length == 0) return;
 	const mailLength = Mail.list.mailList.length;
 	if (!(Mail.page > mailLength / Mail.pageSize - 1)) addEventNextAndPrevAdd("next");
@@ -227938,7 +226918,7 @@ function adjustButtons() {
 	if (prevSpan) prevSpan.disabled = mailLength <= Mail.pageSize || Mail.page == 0;
 }
 function addEventNextAndPrevAdd(eventName) {
-	const root = _root$16();
+	const root = _root$15();
 	const overlay = root.querySelector(`.prev_next .overlay_${eventName}`);
 	const text = root.querySelector(`.prev_next .${eventName} span`);
 	if (text) text.classList.add("event_add_cursor");
@@ -227954,7 +226934,7 @@ function addEventNextAndPrevAdd(eventName) {
 	}
 }
 function addEventNextAndPrevRemove(eventName) {
-	const root = _root$16();
+	const root = _root$15();
 	const overlay = root.querySelector(`.prev_next .overlay_${eventName}`);
 	const text = root.querySelector(`.prev_next .${eventName} span`);
 	if (overlay) overlay.style.display = "none";
@@ -227966,7 +226946,7 @@ function offCreateMessagesOnWindowMailbox(event) {
 	removeCreateAllItem();
 }
 function sendCreateMessagesMail(event) {
-	const root = _root$16();
+	const root = _root$15();
 	event.stopImmediatePropagation();
 	const zenyOk = root.querySelector("#zeny_ok");
 	if (zenyOk && window.getComputedStyle(zenyOk).display !== "none") {
@@ -228001,7 +226981,7 @@ function openWindowCreateMessages(event) {
 * Open Create messages window size
 */
 function onWindowCreateMessages() {
-	const root = _root$16();
+	const root = _root$15();
 	removeCreateAllItem();
 	offWindowListMail();
 	Client.loadFile(DB.INTERFACE_PATH + "basic_interface/maillist2_bg.bmp", (url) => {
@@ -228012,7 +226992,7 @@ function onWindowCreateMessages() {
 	if (title) title.textContent = DB.getMessage(1026);
 }
 function offWindowListMail() {
-	const root = _root$16();
+	const root = _root$15();
 	const prevNext = root.querySelector(".prev_next");
 	if (prevNext) prevNext.style.display = "none";
 	const blockMail = root.querySelector(".block_mail");
@@ -228023,7 +227003,7 @@ function offWindowListMail() {
 	if (textarea) textarea.focus();
 }
 function onAddZenyInput(event) {
-	const root = _root$16();
+	const root = _root$15();
 	event.stopImmediatePropagation();
 	const zenyAmt = root.querySelector("#zeny_amt");
 	if (zenyAmt) zenyAmt.style.display = "none";
@@ -228038,7 +227018,7 @@ function onAddZenyInput(event) {
 	Mail.parseMailWinopen(2);
 }
 function onValidZenyInput(event) {
-	const root = _root$16();
+	const root = _root$15();
 	event.stopImmediatePropagation();
 	const zenyAmt = root.querySelector("#zeny_amt");
 	if (zenyAmt) zenyAmt.style.display = "inline-block";
@@ -228074,7 +227054,7 @@ function onDrop$11(event) {
 	} catch (_e) {
 		return;
 	}
-	if (data.type !== "item" || data.from == "Storage" || data.from == "Mail" || data.from == "Equipment") return;
+	if (data.type !== "item" || data.from == "Storage" || data.from == "Mail") return;
 	if (item.count > 1) {
 		InputBox_default.append();
 		InputBox_default.setType("number", false, item.count);
@@ -228100,7 +227080,7 @@ function onDrop$11(event) {
 * Show item name when mouse is over
 */
 function onItemOver$13() {
-	const root = _root$16();
+	const root = _root$15();
 	const idx = parseInt(this.getAttribute("data-index"), 10);
 	const item = Mail.getItemByIndex(idx);
 	if (!item) return;
@@ -228116,7 +227096,7 @@ function onItemOver$13() {
 * Hide the item name
 */
 function onItemOut$14() {
-	const overlay = _root$16().querySelector(".container_item .overlay");
+	const overlay = _root$15().querySelector(".container_item .overlay");
 	if (overlay) overlay.style.display = "none";
 }
 /**
@@ -228262,7 +227242,7 @@ var init_Mail$1 = __esmMin((() => {
 	* Apply preferences once append to body
 	*/
 	Mail.onAppend = function OnAppend() {
-		const root = _root$16();
+		const root = _root$15();
 		const closeBtn = root.querySelector(".close");
 		if (closeBtn) closeBtn.addEventListener("click", this.onClosePressed.bind(this));
 		const inboxBtn = root.querySelector("#inbox");
@@ -228323,7 +227303,7 @@ var init_Mail$1 = __esmMin((() => {
 	* Add item to inventory
 	*/
 	Mail.addItemSub = function AddItemSub(Index) {
-		const root = _root$16();
+		const root = _root$15();
 		const item = _preferences$36.item_add_email;
 		if (item.index !== Index) return false;
 		if (item.WearState && item.type !== ItemType_default.AMMO && item.type !== ItemType_default.CARD) return false;
@@ -228344,14 +227324,14 @@ var init_Mail$1 = __esmMin((() => {
 	* Send from mail to inventory - Remove item
 	*/
 	Mail.removeItem = function removeItem() {
-		const item = _root$16().querySelector(".item");
+		const item = _root$15().querySelector(".item");
 		if (item) item.remove();
 	};
 	/**
 	* Send from mail to inventory - Remove zenys
 	*/
 	Mail.removeZeny = function removeZeny() {
-		const input = _root$16().querySelector(".input_zeny_amt");
+		const input = _root$15().querySelector(".input_zeny_amt");
 		if (input) input.value = "0";
 	};
 	/**
@@ -228373,7 +227353,7 @@ var init_Mail$1 = __esmMin((() => {
 	* Extend Mail window size
 	*/
 	Mail.resize = function Resize(width, height) {
-		const root = _root$16();
+		const root = _root$15();
 		width = Math.min(Math.max(width, 6), 9);
 		height = Math.min(Math.max(height, 2), 6);
 		const mailEl = root.querySelector("#Mail");
@@ -228425,7 +227405,7 @@ var init_Mail$1 = __esmMin((() => {
 	* Responder to a mail.
 	*/
 	Mail.replyNewMail = function replyNewMail(fromName) {
-		const root = _root$16();
+		const root = _root$15();
 		onWindowCreateMessages();
 		const textTo = root.querySelector(".text_to");
 		if (textTo) textTo.value = fromName.replace(/^(\$|\%)/, "").replace(/\t/g, "");
@@ -228434,7 +227414,7 @@ var init_Mail$1 = __esmMin((() => {
 	* Responder to a mail from friends.
 	*/
 	Mail.replyNewMailFriends = async function replyNewMailFriends(fromName) {
-		const root = _root$16();
+		const root = _root$15();
 		Mail.append();
 		sleep(1).then(() => {
 			onWindowCreateMessages();
@@ -228459,7 +227439,7 @@ var init_Mail$1 = __esmMin((() => {
 		});
 	};
 	Mail.clearFieldsItemZeny = function clearFieldsItemZeny() {
-		const root = _root$16();
+		const root = _root$15();
 		const item = root.querySelector(".item");
 		if (item) item.remove();
 		const zenyInput = root.querySelector(".input_zeny_amt");
@@ -229280,16 +228260,6 @@ function createPartyFriends(config) {
 		if (item_sharing_type !== void 0) _options.item_sharing_type = item_sharing_type;
 	};
 	/**
-	* The party members as the party packets left them (AID, characterName,
-	* mapName, state 0 = online, class_, isDead, life), self included.
-	* A copy: the gamepad support radial reads it every frame.
-	*
-	* @return {Array<object>}
-	*/
-	Component.getPartyMembers = function getPartyMembers() {
-		return _party.slice();
-	};
-	/**
 	* Check if character is a group member
 	*
 	* @param {string} character name
@@ -229360,11 +228330,6 @@ function createPartyFriends(config) {
 					}
 					ghostInner.style.width = `${node.offsetWidth}px`;
 					ghostInner.style.height = `${node.offsetHeight}px`;
-					const scale = Component.scale;
-					if (scale !== 1) {
-						ghostInner.style.scale = String(scale);
-						ghostInner.style.transformOrigin = "0 0";
-					}
 				}
 			}
 			if (isDragging && ghostInner) {
@@ -229570,9 +228535,8 @@ function createPartyFriends(config) {
 		function resizing() {
 			const extraX = -20;
 			const extraY = 46;
-			const scale = Component.scale;
-			let w = Math.floor(((Mouse.screen.x - left) / scale - extraX) / 20);
-			let h = Math.floor(((Mouse.screen.y - top) / scale - extraY) / 20);
+			let w = Math.floor((Mouse.screen.x - left - extraX) / 20);
+			let h = Math.floor((Mouse.screen.y - top - extraY) / 20);
 			w = Math.min(Math.max(w, 12), 13);
 			h = Math.min(Math.max(h, 6), 12);
 			if (w === lastWidth && h === lastHeight) return;
@@ -230006,13 +228970,6 @@ var init_PartyFriends = __esmMin((() => {
 		return ui && ui.isGroupMember && ui.isGroupMember(name);
 	};
 	/**
-	* Proxy for getPartyMembers
-	*/
-	controller.getPartyMembers = function getPartyMembers() {
-		const ui = controller.getUI();
-		return ui && ui.getPartyMembers ? ui.getPartyMembers() : [];
-	};
-	/**
 	* Proxy for onOpenChat1to1
 	*/
 	controller.onOpenChat1to1 = function onOpenChat1to1(name) {
@@ -230044,13 +229001,13 @@ var init_GuildCompanion$1 = __esmMin((() => {
 /**
 * Helper: query inside shadow root
 */
-function _root$15() {
+function _root$14() {
 	return GuildCompanion.getRoot();
 }
-function open$1(mode) {
+function open(mode) {
 	_mode = mode;
 	if (!GuildCompanion.__active) GuildCompanion.append();
-	const root = _root$15();
+	const root = _root$14();
 	const companion = root.querySelector(".win.companion");
 	const nameWin = root.querySelector(".win.namebox");
 	const input = root.querySelector(".guildname");
@@ -230104,7 +229061,7 @@ var init_GuildCompanion = __esmMin((() => {
 		}
 	};
 	GuildCompanion.init = function init() {
-		const root = _root$15();
+		const root = _root$14();
 		const nameWin = root.querySelector(".win.namebox");
 		const input = root.querySelector(".guildname");
 		this.draggable(root.querySelector(".companion .titlebar"));
@@ -230162,10 +229119,10 @@ var init_GuildCompanion = __esmMin((() => {
 		});
 	};
 	GuildCompanion.openCreate = function openCreate() {
-		open$1("create");
+		open("create");
 	};
 	GuildCompanion.openDisband = function openDisband() {
-		open$1("disband");
+		open("disband");
 	};
 	GuildCompanion.closeDisband = function closeDisband() {
 		if (_mode === "disband" && GuildCompanion.__active) GuildCompanion.remove();
@@ -230353,11 +229310,6 @@ function createWinStats({ name, htmlText, cssText, hasTraits }) {
 		this.t_statuspoint = 0;
 		this.draggable(".titlebar");
 		_root = this.getRoot();
-		_root.querySelectorAll(".desc .hover[data-text]").forEach((tooltip) => {
-			const escaped = document.createElement("div");
-			escaped.textContent = DB.getMessage(tooltip.dataset.text, "");
-			tooltip.innerHTML = DB.formatMsgToHtml(escaped.innerHTML);
-		});
 		_root.querySelectorAll(".up button").forEach((btn) => {
 			btn.addEventListener("mousedown", () => {
 				const id = statButtonMap[btn.className];
@@ -230724,7 +229676,7 @@ function _showsTaxPoint() {
 /**
 * Helper: query inside shadow root
 */
-function _root$14(comp) {
+function _root$13(comp) {
 	return comp.getRoot();
 }
 /**
@@ -230737,7 +229689,7 @@ function _root$14(comp) {
 */
 function _dropPendingPositions() {
 	_pendingPositions = {};
-	const root = _root$14(Guild);
+	const root = _root$13(Guild);
 	if (!root) return;
 	for (const row of root.querySelectorAll(".content.members .MemberView.pending")) row.classList.remove("pending");
 }
@@ -230762,7 +229714,7 @@ function _hasPendingPositions() {
 * @see docs/reference/guild/grade-change.md
 */
 function _clearPendingPositions() {
-	const root = _root$14(Guild);
+	const root = _root$13(Guild);
 	if (root) for (const GID in _pendingPositions) {
 		const pending = _pendingPositions[GID];
 		for (let i = 0, count = _members.length; i < count; ++i) {
@@ -230789,7 +229741,7 @@ function _resetPositionsTab() {
 	_clearPendingPositions();
 	_positionsDirty = false;
 	_positionsSelected = 0;
-	if (_root$14(Guild)) {
+	if (_root$13(Guild)) {
 		_hideApplyButton();
 		Guild.updatePositionView();
 	}
@@ -230825,14 +229777,14 @@ function _clearInfoTab(root) {
 * Helper: reveal the Apply button, the affordance for a pending change
 */
 function _showApplyButton() {
-	const btnOk = _root$14(Guild).querySelector(".footer .btn_ok");
+	const btnOk = _root$13(Guild).querySelector(".footer .btn_ok");
 	if (btnOk) btnOk.style.display = "block";
 }
 /**
 * Helper: take the Apply button back, there being nothing left to send
 */
 function _hideApplyButton() {
-	const btnOk = _root$14(Guild).querySelector(".footer .btn_ok");
+	const btnOk = _root$13(Guild).querySelector(".footer .btn_ok");
 	if (btnOk) btnOk.style.display = "none";
 }
 /**
@@ -231072,7 +230024,7 @@ function onRequestSkillInfo() {
 	SkillDescription_default.setSkill(skill.SKID);
 }
 function onSkillFocus() {
-	const root = _root$14(Guild);
+	const root = _root$13(Guild);
 	for (const el of root.querySelectorAll(".skill")) el.classList.remove("selected");
 	this.classList.add("selected");
 }
@@ -231139,7 +230091,7 @@ function updateTabAccess(root) {
 }
 function onChangeTab(event) {
 	const tab = parseInt(this.getAttribute("data-flag"), 10);
-	const root = _root$14(Guild);
+	const root = _root$13(Guild);
 	if (this.classList.contains("active") || tab && !(_guildAccess & AccessTypeBit[tab])) return false;
 	if (tab !== TAB_MEMBERS && tab !== TAB_POSITIONS || !_hasPendingPositions()) Guild.onGuildInfoRequest(tab);
 	for (const btn of root.querySelectorAll(".tabs button")) btn.classList.remove("active");
@@ -231180,7 +230132,7 @@ function tendencyMarker(honor, virtue) {
 * @see docs/reference/guild/info-tab-legacy.md
 */
 function renderTendency(honor, virtue) {
-	const canvas = _root$14(Guild).querySelector(".content.info .tendency canvas");
+	const canvas = _root$13(Guild).querySelector(".content.info .tendency canvas");
 	if (!canvas) return;
 	const ctx = canvas.getContext("2d");
 	ctx.fillStyle = "#c8c8c8";
@@ -231200,7 +230152,7 @@ function renderTendency(honor, virtue) {
 * @param {CanvasRenderingContext2D} ctx
 * @param {number} side
 */
-function opaqueBounds$1(ctx, side) {
+function opaqueBounds(ctx, side) {
 	const data = ctx.getImageData(0, 0, side, side).data;
 	let top = -1, bottom = -1, left = side, right = -1;
 	for (let y = 0; y < side; ++y) {
@@ -231220,7 +230172,7 @@ function opaqueBounds$1(ctx, side) {
 	};
 }
 function onValidate() {
-	const root = _root$14(Guild);
+	const root = _root$13(Guild);
 	const visibleContent = Array.from(root.querySelectorAll(".content")).find((el) => {
 		return el.style.display !== "none" && getComputedStyle(el).display !== "none";
 	});
@@ -231346,7 +230298,7 @@ function updateMemberSort(root, activeTab) {
 		});
 	}
 }
-var ACCESS_UNKNOWN, TAB_MEMBERS, TAB_POSITIONS, INFO_BLANK_CELLS, INFO_ZERO_CELLS, AccessTypeBit, Guild, _memberViewTemplate, _positionViewTemplate, _expelViewTemplate, _noticeSubjectTemplate, _noticeBodyTemplate, _notice, _positions, _members, _skills, _pendingPositions, _positionsDirty, _positionsSelected, _sentPayRates, GUILD_PERM_STORAGE, PERMISSION_COLUMNS, GUILD_LEVEL_MAX, EMBLEM_SIDE, _btnIncSkillTemplate, _skpoints, _btnLevelUp, _totalExp, _guildAccess, _accessRequested, _checkbox_off, _checkbox_on, _hasMemo, GUILD_CONFIG, PORTRAIT_BOX$1, renderMemberFaces, Guild_default;
+var ACCESS_UNKNOWN, TAB_MEMBERS, TAB_POSITIONS, INFO_BLANK_CELLS, INFO_ZERO_CELLS, AccessTypeBit, Guild, _memberViewTemplate, _positionViewTemplate, _expelViewTemplate, _noticeSubjectTemplate, _noticeBodyTemplate, _notice, _positions, _members, _skills, _pendingPositions, _positionsDirty, _positionsSelected, _sentPayRates, GUILD_PERM_STORAGE, PERMISSION_COLUMNS, GUILD_LEVEL_MAX, EMBLEM_SIDE, _btnIncSkillTemplate, _skpoints, _btnLevelUp, _totalExp, _guildAccess, _accessRequested, _checkbox_off, _checkbox_on, _hasMemo, GUILD_CONFIG, PORTRAIT_BOX, renderMemberFaces, Guild_default;
 var init_Guild$1 = __esmMin((() => {
 	init_DBManager();
 	init_SkillInfo();
@@ -231435,7 +230387,7 @@ var init_Guild$1 = __esmMin((() => {
 	* Initialize component
 	*/
 	Guild.init = function init() {
-		const root = _root$14(this);
+		const root = _root$13(this);
 		_memberViewTemplate = root.querySelector(".MemberView");
 		if (_memberViewTemplate) _memberViewTemplate.remove();
 		_positionViewTemplate = root.querySelector(".PositionView");
@@ -231530,7 +230482,7 @@ var init_Guild$1 = __esmMin((() => {
 				if (isSelf && !SessionStorage_default.isGuildMaster) ContextMenu_default.addElement(DB.getMessage(508), () => {
 					InputBox_default.append();
 					InputBox_default.setType("text");
-					const textEl = (_root$14(InputBox_default) || InputBox_default.ui?.[0])?.querySelector?.(".text");
+					const textEl = (_root$13(InputBox_default) || InputBox_default.ui?.[0])?.querySelector?.(".text");
 					if (textEl) textEl.textContent = DB.getMessage(523);
 					else InputBox_default.ui.find(".text").text(DB.getMessage(523));
 					InputBox_default.onSubmitRequest = (reason) => {
@@ -231552,7 +230504,7 @@ var init_Guild$1 = __esmMin((() => {
 				if (SessionStorage_default.guildPermission & 16 && !isSelf) ContextMenu_default.addElement(DB.getMessage(509), () => {
 					InputBox_default.append();
 					InputBox_default.setType("text");
-					const textEl = (_root$14(InputBox_default) || InputBox_default.ui?.[0])?.querySelector?.(".text");
+					const textEl = (_root$13(InputBox_default) || InputBox_default.ui?.[0])?.querySelector?.(".text");
 					if (textEl) textEl.textContent = DB.getMessage(524);
 					else InputBox_default.ui.find(".text").text(DB.getMessage(524));
 					InputBox_default.onSubmitRequest = (reason) => {
@@ -231657,7 +230609,7 @@ var init_Guild$1 = __esmMin((() => {
 	* @see docs/reference/guild/member-view.md
 	*/
 	Guild.reset = function reset() {
-		const root = _root$14(this);
+		const root = _root$13(this);
 		if (!root) return;
 		_members.length = 0;
 		_positions.length = 0;
@@ -231704,7 +230656,7 @@ var init_Guild$1 = __esmMin((() => {
 		this.focus();
 		if (this.ui.is(":visible")) return;
 		this.ui.show();
-		const root = _root$14(this);
+		const root = _root$13(this);
 		updateInfoOptions(root);
 		if (!root.querySelector(".tabs .active")) {
 			const infoBtn = root.querySelector(".tabs .info");
@@ -231720,7 +230672,7 @@ var init_Guild$1 = __esmMin((() => {
 		_resetPositionsTab();
 	};
 	Guild.setGuildInformations = function setGuildInformations(info) {
-		const root = _root$14(this);
+		const root = _root$13(this);
 		const general = root.querySelector(".content.info");
 		if (!general) return;
 		general.querySelector(".name .value").textContent = info.guildname;
@@ -231745,12 +230697,12 @@ var init_Guild$1 = __esmMin((() => {
 		if (_showsTendency()) renderTendency(info.honor, info.virtue);
 	};
 	Guild.setEmblem = function setEmblem(image) {
-		const root = _root$14(this);
+		const root = _root$13(this);
 		const el = root ? root.querySelector(".content.info .emblem_container") : null;
 		if (el) el.style.backgroundImage = `url(${image.src})`;
 	};
 	Guild.setRelations = function setRelations(guilds) {
-		const root = _root$14(this);
+		const root = _root$13(this);
 		const allyList = root.querySelector(".ally_list");
 		const hostileList = root.querySelector(".hostile_list");
 		if (allyList) allyList.innerHTML = "";
@@ -231758,7 +230710,7 @@ var init_Guild$1 = __esmMin((() => {
 		for (let i = 0, count = guilds.length; i < count; ++i) this.addRelation(guilds[i]);
 	};
 	Guild.addRelation = function addRelation(guild) {
-		const list = _root$14(this).querySelector(`.${guild.relation === 0 ? "ally" : "hostile"}_list`);
+		const list = _root$13(this).querySelector(`.${guild.relation === 0 ? "ally" : "hostile"}_list`);
 		if (!list) return;
 		const div = document.createElement("div");
 		div.setAttribute("data-guild-id", guild.GDID);
@@ -231766,7 +230718,7 @@ var init_Guild$1 = __esmMin((() => {
 		list.appendChild(div);
 	};
 	Guild.removeRelation = function removeRelation(guildId, relation) {
-		const list = _root$14(this).querySelector(`.content.info .${relation === 0 ? "ally" : "hostile"}_list`);
+		const list = _root$13(this).querySelector(`.content.info .${relation === 0 ? "ally" : "hostile"}_list`);
 		if (!list) return;
 		const el = list.querySelector(`div[data-guild-id="${guildId}"]`);
 		if (el) el.remove();
@@ -231778,7 +230730,7 @@ var init_Guild$1 = __esmMin((() => {
 		_totalExp = 0;
 		if (_hasPendingPositions()) ChatBox_default.addText("The guild member list changed. The grade waiting to be applied was dropped.", ChatBox_default.TYPE.ERROR, ChatBox_default.FILTER.GUILD);
 		_clearPendingPositions();
-		const root = _root$14(this);
+		const root = _root$13(this);
 		_hasMemo = !!hasMemo;
 		const membersContent = root.querySelector(".content.members");
 		if (membersContent) {
@@ -231802,7 +230754,7 @@ var init_Guild$1 = __esmMin((() => {
 	};
 	Guild.setMember = function setMember(member) {
 		let i, count;
-		const root = _root$14(this);
+		const root = _root$13(this);
 		for (i = 0, count = _members.length; i < count; ++i) if (_members[i].AID === member.AID && _members[i].GID === member.GID) break;
 		let view;
 		if (i < count) {
@@ -231903,7 +230855,7 @@ var init_Guild$1 = __esmMin((() => {
 	Guild.updateMemberStatus = function updateMemberStatus(member) {
 		let i, count;
 		let online = 0;
-		const root = _root$14(this);
+		const root = _root$13(this);
 		for (i = 0, count = _members.length; i < count; ++i) if (_members[i].AID === member.AID && _members[i].GID === member.GID) break;
 		if (i >= count) return;
 		const view = root.querySelector(`.MemberView[data-index="${i}"]`);
@@ -232013,7 +230965,7 @@ var init_Guild$1 = __esmMin((() => {
 		Guild.updatePositionView();
 	};
 	Guild.updatePositionView = function updatePositionView() {
-		const container = _root$14(this).querySelector(".content.positions tbody");
+		const container = _root$13(this).querySelector(".content.positions tbody");
 		if (!container) return;
 		const isMaster = SessionStorage_default.isGuildMaster;
 		if (_positionsDirty) {
@@ -232054,7 +231006,7 @@ var init_Guild$1 = __esmMin((() => {
 		}
 	};
 	Guild.setSkills = function setSkills(skills) {
-		const root = _root$14(this);
+		const root = _root$13(this);
 		for (let i = 0, count = _skills.length; i < count; ++i) this.onUpdateSkill(_skills[i].SKID, 0);
 		_skills.length = 0;
 		const list = root.querySelector(".content.skills .skill_list");
@@ -232063,7 +231015,7 @@ var init_Guild$1 = __esmMin((() => {
 	};
 	Guild.addSkill = function addSkill(skill) {
 		if (!(skill.SKID in SkillInfo)) return;
-		const root = _root$14(this);
+		const root = _root$13(this);
 		if (root.querySelector(`.skill.id${skill.SKID}`)) {
 			this.updateSkill(skill);
 			return;
@@ -232100,7 +231052,7 @@ var init_Guild$1 = __esmMin((() => {
 		target.attackRange = skill.attackRange;
 		target.upgradable = skill.upgradable;
 		if (Number.isInteger(skill.type)) target.type = skill.type;
-		const element = _root$14(this).querySelector(`.skill.id${skill.SKID}`);
+		const element = _root$13(this).querySelector(`.skill.id${skill.SKID}`);
 		if (!element) return;
 		for (const el of element.querySelectorAll(".level .current")) el.textContent = skill.level;
 		const spcost = element.querySelector(".spcost");
@@ -232125,7 +231077,7 @@ var init_Guild$1 = __esmMin((() => {
 		}
 	};
 	Guild.setPoints = function setPoints(amount) {
-		const root = _root$14(this);
+		const root = _root$13(this);
 		const el = root.querySelector(".skpoints_count");
 		if (el) el.textContent = amount;
 		if (!_skpoints === !amount) {
@@ -232142,7 +231094,7 @@ var init_Guild$1 = __esmMin((() => {
 		_notice.subject = subject;
 		_notice.body = notice;
 		Guild.updateNoticeView();
-		_writeNotice(_root$14(this)?.querySelector(".content.notice"));
+		_writeNotice(_root$13(this)?.querySelector(".content.notice"));
 	};
 	/**
 	* Draw the Notice tab for whoever is looking at it
@@ -232151,7 +231103,7 @@ var init_Guild$1 = __esmMin((() => {
 	* @see docs/reference/guild/member-view.md
 	*/
 	Guild.updateNoticeView = function updateNoticeView() {
-		const root = _root$14(this);
+		const root = _root$13(this);
 		if (!root) return;
 		const content = root.querySelector(".content.notice");
 		if (!content || !_noticeSubjectTemplate || !_noticeBodyTemplate) return;
@@ -232181,7 +231133,7 @@ var init_Guild$1 = __esmMin((() => {
 	* @see docs/reference/guild/member-view.md
 	*/
 	Guild.updateMasterView = function updateMasterView() {
-		const root = _root$14(this);
+		const root = _root$13(this);
 		if (!root) return;
 		Guild.updatePositionView();
 		Guild.updateNoticeView();
@@ -232193,7 +231145,7 @@ var init_Guild$1 = __esmMin((() => {
 		if (_members.length) Guild.setMembers([..._members], _hasMemo);
 	};
 	Guild.setExpelList = function setExpelList(list) {
-		const container = _root$14(this).querySelector(".content.history tbody");
+		const container = _root$13(this).querySelector(".content.history tbody");
 		if (!container) return;
 		container.innerHTML = "";
 		for (let i = 0, count = list.length; i < count; ++i) {
@@ -232208,7 +231160,7 @@ var init_Guild$1 = __esmMin((() => {
 	Guild.setAccess = function setAccess(access) {
 		_guildAccess = access;
 		_accessRequested = false;
-		updateTabAccess(_root$14(this));
+		updateTabAccess(_root$13(this));
 	};
 	/**
 	* Ask which tabs this character may open, once
@@ -232230,7 +231182,7 @@ var init_Guild$1 = __esmMin((() => {
 	Guild.invalidateAccess = function invalidateAccess() {
 		Guild.setAccess(ACCESS_UNKNOWN);
 	};
-	PORTRAIT_BOX$1 = 96;
+	PORTRAIT_BOX = 96;
 	renderMemberFaces = (function renderMemberFacesClosure() {
 		let lastTick = 0;
 		let scratch = null;
@@ -232238,10 +231190,10 @@ var init_Guild$1 = __esmMin((() => {
 		return function renderMemberFace(tick) {
 			if (tick < lastTick + 1e3) return;
 			lastTick = tick;
-			const root = _root$14(Guild);
+			const root = _root$13(Guild);
 			if (!scratch) {
 				scratch = document.createElement("canvas");
-				scratch.width = scratch.height = PORTRAIT_BOX$1;
+				scratch.width = scratch.height = PORTRAIT_BOX;
 				scratchCtx = scratch.getContext("2d");
 			}
 			const canvasFor = {};
@@ -232255,15 +231207,15 @@ var init_Guild$1 = __esmMin((() => {
 				const cellH = canvas.height;
 				ctx.clearRect(0, 0, cellW, cellH);
 				if (!_members[i].CurrentState) continue;
-				scratchCtx.clearRect(0, 0, PORTRAIT_BOX$1, PORTRAIT_BOX$1);
-				SpriteRenderer.bind2DContext(scratchCtx, PORTRAIT_BOX$1 / 2, 65.5);
+				scratchCtx.clearRect(0, 0, PORTRAIT_BOX, PORTRAIT_BOX);
+				SpriteRenderer.bind2DContext(scratchCtx, PORTRAIT_BOX / 2, 65.5);
 				_members[i].entity.renderEntity();
-				const box = opaqueBounds$1(scratchCtx, PORTRAIT_BOX$1);
+				const box = opaqueBounds(scratchCtx, PORTRAIT_BOX);
 				if (!box) continue;
 				const boxH = box.bottom - box.top + 1;
 				const sx = box.left + (box.right - box.left + 1 - cellW) / 2;
 				const sy = boxH > cellH ? box.top : box.top + (boxH - cellH) / 2;
-				ctx.drawImage(scratch, Math.min(Math.max(Math.round(sx), 0), PORTRAIT_BOX$1 - cellW), Math.min(Math.max(Math.round(sy), 0), PORTRAIT_BOX$1 - cellH), cellW, cellH, 0, 0, cellW, cellH);
+				ctx.drawImage(scratch, Math.min(Math.max(Math.round(sx), 0), PORTRAIT_BOX - cellW), Math.min(Math.max(Math.round(sy), 0), PORTRAIT_BOX - cellH), cellW, cellH, 0, 0, cellW, cellH);
 			}
 		};
 	})();
@@ -232321,7 +231273,7 @@ var init_Bank$3 = __esmMin((() => {
 //#region src/UI/Components/Bank/Bank.css?raw
 var Bank_default$1;
 var init_Bank$2 = __esmMin((() => {
-	Bank_default$1 = ":host {\r\n	width: 280px;\r\n	height: 145px;\r\n	top: 50%;\r\n	left: 50%;\r\n}\r\n\r\n#Bank {\r\n	position: absolute;\r\n	width: 280px;\r\n}\r\n\r\n#Bank .clear {\r\n	clear: both;\r\n}\r\n\r\n#Bank .titlebar {\r\n	width: 280px;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n}\r\n#Bank .titlebar .base {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n#Bank .titlebar .text {\r\n	text-shadow: 1px 1px white;\r\n	vertical-align: -2px;\r\n	white-space: nowrap;\r\n	/* chrome bug */\r\n	display: inline-block;\r\n	width: 32px;\r\n	height: 13px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n\r\n#Bank .titlebar .left {\r\n	margin-left: 3px;\r\n	float: left;\r\n}\r\n#Bank .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n}\r\n#Bank .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n#Bank .container {\r\n	display: inline-block;\r\n	width: 280px;\r\n	height: 130px;\r\n	border-spacing: 0;\r\n}\r\n\r\n#Bank .uppercontainer {\r\n	position: relative;\r\n	height: 53px;\r\n}\r\n\r\n#Bank .inbanktitle {\r\n	height: 15px;\r\n	position: relative;\r\n	width: 50px;\r\n	left: 30px;\r\n	top: 10px;\r\n}\r\n\r\n#Bank .onhandtitle {\r\n	position: relative;\r\n	height: 15px;\r\n	width: 55px;\r\n	left: 28px;\r\n}\r\n\r\n#Bank .inbank.currency {\r\n	position: relative;\r\n	left: 80px;\r\n	top: -5px;\r\n	width: 100px;\r\n	text-align: right;\r\n}\r\n\r\n#Bank .onhand.currency {\r\n	position: relative;\r\n	left: 80px;\r\n	top: -15px;\r\n	width: 100px;\r\n	text-align: right;\r\n}\r\n\r\n#Bank .midcontainer {\r\n	position: relative;\r\n	height: 58px;\r\n}\r\n\r\n#Bank input.depo.no-spinners {\r\n	position: relative;\r\n	left: 75px;\r\n	top: 20px;\r\n	width: 100px;\r\n	height: 10px;\r\n	background-color: #f7f7f7;\r\n	border-style: solid;\r\n	border: 1px;\r\n}\r\n\r\n#Bank .no-spinners::-webkit-inner-spin-button,\r\n#Bank .no-spinners::-webkit-outer-spin-button {\r\n	-webkit-appearance: none;\r\n	margin: 0;\r\n}\r\n\r\n#Bank .plus {\r\n	position: relative;\r\n	height: 10px;\r\n	width: 18px;\r\n	border: 0px;\r\n	left: 70px;\r\n	top: 10px;\r\n}\r\n#Bank .minus {\r\n	position: relative;\r\n	height: 10px;\r\n	width: 18px;\r\n	border: 0px;\r\n	left: 49px;\r\n	top: 20px;\r\n}\r\n\r\n#Bank .deposit {\r\n	position: relative;\r\n	height: 20px;\r\n	width: 42px;\r\n	border: 0px;\r\n	left: 60px;\r\n	top: 5px;\r\n}\r\n\r\n#Bank .withdraw {\r\n	position: relative;\r\n	height: 20px;\r\n	width: 42px;\r\n	border: 0px;\r\n	left: 15px;\r\n	top: 30px;\r\n}\r\n\r\n#Bank .errorupdate {\r\n	position: absolute;\r\n	height: 15px;\r\n	width: 150px;\r\n	border: 0px;\r\n	left: 15px;\r\n	top: 42px;\r\n	text-align: center;\r\n	color: red;\r\n}\r\n\r\n#Bank .lowercontainer {\r\n	position: relative;\r\n	height: 19px;\r\n}\r\n\r\n#Bank .max {\r\n	position: relative;\r\n	width: 46px;\r\n	height: 16px;\r\n	border: 0px;\r\n	left: 40px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#Bank .tenmil {\r\n	position: relative;\r\n	width: 46px;\r\n	height: 16px;\r\n	border: 0px;\r\n	left: 40px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#Bank .onemil {\r\n	position: relative;\r\n	width: 46px;\r\n	height: 16px;\r\n	border: 0px;\r\n	left: 40px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#Bank .hundtsn {\r\n	position: relative;\r\n	width: 46px;\r\n	height: 16px;\r\n	border: 0px;\r\n	left: 40px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#Bank .buttons .name {\r\n	position: absolute;\r\n	top: -20px;\r\n	left: 0px;\r\n	visibility: hidden;\r\n	opacity: 0;\r\n	z-index: 1;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n	pointer-events: none; /* This will make the span not clickable */\r\n}\r\n\r\n#Bank .buttons:hover .name {\r\n	visibility: visible;\r\n	opacity: 1;\r\n}\r\n\r\n/*\r\n * Without the bank/ textures (iRO's 2026 data has none), GUIComponent marks\r\n * each untextured node .no-texture. Draw a plain window and labelled buttons\r\n * so the window is not see-through.\r\n */\r\n#Bank .container.no-texture {\r\n	background-color: #f7f7f7;\r\n	border: 1px solid #a4a4a4;\r\n	border-top: none;\r\n	border-radius: 0 0 3px 3px;\r\n	box-sizing: border-box;\r\n}\r\n\r\n/* The amount field was drawn by the background; give it its own edge. */\r\n#Bank .container.no-texture input.depo {\r\n	background-color: #ffffff;\r\n	outline: 1px solid #a4a4a4; /* an outline leaves the layout alone */\r\n}\r\n\r\n#Bank .buttons.no-texture {\r\n	background-color: #ececec;\r\n	background-image: linear-gradient(#fdfdfd, #dedede);\r\n	border: 1px solid #8f8f8f;\r\n	border-radius: 3px;\r\n	box-sizing: border-box;\r\n	padding: 0;\r\n	color: #333;\r\n	font-size: 9px;\r\n	line-height: 1;\r\n	text-align: center;\r\n	cursor: pointer;\r\n}\r\n#Bank .buttons.no-texture:hover {\r\n	background-image: linear-gradient(#ffffff, #e9eef7);\r\n	border-color: #6d84b4;\r\n}\r\n#Bank .buttons.no-texture:active {\r\n	background-image: linear-gradient(#d6d6d6, #f2f2f2);\r\n}\r\n\r\n/* Deposit and Withdraw show their own (translated) label. */\r\n#Bank .deposit.no-texture .name,\r\n#Bank .withdraw.no-texture .name {\r\n	position: static;\r\n	visibility: visible;\r\n	opacity: 1;\r\n	background: none;\r\n	text-shadow: none;\r\n	color: inherit;\r\n	padding: 0;\r\n	font-size: 9px;\r\n}\r\n\r\n/* The rest are too small for theirs, which stays the hover tooltip. */\r\n#Bank .plus.no-texture::before {\r\n	content: '\\25B2';\r\n	font-size: 6px;\r\n}\r\n#Bank .minus.no-texture::before {\r\n	content: '\\25BC';\r\n	font-size: 6px;\r\n}\r\n#Bank .max.no-texture::before {\r\n	content: 'Max';\r\n}\r\n#Bank .tenmil.no-texture::before {\r\n	content: '+10M';\r\n}\r\n#Bank .onemil.no-texture::before {\r\n	content: '+1M';\r\n}\r\n#Bank .hundtsn.no-texture::before {\r\n	content: '+100K';\r\n}\r\n";
+	Bank_default$1 = ":host {\r\n	width: 280px;\r\n	height: 145px;\r\n	top: 50%;\r\n	left: 50%;\r\n}\r\n\r\n#Bank {\r\n	position: absolute;\r\n	width: 280px;\r\n}\r\n\r\n#Bank .clear {\r\n	clear: both;\r\n}\r\n\r\n#Bank .titlebar {\r\n	width: 280px;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n}\r\n#Bank .titlebar .base {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n#Bank .titlebar .text {\r\n	text-shadow: 1px 1px white;\r\n	vertical-align: -2px;\r\n	white-space: nowrap;\r\n	/* chrome bug */\r\n	display: inline-block;\r\n	width: 32px;\r\n	height: 13px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n\r\n#Bank .titlebar .left {\r\n	margin-left: 3px;\r\n	float: left;\r\n}\r\n#Bank .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n}\r\n#Bank .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n#Bank .container {\r\n	display: inline-block;\r\n	width: 280px;\r\n	height: 130px;\r\n	border-spacing: 0;\r\n}\r\n\r\n#Bank .uppercontainer {\r\n	position: relative;\r\n	height: 53px;\r\n}\r\n\r\n#Bank .inbanktitle {\r\n	height: 15px;\r\n	position: relative;\r\n	width: 50px;\r\n	left: 30px;\r\n	top: 10px;\r\n}\r\n\r\n#Bank .onhandtitle {\r\n	position: relative;\r\n	height: 15px;\r\n	width: 55px;\r\n	left: 28px;\r\n}\r\n\r\n#Bank .inbank.currency {\r\n	position: relative;\r\n	left: 80px;\r\n	top: -5px;\r\n	width: 100px;\r\n	text-align: right;\r\n}\r\n\r\n#Bank .onhand.currency {\r\n	position: relative;\r\n	left: 80px;\r\n	top: -15px;\r\n	width: 100px;\r\n	text-align: right;\r\n}\r\n\r\n#Bank .midcontainer {\r\n	position: relative;\r\n	height: 58px;\r\n}\r\n\r\n#Bank input.depo.no-spinners {\r\n	position: relative;\r\n	left: 75px;\r\n	top: 20px;\r\n	width: 100px;\r\n	height: 10px;\r\n	background-color: #f7f7f7;\r\n	border-style: solid;\r\n	border: 1px;\r\n}\r\n\r\n#Bank .no-spinners::-webkit-inner-spin-button,\r\n#Bank .no-spinners::-webkit-outer-spin-button {\r\n	-webkit-appearance: none;\r\n	margin: 0;\r\n}\r\n\r\n#Bank .plus {\r\n	position: relative;\r\n	height: 10px;\r\n	width: 18px;\r\n	border: 0px;\r\n	left: 70px;\r\n	top: 10px;\r\n}\r\n#Bank .minus {\r\n	position: relative;\r\n	height: 10px;\r\n	width: 18px;\r\n	border: 0px;\r\n	left: 49px;\r\n	top: 20px;\r\n}\r\n\r\n#Bank .deposit {\r\n	position: relative;\r\n	height: 20px;\r\n	width: 42px;\r\n	border: 0px;\r\n	left: 60px;\r\n	top: 5px;\r\n}\r\n\r\n#Bank .withdraw {\r\n	position: relative;\r\n	height: 20px;\r\n	width: 42px;\r\n	border: 0px;\r\n	left: 15px;\r\n	top: 30px;\r\n}\r\n\r\n#Bank .errorupdate {\r\n	position: absolute;\r\n	height: 15px;\r\n	width: 150px;\r\n	border: 0px;\r\n	left: 15px;\r\n	top: 42px;\r\n	text-align: center;\r\n	color: red;\r\n}\r\n\r\n#Bank .lowercontainer {\r\n	position: relative;\r\n	height: 19px;\r\n}\r\n\r\n#Bank .max {\r\n	position: relative;\r\n	width: 46px;\r\n	height: 16px;\r\n	border: 0px;\r\n	left: 40px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#Bank .tenmil {\r\n	position: relative;\r\n	width: 46px;\r\n	height: 16px;\r\n	border: 0px;\r\n	left: 40px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#Bank .onemil {\r\n	position: relative;\r\n	width: 46px;\r\n	height: 16px;\r\n	border: 0px;\r\n	left: 40px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#Bank .hundtsn {\r\n	position: relative;\r\n	width: 46px;\r\n	height: 16px;\r\n	border: 0px;\r\n	left: 40px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#Bank .buttons .name {\r\n	position: absolute;\r\n	top: -20px;\r\n	left: 0px;\r\n	visibility: hidden;\r\n	opacity: 0;\r\n	z-index: 1;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n	pointer-events: none; /* This will make the span not clickable */\r\n}\r\n\r\n#Bank .buttons:hover .name {\r\n	visibility: visible;\r\n	opacity: 1;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/Bank/Bank.js
@@ -232622,136 +231574,6 @@ var init_Bank$1 = __esmMin((() => {
 	Bank_default = UIManager.addComponent(Bank);
 }));
 //#endregion
-//#region src/UI/ExitHooks.js
-/**
-* Be told when the player asks to leave. Returns a function that stops it.
-*/
-function on(listener) {
-	if (typeof listener !== "function") throw new Error("ExitHooks.on takes a function");
-	_listeners$2.push(listener);
-	return () => {
-		const index = _listeners$2.indexOf(listener);
-		if (index > -1) _listeners$2.splice(index, 1);
-	};
-}
-/**
-* The player chose to leave. Called by the window that owns the button,
-* before it acts. A listener that throws is reported and the rest still run.
-*/
-function emit(to, from) {
-	const event = Object.freeze({
-		to,
-		from
-	});
-	_listeners$2.slice().forEach((listener) => {
-		try {
-			listener(event);
-		} catch (error) {
-			console.error("[ExitHooks] a listener failed:", error);
-		}
-	});
-}
-var _listeners$2, ExitHooks_default;
-var init_ExitHooks = __esmMin((() => {
-	_listeners$2 = [];
-	ExitHooks_default = {
-		on,
-		emit
-	};
-}));
-//#endregion
-//#region src/UI/MenuHooks.js
-/**
-* Tell the listeners. A listener that throws is reported and the rest
-* still run.
-*/
-function changed() {
-	_listeners$1.slice().forEach((listener) => {
-		try {
-			listener();
-		} catch (error) {
-			console.error("[MenuHooks] a listener failed:", error);
-		}
-	});
-}
-/**
-* Add a button to the option menu. Returns a function that takes it out.
-*
-* @param {object} button
-* @param {string} button.background - picture at rest
-* @param {string} [button.hover] - picture under the pointer
-* @param {string} [button.down] - picture while pressed
-* @param {string} [button.title] - what the button does, for a tooltip and screen readers
-* @param {function} button.onClick - called when it is pressed
-* @return {function}
-*/
-function add$1({ background, hover, down, title, onClick } = {}) {
-	for (const [key, value] of Object.entries({
-		background,
-		hover,
-		down
-	})) if ((key === "background" || value !== void 0) && (typeof value !== "string" || !PICTURE.test(value))) throw new TypeError(`MenuHooks.add: ${key} must be a picture in the interface folder`);
-	if (typeof onClick !== "function") throw new TypeError("MenuHooks.add: onClick must be a function");
-	const button = Object.freeze({
-		background,
-		hover,
-		down,
-		title: typeof title === "string" ? title.slice(0, 80) : "",
-		onClick
-	});
-	_buttons.push(button);
-	changed();
-	return () => {
-		const index = _buttons.indexOf(button);
-		if (index > -1) {
-			_buttons.splice(index, 1);
-			changed();
-		}
-	};
-}
-/**
-* The buttons added, in order.
-*
-* @return {Array<object>}
-*/
-function list() {
-	return _buttons.slice();
-}
-/**
-* The button was pressed. Called by the menu.
-*/
-function press(button) {
-	try {
-		button.onClick();
-	} catch (error) {
-		console.error("[MenuHooks] a button failed:", error);
-	}
-}
-/**
-* Be told when buttons are added or taken out. Returns a function that
-* stops it.
-*/
-function onChange$1(listener) {
-	if (typeof listener !== "function") throw new Error("MenuHooks.onChange takes a function");
-	_listeners$1.push(listener);
-	return () => {
-		const index = _listeners$1.indexOf(listener);
-		if (index > -1) _listeners$1.splice(index, 1);
-	};
-}
-var PICTURE, _buttons, _listeners$1, MenuHooks_default;
-var init_MenuHooks = __esmMin((() => {
-	PICTURE = /^(?!.*\.\.)[A-Za-z0-9_][A-Za-z0-9_./-]*\.(bmp|tga|png|jpe?g)$/i;
-	_buttons = [];
-	_listeners$1 = [];
-	MenuHooks_default = {
-		add: add$1,
-		list,
-		press,
-		onChange: onChange$1
-	};
-}));
-//#endregion
 //#region src/UI/Components/SoundOption/SoundOption.html?raw
 var SoundOption_default$2;
 var init_SoundOption$2 = __esmMin((() => {
@@ -233041,7 +231863,7 @@ var init_Context = __esmMin((() => {
 //#region src/UI/Components/GraphicsOption/GraphicsOption.html?raw
 var GraphicsOption_default$2;
 var init_GraphicsOption$2 = __esmMin((() => {
-	GraphicsOption_default$2 = "<div id=\"GraphicsOption\">\r\n	<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n		<div class=\"left\">\r\n			<button\r\n				class=\"base\"\r\n				data-background=\"basic_interface/sys_base_off.bmp\"\r\n				data-hover=\"basic_interface/sys_base_on.bmp\"\r\n			></button>\r\n			<span class=\"text\" data-text=\"1484\">Graphics Settings</span>\r\n		</div>\r\n		<div class=\"right\">\r\n			<button\r\n				class=\"base close\"\r\n				data-background=\"basic_interface/sys_close_off.bmp\"\r\n				data-hover=\"basic_interface/sys_close_on.bmp\"\r\n			></button>\r\n		</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"tabs-container\">\r\n		<div class=\"tabs\">\r\n			<button class=\"tab-button selected\" data-tab=\"basic\">Basic</button>\r\n			<button class=\"tab-button\" data-tab=\"advanced\">Advanced</button>\r\n		</div>\r\n	</div>\r\n\r\n	<div class=\"panel\">\r\n		<div class=\"tab-content selected\" id=\"basic\">\r\n			<table>\r\n				<tr>\r\n					<td>Details</td>\r\n					<td style=\"display: inline-block; width: 260px\">\r\n						<input\r\n							class=\"details\"\r\n							type=\"range\"\r\n							value=\"100\"\r\n							max=\"100\"\r\n							min=\"25\"\r\n							step=\"5\"\r\n							style=\"width: 90%\"\r\n						/>\r\n					</td>\r\n				</tr>\r\n				<tr class=\"resolution\">\r\n					<td>Resolution</td>\r\n					<td>\r\n						<select class=\"screensize\">\r\n							<option value=\"650x480\">640 x 480</option>\r\n							<option value=\"800x600\">800 x 600</option>\r\n							<option value=\"1024x768\">1024 x 768</option>\r\n							<option value=\"1280x800\">1280 x 800</option>\r\n							<option value=\"1400x900\">1400 x 900</option>\r\n							<option value=\"1680x1050\">1680 x 1050</option>\r\n							<option value=\"full\">Full Screen</option>\r\n						</select>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>Cursor</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"cursor-option\" type=\"checkbox\" />\r\n							Show official cursor\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>FPS Limit</td>\r\n					<td>\r\n						<select class=\"fpslimit\">\r\n							<option value=\"-1\">Unlimited</option>\r\n							<option value=\"30\">30</option>\r\n							<option value=\"60\">60</option>\r\n							<option value=\"90\">90</option>\r\n							<option value=\"120\">120</option>\r\n						</select>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>FPS Display</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"fps\" type=\"checkbox\" />\r\n						</label>\r\n					</td>\r\n				</tr>\r\n			</table>\r\n		</div>\r\n\r\n		<div class=\"tab-content\" id=\"advanced\">\r\n			<table>\r\n				<tr>\r\n					<td title=\"Force nearest neighbor filtering for pixel-perfect sprite rendering\">\r\n						Pixel Perfect Sprites\r\n					</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"pixel-perfect\" type=\"checkbox\" />\r\n							Force nearest neighbor filtering\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Add a glowing bloom effect to bright areas\">Bloom</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"bloom\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Intensity:\r\n							<input\r\n								class=\"bloom-intensity\"\r\n								type=\"range\"\r\n								value=\"0.5\"\r\n								min=\"0.1\"\r\n								max=\"3.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td\r\n						title=\"How the map's baked light is drawn. Original keeps the classic client's 16 visible steps.\"\r\n					>\r\n						Lighting\r\n					</td>\r\n					<td>\r\n						<select class=\"smoothlight\">\r\n							<option value=\"1\">Smooth</option>\r\n							<option value=\"2\">Smooth (gamma)</option>\r\n							<option value=\"0\">Original (banded)</option>\r\n						</select>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Apply a blur effect to the screen\">Blur</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"blur\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Intensity:\r\n							<input\r\n								class=\"blur-intensity\"\r\n								type=\"range\"\r\n								value=\"3.0\"\r\n								min=\"2.0\"\r\n								max=\"10.0\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Area:\r\n							<input\r\n								class=\"blur-area\"\r\n								type=\"range\"\r\n								value=\"14.0\"\r\n								min=\"3.0\"\r\n								max=\"20.0\"\r\n								step=\"1.0\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Contrast Adaptive Sharpening for enhanced details\">Contr. Adapt. Sharp. (CAS)</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"casEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Contrast:\r\n							<input\r\n								class=\"casContrast\"\r\n								type=\"range\"\r\n								value=\"0.0\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Sharpening:\r\n							<input\r\n								class=\"casSharpening\"\r\n								type=\"range\"\r\n								value=\"1.0\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Fast Approximate Anti-Aliasing for smoother edges\">FXAA</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"fxaaEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Subpix:\r\n							<input\r\n								class=\"fxaaSubpix\"\r\n								type=\"range\"\r\n								value=\"0.25\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Edge Threshold:\r\n							<input\r\n								class=\"fxaaEdgeThreshold\"\r\n								type=\"range\"\r\n								value=\"0.125\"\r\n								min=\"0.063\"\r\n								max=\"0.333\"\r\n								step=\"0.03\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Cartoon rendering effect for stylized visuals\">Cartoon</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"cartoonEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Power:\r\n							<input\r\n								class=\"cartoonPower\"\r\n								type=\"range\"\r\n								value=\"1.5\"\r\n								min=\"0.1\"\r\n								max=\"9.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Edge Slope:\r\n							<input\r\n								class=\"cartoonEdgeSlope\"\r\n								type=\"range\"\r\n								value=\"1.5\"\r\n								min=\"1.5\"\r\n								max=\"5.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Increase color intensity and saturation\">Vibrance</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"vibranceEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Intensity:\r\n							<input\r\n								class=\"vibrance\"\r\n								type=\"range\"\r\n								value=\"0.15\"\r\n								min=\"-0.9\"\r\n								max=\"0.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td\r\n						title=\"Hide objects outside the viewing area, enable downsampling rendering and others to improve performance\"\r\n					>\r\n						Performance Mode\r\n					</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"performanceMode\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Culling Area:\r\n							<input\r\n								class=\"view-area\"\r\n								type=\"range\"\r\n								value=\"14.0\"\r\n								min=\"4.0\"\r\n								max=\"20.0\"\r\n								step=\"1.0\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td\r\n						title=\"Make buildings and trees blocking the view of your character see-through (not in first person). Dither is cheaper, Alpha looks smoother.\"\r\n					>\r\n						See-through Occluders\r\n					</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<select class=\"occluderFade\">\r\n								<option value=\"off\">Off</option>\r\n								<option value=\"dither\">Dither (fast)</option>\r\n								<option value=\"alpha\">Alpha (smooth)</option>\r\n							</select>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 120px\">\r\n							Opacity:\r\n							<input\r\n								class=\"occluderFadeOpacity\"\r\n								type=\"range\"\r\n								value=\"0.25\"\r\n								min=\"0.0\"\r\n								max=\"0.8\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 120px\">\r\n							Area:\r\n							<input\r\n								class=\"occluderFadeRadius\"\r\n								type=\"range\"\r\n								value=\"5.0\"\r\n								min=\"1.5\"\r\n								max=\"12.5\"\r\n								step=\"0.5\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n			</table>\r\n\r\n			<div class=\"reset-section\">\r\n				<button class=\"reset-button\">Reset to Default Values</button>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
+	GraphicsOption_default$2 = "<div id=\"GraphicsOption\">\r\n	<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n		<div class=\"left\">\r\n			<button\r\n				class=\"base\"\r\n				data-background=\"basic_interface/sys_base_off.bmp\"\r\n				data-hover=\"basic_interface/sys_base_on.bmp\"\r\n			></button>\r\n			<span class=\"text\" data-text=\"1484\">Graphics Settings</span>\r\n		</div>\r\n		<div class=\"right\">\r\n			<button\r\n				class=\"base close\"\r\n				data-background=\"basic_interface/sys_close_off.bmp\"\r\n				data-hover=\"basic_interface/sys_close_on.bmp\"\r\n			></button>\r\n		</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"tabs-container\">\r\n		<div class=\"tabs\">\r\n			<button class=\"tab-button selected\" data-tab=\"basic\">Basic</button>\r\n			<button class=\"tab-button\" data-tab=\"advanced\">Advanced</button>\r\n		</div>\r\n	</div>\r\n\r\n	<div class=\"panel\">\r\n		<div class=\"tab-content selected\" id=\"basic\">\r\n			<table>\r\n				<tr>\r\n					<td>Details</td>\r\n					<td style=\"display: inline-block; width: 260px\">\r\n						<input\r\n							class=\"details\"\r\n							type=\"range\"\r\n							value=\"100\"\r\n							max=\"100\"\r\n							min=\"25\"\r\n							step=\"5\"\r\n							style=\"width: 90%\"\r\n						/>\r\n					</td>\r\n				</tr>\r\n				<tr class=\"resolution\">\r\n					<td>Resolution</td>\r\n					<td>\r\n						<select class=\"screensize\">\r\n							<option value=\"650x480\">640 x 480</option>\r\n							<option value=\"800x600\">800 x 600</option>\r\n							<option value=\"1024x768\">1024 x 768</option>\r\n							<option value=\"1280x800\">1280 x 800</option>\r\n							<option value=\"1400x900\">1400 x 900</option>\r\n							<option value=\"1680x1050\">1680 x 1050</option>\r\n							<option value=\"full\">Full Screen</option>\r\n						</select>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>Cursor</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"cursor-option\" type=\"checkbox\" />\r\n							Show official cursor\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>FPS Limit</td>\r\n					<td>\r\n						<select class=\"fpslimit\">\r\n							<option value=\"-1\">Unlimited</option>\r\n							<option value=\"30\">30</option>\r\n							<option value=\"60\">60</option>\r\n							<option value=\"90\">90</option>\r\n							<option value=\"120\">120</option>\r\n						</select>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td>FPS Display</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"fps\" type=\"checkbox\" />\r\n						</label>\r\n					</td>\r\n				</tr>\r\n			</table>\r\n		</div>\r\n\r\n		<div class=\"tab-content\" id=\"advanced\">\r\n			<table>\r\n				<tr>\r\n					<td title=\"Force nearest neighbor filtering for pixel-perfect sprite rendering\">\r\n						Pixel Perfect Sprites\r\n					</td>\r\n					<td>\r\n						<label>\r\n							<input class=\"pixel-perfect\" type=\"checkbox\" />\r\n							Force nearest neighbor filtering\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Add a glowing bloom effect to bright areas\">Bloom</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"bloom\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Intensity:\r\n							<input\r\n								class=\"bloom-intensity\"\r\n								type=\"range\"\r\n								value=\"0.5\"\r\n								min=\"0.1\"\r\n								max=\"3.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Apply a blur effect to the screen\">Blur</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"blur\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Intensity:\r\n							<input\r\n								class=\"blur-intensity\"\r\n								type=\"range\"\r\n								value=\"3.0\"\r\n								min=\"2.0\"\r\n								max=\"10.0\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Area:\r\n							<input\r\n								class=\"blur-area\"\r\n								type=\"range\"\r\n								value=\"14.0\"\r\n								min=\"3.0\"\r\n								max=\"20.0\"\r\n								step=\"1.0\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Contrast Adaptive Sharpening for enhanced details\">Contr. Adapt. Sharp. (CAS)</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"casEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Contrast:\r\n							<input\r\n								class=\"casContrast\"\r\n								type=\"range\"\r\n								value=\"0.0\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Sharpening:\r\n							<input\r\n								class=\"casSharpening\"\r\n								type=\"range\"\r\n								value=\"1.0\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Fast Approximate Anti-Aliasing for smoother edges\">FXAA</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"fxaaEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Subpix:\r\n							<input\r\n								class=\"fxaaSubpix\"\r\n								type=\"range\"\r\n								value=\"0.25\"\r\n								min=\"0.0\"\r\n								max=\"1.0\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Edge Threshold:\r\n							<input\r\n								class=\"fxaaEdgeThreshold\"\r\n								type=\"range\"\r\n								value=\"0.125\"\r\n								min=\"0.063\"\r\n								max=\"0.333\"\r\n								step=\"0.03\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Cartoon rendering effect for stylized visuals\">Cartoon</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"cartoonEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Power:\r\n							<input\r\n								class=\"cartoonPower\"\r\n								type=\"range\"\r\n								value=\"1.5\"\r\n								min=\"0.1\"\r\n								max=\"9.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 90px\">\r\n							Edge Slope:\r\n							<input\r\n								class=\"cartoonEdgeSlope\"\r\n								type=\"range\"\r\n								value=\"1.5\"\r\n								min=\"1.5\"\r\n								max=\"5.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td title=\"Increase color intensity and saturation\">Vibrance</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"vibranceEnabled\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Intensity:\r\n							<input\r\n								class=\"vibrance\"\r\n								type=\"range\"\r\n								value=\"0.15\"\r\n								min=\"-0.9\"\r\n								max=\"0.9\"\r\n								step=\"0.1\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td\r\n						title=\"Hide objects outside the viewing area, enable downsampling rendering and others to improve performance\"\r\n					>\r\n						Performance Mode\r\n					</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<input class=\"performanceMode\" type=\"checkbox\" />\r\n						</label>\r\n						<label style=\"display: inline-block; width: 200px\">\r\n							Culling Area:\r\n							<input\r\n								class=\"view-area\"\r\n								type=\"range\"\r\n								value=\"14.0\"\r\n								min=\"4.0\"\r\n								max=\"20.0\"\r\n								step=\"1.0\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n				<tr>\r\n					<td\r\n						title=\"Make buildings and trees blocking the view of your character see-through (not in first person). Dither is cheaper, Alpha looks smoother.\"\r\n					>\r\n						See-through Occluders\r\n					</td>\r\n					<td>\r\n						<label style=\"display: inline-block; margin-right: 20px\">\r\n							<select class=\"occluderFade\">\r\n								<option value=\"off\">Off</option>\r\n								<option value=\"dither\">Dither (fast)</option>\r\n								<option value=\"alpha\">Alpha (smooth)</option>\r\n							</select>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 120px\">\r\n							Opacity:\r\n							<input\r\n								class=\"occluderFadeOpacity\"\r\n								type=\"range\"\r\n								value=\"0.25\"\r\n								min=\"0.0\"\r\n								max=\"0.8\"\r\n								step=\"0.05\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n						<label style=\"display: inline-block; width: 120px\">\r\n							Area:\r\n							<input\r\n								class=\"occluderFadeRadius\"\r\n								type=\"range\"\r\n								value=\"5.0\"\r\n								min=\"1.5\"\r\n								max=\"12.5\"\r\n								step=\"0.5\"\r\n								style=\"width: 90%; vertical-align: middle\"\r\n							/>\r\n						</label>\r\n					</td>\r\n				</tr>\r\n			</table>\r\n\r\n			<div class=\"reset-section\">\r\n				<button class=\"reset-button\">Reset to Default Values</button>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/GraphicsOption/GraphicsOption.css?raw
@@ -233108,14 +231930,6 @@ function onToggleBloom() {
 function onUpdateBloomIntensity() {
 	GraphicsSettings.bloomIntensity = parseFloat(this.value);
 	GraphicsSettings.save();
-}
-/**
-* Lighting: the same setting /smoothlight cycles. The ground shader reads it
-* every frame, so it applies at once.
-*/
-function onUpdateSmoothLight() {
-	Map_default.smoothlight = parseInt(this.value, 10) || 0;
-	Map_default.save();
 }
 function onToggleBlur() {
 	GraphicsSettings.blur = !!this.checked;
@@ -233254,7 +232068,6 @@ var init_GraphicsOption = __esmMin((() => {
 	init_Context();
 	init_Preferences$1();
 	init_Graphics();
-	init_Map();
 	init_Renderer();
 	init_UIManager();
 	init_GUIComponent();
@@ -233307,7 +232120,6 @@ var init_GraphicsOption = __esmMin((() => {
 		bindChange(".pixel-perfect", onTogglePixelPerfect);
 		bindChange(".bloom", onToggleBloom);
 		bindChange(".bloom-intensity", onUpdateBloomIntensity);
-		bindChange(".smoothlight", onUpdateSmoothLight);
 		bindChange(".blur", onToggleBlur);
 		bindChange(".blur-intensity", onUpdateBlurIntensity);
 		bindChange(".blur-area", onUpdateBlurArea);
@@ -233344,7 +232156,6 @@ var init_GraphicsOption = __esmMin((() => {
 		root.querySelector(".pixel-perfect").checked = GraphicsSettings.pixelPerfectSprites;
 		root.querySelector(".bloom").checked = GraphicsSettings.bloom;
 		root.querySelector(".bloom-intensity").value = GraphicsSettings.bloomIntensity;
-		root.querySelector(".smoothlight").value = String(Map_default.smoothlight);
 		root.querySelector(".blur").checked = GraphicsSettings.blur;
 		root.querySelector(".blur-area").value = GraphicsSettings.blurArea;
 		root.querySelector(".blur-intensity").value = GraphicsSettings.blurIntensity;
@@ -233381,166 +232192,722 @@ var init_GraphicsOption = __esmMin((() => {
 //#region src/UI/Components/ShortCutOption/ShortCutOption.html?raw
 var ShortCutOption_default$2;
 var init_ShortCutOption$2 = __esmMin((() => {
-	ShortCutOption_default$2 = "<div id=\"ShortCutOption\" class=\"pt-page-fadeIn1\">\r\n	<div class=\"border\">\r\n		<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n			<div class=\"left\"><span class=\"text\">Shortcut key setting window</span></div>\r\n\r\n			<div class=\"right\">\r\n				<button\r\n					class=\"base close\"\r\n					data-background=\"basic_interface/sys_close_off.bmp\"\r\n					data-hover=\"basic_interface/sys_close_on.bmp\"\r\n				></button>\r\n			</div>\r\n\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n\r\n		<div class=\"tabs\">\r\n			<button class=\"t_skillbar selectedtab\" data-index=\"t_skillbar\">Skill Bar</button\r\n			><button class=\"t_ui\" data-index=\"t_ui\">Interface</button\r\n			><button class=\"t_macro\" data-index=\"t_macro\">Macros</button\r\n			><button class=\"t_gamepad\" data-index=\"t_gamepad\">Gamepad</button>\r\n		</div>\r\n		<div class=\"panel\">\r\n			<div class=\"content t_skillbar selectedtab\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Skill bar 1-1</td>\r\n							<td data-button=\"F1_1\" class=\"customize\"></td>\r\n							<td>Skill bar 2-1</td>\r\n							<td data-button=\"F2_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-2</td>\r\n							<td data-button=\"F1_2\" class=\"customize\"></td>\r\n							<td>Skill bar 2-2</td>\r\n							<td data-button=\"F2_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-3</td>\r\n							<td data-button=\"F1_3\" class=\"customize\"></td>\r\n							<td>Skill bar 2-3</td>\r\n							<td data-button=\"F2_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-4</td>\r\n							<td data-button=\"F1_4\" class=\"customize\"></td>\r\n							<td>Skill bar 2-4</td>\r\n							<td data-button=\"F2_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-5</td>\r\n							<td data-button=\"F1_5\" class=\"customize\"></td>\r\n							<td>Skill bar 2-5</td>\r\n							<td data-button=\"F2_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-6</td>\r\n							<td data-button=\"F1_6\" class=\"customize\"></td>\r\n							<td>Skill bar 2-6</td>\r\n							<td data-button=\"F2_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-7</td>\r\n							<td data-button=\"F1_7\" class=\"customize\"></td>\r\n							<td>Skill bar 2-7</td>\r\n							<td data-button=\"F2_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-8</td>\r\n							<td data-button=\"F1_8\" class=\"customize\"></td>\r\n							<td>Skill bar 2-8</td>\r\n							<td data-button=\"F2_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-9</td>\r\n							<td data-button=\"F1_9\" class=\"customize\"></td>\r\n							<td>Skill bar 2-9</td>\r\n							<td data-button=\"F2_9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-1</td>\r\n							<td data-button=\"F3_1\" class=\"customize\"></td>\r\n							<td>Skill bar 4-1</td>\r\n							<td data-button=\"F4_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-2</td>\r\n							<td data-button=\"F3_2\" class=\"customize\"></td>\r\n							<td>Skill bar 4-2</td>\r\n							<td data-button=\"F4_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-3</td>\r\n							<td data-button=\"F3_3\" class=\"customize\"></td>\r\n							<td>Skill bar 4-3</td>\r\n							<td data-button=\"F4_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-4</td>\r\n							<td data-button=\"F3_4\" class=\"customize\"></td>\r\n							<td>Skill bar 4-4</td>\r\n							<td data-button=\"F4_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-5</td>\r\n							<td data-button=\"F3_5\" class=\"customize\"></td>\r\n							<td>Skill bar 4-5</td>\r\n							<td data-button=\"F4_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-6</td>\r\n							<td data-button=\"F3_6\" class=\"customize\"></td>\r\n							<td>Skill bar 4-6</td>\r\n							<td data-button=\"F4_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-7</td>\r\n							<td data-button=\"F3_7\" class=\"customize\"></td>\r\n							<td>Skill bar 4-7</td>\r\n							<td data-button=\"F4_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-8</td>\r\n							<td data-button=\"F3_8\" class=\"customize\"></td>\r\n							<td>Skill bar 4-8</td>\r\n							<td data-button=\"F4_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-9</td>\r\n							<td data-button=\"F3_9\" class=\"customize\"></td>\r\n							<td>Skill bar 4-9</td>\r\n							<td data-button=\"F4_9\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_ui\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Basic Info</td>\r\n							<td data-button=\"BasicInfo\" class=\"customize\"></td>\r\n							<td>Character Info</td>\r\n							<td data-button=\"Equipment\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill List</td>\r\n							<td data-button=\"SkillList\" class=\"customize\"></td>\r\n							<td>Emotion List</td>\r\n							<td data-button=\"Emotions\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Friends List</td>\r\n							<td data-button=\"Friends\" class=\"customize\"></td>\r\n							<td>Party Window</td>\r\n							<td data-button=\"Party\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Pet Info</td>\r\n							<td data-button=\"PetInfo\" class=\"customize\"></td>\r\n							<td>Chat Room</td>\r\n							<td data-button=\"ChatRoom\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Cart Window</td>\r\n							<td data-button=\"PushCart\" class=\"customize\"></td>\r\n							<td>Item Window</td>\r\n							<td data-button=\"Inventory\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>World Map</td>\r\n							<td data-button=\"WorldMap\" class=\"customize\"></td>\r\n							<td>Guild Info</td>\r\n							<td data-button=\"Guild\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus Info</td>\r\n							<td data-button=\"HomunInfo\" class=\"customize\"></td>\r\n							<td>Mercenary Info</td>\r\n							<td data-button=\"MercInfo\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus State</td>\r\n							<td data-button=\"HomunState\" class=\"customize\"></td>\r\n							<td>Mercenary State</td>\r\n							<td data-button=\"MercState\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Sit/Stand</td>\r\n							<td data-button=\"Sit\" class=\"customize\"></td>\r\n							<td>Short Cuts</td>\r\n							<td data-button=\"ShortCuts\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Chat Bar Size</td>\r\n							<td data-button=\"ChatSize\" class=\"customize\"></td>\r\n							<td>Skill Bar Size</td>\r\n							<td data-button=\"SkillBarSize\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Quest</td>\r\n							<td data-button=\"Quest\" class=\"customize\"></td>\r\n							<td>Bank</td>\r\n							<td data-button=\"Bank\" class=\"customize\"></td>\r\n						</tr>\r\n						<!--<tr>\r\n                     <td>MobileUI</td>\r\n                     <td data-button=\"M_UI\" class=\"customize\"></td>\r\n                     <td>MUi-Toggle</td>\r\n                     <td data-button=\"M_Toggle\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-TG</td>\r\n                     <td data-button=\"M_Targeting\" class=\"customize\"></td>\r\n                     <td>MUi-AT</td>\r\n                     <td data-button=\"M_AutoTarget\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-ATK</td>\r\n                     <td data-button=\"M_Attack\" class=\"customize\"></td>\r\n                  </tr>-->\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_macro\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Macro 1</td>\r\n							<td data-button=\"Macro1\" class=\"customize\"></td>\r\n							<td>Flag 1</td>\r\n							<td data-button=\"Flag1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 2</td>\r\n							<td data-button=\"Macro2\" class=\"customize\"></td>\r\n							<td>Flag 2</td>\r\n							<td data-button=\"Flag2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 3</td>\r\n							<td data-button=\"Macro3\" class=\"customize\"></td>\r\n							<td>Flag 3</td>\r\n							<td data-button=\"Flag3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 4</td>\r\n							<td data-button=\"Macro4\" class=\"customize\"></td>\r\n							<td>Flag 4</td>\r\n							<td data-button=\"Flag4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 5</td>\r\n							<td data-button=\"Macro5\" class=\"customize\"></td>\r\n							<td>Flag 5</td>\r\n							<td data-button=\"Flag5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 6</td>\r\n							<td data-button=\"Macro6\" class=\"customize\"></td>\r\n							<td>Flag 6</td>\r\n							<td data-button=\"Flag6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 7</td>\r\n							<td data-button=\"Macro7\" class=\"customize\"></td>\r\n							<td>Flag 7</td>\r\n							<td data-button=\"Flag7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 8</td>\r\n							<td data-button=\"Macro8\" class=\"customize\"></td>\r\n							<td>Flag 8</td>\r\n							<td data-button=\"Flag8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 9</td>\r\n							<td data-button=\"Macro9\" class=\"customize\"></td>\r\n							<td>Flag 9</td>\r\n							<td data-button=\"Flag9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 10</td>\r\n							<td data-button=\"Macro10\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_gamepad\">\r\n				<table class=\"joySettings\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr title=\"Show which button does what, and remap them\">\r\n							<td>Button Mapping</td>\r\n							<td>\r\n								<button type=\"button\" class=\"joyBtn joyMappingOpen\">Mapping</button>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Define how targets are selected in combat\">\r\n							<td>Attack Target Mode</td>\r\n							<td>\r\n								<select class=\"attackTargetMode\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Lowest HP</option>\r\n									<option value=\"2\">Closest</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"What the pad targets: D-pad left/right and the aim pick from it. D-pad up/down switches in game. Support: the right stick opens a radial with your party\">\r\n							<td>Target Category</td>\r\n							<td>\r\n								<select class=\"joyCycleMode\">\r\n									<option value=\"0\">Mobs</option>\r\n									<option value=\"3\">NPCs &amp; portals</option>\r\n									<option value=\"1\">Items</option>\r\n									<option value=\"4\">Support (party)</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr\r\n							title=\"Choose how skills are cast with gamepad. With Right-Stick Aiming on, Off is not available: skills go to the aimed target\"\r\n						>\r\n							<td>Quick-Cast Mode</td>\r\n							<td>\r\n								<select class=\"joyQuick\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Release Mode</option>\r\n									<option value=\"2\">Instant Mode</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Adjust mouse movement sensitivity for R3 stick\">\r\n							<td>Mouse Move</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Sensitivity:\r\n									<input\r\n										class=\"joySense\"\r\n										type=\"range\"\r\n										value=\"25.0\"\r\n										min=\"1.0\"\r\n										max=\"100.0\"\r\n										step=\"1.0\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Disable mouse input from gamepad for UI interaction\">\r\n							<td>Disable Virtual Mouse</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyDisableVirtualMouse\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Swap L3 and R3 stick functions\">\r\n							<td>Swap L3-R3 Sticks</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyReverseStick\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Automatically hide UI during gameplay mouse movement\">\r\n							<td>Auto Hide UI</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyAutoHide\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Set deadzone threshold for analog sticks\">\r\n							<td>Axis Threshold</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Deadline:\r\n									<input\r\n										class=\"joyDeadline\"\r\n										type=\"range\"\r\n										value=\"0.10\"\r\n										min=\"0.0\"\r\n										max=\"1.0\"\r\n										step=\"0.1\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"How fast View + D-pad left/right turns the camera, in degrees per second\">\r\n							<td>Camera Turn Speed</td>\r\n							<td>\r\n								<input\r\n									class=\"joyCameraSpeed joyRange\"\r\n									type=\"range\"\r\n									value=\"90\"\r\n									min=\"30\"\r\n									max=\"360\"\r\n									step=\"10\"\r\n								/>\r\n								<span class=\"joyValue\" data-for=\"joyCameraSpeed\"></span>\r\n							</td>\r\n						</tr>\r\n						<tr class=\"joySection\">\r\n							<td colspan=\"2\">Stick Drift</td>\r\n						</tr>\r\n						<tr\r\n							title=\"Measure where the sticks rest and treat that as centre. Leave both sticks alone while it runs (one second)\"\r\n						>\r\n							<td>Calibrate Sticks</td>\r\n							<td>\r\n								<button type=\"button\" class=\"joyBtn joyCalibrate\">Calibrate</button>\r\n								<button type=\"button\" class=\"joyBtn joyCalibrateReset\">Reset</button>\r\n								<div class=\"joyCalibrateStatus\"></div>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Left stick: movement on each axis below this value is ignored\">\r\n							<td>Left Stick Drift</td>\r\n							<td>\r\n								<label class=\"joyAxis\">\r\n									X\r\n									<input\r\n										class=\"joyDriftLX joyRange\"\r\n										type=\"range\"\r\n										value=\"0\"\r\n										min=\"0\"\r\n										max=\"0.5\"\r\n										step=\"0.01\"\r\n									/>\r\n									<span class=\"joyValue\" data-for=\"joyDriftLX\"></span>\r\n								</label>\r\n								<label class=\"joyAxis\">\r\n									Y\r\n									<input\r\n										class=\"joyDriftLY joyRange\"\r\n										type=\"range\"\r\n										value=\"0\"\r\n										min=\"0\"\r\n										max=\"0.5\"\r\n										step=\"0.01\"\r\n									/>\r\n									<span class=\"joyValue\" data-for=\"joyDriftLY\"></span>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Right stick: movement on each axis below this value is ignored\">\r\n							<td>Right Stick Drift</td>\r\n							<td>\r\n								<label class=\"joyAxis\">\r\n									X\r\n									<input\r\n										class=\"joyDriftRX joyRange\"\r\n										type=\"range\"\r\n										value=\"0\"\r\n										min=\"0\"\r\n										max=\"0.5\"\r\n										step=\"0.01\"\r\n									/>\r\n									<span class=\"joyValue\" data-for=\"joyDriftRX\"></span>\r\n								</label>\r\n								<label class=\"joyAxis\">\r\n									Y\r\n									<input\r\n										class=\"joyDriftRY joyRange\"\r\n										type=\"range\"\r\n										value=\"0\"\r\n										min=\"0\"\r\n										max=\"0.5\"\r\n										step=\"0.01\"\r\n									/>\r\n									<span class=\"joyValue\" data-for=\"joyDriftRY\"></span>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n						<tr class=\"joySection\">\r\n							<td colspan=\"2\">Aim Settings</td>\r\n						</tr>\r\n						<tr title=\"Push the right stick toward a monster or item to target the first one in that direction. In game, tap RS click to switch the right stick between aiming and the cursor; hold it to recenter the cursor. Tap L3 to clear the target, hold L3 to sit or stand\">\r\n							<td>Right-Stick Aiming</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyAimEnabled\" />\r\n							</td>\r\n						</tr>\r\n						<tr\r\n							title=\"While aiming, a red ring marks a newly selected target on the ground, then fades out within two seconds\"\r\n						>\r\n							<td>Show Target Ring</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyAimRing\" />\r\n							</td>\r\n						</tr>\r\n						<tr\r\n							title=\"While aiming, draw a short line in the aimed direction, which connects to the target once the aim is on one\"\r\n						>\r\n							<td>Show Aim Line</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyAimLine\" />\r\n							</td>\r\n						</tr>\r\n						<tr\r\n							title=\"While the right stick aims, hide the game's cursor. Moving the mouse shows it again; tap RS click for the cursor mode\"\r\n						>\r\n							<td>Hide Cursor While Aiming</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyAimHideCursor\" />\r\n							</td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n				<div class=\"joyMapping\">\r\n					<div class=\"joyMappingHeader\">\r\n						<button type=\"button\" class=\"joyBtn joyMappingBack\">&#9664; Back</button>\r\n						<span class=\"joyMappingTitle\">Button mapping</span>\r\n						<button type=\"button\" class=\"joyBtn joyMappingReset\">Reset to defaults</button>\r\n					</div>\r\n					<div class=\"joyMappingStatus\">\r\n						Remap: press Remap, then a button on the gamepad. The two buttons trade places.\r\n					</div>\r\n					<div class=\"joyMappingScroll\">\r\n						<table class=\"joyMappingRoles\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n							<tbody></tbody>\r\n						</table>\r\n						<div class=\"joyMappingSub\">Combinations (follow the buttons above)</div>\r\n						<table class=\"joyMappingCombos\" border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n							<tbody></tbody>\r\n						</table>\r\n					</div>\r\n				</div>\r\n			</div>\r\n			<button\r\n				class=\"button reset left\"\r\n				data-background=\"btn_reset.bmp\"\r\n				data-hover=\"btn_reset_a.bmp\"\r\n				data-down=\"btn_reset_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button ok right\"\r\n				data-background=\"btn_ok.bmp\"\r\n				data-hover=\"btn_ok_a.bmp\"\r\n				data-down=\"btn_ok_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button cancel right\"\r\n				data-background=\"btn_cancel.bmp\"\r\n				data-hover=\"btn_cancel_a.bmp\"\r\n				data-down=\"btn_cancel_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button close right\"\r\n				data-background=\"btn_close.bmp\"\r\n				data-hover=\"btn_close_a.bmp\"\r\n				data-down=\"btn_close_b.bmp\"\r\n			></button>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
+	ShortCutOption_default$2 = "<div id=\"ShortCutOption\" class=\"pt-page-fadeIn1\">\r\n	<div class=\"border\">\r\n		<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n			<div class=\"left\"><span class=\"text\">Shortcut key setting window</span></div>\r\n\r\n			<div class=\"right\">\r\n				<button\r\n					class=\"base close\"\r\n					data-background=\"basic_interface/sys_close_off.bmp\"\r\n					data-hover=\"basic_interface/sys_close_on.bmp\"\r\n				></button>\r\n			</div>\r\n\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n\r\n		<div class=\"tabs\">\r\n			<button class=\"t_skillbar selectedtab\" data-index=\"t_skillbar\">Skill Bar</button\r\n			><button class=\"t_ui\" data-index=\"t_ui\">Interface</button\r\n			><button class=\"t_macro\" data-index=\"t_macro\">Macros</button\r\n			><button class=\"t_gamepad\" data-index=\"t_gamepad\">Gamepad</button>\r\n		</div>\r\n		<div class=\"panel\">\r\n			<div class=\"content t_skillbar selectedtab\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Skill bar 1-1</td>\r\n							<td data-button=\"F1_1\" class=\"customize\"></td>\r\n							<td>Skill bar 2-1</td>\r\n							<td data-button=\"F2_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-2</td>\r\n							<td data-button=\"F1_2\" class=\"customize\"></td>\r\n							<td>Skill bar 2-2</td>\r\n							<td data-button=\"F2_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-3</td>\r\n							<td data-button=\"F1_3\" class=\"customize\"></td>\r\n							<td>Skill bar 2-3</td>\r\n							<td data-button=\"F2_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-4</td>\r\n							<td data-button=\"F1_4\" class=\"customize\"></td>\r\n							<td>Skill bar 2-4</td>\r\n							<td data-button=\"F2_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-5</td>\r\n							<td data-button=\"F1_5\" class=\"customize\"></td>\r\n							<td>Skill bar 2-5</td>\r\n							<td data-button=\"F2_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-6</td>\r\n							<td data-button=\"F1_6\" class=\"customize\"></td>\r\n							<td>Skill bar 2-6</td>\r\n							<td data-button=\"F2_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-7</td>\r\n							<td data-button=\"F1_7\" class=\"customize\"></td>\r\n							<td>Skill bar 2-7</td>\r\n							<td data-button=\"F2_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-8</td>\r\n							<td data-button=\"F1_8\" class=\"customize\"></td>\r\n							<td>Skill bar 2-8</td>\r\n							<td data-button=\"F2_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 1-9</td>\r\n							<td data-button=\"F1_9\" class=\"customize\"></td>\r\n							<td>Skill bar 2-9</td>\r\n							<td data-button=\"F2_9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-1</td>\r\n							<td data-button=\"F3_1\" class=\"customize\"></td>\r\n							<td>Skill bar 4-1</td>\r\n							<td data-button=\"F4_1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-2</td>\r\n							<td data-button=\"F3_2\" class=\"customize\"></td>\r\n							<td>Skill bar 4-2</td>\r\n							<td data-button=\"F4_2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-3</td>\r\n							<td data-button=\"F3_3\" class=\"customize\"></td>\r\n							<td>Skill bar 4-3</td>\r\n							<td data-button=\"F4_3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-4</td>\r\n							<td data-button=\"F3_4\" class=\"customize\"></td>\r\n							<td>Skill bar 4-4</td>\r\n							<td data-button=\"F4_4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-5</td>\r\n							<td data-button=\"F3_5\" class=\"customize\"></td>\r\n							<td>Skill bar 4-5</td>\r\n							<td data-button=\"F4_5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-6</td>\r\n							<td data-button=\"F3_6\" class=\"customize\"></td>\r\n							<td>Skill bar 4-6</td>\r\n							<td data-button=\"F4_6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-7</td>\r\n							<td data-button=\"F3_7\" class=\"customize\"></td>\r\n							<td>Skill bar 4-7</td>\r\n							<td data-button=\"F4_7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-8</td>\r\n							<td data-button=\"F3_8\" class=\"customize\"></td>\r\n							<td>Skill bar 4-8</td>\r\n							<td data-button=\"F4_8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill bar 3-9</td>\r\n							<td data-button=\"F3_9\" class=\"customize\"></td>\r\n							<td>Skill bar 4-9</td>\r\n							<td data-button=\"F4_9\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_ui\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Basic Info</td>\r\n							<td data-button=\"BasicInfo\" class=\"customize\"></td>\r\n							<td>Character Info</td>\r\n							<td data-button=\"Equipment\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Skill List</td>\r\n							<td data-button=\"SkillList\" class=\"customize\"></td>\r\n							<td>Emotion List</td>\r\n							<td data-button=\"Emotions\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Friends List</td>\r\n							<td data-button=\"Friends\" class=\"customize\"></td>\r\n							<td>Party Window</td>\r\n							<td data-button=\"Party\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Pet Info</td>\r\n							<td data-button=\"PetInfo\" class=\"customize\"></td>\r\n							<td>Chat Room</td>\r\n							<td data-button=\"ChatRoom\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Cart Window</td>\r\n							<td data-button=\"PushCart\" class=\"customize\"></td>\r\n							<td>Item Window</td>\r\n							<td data-button=\"Inventory\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>World Map</td>\r\n							<td data-button=\"WorldMap\" class=\"customize\"></td>\r\n							<td>Guild Info</td>\r\n							<td data-button=\"Guild\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus Info</td>\r\n							<td data-button=\"HomunInfo\" class=\"customize\"></td>\r\n							<td>Mercenary Info</td>\r\n							<td data-button=\"MercInfo\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Homunculus State</td>\r\n							<td data-button=\"HomunState\" class=\"customize\"></td>\r\n							<td>Mercenary State</td>\r\n							<td data-button=\"MercState\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Sit/Stand</td>\r\n							<td data-button=\"Sit\" class=\"customize\"></td>\r\n							<td>Short Cuts</td>\r\n							<td data-button=\"ShortCuts\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Chat Bar Size</td>\r\n							<td data-button=\"ChatSize\" class=\"customize\"></td>\r\n							<td>Skill Bar Size</td>\r\n							<td data-button=\"SkillBarSize\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Quest</td>\r\n							<td data-button=\"Quest\" class=\"customize\"></td>\r\n							<td>Bank</td>\r\n							<td data-button=\"Bank\" class=\"customize\"></td>\r\n						</tr>\r\n						<!--<tr>\r\n                     <td>MobileUI</td>\r\n                     <td data-button=\"M_UI\" class=\"customize\"></td>\r\n                     <td>MUi-Toggle</td>\r\n                     <td data-button=\"M_Toggle\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-TG</td>\r\n                     <td data-button=\"M_Targeting\" class=\"customize\"></td>\r\n                     <td>MUi-AT</td>\r\n                     <td data-button=\"M_AutoTarget\" class=\"customize\"></td>\r\n                  </tr>\r\n                  <tr>\r\n                     <td>MUi-ATK</td>\r\n                     <td data-button=\"M_Attack\" class=\"customize\"></td>\r\n                  </tr>-->\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_macro\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr>\r\n							<td>Macro 1</td>\r\n							<td data-button=\"Macro1\" class=\"customize\"></td>\r\n							<td>Flag 1</td>\r\n							<td data-button=\"Flag1\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 2</td>\r\n							<td data-button=\"Macro2\" class=\"customize\"></td>\r\n							<td>Flag 2</td>\r\n							<td data-button=\"Flag2\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 3</td>\r\n							<td data-button=\"Macro3\" class=\"customize\"></td>\r\n							<td>Flag 3</td>\r\n							<td data-button=\"Flag3\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 4</td>\r\n							<td data-button=\"Macro4\" class=\"customize\"></td>\r\n							<td>Flag 4</td>\r\n							<td data-button=\"Flag4\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 5</td>\r\n							<td data-button=\"Macro5\" class=\"customize\"></td>\r\n							<td>Flag 5</td>\r\n							<td data-button=\"Flag5\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 6</td>\r\n							<td data-button=\"Macro6\" class=\"customize\"></td>\r\n							<td>Flag 6</td>\r\n							<td data-button=\"Flag6\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 7</td>\r\n							<td data-button=\"Macro7\" class=\"customize\"></td>\r\n							<td>Flag 7</td>\r\n							<td data-button=\"Flag7\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 8</td>\r\n							<td data-button=\"Macro8\" class=\"customize\"></td>\r\n							<td>Flag 8</td>\r\n							<td data-button=\"Flag8\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 9</td>\r\n							<td data-button=\"Macro9\" class=\"customize\"></td>\r\n							<td>Flag 9</td>\r\n							<td data-button=\"Flag9\" class=\"customize\"></td>\r\n						</tr>\r\n						<tr>\r\n							<td>Macro 10</td>\r\n							<td data-button=\"Macro10\" class=\"customize\"></td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<div class=\"content t_gamepad\">\r\n				<table border=\"1\" cellspacing=\"0\" bordercolor=\"#aaa\">\r\n					<tbody>\r\n						<tr title=\"Define how targets are selected in combat\">\r\n							<td>Attack Target Mode</td>\r\n							<td>\r\n								<select class=\"attackTargetMode\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Lowest HP</option>\r\n									<option value=\"2\">Closest</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Choose how skills are cast with gamepad\">\r\n							<td>Quick-Cast Mode</td>\r\n							<td>\r\n								<select class=\"joyQuick\">\r\n									<option value=\"0\">Off</option>\r\n									<option value=\"1\">Release Mode</option>\r\n									<option value=\"2\">Instant Mode</option>\r\n								</select>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Adjust mouse movement sensitivity for R3 stick\">\r\n							<td>Mouse Move</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Sensitivity:\r\n									<input\r\n										class=\"joySense\"\r\n										type=\"range\"\r\n										value=\"25.0\"\r\n										min=\"1.0\"\r\n										max=\"100.0\"\r\n										step=\"1.0\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Disable mouse input from gamepad for UI interaction\">\r\n							<td>Disable Virtual Mouse</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyDisableVirtualMouse\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Swap L3 and R3 stick functions\">\r\n							<td>Swap L3-R3 Sticks</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyReverseStick\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Automatically hide UI during gameplay mouse movement\">\r\n							<td>Auto Hide UI</td>\r\n							<td>\r\n								<input type=\"checkbox\" class=\"joyAutoHide\" />\r\n							</td>\r\n						</tr>\r\n						<tr title=\"Set deadzone threshold for analog sticks\">\r\n							<td>Axis Threshold</td>\r\n							<td>\r\n								<label style=\"display: inline-block; width: 90px\">\r\n									Deadline:\r\n									<input\r\n										class=\"joyDeadline\"\r\n										type=\"range\"\r\n										value=\"0.10\"\r\n										min=\"0.0\"\r\n										max=\"1.0\"\r\n										step=\"0.1\"\r\n										style=\"width: 90%; vertical-align: middle\"\r\n									/>\r\n								</label>\r\n							</td>\r\n						</tr>\r\n					</tbody>\r\n				</table>\r\n			</div>\r\n			<button\r\n				class=\"button reset left\"\r\n				data-background=\"btn_reset.bmp\"\r\n				data-hover=\"btn_reset_a.bmp\"\r\n				data-down=\"btn_reset_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button ok right\"\r\n				data-background=\"btn_ok.bmp\"\r\n				data-hover=\"btn_ok_a.bmp\"\r\n				data-down=\"btn_ok_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button cancel right\"\r\n				data-background=\"btn_cancel.bmp\"\r\n				data-hover=\"btn_cancel_a.bmp\"\r\n				data-down=\"btn_cancel_b.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"button close right\"\r\n				data-background=\"btn_close.bmp\"\r\n				data-hover=\"btn_close_a.bmp\"\r\n				data-down=\"btn_close_b.bmp\"\r\n			></button>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/ShortCutOption/ShortCutOption.css?raw
 var ShortCutOption_default$1;
 var init_ShortCutOption$1 = __esmMin((() => {
-	ShortCutOption_default$1 = ":host {\r\n	width: 430px;\r\n	height: 465px;\r\n	top: 300px;\r\n	left: 300px;\r\n}\r\n\r\n#ShortCutOption {\r\n	position: absolute;\r\n	width: 430px;\r\n	height: 465px;\r\n	background: white;\r\n	border-radius: 3px;\r\n	border: solid 1px #aaa;\r\n	border-top: none;\r\n}\r\n#ShortCutOption .border {\r\n}\r\n#ShortCutOption .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	border-bottom: solid 1px #eee;\r\n}\r\n#ShortCutOption .titlebar .base {\r\n	width: 20px;\r\n	height: 100%;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n	background-position: 8px 2px;\r\n}\r\n#ShortCutOption .titlebar .base.close {\r\n	color: #ccc;\r\n}\r\n#ShortCutOption .titlebar .text {\r\n	white-space: nowrap;\r\n	display: inline-block;\r\n	line-height: 17px;\r\n	margin-left: 5px;\r\n}\r\n#ShortCutOption .titlebar .left {\r\n	float: left;\r\n}\r\n#ShortCutOption .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n	height: 100%;\r\n}\r\n#ShortCutOption .titlebar .clear {\r\n	clear: both;\r\n}\r\n#ShortCutOption .tabs {\r\n	position: relative;\r\n	top: 1px;\r\n	border-right: solid 1px #ccc;\r\n}\r\n#ShortCutOption .tabs button.selectedtab {\r\n	border-bottom: solid 1px transparent;\r\n}\r\n#ShortCutOption .tabs button {\r\n	width: 57px;\r\n	height: 18px;\r\n	padding: 0;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	white-space: nowrap;\r\n	background-color: #fff;\r\n	border: solid 1px #bbb;\r\n	border-top-right-radius: 3px;\r\n	border-top-left-radius: 3px;\r\n}\r\n#ShortCutOption .tabs button:nth-child(1) {\r\n	border-right: none;\r\n}\r\n#ShortCutOption .panel {\r\n	padding: 5px;\r\n	border-top: solid 1px #ccc;\r\n}\r\n#ShortCutOption .panel .content {\r\n	display: none;\r\n}\r\n#ShortCutOption .content.selectedtab {\r\n	display: block;\r\n}\r\n#ShortCutOption .content table {\r\n	width: 100%;\r\n	border-collapse: collapse;\r\n	color: #222;\r\n}\r\n#ShortCutOption .content table tr {\r\n	height: 22px;\r\n}\r\n#ShortCutOption .content table td {\r\n	text-align: center;\r\n}\r\n#ShortCutOption .content table td:nth-child(1),\r\n#ShortCutOption .content table td:nth-child(3) {\r\n	width: 30%;\r\n}\r\n#ShortCutOption .content table td:nth-child(2),\r\n#ShortCutOption .content table td:nth-child(4) {\r\n	width: 20%;\r\n	background-color: #eee;\r\n}\r\n#ShortCutOption .content table td.customize {\r\n	background-color: #ffffe0;\r\n}\r\n#ShortCutOption .content table td.changed {\r\n	background-color: #ffe4e1;\r\n}\r\n#ShortCutOption .content table td.selected {\r\n	background-color: #ffb6c1;\r\n}\r\n#ShortCutOption .content table tr.joySection td {\r\n	width: auto;\r\n	text-align: left;\r\n	padding-left: 4px;\r\n	font-weight: bold;\r\n	background-color: #f0f0f0;\r\n}\r\n#ShortCutOption .joyBtn {\r\n	padding: 0 6px;\r\n	height: 18px;\r\n	border: solid 1px #aaa;\r\n	border-radius: 3px;\r\n	background-color: #f4f4f4;\r\n	cursor: pointer;\r\n	font-size: 11px;\r\n}\r\n#ShortCutOption .joyBtn:hover {\r\n	background-color: #e4e4e4;\r\n}\r\n#ShortCutOption .joyBtn.capturing {\r\n	background-color: #ffb6c1;\r\n}\r\n#ShortCutOption .content.t_gamepad {\r\n	max-height: 370px;\r\n	overflow-y: auto;\r\n}\r\n#ShortCutOption .joyRange {\r\n	width: 70px;\r\n	vertical-align: middle;\r\n}\r\n#ShortCutOption .joyAxis {\r\n	display: block;\r\n	white-space: nowrap;\r\n}\r\n#ShortCutOption .joyValue {\r\n	display: inline-block;\r\n	width: 26px;\r\n	text-align: left;\r\n	font-size: 10px;\r\n}\r\n#ShortCutOption .joyCalibrateStatus {\r\n	font-size: 10px;\r\n	color: #555;\r\n}\r\n#ShortCutOption .joyMapping {\r\n	display: none;\r\n}\r\n#ShortCutOption .t_gamepad.mapping-open .joySettings {\r\n	display: none;\r\n}\r\n#ShortCutOption .t_gamepad.mapping-open .joyMapping {\r\n	display: block;\r\n}\r\n#ShortCutOption .joyMappingHeader {\r\n	display: flex;\r\n	align-items: center;\r\n	justify-content: space-between;\r\n	margin-bottom: 4px;\r\n}\r\n#ShortCutOption .joyMappingTitle {\r\n	font-weight: bold;\r\n}\r\n#ShortCutOption .joyMappingStatus {\r\n	min-height: 28px;\r\n	margin-bottom: 4px;\r\n	color: #555;\r\n}\r\n#ShortCutOption .joyMappingStatus.capturing {\r\n	color: #b00020;\r\n	font-weight: bold;\r\n}\r\n#ShortCutOption .joyMappingScroll {\r\n	max-height: 320px;\r\n	overflow-y: auto;\r\n}\r\n#ShortCutOption .joyMappingSub {\r\n	margin: 6px 0 3px;\r\n	font-weight: bold;\r\n}\r\n#ShortCutOption .content .joyMapping table td:nth-child(1) {\r\n	width: 58%;\r\n	text-align: left;\r\n	padding-left: 4px;\r\n}\r\n#ShortCutOption .content .joyMapping table td:nth-child(2) {\r\n	width: 26%;\r\n}\r\n#ShortCutOption .content .joyMapping table td:nth-child(3) {\r\n	width: 16%;\r\n}\r\n#ShortCutOption .content .joyMappingCombos td:nth-child(1) {\r\n	width: 45%;\r\n	text-align: center;\r\n	padding-left: 0;\r\n	background-color: #eee;\r\n}\r\n#ShortCutOption .content .joyMappingCombos td:nth-child(2) {\r\n	width: 55%;\r\n	text-align: left;\r\n	padding-left: 4px;\r\n	background-color: transparent;\r\n}\r\n#ShortCutOption .resolution {\r\n	display: none;\r\n}\r\n#ShortCutOption .panel .button {\r\n	position: absolute;\r\n	bottom: 3px;\r\n	width: 42px;\r\n	height: 20px;\r\n	margin-top: 3px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#ShortCutOption .panel .button.reset {\r\n	left: 3px;\r\n}\r\n#ShortCutOption .panel .button.ok {\r\n	right: 93px;\r\n}\r\n#ShortCutOption .panel .button.cancel {\r\n	right: 48px;\r\n}\r\n#ShortCutOption .panel .button.close {\r\n	right: 3px;\r\n}\r\n";
+	ShortCutOption_default$1 = ":host {\r\n	width: 430px;\r\n	height: 465px;\r\n	top: 300px;\r\n	left: 300px;\r\n}\r\n\r\n#ShortCutOption {\r\n	position: absolute;\r\n	width: 430px;\r\n	height: 465px;\r\n	background: white;\r\n	border-radius: 3px;\r\n	border: solid 1px #aaa;\r\n	border-top: none;\r\n}\r\n#ShortCutOption .border {\r\n}\r\n#ShortCutOption .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	border-bottom: solid 1px #eee;\r\n}\r\n#ShortCutOption .titlebar .base {\r\n	width: 20px;\r\n	height: 100%;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n	background-position: 8px 2px;\r\n}\r\n#ShortCutOption .titlebar .base.close {\r\n	color: #ccc;\r\n}\r\n#ShortCutOption .titlebar .text {\r\n	white-space: nowrap;\r\n	display: inline-block;\r\n	line-height: 17px;\r\n	margin-left: 5px;\r\n}\r\n#ShortCutOption .titlebar .left {\r\n	float: left;\r\n}\r\n#ShortCutOption .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n	height: 100%;\r\n}\r\n#ShortCutOption .titlebar .clear {\r\n	clear: both;\r\n}\r\n#ShortCutOption .tabs {\r\n	position: relative;\r\n	top: 1px;\r\n	border-right: solid 1px #ccc;\r\n}\r\n#ShortCutOption .tabs button.selectedtab {\r\n	border-bottom: solid 1px transparent;\r\n}\r\n#ShortCutOption .tabs button {\r\n	width: 57px;\r\n	height: 18px;\r\n	padding: 0;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	white-space: nowrap;\r\n	background-color: #fff;\r\n	border: solid 1px #bbb;\r\n	border-top-right-radius: 3px;\r\n	border-top-left-radius: 3px;\r\n}\r\n#ShortCutOption .tabs button:nth-child(1) {\r\n	border-right: none;\r\n}\r\n#ShortCutOption .panel {\r\n	padding: 5px;\r\n	border-top: solid 1px #ccc;\r\n}\r\n#ShortCutOption .panel .content {\r\n	display: none;\r\n}\r\n#ShortCutOption .content.selectedtab {\r\n	display: block;\r\n}\r\n#ShortCutOption .content table {\r\n	width: 100%;\r\n	border-collapse: collapse;\r\n	color: #222;\r\n}\r\n#ShortCutOption .content table tr {\r\n	height: 22px;\r\n}\r\n#ShortCutOption .content table td {\r\n	text-align: center;\r\n}\r\n#ShortCutOption .content table td:nth-child(1),\r\n#ShortCutOption .content table td:nth-child(3) {\r\n	width: 30%;\r\n}\r\n#ShortCutOption .content table td:nth-child(2),\r\n#ShortCutOption .content table td:nth-child(4) {\r\n	width: 20%;\r\n	background-color: #eee;\r\n}\r\n#ShortCutOption .content table td.customize {\r\n	background-color: #ffffe0;\r\n}\r\n#ShortCutOption .content table td.changed {\r\n	background-color: #ffe4e1;\r\n}\r\n#ShortCutOption .content table td.selected {\r\n	background-color: #ffb6c1;\r\n}\r\n#ShortCutOption .resolution {\r\n	display: none;\r\n}\r\n#ShortCutOption .panel .button {\r\n	position: absolute;\r\n	bottom: 3px;\r\n	width: 42px;\r\n	height: 20px;\r\n	margin-top: 3px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#ShortCutOption .panel .button.reset {\r\n	left: 3px;\r\n}\r\n#ShortCutOption .panel .button.ok {\r\n	right: 93px;\r\n}\r\n#ShortCutOption .panel .button.cancel {\r\n	right: 48px;\r\n}\r\n#ShortCutOption .panel .button.close {\r\n	right: 3px;\r\n}\r\n";
 }));
 //#endregion
-//#region src/UI/Components/JoystickUI/JoystickButtonMap.js
-function identity() {
-	const map = [];
-	for (let i = 0; i < BUTTON_COUNT; i++) map.push(i);
-	return map;
+//#region src/UI/Components/ShortCutOption/ShortCutOption.js
+/**
+* Checks if there is a match in the temporary settings
+* Returns the name of the conflicting shortcut, or false if no conflict
+*/
+function tempMatch(key) {
+	const TempState = {};
+	let matchSC = false;
+	Object.keys(ShortCuts$1).forEach(function(SC) {
+		if (ShortCuts$1[SC].cust) {
+			TempState[SC] = {};
+			TempState[SC].key = ShortCuts$1[SC].cust.key;
+			TempState[SC].alt = ShortCuts$1[SC].cust.alt;
+			TempState[SC].ctrl = ShortCuts$1[SC].cust.ctrl;
+			TempState[SC].shift = ShortCuts$1[SC].cust.shift;
+		} else {
+			TempState[SC] = {};
+			TempState[SC].key = ShortCuts$1[SC].init.key;
+			TempState[SC].alt = ShortCuts$1[SC].init.alt;
+			TempState[SC].ctrl = ShortCuts$1[SC].init.ctrl;
+			TempState[SC].shift = ShortCuts$1[SC].init.shift;
+		}
+	});
+	Object.keys(ShortCutsTemp).forEach(function(SC) {
+		if (ShortCutsTemp[SC].cust) {
+			TempState[SC] = {};
+			TempState[SC].key = ShortCutsTemp[SC].cust.key;
+			TempState[SC].alt = ShortCutsTemp[SC].cust.alt;
+			TempState[SC].ctrl = ShortCutsTemp[SC].cust.ctrl;
+			TempState[SC].shift = ShortCutsTemp[SC].cust.shift;
+		} else {
+			TempState[SC] = {};
+			TempState[SC].key = ShortCuts$1[SC].init.key;
+			TempState[SC].alt = ShortCuts$1[SC].init.alt;
+			TempState[SC].ctrl = ShortCuts$1[SC].init.ctrl;
+			TempState[SC].shift = ShortCuts$1[SC].init.shift;
+		}
+	});
+	Object.keys(TempState).every(function(SC) {
+		if (TempState[SC]) {
+			if (TempState[SC].key == key && TempState[SC].alt == KEYS.ALT && TempState[SC].ctrl == KEYS.CTRL && TempState[SC].shift == KEYS.SHIFT) {
+				matchSC = SC;
+				return false;
+			} else return true;
+		}
+	});
+	return matchSC;
 }
 /**
-* The stored map if it is a complete permutation of 0-15, else the default.
+* Updates the key list on the UI
 */
-function getMap() {
-	const map = Controls_default.joyButtonMap;
-	if (!Array.isArray(map) || map.length !== BUTTON_COUNT) return identity();
-	const seen = /* @__PURE__ */ new Set();
-	for (let i = 0; i < BUTTON_COUNT; i++) {
-		const b = map[i];
-		if (!Number.isInteger(b) || b < 0 || b >= BUTTON_COUNT || seen.has(b)) return identity();
-		seen.add(b);
+function updateKeyList() {
+	const cells = ShortCutOption.getRoot().querySelectorAll("td[data-button]");
+	for (let i = 0; i < cells.length; i++) {
+		const btnName = cells[i].dataset.button;
+		if (getKey(btnName)) cells[i].textContent = (getAlt(btnName) ? "ALT + " : "") + (getCtrl(btnName) ? "CTRL + " : "") + (getShift(btnName) ? "SHIFT + " : "") + KEYS.toReadableKey(parseInt(getKey(btnName), 10));
+		else cells[i].textContent = "N/A";
 	}
-	return map.slice();
 }
-function save$2(map) {
-	const isDefault = map.every((physical, logical) => physical === logical);
-	Controls_default.joyButtonMap = isDefault ? null : map;
+/**
+* Resets key bindings to initial
+*/
+function resetKeysToDefault() {
+	const root = ShortCutOption.getRoot();
+	Object.keys(ShortCuts$1).forEach(function(SC) {
+		ShortCutsTemp[SC] = {};
+		ShortCutsTemp[SC].cust = false;
+		const cell = root.querySelector("td[data-button='" + SC + "']");
+		if (cell) {
+			if (ShortCuts$1[SC].cust != ShortCutsTemp[SC].cust) cell.classList.add("changed");
+			else cell.classList.remove("changed");
+		}
+	});
+	updateKeyList();
+}
+/**
+* Applies the key bindings
+*/
+function applySettings() {
+	Object.keys(ShortCutsTemp).forEach(function(SC) {
+		if (ShortCutsTemp[SC].cust) {
+			ShortCuts$1[SC].cust = {};
+			ShortCuts$1[SC].cust.key = ShortCutsTemp[SC].cust.key;
+			ShortCuts$1[SC].cust.alt = ShortCutsTemp[SC].cust.alt;
+			ShortCuts$1[SC].cust.ctrl = ShortCutsTemp[SC].cust.ctrl;
+			ShortCuts$1[SC].cust.shift = ShortCutsTemp[SC].cust.shift;
+		} else ShortCuts$1[SC].cust = false;
+	});
+	ShortCutControls_default.save();
+	BattleMode.reload();
+	ShortCutsTemp = {};
+	updateKeyList();
+	ShortCutOption.getRoot().querySelectorAll("td.changed").forEach(function(el) {
+		el.classList.remove("changed");
+	});
+	const ShortCut = UIManager.getComponent("ShortCut");
+	if (ShortCut && ShortCut.updateAllTooltips) ShortCut.updateAllTooltips();
+}
+/**
+* Cancels the key bindings
+*/
+function cancelSettings() {
+	ShortCutsTemp = {};
+	updateKeyList();
+	ShortCutOption.getRoot().querySelectorAll("td.changed").forEach(function(el) {
+		el.classList.remove("changed");
+	});
+}
+/**
+* Get shortcut key setting
+*/
+function getKey(sc) {
+	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.key : ShortCuts$1[sc].init.key;
+	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.key : ShortCuts$1[sc].init.key;
+	else return false;
+}
+/**
+* Get shortcut alt setting
+*/
+function getAlt(sc) {
+	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.alt : ShortCuts$1[sc].init.alt;
+	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.alt : ShortCuts$1[sc].init.alt;
+	else return false;
+}
+/**
+* Get shortcut ctrl setting
+*/
+function getCtrl(sc) {
+	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.ctrl : ShortCuts$1[sc].init.ctrl;
+	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.ctrl : ShortCuts$1[sc].init.ctrl;
+	else return false;
+}
+/**
+* Get shortcut shift setting
+*/
+function getShift(sc) {
+	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.shift : ShortCuts$1[sc].init.shift;
+	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.shift : ShortCuts$1[sc].init.shift;
+	else return false;
+}
+function onUpdateTargetOption() {
+	Controls_default.attackTargetMode = parseInt(this.value, 10);
 	Controls_default.save();
 }
-/**
-* Translate physical button states into logical ones.
-*
-* @param {Array<string>} physical states by physical index
-* @return {Array<string>} states by logical index
-*/
-function toLogical(physical) {
-	const map = getMap();
-	const logical = physical.slice();
-	for (let i = 0; i < BUTTON_COUNT; i++) logical[i] = physical[map[i]] || "unpressed";
-	return logical;
+function onUpdateSense() {
+	Controls_default.joySense = parseFloat(this.value, 10);
+	Controls_default.save();
 }
-/**
-* Name of the physical button currently playing a role.
-*/
-function nameOf$1(logical) {
-	return BUTTON_NAMES[getMap()[logical]] || "?";
+function onUpdateJoyQuick() {
+	Controls_default.joyQuick = parseInt(this.value, 10);
+	Controls_default.save();
 }
-/**
-* Give a role to a physical button; the button's previous role moves to
-* the button the role had before.
-*/
-function assign(logical, physical) {
-	const map = getMap();
-	const other = map.indexOf(physical);
-	if (other === -1 || other === logical) return;
-	map[other] = map[logical];
-	map[logical] = physical;
-	save$2(map);
+function onUpdateJoyDeadline() {
+	Controls_default.joyDeadline = parseInt(this.value, 10);
+	Controls_default.save();
 }
-function reset() {
-	save$2(identity());
+function onUpdateAutoHide() {
+	Controls_default.joyAutoHide = !!this.checked;
+	Controls_default.save();
 }
-/**
-* Wait for the next gamepad button press and hand its physical index to
-* the callback instead of to the game.
-*/
-function startCapture(callback) {
-	_capture = callback;
+function onUpdateReverseStick() {
+	Controls_default.joyReverseStick = !!this.checked;
+	Controls_default.save();
 }
-function cancelCapture() {
-	_capture = null;
+function onUpdateDisableVirtualMouse() {
+	Controls_default.joyDisableVirtualMouse = !!this.checked;
+	Controls_default.save();
 }
-function isCapturing() {
-	return _capture !== null;
-}
-/**
-* Called by JoystickInputService with the raw states of each poll. While a
-* capture runs, and afterwards until every button is released, the game
-* gets no button input: the button just bound must not also act.
-*
-* @return {boolean} true when this poll's buttons were consumed
-*/
-function consume(physical) {
-	if (_capture) {
-		for (let i = 0; i < BUTTON_COUNT; i++) if (physical[i] === "pressed") {
-			const callback = _capture;
-			_capture = null;
-			_waitForRelease = true;
-			callback(i);
-			break;
-		}
-		return true;
-	}
-	if (_waitForRelease) {
-		if (physical.some((state) => state && state !== "unpressed")) return true;
-		_waitForRelease = false;
-	}
-	return false;
-}
-var BUTTON_COUNT, BUTTON_NAMES, BUTTON, _capture, _waitForRelease, JoystickButtonMap_default;
-var init_JoystickButtonMap = __esmMin((() => {
+var ShortCutOption, ShortCuts$1, ShortCutsTemp, _preferences$31, ShortCutOption_default;
+var init_ShortCutOption = __esmMin((() => {
+	init_KeyEventHandler();
+	init_Preferences$1();
+	init_UIManager();
+	init_GUIComponent();
+	init_Elements();
+	init_ShortCutControls();
+	init_BattleMode();
+	init_ShortCutOption$2();
+	init_ShortCutOption$1();
 	init_Controls();
-	BUTTON_COUNT = 16;
-	BUTTON_NAMES = [
-		"A",
-		"B",
-		"X",
-		"Y",
-		"LB",
-		"RB",
-		"LT",
-		"RT",
-		"View",
-		"Menu",
-		"LS click",
-		"RS click",
-		"D-pad ▲",
-		"D-pad ▼",
-		"D-pad ◀",
-		"D-pad ▶"
-	];
-	BUTTON = {
-		A: 0,
-		B: 1,
-		X: 2,
-		Y: 3,
-		LB: 4,
-		RB: 5,
-		LT: 6,
-		RT: 7,
-		VIEW: 8,
-		MENU: 9,
-		LS: 10,
-		RS: 11,
-		UP: 12,
-		DOWN: 13,
-		LEFT: 14,
-		RIGHT: 15
+	ShortCutOption = new GUIComponent("ShortCutOption", ShortCutOption_default$1);
+	ShortCuts$1 = ShortCutControls_default.ShortCuts;
+	ShortCutsTemp = {};
+	ShortCutOption.isCapturing = false;
+	_preferences$31 = Preferences.get("ShortCutOption", {
+		x: 300,
+		y: 300
+	}, 1);
+	/**
+	* Render HTML
+	*/
+	ShortCutOption.render = () => ShortCutOption_default$2;
+	/**
+	* Initialize UI
+	*/
+	ShortCutOption.init = function() {
+		const root = this.getRoot();
+		let close = root.querySelector(".close");
+		function closebtn(btn) {
+			if (btn) {
+				btn.addEventListener("mousedown", (e) => {
+					e.stopImmediatePropagation();
+					ShortCutOption.remove();
+				});
+				btn.addEventListener("click", (e) => {
+					e.stopImmediatePropagation();
+					ShortCutOption.remove();
+				});
+			}
+		}
+		closebtn(close);
+		close = root.querySelector(".button.close");
+		closebtn(close);
+		root.querySelectorAll(".tabs button").forEach(function(btn) {
+			btn.addEventListener("click", function() {
+				root.querySelectorAll(".selectedtab").forEach(function(el) {
+					el.classList.remove("selectedtab");
+				});
+				const tab = this.dataset.index;
+				root.querySelectorAll("." + tab).forEach(function(el) {
+					el.classList.add("selectedtab");
+				});
+			});
+		});
+		root.querySelectorAll("td").forEach(function(td) {
+			td.addEventListener("click", function() {
+				if (this.classList.contains("customize")) {
+					ShortCutOption.isCapturing = true;
+					root.querySelectorAll("td.selected").forEach(function(el) {
+						el.classList.remove("selected");
+					});
+					this.classList.add("selected");
+				} else {
+					ShortCutOption.isCapturing = false;
+					root.querySelectorAll("td.selected").forEach(function(el) {
+						el.classList.remove("selected");
+					});
+				}
+			});
+		});
+		const bindChange = function(selector, handler) {
+			const el = root.querySelector(selector);
+			if (el) el.addEventListener("change", handler);
+		};
+		bindChange(".attackTargetMode", onUpdateTargetOption);
+		bindChange(".joySense", onUpdateSense);
+		bindChange(".joyQuick", onUpdateJoyQuick);
+		bindChange(".joyDeadline", onUpdateJoyDeadline);
+		bindChange(".joyReverseStick", onUpdateReverseStick);
+		bindChange(".joyAutoHide", onUpdateAutoHide);
+		bindChange(".joyDisableVirtualMouse", onUpdateDisableVirtualMouse);
+		const resetBtn = root.querySelector(".button.reset");
+		if (resetBtn) resetBtn.addEventListener("click", function() {
+			resetKeysToDefault();
+		});
+		const okBtn = root.querySelector(".button.ok");
+		if (okBtn) okBtn.addEventListener("click", function() {
+			applySettings();
+		});
+		const cancelBtn = root.querySelector(".button.cancel");
+		if (cancelBtn) cancelBtn.addEventListener("click", function() {
+			cancelSettings();
+		});
+		updateKeyList();
+		this.draggable(".titlebar");
 	};
-	_capture = null;
-	_waitForRelease = false;
-	JoystickButtonMap_default = {
-		BUTTON,
-		BUTTON_COUNT,
-		BUTTON_NAMES,
-		getMap,
-		toLogical,
-		nameOf: nameOf$1,
-		assign,
-		reset,
-		startCapture,
-		cancelCapture,
-		isCapturing,
-		consume
+	/**
+	* Apply preferences once append to body
+	*/
+	ShortCutOption.onAppend = function() {
+		this._host.style.left = _preferences$31.x + "px";
+		this._host.style.top = _preferences$31.y + "px";
+		this._host.style.zIndex = 100;
 	};
+	/**
+	* Remove from window (and so clean up)
+	*/
+	ShortCutOption.onRemove = function() {
+		_preferences$31.x = parseInt(this._host.style.left, 10);
+		_preferences$31.y = parseInt(this._host.style.top, 10);
+		_preferences$31.save();
+	};
+	/**
+	* Process key
+	*
+	* @param {object} key
+	*/
+	ShortCutOption.onKeyDown = function(event) {
+		if (ShortCutOption.isCapturing) {
+			if (16 != event.which && 17 != event.which && 18 != event.which) {
+				const root = ShortCutOption.getRoot();
+				const box = root.querySelector("td.selected");
+				const currentSC = box ? box.dataset.button : null;
+				if (!box || !currentSC || !ShortCuts$1[currentSC]) {
+					if (box) console.warn("Shortcut \"" + currentSC + "\" is not defined in ShortCutControls");
+					root.querySelectorAll("td.selected").forEach(function(el) {
+						el.classList.remove("selected");
+					});
+					ShortCutOption.isCapturing = false;
+					event.preventDefault();
+					event.stopImmediatePropagation();
+					return false;
+				}
+				if (event.which == 27) {
+					ShortCutsTemp[currentSC] = {};
+					ShortCutsTemp[currentSC].cust = {};
+					ShortCutsTemp[currentSC].cust.key = "";
+					ShortCutsTemp[currentSC].cust.alt = false;
+					ShortCutsTemp[currentSC].cust.ctrl = false;
+					ShortCutsTemp[currentSC].cust.shift = false;
+				} else {
+					const conflictSC = tempMatch(event.which);
+					if (conflictSC && conflictSC !== currentSC) {
+						const oldKey = getKey(currentSC);
+						const oldAlt = getAlt(currentSC);
+						const oldCtrl = getCtrl(currentSC);
+						const oldShift = getShift(currentSC);
+						ShortCutsTemp[conflictSC] = {};
+						ShortCutsTemp[conflictSC].cust = {};
+						ShortCutsTemp[conflictSC].cust.key = oldKey;
+						ShortCutsTemp[conflictSC].cust.alt = oldAlt;
+						ShortCutsTemp[conflictSC].cust.ctrl = oldCtrl;
+						ShortCutsTemp[conflictSC].cust.shift = oldShift;
+						const conflictCell = root.querySelector("td[data-button='" + conflictSC + "']");
+						if (conflictCell) {
+							conflictCell.classList.add("changed");
+							conflictCell.textContent = (oldAlt ? "ALT + " : "") + (oldCtrl ? "CTRL + " : "") + (oldShift ? "SHIFT + " : "") + (oldKey ? KEYS.toReadableKey(parseInt(oldKey, 10)) : "N/A");
+						}
+					}
+					ShortCutsTemp[currentSC] = {};
+					ShortCutsTemp[currentSC].cust = {};
+					ShortCutsTemp[currentSC].cust.key = event.which;
+					ShortCutsTemp[currentSC].cust.alt = KEYS.ALT;
+					ShortCutsTemp[currentSC].cust.ctrl = KEYS.CTRL;
+					ShortCutsTemp[currentSC].cust.shift = KEYS.SHIFT;
+				}
+				box.textContent = (getAlt(currentSC) ? "ALT + " : "") + (getCtrl(currentSC) ? "CTRL + " : "") + (getShift(currentSC) ? "SHIFT + " : "") + KEYS.toReadableKey(getKey(currentSC), 10);
+				root.querySelectorAll("td.selected").forEach(function(el) {
+					el.classList.add("changed");
+					el.classList.remove("selected");
+				});
+				ShortCutOption.isCapturing = false;
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				return false;
+			}
+		}
+	};
+	ShortCutOption.mouseMode = GUIComponent.MouseMode.STOP;
+	ShortCutOption.needFocus = true;
+	ShortCutOption_default = UIManager.addComponent(ShortCutOption);
+}));
+//#endregion
+//#region src/UI/Components/Escape/Escape.html?raw
+var Escape_default$2;
+var init_Escape$2 = __esmMin((() => {
+	Escape_default$2 = "<div id=\"Escape\" data-background=\"basic_interface/titlebar_fix.bmp\">\r\n	<div class=\"top\">\r\n		<button\r\n			class=\"node\"\r\n			data-background=\"basic_interface/sys_base_off.bmp\"\r\n			data-hover=\"basic_interface/sys_base_on.bmp\"\r\n		></button>\r\n		<div class=\"title\" data-text=\"1483\">Select Option</div>\r\n	</div>\r\n\r\n	<div class=\"container\">\r\n		<button\r\n			class=\"resurection\"\r\n			data-background=\"esc_05a.bmp\"\r\n			data-hover=\"esc_05b.bmp\"\r\n			data-down=\"esc_05c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"savepoint\"\r\n			data-background=\"esc_04a.bmp\"\r\n			data-hover=\"esc_04b.bmp\"\r\n			data-down=\"esc_04c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"charselect\"\r\n			data-background=\"esc_01a.bmp\"\r\n			data-hover=\"esc_01b.bmp\"\r\n			data-down=\"esc_01c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"graphics\"\r\n			data-background=\"esc_06a.bmp\"\r\n			data-hover=\"esc_06b.bmp\"\r\n			data-down=\"esc_06c.bmp\"\r\n		></button>\r\n		<button class=\"sound\" data-background=\"esc_07a.bmp\" data-hover=\"esc_07b.bmp\" data-down=\"esc_07c.bmp\"></button>\r\n		<button class=\"hotkey\" data-background=\"esc_08a.bmp\" data-hover=\"esc_08b.bmp\" data-down=\"esc_08c.bmp\"></button>\r\n		<button class=\"exit\" data-background=\"esc_03a.bmp\" data-hover=\"esc_03b.bmp\" data-down=\"esc_03c.bmp\"></button>\r\n		<button class=\"cancel\" data-background=\"esc_02a.bmp\" data-hover=\"esc_02b.bmp\" data-down=\"esc_02c.bmp\"></button>\r\n	</div>\r\n</div>\r\n";
+}));
+//#endregion
+//#region src/UI/Components/Escape/Escape.css?raw
+var Escape_default$1;
+var init_Escape$1 = __esmMin((() => {
+	Escape_default$1 = ":host {\r\n	width: 280px;\r\n	height: auto;\r\n	top: 200px;\r\n	left: 200px;\r\n}\r\n\r\n#Escape {\r\n	width: 280px;\r\n	height: auto;\r\n	border-radius: 5px;\r\n	background-color: white;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#Escape .top .node {\r\n	width: 11px;\r\n	height: 11px;\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#Escape .top .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n\r\n#Escape .container {\r\n	width: 220px;\r\n	height: auto;\r\n	padding: 20px 30px 6px 30px;\r\n}\r\n\r\n#Escape .container button {\r\n	width: 221px;\r\n	height: 20px;\r\n	margin-top: 3px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n";
+}));
+//#endregion
+//#region src/UI/Components/Escape/Escape.js
+/**
+* Click on Sound button, toggle the UI
+*/
+function onToggleSoundUI() {
+	if (!SoundOption_default._host || !SoundOption_default._host.parentNode) SoundOption_default.append();
+	else SoundOption_default.remove();
+}
+/**
+* Click on Graphic button, toggle the UI
+*/
+function onToggleGraphicUI() {
+	if (!GraphicsOption_default._host || !GraphicsOption_default._host.parentNode) GraphicsOption_default.append();
+	else GraphicsOption_default.remove();
+}
+/**
+* Click on Shortcut button, toggle the UI
+*/
+function onToggleShortcutUI() {
+	if (!ShortCutOption_default._host || !ShortCutOption_default._host.parentNode) ShortCutOption_default.append();
+	else ShortCutOption_default.remove();
+}
+var Escape, Escape_default;
+var init_Escape = __esmMin((() => {
+	init_KeyEventHandler();
+	init_Renderer();
+	init_UIManager();
+	init_GUIComponent();
+	init_SoundOption();
+	init_GraphicsOption();
+	init_ShortCutOption();
+	init_Escape$2();
+	init_Escape$1();
+	Escape = new GUIComponent("Escape", Escape_default$1);
+	/**
+	* Render HTML
+	*/
+	Escape.render = () => Escape_default$2;
+	/**
+	* Initialize UI
+	*/
+	Escape.init = function init() {
+		const root = this.getRoot();
+		const rect = this._host.getBoundingClientRect();
+		this._host.style.top = (Renderer.height - rect.height) * .75 + "px";
+		this._host.style.left = (Renderer.width - rect.width) * .5 + "px";
+		this.draggable();
+		const nodeBtn = root.querySelector(".node");
+		if (nodeBtn) nodeBtn.addEventListener("mousedown", function(event) {
+			event.stopImmediatePropagation();
+			return false;
+		});
+		root.querySelectorAll("button").forEach(function(el) {
+			el.style.display = "";
+		});
+		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
+			el.style.display = "none";
+		});
+		root.querySelector(".sound").addEventListener("click", onToggleSoundUI);
+		root.querySelector(".graphics").addEventListener("click", onToggleGraphicUI);
+		root.querySelector(".resurection").addEventListener("click", function() {
+			Escape.onResurectionRequest();
+		});
+		root.querySelector(".savepoint").addEventListener("click", function() {
+			Escape.onReturnSavePointRequest();
+		});
+		root.querySelector(".charselect").addEventListener("click", function() {
+			Escape.onCharSelectionRequest();
+		});
+		root.querySelector(".hotkey").addEventListener("click", onToggleShortcutUI);
+		root.querySelector(".exit").addEventListener("click", function() {
+			Escape.onExitRequest();
+		});
+		root.querySelector(".cancel").addEventListener("click", function() {
+			Escape._host.style.display = "none";
+		});
+		this._host.style.display = "none";
+	};
+	/**
+	* Window must not be visible once append
+	* but need to be here to manage key event
+	*/
+	Escape.onAppend = function onAppend() {
+		this._host.style.display = "none";
+	};
+	/**
+	* Reset buttons once UI is removed
+	*/
+	Escape.onRemove = function onRemove() {
+		this._host.style.display = "none";
+		const root = this.getRoot();
+		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
+			el.style.display = "none";
+		});
+		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
+			el.style.display = "";
+		});
+	};
+	/**
+	* Key Listener
+	*
+	* @param {object} event
+	* @return {boolean}
+	*/
+	Escape.onKeyDown = function onKeyDown(event) {
+		if (event.which === KEYS.ESCAPE || event.key === "Escape") {
+			if (this._host.style.display === "none") {
+				this._host.style.display = "";
+				this.focus();
+			} else this._host.style.display = "none";
+		}
+	};
+	/**
+	* Show death menu (called when player dies)
+	*/
+	Escape.showDeathMenu = function showDeathMenu(hasSiegfried) {
+		const root = this.getRoot();
+		this._host.style.display = "";
+		root.querySelector(".savepoint").style.display = "";
+		if (hasSiegfried) root.querySelector(".resurection").style.display = "";
+		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
+			el.style.display = "none";
+		});
+	};
+	/**
+	* Reset to normal menu (called when player resurrects)
+	*/
+	Escape.resetMenu = function resetMenu() {
+		this._host.style.display = "none";
+		const root = this.getRoot();
+		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
+			el.style.display = "none";
+		});
+		root.querySelectorAll(".graphics, .sound, .hotkey").forEach(function(el) {
+			el.style.display = "";
+		});
+	};
+	/**
+	* @var {function} callback when player want to resurect using Token of Siegfried
+	*/
+	Escape.onResurectionRequest = function onResurectionRequest() {};
+	/**
+	* @var {function} callback to define to disconnect from game
+	*/
+	Escape.onExitRequest = function onExitRequest() {};
+	/**
+	* @var {function} callback when player want to resurect using Token of Siegfried
+	*/
+	Escape.onReturnSavePointRequest = function onReturnSavePointRequest() {};
+	/**
+	* @var {function} callback when player want to return to char selection
+	*/
+	Escape.onCharSelectionRequest = function onCharSelectionRequest() {};
+	Escape.mouseMode = GUIComponent.MouseMode.STOP;
+	Escape.needFocus = true;
+	Escape_default = UIManager.addComponent(Escape);
+}));
+//#endregion
+//#region src/UI/Components/CheckAttendance/CheckAttendance.html?raw
+var CheckAttendance_default$2;
+var init_CheckAttendance$2 = __esmMin((() => {
+	CheckAttendance_default$2 = "<div id=\"CheckAttendance\">\r\n	<div class=\"titlebar\" data-background=\"check_attendance/attendance_bg.bmp\">\r\n		<div class=\"top-panel\">\r\n			<div class=\"top-panel-reward\">\r\n				<div class=\"text\">Check Reward</div>\r\n			</div>\r\n			<div class=\"top-panel-period\"></div>\r\n		</div>\r\n		<div class=\"left-panel\">\r\n			<ul class=\"days-list\"></ul>\r\n		</div>\r\n		<div class=\"right-panel\">\r\n			<div class=\"total-days\"></div>\r\n			<div class=\"npc\"></div>\r\n			<div class=\"remaining-days\">\r\n				<div class=\"remaining-day\">\r\n					<div class=\"remaining-day-text\"></div>\r\n				</div>\r\n				<div class=\"remaining-text\">\r\n					<div class=\"remaining-text-div\">Day</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n		<div class=\"bottom-panel\">\r\n			<div class=\"close-container\">\r\n				<ui-button\r\n					class=\"close-container-btn\"\r\n					bg=\"check_attendance/bt_ok_normal.bmp\"\r\n					down=\"check_attendance/bt_ok_press.bmp\"\r\n					>Close</ui-button\r\n				>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
+}));
+//#endregion
+//#region src/UI/Components/CheckAttendance/CheckAttendance.css?raw
+var CheckAttendance_default$1;
+var init_CheckAttendance$1 = __esmMin((() => {
+	CheckAttendance_default$1 = ":host {\r\n	width: 488px;\r\n	height: 413px;\r\n}\r\n\r\n#CheckAttendance {\r\n	position: absolute;\r\n	width: 488px;\r\n	height: 413px;\r\n}\r\n\r\n#CheckAttendance .titlebar {\r\n	width: 100%;\r\n	height: 100%;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel {\r\n	width: 100%;\r\n	height: 85px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-reward {\r\n	width: 100%;\r\n	height: 70px;\r\n	position: relative;\r\n	display: flex;\r\n	justify-content: center;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-reward .text {\r\n	font-weight: bolder;\r\n	color: #633921;\r\n	display: table;\r\n	position: absolute;\r\n	top: 55%;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-period {\r\n	width: 100%;\r\n	height: 15px;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #a55239;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel {\r\n	width: 335px;\r\n	height: 270px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list {\r\n	list-style: none;\r\n	padding-left: 25px;\r\n	margin-top: 8px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item {\r\n	float: left;\r\n	width: 58px;\r\n	height: 60px;\r\n	margin: 2px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item {\r\n	width: 100%;\r\n	height: 40px;\r\n	position: relative;\r\n	background-position: center;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .item-quantity {\r\n	position: absolute;\r\n	bottom: 2px;\r\n	right: 15px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .name {\r\n	position: relative;\r\n	display: none;\r\n	z-index: 1;\r\n	top: -10px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item:hover .name {\r\n	display: table;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .name {\r\n	display: none;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .day {\r\n	width: 100%;\r\n	height: 20px;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #394aa5;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked,\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked-hidden,\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .completed {\r\n	position: absolute;\r\n	width: 58px;\r\n	height: 60px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked-hidden {\r\n	display: none;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel {\r\n	width: 152px;\r\n	height: 270px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .total-days {\r\n	width: 80%;\r\n	height: 85px;\r\n	text-align: center;\r\n	display: flex;\r\n	align-items: center;\r\n	font-weight: bold;\r\n	color: #a53963;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .npc {\r\n	width: 100%;\r\n	height: 105px;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days {\r\n	width: 100%;\r\n	height: 80px;\r\n	font-weight: bold;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-day {\r\n	height: 100%;\r\n	width: 85px;\r\n	float: left;\r\n	position: relative;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-day .remaining-day-text {\r\n	position: absolute;\r\n	right: 10px;\r\n	bottom: 20px;\r\n	font-weight: bolder;\r\n	font-size: 20px;\r\n	color: white;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-text {\r\n	height: 100%;\r\n	width: 35px;\r\n	float: left;\r\n	position: relative;\r\n	font-weight: bolder;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-text .remaining-text-div {\r\n	position: absolute;\r\n	left: 3px;\r\n	bottom: 20px;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel {\r\n	width: 100%;\r\n	height: 58px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel .close-container {\r\n	width: 100%;\r\n	height: 100%;\r\n	position: relative;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel .close-container .close-container-btn {\r\n	width: 146px;\r\n	height: 30px;\r\n	border: 0;\r\n	font-weight: bold;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	position: absolute;\r\n	top: 35%;\r\n	left: 35%;\r\n	display: inline-block;\r\n	text-align: center;\r\n	line-height: 30px;\r\n}\r\n";
+}));
+//#endregion
+//#region src/UI/Components/CheckAttendance/CheckAttendance.js
+/**
+* Request Attendance Item
+*/
+function onClickAttendance(e) {
+	const root = CheckAttendance.getRoot();
+	const el = e.currentTarget;
+	const id = el.id;
+	const checkedHidden = root.querySelector(`#${id} .checked-hidden`);
+	if (checkedHidden) checkedHidden.className = "checked";
+	const completedDiv = document.createElement("div");
+	completedDiv.className = "completed";
+	completedDiv.dataset.background = "check_attendance/bt_slot_complete.tga";
+	el.appendChild(completedDiv);
+	GUIComponent.processDataAttrs(completedDiv);
+	const total_days_string = `${parseInt(_checkAttendanceData / 10) + 1} Day attendance success`;
+	const totalDaysEl = root.querySelector(".total-days");
+	if (totalDaysEl) totalDaysEl.innerHTML = total_days_string;
+	const _pkt = new PACKET.CZ.REQ_CHECK_ATTENDANCE();
+	Network.sendPacket(_pkt);
+}
+var CheckAttendance, _checkAttendanceData, _CheckAttendanceInfo, _preferences$30, CheckAttendance_default;
+var init_CheckAttendance = __esmMin((() => {
+	init_DBManager();
+	init_Preferences$1();
+	init_Renderer();
+	init_UIManager();
+	init_GUIComponent();
+	init_NetworkManager();
+	init_PacketStructure();
+	init_CheckAttendance$2();
+	init_CheckAttendance$1();
+	init_ChatBox();
+	init_Elements();
+	CheckAttendance = new GUIComponent("CheckAttendance", CheckAttendance_default$1);
+	CheckAttendance.render = () => CheckAttendance_default$2;
+	_preferences$30 = Preferences.get("CheckAttendance", {
+		x: 200,
+		y: 200
+	}, 1);
+	/**
+	* Initialize the component (event listener, etc.)
+	*/
+	CheckAttendance.init = function init() {
+		_CheckAttendanceInfo = DB.getCheckAttendanceInfo();
+		const root = this.getRoot();
+		const baseEl = root.querySelector(".base");
+		if (baseEl) baseEl.addEventListener("mousedown", (event) => {
+			event.stopImmediatePropagation();
+			event.preventDefault();
+		});
+		root.querySelector(".close-container-btn").addEventListener("click", () => {
+			CheckAttendance._host.style.display = "none";
+		});
+		this.draggable(root.querySelector(".titlebar"));
+	};
+	/**
+	* Once append to the DOM, start to position the UI
+	*/
+	CheckAttendance.onAppend = function onAppend() {
+		Object.assign(this._host.style, {
+			top: `${Math.min(Math.max(0, _preferences$30.y), Renderer.height - this._host.getBoundingClientRect().height)}px`,
+			left: `${Math.min(Math.max(0, _preferences$30.x), Renderer.width - this._host.getBoundingClientRect().width)}px`
+		});
+		if (!_preferences$30.show) this._host.style.display = "none";
+		if (_checkAttendanceData >= 0 && _CheckAttendanceInfo.Config) {
+			CheckAttendance.updateUI();
+			this.focus();
+		} else ChatBox_default.addText("Currently there is no attendance check event.", ChatBox_default.TYPE.ERROR | ChatBox_default.TYPE.SELF);
+	};
+	/**
+	* Window Shortcuts
+	*/
+	CheckAttendance.onShortCut = function onShortCut(key) {
+		switch (key.cmd) {
+			case "TOGGLE": if (this._host.style.display === "none") {
+				this._host.style.display = "";
+				this.focus();
+			} else this._host.style.display = "none";
+		}
+	};
+	/**
+	* Show/Hide UI
+	*/
+	CheckAttendance.toggle = function toggle() {
+		if (this._host.style.display !== "none") this._host.style.display = "none";
+		else {
+			const _pkt = new PACKET.CZ.UI_OPEN();
+			_pkt.UIType = 5;
+			Network.sendPacket(_pkt);
+		}
+	};
+	/**
+	* Set Data to Attendance
+	*/
+	CheckAttendance.setData = function setData(data) {
+		_checkAttendanceData = data;
+	};
+	/**
+	* Update CheckAttendance UI
+	*/
+	CheckAttendance.updateUI = function updateUI() {
+		const root = this.getRoot();
+		let already_requested = 0;
+		let attendance_count = 0;
+		let current_day = 1;
+		if (_CheckAttendanceInfo.Config) {
+			const regex = /(\d{4})(\d{2})(\d{2})/;
+			const start = regex.exec(_CheckAttendanceInfo.Config.StartDate);
+			const end = regex.exec(_CheckAttendanceInfo.Config.EndDate);
+			const period_string = `Event Period: From ${start[2]}/${start[3]} ~ Until ${end[2]}/${end[3]} (Month/Day) 24:00`;
+			const periodEl = root.querySelector(".top-panel-period");
+			if (periodEl) periodEl.innerHTML = period_string;
+			if (_checkAttendanceData >= 0) {
+				already_requested = _checkAttendanceData % 10;
+				attendance_count = parseInt(_checkAttendanceData / 10);
+				current_day = attendance_count + 1;
+				const total_days_string = attendance_count >= 20 || already_requested ? `${attendance_count} Day attendance success` : `Click the item to claim day ${current_day} reward`;
+				const end_date = /* @__PURE__ */ new Date(`${end[1]}-${end[2]}-${end[3]}`);
+				const now_date = /* @__PURE__ */ new Date();
+				const remaining_days = Math.round(Math.abs((end_date.getTime() - now_date.getTime()) / 864e5));
+				const totalDaysEl = root.querySelector(".total-days");
+				if (totalDaysEl) totalDaysEl.innerHTML = total_days_string;
+				const remainingEl = root.querySelector(".remaining-day-text");
+				if (remainingEl) remainingEl.textContent = remaining_days;
+			}
+		}
+		if (_CheckAttendanceInfo.Rewards) {
+			const daysList = root.querySelector(".days-list");
+			for (let i = 0; i < 20; i++) {
+				const item = DB.getItemInfo(_CheckAttendanceInfo.Rewards[i].item_id);
+				const day = i + 1;
+				const background = !already_requested && day == current_day ? `data-background="check_attendance/bt_slot_a.bmp" data-down="check_attendance/bt_slot_press.bmp"` : "";
+				const checked = day <= attendance_count ? "checked" : "checked-hidden";
+				const slot_complete_string = day > (already_requested ? attendance_count - 1 : attendance_count) ? "bt_slot_complete" : "bt_slot_off";
+				const item_slot = `<li id="attendance_day_${i}" class="attendance-item" ${background}><div class="item" data-background="${DB.INTERFACE_PATH}item/${item.identifiedResourceName}.bmp"><span class="item-quantity">${_CheckAttendanceInfo.Rewards[i].quantity}</span><span class="name">${item.identifiedDisplayName}</span><div class="${checked}" data-background="check_attendance/${slot_complete_string}.tga"></div></div><div class="day">${day} Day</div></li>`;
+				if (daysList) daysList.insertAdjacentHTML("beforeend", item_slot);
+				if (!already_requested && day == current_day) {
+					const dayEl = root.querySelector(`#attendance_day_${i}`);
+					if (dayEl) {
+						dayEl.addEventListener("click", onClickAttendance);
+						dayEl.classList.add("event_add_cursor");
+					}
+				}
+			}
+			const dataAttrSelector = "[data-background],[data-hover],[data-down],[data-active],[data-text],[data-preload]";
+			if (daysList) daysList.querySelectorAll(dataAttrSelector).forEach((node) => {
+				GUIComponent.processDataAttrs(node);
+			});
+		}
+	};
+	/**
+	* Clean CheckAttendance UI
+	*/
+	CheckAttendance.cleanUI = function cleanUI() {
+		const root = CheckAttendance.getRoot();
+		const periodEl = root.querySelector(".top-panel-period");
+		if (periodEl) periodEl.innerHTML = "";
+		const daysListEl = root.querySelector(".days-list");
+		if (daysListEl) daysListEl.innerHTML = "";
+		const totalDaysEl = root.querySelector(".total-days");
+		if (totalDaysEl) totalDaysEl.innerHTML = "";
+		const remainingEl = root.querySelector(".remaining-day-text");
+		if (remainingEl) remainingEl.innerHTML = "";
+	};
+	/**
+	* Close the window
+	*/
+	CheckAttendance.onClose = function onClose() {
+		CheckAttendance._host.style.display = "none";
+	};
+	CheckAttendance_default = UIManager.addComponent(CheckAttendance);
 }));
 //#endregion
 //#region src/UI/TouchDrag.js
@@ -233858,34 +233225,6 @@ function _escapeHTML$2(text) {
 }
 function _isNumeric(val) {
 	return !isNaN(parseFloat(val)) && isFinite(val);
-}
-/**
-* The skill-constant names for an id, built once on the first miss: a skill
-* tree refresh loads every row's icon, and almost all of them hit on Name.
-*/
-function skillConstNames(skillId) {
-	if (!_skillConstNames) {
-		_skillConstNames = /* @__PURE__ */ new Map();
-		for (const [name, id] of Object.entries(SkillConst_default)) {
-			if (!_skillConstNames.has(id)) _skillConstNames.set(id, []);
-			_skillConstNames.get(id).push(name);
-		}
-	}
-	return _skillConstNames.get(Number(skillId)) || [];
-}
-function loadSkillIcon(skill, skillId, onload) {
-	const primary = skill?.Name;
-	let names = null;
-	const load = (index) => {
-		if (index >= names.length) return;
-		Client.loadFile(`${DB.INTERFACE_PATH}item/${names[index]}.bmp`, onload, () => load(index + 1));
-	};
-	const fallback = () => {
-		names = skillConstNames(skillId).filter((name) => name !== primary);
-		load(0);
-	};
-	if (primary) Client.loadFile(`${DB.INTERFACE_PATH}item/${primary}.bmp`, onload, fallback);
-	else fallback();
 }
 function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnMiniHover = false, guardMissingJob = false, readdSkillOnUpdate = false, listOnly = false, dragFrom = null, titlebarText = null, containerSelector = null, preferenceDefaults = {
 	x: 100,
@@ -234260,7 +233599,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 				return positions;
 			}
 		}
-		positions[SkillTreeView[JobId]["list"]] = { ...SkillTreeView[JobId] };
+		positions[SkillTreeView[JobId]["list"]] = SkillTreeView[JobId];
 		if (SkillTreeView[JobId]["beforeJob"] !== null) {
 			const beforeJob = SkillTreeView[JobId]["beforeJob"];
 			getSkillPosition(beforeJob).forEach((items, list) => {
@@ -234312,7 +233651,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 								miniTr.setAttribute("data-index", key);
 								miniTr.innerHTML = `<td class="icon"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" width="24" height="24" /></td><td class="levelupcontainer"></td><td class="selectable"><div class="name">${_escapeHTML$2(sk.SkillName)}<br/><span class="level">Lv : <span class="current">0</span></span></div></td><td class="selectable type"><div class="consume">Passive</div></td>`;
 								miniBox.appendChild(miniTr);
-								loadSkillIcon(sk, key, (data) => {
+								Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, (data) => {
 									const img = miniTr.querySelector(".icon img");
 									if (img) img.src = data;
 								});
@@ -234320,7 +233659,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 						}
 					}
 				}
-				loadSkillIcon(sk, key, (data) => {
+				Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, (data) => {
 					const img = element.querySelector(".icon img");
 					if (img) img.src = data;
 				});
@@ -234400,7 +233739,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 				}
 			}
 		}
-		loadSkillIcon(sk, skill.SKID, (data) => {
+		Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, (data) => {
 			const img = element.querySelector(".icon img");
 			if (img) img.src = data;
 		});
@@ -234447,7 +233786,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 			if (table) table.appendChild(tr);
 		}
 		this.parseHTML.call(levelup);
-		loadSkillIcon(sk, skill.SKID, (data) => {
+		Client.loadFile(`${DB.INTERFACE_PATH}item/${sk.Name}.bmp`, (data) => {
 			const img = tr.querySelector(".icon img");
 			if (img) img.src = data;
 		});
@@ -234530,9 +233869,8 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 		const resizing = () => {
 			const extraX = -6;
 			const extraY = 32;
-			const scale = comp.scale;
-			let w = Math.floor(((Mouse.screen.x - left) / scale - extraX) / 32);
-			let h = Math.floor(((Mouse.screen.y - top) / scale - extraY) / 32);
+			let w = Math.floor((Mouse.screen.x - left - extraX) / 32);
+			let h = Math.floor((Mouse.screen.y - top - extraY) / 32);
 			w = Math.min(Math.max(w, 8), 8);
 			h = Math.min(Math.max(h, 4), 10);
 			if (w === lastWidth && h === lastHeight) return;
@@ -234703,7 +234041,6 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 	Component.getSkillById = getSkillById;
 	return UIManager.addComponent(Component);
 }
-var _skillConstNames;
 var init_SkillListCommon = __esmMin((() => {
 	init_Elements();
 	init_Client();
@@ -234715,13 +234052,11 @@ var init_SkillListCommon = __esmMin((() => {
 	init_SessionStorage();
 	init_SkillDescription();
 	init_SkillInfo();
-	init_SkillConst();
 	init_SkillTargetSelection();
 	init_SkillTreeView();
 	init_TouchDrag();
 	init_SkillRequirements();
 	init_UIManager();
-	_skillConstNames = null;
 }));
 //#endregion
 //#region src/UI/Components/SkillList/SkillList/SkillList.html?raw
@@ -234734,46 +234069,6 @@ var init_SkillList$3 = __esmMin((() => {
 var SkillList_default$1;
 var init_SkillList$2 = __esmMin((() => {
 	SkillList_default$1 = ":host {\r\n	top: 100px;\r\n	left: 100px;\r\n}\r\n\r\n.SkillList {\r\n	position: absolute;\r\n	border-radius: 5px;\r\n	background: white;\r\n	line-height: 18px;\r\n	letter-spacing: 0px;\r\n	border: 1px solid #c1c6c2;\r\n}\r\n.SkillList .border {\r\n	border: 1px solid #c1c6c2;\r\n	margin: 1px;\r\n	border-radius: 5px;\r\n}\r\n\r\n.SkillList .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n}\r\n.SkillList .titlebar .base {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n.SkillList .titlebar .text {\r\n	text-shadow: 1px 1px white;\r\n	vertical-align: -2px;\r\n	white-space: nowrap;\r\n	/* chrome bug */\r\n	display: inline-block;\r\n	width: 120px;\r\n	height: 13px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n\r\n.SkillList .titlebar .left {\r\n	margin-left: 3px;\r\n	float: left;\r\n}\r\n.SkillList .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n}\r\n.SkillList .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n.SkillList .content {\r\n	overflow-y: auto;\r\n	padding: 5px;\r\n	width: 270px;\r\n	height: 200px;\r\n}\r\n.SkillList .content table {\r\n	border: none;\r\n	border-spacing: 0px;\r\n	padding-top: 5px;\r\n}\r\n.SkillList .content td,\r\n.SkillList .content .name {\r\n	padding: 0px;\r\n}\r\n\r\n.SkillList .levelup {\r\n	border: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	padding: 0;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n.SkillList td.type {\r\n	vertical-align: bottom;\r\n}\r\n\r\n.SkillList .content .icon {\r\n	padding-left: 15px;\r\n}\r\n.SkillList .content .levelupcontainer {\r\n	padding-left: 5px;\r\n	padding-right: 5px;\r\n	width: 24px;\r\n}\r\n.SkillList .content div.name {\r\n	line-height: 12px;\r\n	white-space: nowrap;\r\n	padding-left: 5px;\r\n	white-space: nowrap;\r\n	width: 120px;\r\n	padding-top: 4px;\r\n	height: 28px;\r\n}\r\n.SkillList .disabled .icon,\r\n.SkillList .disabled .name {\r\n	opacity: 0.5;\r\n}\r\n.SkillList .disabled .consume,\r\n.SkillList .disabled .level {\r\n	display: none;\r\n}\r\n.SkillList .currentDown,\r\n.SkillList .currentUp {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n\r\n.SkillList .selected.disabled .selectable {\r\n	background-color: #b5b5b5;\r\n}\r\n.SkillList .selected.passive .selectable {\r\n	background-color: #73d5ee;\r\n}\r\n.SkillList .selected.active .selectable {\r\n	background-color: #739cee;\r\n}\r\n\r\n.SkillList .footer {\r\n	width: 100%;\r\n	height: 27px;\r\n	background-repeat: repeat-x;\r\n	background-color: transparent;\r\n	position: relative;\r\n}\r\n.SkillList .footer .text {\r\n	padding-top: 7px;\r\n	margin-left: 10px;\r\n}\r\n.SkillList .footer .extend {\r\n	position: absolute;\r\n	right: 0px;\r\n	bottom: 1px;\r\n	width: 13px;\r\n	height: 13px;\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#lvlup_job {\r\n	z-index: 51;\r\n	position: absolute;\r\n	right: 0px;\r\n	bottom: 0px;\r\n	width: 43px;\r\n	height: 43px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n";
-}));
-//#endregion
-//#region src/UI/Components/SkillListMH/SkillListMH.js
-/**
-* Build a Homunculus/Mercenary skill window on top of the shared SkillList
-* factory, using its list-only (old-style) mode and layering the MH-specific
-* bits (window name, titlebar text, drag origin, Escape-to-close) on top.
-*/
-function createSkillListMH(type) {
-	const component = createSkillList({
-		name: `SkillList${type === "homunculus" ? "HOM" : "MER"}`,
-		htmlText: SkillList_default$2,
-		cssText: SkillList_default$1,
-		listOnly: true,
-		dragFrom: "SkillListMH",
-		titlebarText: type === "homunculus" ? "Homunculus Skills" : "Mercenary Skills",
-		containerSelector: ".SkillList",
-		preferenceDefaults: {
-			x: 100,
-			y: 200,
-			width: 8,
-			height: 5,
-			show: false
-		}
-	});
-	component.onKeyDown = function onKeyDown(event) {
-		if ((event.which === KEYS.ESCAPE || event.key === "Escape") && this.ui.is(":visible")) this.toggle();
-	};
-	return component;
-}
-var SkillListMH_default;
-var init_SkillListMH = __esmMin((() => {
-	init_KeyEventHandler();
-	init_SkillListCommon();
-	init_SkillList$3();
-	init_SkillList$2();
-	SkillListMH_default = {
-		homunculus: createSkillListMH("homunculus"),
-		mercenary: createSkillListMH("mercenary")
-	};
 }));
 //#endregion
 //#region src/UI/Components/SkillList/SkillList/SkillList.js
@@ -234855,5657 +234150,6 @@ var init_SkillList = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/UI/Components/ShortCut/ShortCut.html?raw
-var ShortCut_default$2;
-var init_ShortCut$2 = __esmMin((() => {
-	ShortCut_default$2 = "<div id=\"ShortCut\" data-background=\"basic_interface/shortitem_bg.bmp\">\r\n	<button\r\n		class=\"close\"\r\n		data-background=\"basic_interface/sys_close_off.bmp\"\r\n		data-hover=\"basic_interface/sys_close_on.bmp\"\r\n	></button>\r\n	<button class=\"resize\" data-background=\"btn_resize.bmp\"></button>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"0\"></div>\r\n		<div class=\"container\" data-index=\"1\"></div>\r\n		<div class=\"container\" data-index=\"2\"></div>\r\n		<div class=\"container\" data-index=\"3\"></div>\r\n		<div class=\"container\" data-index=\"4\"></div>\r\n		<div class=\"container\" data-index=\"5\"></div>\r\n		<div class=\"container\" data-index=\"6\"></div>\r\n		<div class=\"container\" data-index=\"7\"></div>\r\n		<div class=\"container\" data-index=\"8\"></div>\r\n		<div class=\"index\">1</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"9\"></div>\r\n		<div class=\"container\" data-index=\"10\"></div>\r\n		<div class=\"container\" data-index=\"11\"></div>\r\n		<div class=\"container\" data-index=\"12\"></div>\r\n		<div class=\"container\" data-index=\"13\"></div>\r\n		<div class=\"container\" data-index=\"14\"></div>\r\n		<div class=\"container\" data-index=\"15\"></div>\r\n		<div class=\"container\" data-index=\"16\"></div>\r\n		<div class=\"container\" data-index=\"17\"></div>\r\n		<div class=\"index\">2</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"18\"></div>\r\n		<div class=\"container\" data-index=\"19\"></div>\r\n		<div class=\"container\" data-index=\"20\"></div>\r\n		<div class=\"container\" data-index=\"21\"></div>\r\n		<div class=\"container\" data-index=\"22\"></div>\r\n		<div class=\"container\" data-index=\"23\"></div>\r\n		<div class=\"container\" data-index=\"24\"></div>\r\n		<div class=\"container\" data-index=\"25\"></div>\r\n		<div class=\"container\" data-index=\"26\"></div>\r\n		<div class=\"index\">3</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"27\"></div>\r\n		<div class=\"container\" data-index=\"28\"></div>\r\n		<div class=\"container\" data-index=\"29\"></div>\r\n		<div class=\"container\" data-index=\"30\"></div>\r\n		<div class=\"container\" data-index=\"31\"></div>\r\n		<div class=\"container\" data-index=\"32\"></div>\r\n		<div class=\"container\" data-index=\"33\"></div>\r\n		<div class=\"container\" data-index=\"34\"></div>\r\n		<div class=\"container\" data-index=\"35\"></div>\r\n		<div class=\"index\">4</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"shortcut-tooltip\"></div>\r\n</div>\r\n";
-}));
-//#endregion
-//#region src/UI/Components/ShortCut/ShortCut.css?raw
-var ShortCut_default$1;
-var init_ShortCut$1 = __esmMin((() => {
-	ShortCut_default$1 = ":host {\r\n	width: 280px;\r\n	top: 0px;\r\n	left: 480px;\r\n	overflow: hidden;\r\n}\r\n\r\n#ShortCut {\r\n	position: absolute;\r\n	width: 280px;\r\n	height: 100%;\r\n	background-repeat: repeat-y;\r\n}\r\n#ShortCut .close {\r\n	position: absolute;\r\n	top: 2px;\r\n	right: 2px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 11px;\r\n	height: 11px;\r\n}\r\n#ShortCut .resize {\r\n	position: absolute;\r\n	bottom: 1px;\r\n	right: 1px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 13px;\r\n	height: 13px;\r\n}\r\n\r\n#ShortCut .row {\r\n	position: relative;\r\n}\r\n#ShortCut .row .container {\r\n	float: left;\r\n	width: 24px;\r\n	height: 23px;\r\n	margin-top: 5px;\r\n	margin-left: 5px;\r\n	margin-bottom: 6px;\r\n}\r\n#ShortCut .row .container:hover {\r\n	background-color: #b5ffb5;\r\n}\r\n#ShortCut .row .index {\r\n	float: left;\r\n	position: relative;\r\n	top: 13px;\r\n	left: 5px;\r\n}\r\n#ShortCut .row .clear {\r\n}\r\n\r\n#ShortCut .icon {\r\n	position: relative;\r\n}\r\n#ShortCut .icon .img {\r\n	width: 24px;\r\n	height: 24px;\r\n	background-repeat: no-repeat;\r\n	border: none;\r\n	background-color: transparent;\r\n}\r\n#ShortCut .icon .name {\r\n	display: none;\r\n	z-index: 1;\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n}\r\n#ShortCut .icon:hover .name {\r\n	display: block;\r\n}\r\n#ShortCut .icon.hide .name {\r\n	display: none;\r\n}\r\n#ShortCut .icon .amount {\r\n	position: absolute;\r\n	right: 1px;\r\n	top: 20px;\r\n	text-shadow: 1px 1px 0px white;\r\n	text-align: right;\r\n	font-weight: bold;\r\n}\r\n\r\n.shortcut-tooltip {\r\n	display: none;\r\n	position: fixed;\r\n	background-color: rgba(0, 0, 0, 0.8);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 2px 6px;\r\n	white-space: nowrap;\r\n	z-index: 10000;\r\n	border-radius: 2px;\r\n	pointer-events: none;\r\n	line-height: 1.2;\r\n}\r\n.shortcut-tooltip.show {\r\n	display: block;\r\n}\r\n/* In the top layer while the hotbar is scaled (ShortCut.js): undo the popover defaults */\r\n.shortcut-tooltip[popover] {\r\n	inset: auto;\r\n	margin: 0;\r\n	border: none;\r\n	overflow: visible;\r\n}\r\n\r\n#ShortCut .cooldown-overlay {\r\n	position: absolute;\r\n	top: 0;\r\n	left: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	pointer-events: none;\r\n	border-radius: 2px;\r\n	z-index: 999;\r\n	background: conic-gradient(rgba(0, 0, 0, 0.75) 0deg, transparent 0deg);\r\n}\r\n";
-}));
-//#endregion
-//#region src/UI/Components/ShortCut/ShortCut.js
-var ShortCut_exports = /* @__PURE__ */ __exportAll({ default: () => ShortCut_default });
-/**
-* Resolve which skill window owns a skill id
-*
-* @param {number} skill id
-* @return {object} component exposing useSkillID / getSkillById
-*/
-function getSkillOwner(id) {
-	if (id >= SkillConst_default.GD_APPROVAL && id <= SkillConst_default.GD_LAST) return Guild_default;
-	if (id >= SkillConst_default.HOMUN_BEGIN && id <= SkillConst_default.HOMUN_LAST) return SkillListMH_default.homunculus;
-	if (id >= SkillConst_default.MERCENARY_BEGIN && id <= SkillConst_default.MERCENARY_LAST) return SkillListMH_default.mercenary;
-	return Controller$4.getUI();
-}
-/**
-* Update tooltip for empty slots with hotkey only
-*/
-function updateEmptySlotTooltips() {
-	const containers = ShortCut.getRoot().querySelectorAll(".container");
-	for (let i = 0; i < containers.length; ++i) if (!_list$5[i] || !_list$5[i].isSkill && !_list$5[i].ID) {
-		const hotkey = getHotKeyString(i);
-		if (hotkey) containers[i].setAttribute("data-tooltip", hotkey);
-	}
-}
-/**
-* Get hotkey string for shortcut index
-*
-* @param {number} index of the shortcut slot
-* @return {string} hotkey string or empty string
-*/
-function getHotKeyString(index) {
-	const shortcutKeys = [
-		"F1_1",
-		"F1_2",
-		"F1_3",
-		"F1_4",
-		"F1_5",
-		"F1_6",
-		"F1_7",
-		"F1_8",
-		"F1_9",
-		"F2_1",
-		"F2_2",
-		"F2_3",
-		"F2_4",
-		"F2_5",
-		"F2_6",
-		"F2_7",
-		"F2_8",
-		"F2_9",
-		"F3_1",
-		"F3_2",
-		"F3_3",
-		"F3_4",
-		"F3_5",
-		"F3_6",
-		"F3_7",
-		"F3_8",
-		"F3_9",
-		"F4_1",
-		"F4_2",
-		"F4_3",
-		"F4_4",
-		"F4_5",
-		"F4_6",
-		"F4_7",
-		"F4_8",
-		"F4_9"
-	];
-	if (index < 0 || index >= shortcutKeys.length) return "";
-	const scKey = shortcutKeys[index];
-	const shortcut = ShortCutControls_default.ShortCuts[scKey];
-	if (!shortcut) return "";
-	const key = shortcut.cust ? shortcut.cust.key : shortcut.init.key;
-	const alt = shortcut.cust ? shortcut.cust.alt : shortcut.init.alt;
-	const ctrl = shortcut.cust ? shortcut.cust.ctrl : shortcut.init.ctrl;
-	const shift = shortcut.cust ? shortcut.cust.shift : shortcut.init.shift;
-	if (!key) return "";
-	let hotkeyStr = "";
-	if (alt) hotkeyStr += "ALT + ";
-	if (ctrl) hotkeyStr += "CTRL + ";
-	if (shift) hotkeyStr += "SHIFT + ";
-	hotkeyStr += KEYS.toReadableKey(key);
-	return hotkeyStr;
-}
-/**
-* Show fixed tooltip on container hover
-*/
-function onContainerMouseEnter(event) {
-	const tooltipText = event.currentTarget.getAttribute("data-tooltip");
-	if (tooltipText) {
-		const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
-		const hostRect = ShortCut._host.getBoundingClientRect();
-		tooltip.textContent = tooltipText;
-		tooltip.classList.add("show");
-		const scale = ShortCut.scale;
-		if (scale !== 1 && typeof tooltip.showPopover === "function") {
-			tooltip.setAttribute("popover", "manual");
-			tooltip.showPopover();
-			tooltip.style.setProperty("scale", String(scale));
-			tooltip.style.setProperty("transform-origin", "0 0");
-		}
-		const tooltipRect = tooltip.getBoundingClientRect();
-		const showAbove = window.innerHeight - (hostRect.top + hostRect.height) < tooltipRect.height + 10;
-		const left = hostRect.left + hostRect.width / 2 - tooltipRect.width / 2;
-		let top;
-		if (showAbove) top = hostRect.top - tooltipRect.height - 2;
-		else top = hostRect.top + hostRect.height + 2;
-		tooltip.style.left = `${left}px`;
-		tooltip.style.top = `${top}px`;
-	}
-}
-/**
-* Hide fixed tooltip on container leave
-*/
-function onContainerMouseLeave() {
-	const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
-	if (tooltip) {
-		tooltip.classList.remove("show");
-		if (tooltip.hasAttribute("popover")) {
-			tooltip.hidePopover?.();
-			tooltip.removeAttribute("popover");
-			tooltip.style.removeProperty("scale");
-			tooltip.style.removeProperty("transform-origin");
-		}
-	}
-}
-/**
-* Resizing hotkey window
-*/
-function onResize$6(event) {
-	const host = ShortCut._host;
-	const top = host.offsetTop;
-	let lastHeight = 0;
-	function resizing() {
-		let h = Math.floor((Mouse.screen.y - top) / ShortCut.scale / 34 + 1);
-		h = Math.min(Math.max(h, 1), _rowCount);
-		if (h === lastHeight) return;
-		host.style.height = `${h * 34}px`;
-		_preferences$31.size = h;
-		_preferences$31.save();
-		lastHeight = h;
-	}
-	const _Interval = setInterval(resizing, 30);
-	const mouseUpHandler = (_event) => {
-		if (_event.which === 1) {
-			clearInterval(_Interval);
-			window.removeEventListener("mouseup", mouseUpHandler);
-		}
-	};
-	window.addEventListener("mouseup", mouseUpHandler);
-	event.stopImmediatePropagation();
-	event.preventDefault();
-}
-/**
-* Displays the cooldown overlay on an icon
-*
-* @param {number} index of the icon
-* @param {number} delay in ms
-*/
-function setDelayOnIndex(index, delay) {
-	if (!_list$5[index]) return;
-	if (_list$5[index].Delay && _list$5[index].Delay >= Renderer.tick + delay) return;
-	_list$5[index].Delay = Renderer.tick + delay;
-	const ui = ShortCut.getRoot().querySelector(`.container[data-index="${index}"]`);
-	if (!ui) return;
-	const existing = ui.querySelector(".cooldown-overlay");
-	if (existing) existing.remove();
-	const overlay = document.createElement("div");
-	overlay.className = "cooldown-overlay";
-	const icon = ui.querySelector(".icon");
-	if (icon) {
-		icon.appendChild(overlay);
-		const img = icon.querySelector(".img");
-		if (img) img.style.filter = "none";
-	}
-	if (_activeAnimations.has(index)) {
-		cancelAnimationFrame(_activeAnimations.get(index));
-		_activeAnimations.delete(index);
-	}
-	function updateCooldown() {
-		if (!_list$5 || !_list$5[index]) {
-			overlay.remove();
-			if (_activeAnimations.has(index)) {
-				cancelAnimationFrame(_activeAnimations.get(index));
-				_activeAnimations.delete(index);
-			}
-			return;
-		}
-		const now = Renderer.tick;
-		const remaining = _list$5[index].Delay - now;
-		if (remaining <= 0 || !_list$5[index].Delay) {
-			overlay.remove();
-			_list$5[index].Delay = 0;
-			if (_activeAnimations.has(index)) {
-				cancelAnimationFrame(_activeAnimations.get(index));
-				_activeAnimations.delete(index);
-			}
-			return;
-		}
-		const degrees = (1 - remaining / delay) * 360;
-		overlay.style.background = `conic-gradient(transparent 0deg, transparent ${degrees}deg, rgba(0,0,0,0.75) ${degrees}deg)`;
-		const animationId = requestAnimationFrame(updateCooldown);
-		_activeAnimations.set(index, animationId);
-	}
-	const animationId = requestAnimationFrame(updateCooldown);
-	_activeAnimations.set(index, animationId);
-}
-/**
-* Drop something in the shortcut
-* Does the client allow other source than shortcut, inventory
-* and skill window to save to shortcut ?
-*/
-function onDrop$10(event, target) {
-	let data, element;
-	const index = parseInt(target.getAttribute("data-index"), 10);
-	const row = Math.floor(index / 9);
-	event.stopImmediatePropagation();
-	event.preventDefault();
-	try {
-		data = JSON.parse(event.dataTransfer.getData("Text"));
-		element = data.data;
-	} catch (_e) {
-		return;
-	}
-	if (data.type !== "item" && data.type !== "skill") return;
-	switch (data.from) {
-		case "SkillList":
-		case "Guild":
-		case "SkillListMH":
-			ShortCut.removeElement(true, element.SKID, row, element.selectedLevel ? element.selectedLevel : element.level);
-			ShortCut.addElement(index, true, element.SKID, element.selectedLevel ? element.selectedLevel : element.level);
-			ShortCut.onChange(index, true, element.SKID, element.selectedLevel ? element.selectedLevel : element.level);
-			break;
-		case "Inventory":
-			ShortCut.removeElement(false, element.ITID, row);
-			ShortCut.addElement(index, false, element.ITID, 0);
-			ShortCut.onChange(index, false, element.ITID, 0);
-			break;
-		case "ShortCut":
-			ShortCut.removeElement(element.isSkill, element.ID, row, element.isSkill ? element.count : null);
-			ShortCut.addElement(index, element.isSkill, element.ID, element.count);
-			ShortCut.onChange(index, element.isSkill, element.ID, element.count);
-	}
-}
-/**
-* Stop the drag and drop
-*/
-function onDragEnd(icon) {
-	delete window._OBJ_DRAG_;
-	icon.classList.remove("hide");
-}
-/**
-* Prepare data to be stored in the dragged element
-* to change position in the shortcut.
-*/
-function onDragStart$2(event, icon) {
-	const index = parseInt(icon.parentNode.getAttribute("data-index"), 10);
-	icon.classList.add("hide");
-	const img = new Image();
-	img.decoding = "async";
-	img.src = icon.querySelector(".img").style.backgroundImage.match(/\(([^)]+)/)[1].replace(/"/g, "");
-	event.dataTransfer.setDragImage(img, 12, 12);
-	event.dataTransfer.setData("Text", JSON.stringify(window._OBJ_DRAG_ = {
-		type: _list$5[index].isSkill ? "skill" : "item",
-		from: "ShortCut",
-		data: _list$5[index]
-	}));
-}
-/**
-* Get informations from a skill/item when
-* using right click on it.
-*/
-function onElementInfo(event, icon) {
-	const index = parseInt(icon.parentNode.getAttribute("data-index"), 10);
-	const element = _list$5[index];
-	event.stopImmediatePropagation();
-	event.preventDefault();
-	if (element.isSkill) {
-		if (SkillDescription_default.uid === _list$5[index].ID) SkillDescription_default.remove();
-		else {
-			SkillDescription_default.append();
-			SkillDescription_default.setSkill(_list$5[index].ID);
-		}
-	} else {
-		if (ItemInfo_default.uid === _list$5[index].ID) {
-			ItemInfo_default.remove();
-			return;
-		}
-		ItemInfo_default.append();
-		ItemInfo_default.uid = _list$5[index].ID;
-		ItemInfo_default.setItem(InventoryController.getUI().getItemById(_list$5[index].ID));
-	}
-}
-/**
-* Double-click on a shortcut
-*/
-function onUseShortCut(icon) {
-	clickElement(parseInt(icon.parentNode.getAttribute("data-index"), 10));
-}
-/**
-* Clicking on a shortcut
-*
-* @param {number} shortcut index
-*/
-function clickElement(index) {
-	const shortcut = _list$5[index];
-	SkillTargetSelection_default.remove();
-	if (!shortcut) return;
-	if (shortcut.isSkill) ShortCut.useSkill(shortcut.ID, shortcut.count);
-	else {
-		const item = InventoryController.getUI().getItemById(_list$5[index].ID);
-		if (item) InventoryController.getUI().useItem(item);
-	}
-}
-/**
-* Closing the window
-*/
-function onClose$6() {
-	ShortCut._host.style.height = "0px";
-	_preferences$31.size = 0;
-	_preferences$31.save();
-}
-/**
-* Hook Inventory, get informations when there is a change
-* to update the shortcut
-*
-* @param {number} index
-* @param {number} count
-*/
-function onUpdateItem(index, count) {
-	ShortCut.setElement(false, index, count);
-}
-/**
-* Hook Skill List, get informations when there is a change
-* to update the shortcut
-*
-* @param {number} skill id
-* @param {number} level
-*/
-function onUpdateSkill(id, level) {
-	ShortCut.setElement(true, id, level);
-}
-function onUpdateOwnerName$1() {
-	for (const index in _list$5) if (!_list$5[index].isSkill) ShortCut.setElement(false, _list$5[index].ID, _list$5[index].count);
-}
-function convertHotkeysToServerFormat() {
-	const serverData = {
-		Type: 1,
-		data: {
-			EmotionHotkey: [],
-			UserHotkey_V2: { SkillBar_1Tab: [] }
-		}
-	};
-	[
-		"Macro1",
-		"Macro2",
-		"Macro3",
-		"Macro4",
-		"Macro5",
-		"Macro6",
-		"Macro7",
-		"Macro8",
-		"Macro9",
-		"Macro10"
-	].forEach((key, index) => {
-		const shortcut = ShortCutControls_default.ShortCuts[key];
-		if (shortcut && shortcut.cust && shortcut.cust.emotion) serverData.data.EmotionHotkey[index] = shortcut.cust.emotion;
-	});
-	[
-		"F1_1",
-		"F1_2",
-		"F1_3",
-		"F1_4",
-		"F1_5",
-		"F1_6",
-		"F1_7",
-		"F1_8",
-		"F1_9",
-		"F2_1",
-		"F2_2",
-		"F2_3",
-		"F2_4",
-		"F2_5",
-		"F2_6",
-		"F2_7",
-		"F2_8",
-		"F2_9",
-		"F3_1",
-		"F3_2",
-		"F3_3",
-		"F3_4",
-		"F3_5",
-		"F3_6",
-		"F3_7",
-		"F3_8",
-		"F3_9",
-		"F4_1",
-		"F4_2",
-		"F4_3",
-		"F4_4",
-		"F4_5",
-		"F4_6",
-		"F4_7",
-		"F4_8",
-		"F4_9"
-	].forEach((key, index) => {
-		const shortcut = ShortCutControls_default.ShortCuts[key];
-		if (shortcut) {
-			const keyData = shortcut.cust || shortcut.init;
-			serverData.data.UserHotkey_V2.SkillBar_1Tab.push({
-				desc: `Skill ${index + 1}`,
-				index,
-				key1: keyData.key || 0,
-				key2: 0
-			});
-		}
-	});
-	return serverData;
-}
-function convertHotkeysFromServerFormat(serverData) {
-	if (!serverData || !serverData.data) return;
-	if (serverData.data.EmotionHotkey) {
-		const emotionKeys = [
-			"Macro1",
-			"Macro2",
-			"Macro3",
-			"Macro4",
-			"Macro5",
-			"Macro6",
-			"Macro7",
-			"Macro8",
-			"Macro9",
-			"Macro10"
-		];
-		serverData.data.EmotionHotkey.forEach((emotion, index) => {
-			if (emotion && emotionKeys[index]) {
-				if (!ShortCutControls_default.ShortCuts[emotionKeys[index]].cust) ShortCutControls_default.ShortCuts[emotionKeys[index]].cust = {};
-				ShortCutControls_default.ShortCuts[emotionKeys[index]].cust.emotion = emotion;
-			}
-		});
-	}
-	if (serverData.data.UserHotkey_V2 && serverData.data.UserHotkey_V2.SkillBar_1Tab) {
-		const shortcutKeys = [
-			"F1_1",
-			"F1_2",
-			"F1_3",
-			"F1_4",
-			"F1_5",
-			"F1_6",
-			"F1_7",
-			"F1_8",
-			"F1_9",
-			"F2_1",
-			"F2_2",
-			"F2_3",
-			"F2_4",
-			"F2_5",
-			"F2_6",
-			"F2_7",
-			"F2_8",
-			"F2_9",
-			"F3_1",
-			"F3_2",
-			"F3_3",
-			"F3_4",
-			"F3_5",
-			"F3_6",
-			"F3_7",
-			"F3_8",
-			"F3_9",
-			"F4_1",
-			"F4_2",
-			"F4_3",
-			"F4_4",
-			"F4_5",
-			"F4_6",
-			"F4_7",
-			"F4_8",
-			"F4_9"
-		];
-		serverData.data.UserHotkey_V2.SkillBar_1Tab.forEach((skillData) => {
-			if (skillData && skillData.index < shortcutKeys.length) {
-				const key = shortcutKeys[skillData.index];
-				if (key && skillData.key1) {
-					if (!ShortCutControls_default.ShortCuts[key].cust) ShortCutControls_default.ShortCuts[key].cust = {};
-					ShortCutControls_default.ShortCuts[key].cust.key = skillData.key1;
-				}
-			}
-		});
-	}
-}
-function haveHotkeysChanged(currentData) {
-	if (!_lastServerHotkeys) return true;
-	return JSON.stringify(currentData) !== JSON.stringify(_lastServerHotkeys);
-}
-var ShortCut, _list$5, _rowCount, _lastServerHotkeys, _activeAnimations, _preferences$31, ShortCut_default;
-var init_ShortCut = __esmMin((() => {
-	init_DBManager();
-	init_ItemType();
-	init_SkillInfo();
-	init_SkillConst();
-	init_Client();
-	init_Preferences$1();
-	init_SessionStorage();
-	init_Renderer();
-	init_MouseEventHandler();
-	init_UIManager();
-	init_GUIComponent();
-	init_ItemInfo();
-	init_Inventory();
-	init_SkillListMH();
-	init_SkillDescription();
-	init_SkillTargetSelection();
-	init_Guild$1();
-	init_ShortCutControls();
-	init_KeyEventHandler();
-	init_Configs();
-	init_PacketVerManager();
-	init_SkillList();
-	init_ShortCut$2();
-	init_ShortCut$1();
-	ShortCut = new GUIComponent("ShortCut", ShortCut_default$1);
-	ShortCut.render = () => ShortCut_default$2;
-	_list$5 = [];
-	_rowCount = 0;
-	_lastServerHotkeys = null;
-	_activeAnimations = /* @__PURE__ */ new Map();
-	_preferences$31 = Preferences.get("ShortCut", {
-		x: 480,
-		y: 0,
-		size: 1,
-		magnet_top: true,
-		magnet_bottom: false,
-		magnet_left: false,
-		magnet_right: false
-	}, 1);
-	/**
-	* Initialize UI
-	*/
-	ShortCut.init = function init() {
-		const root = ShortCut.getRoot();
-		const resizeBtn = root.querySelector(".resize");
-		if (resizeBtn) resizeBtn.addEventListener("mousedown", onResize$6);
-		const closeBtn = root.querySelector(".close");
-		if (closeBtn) {
-			closeBtn.addEventListener("mousedown", (e) => {
-				e.stopImmediatePropagation();
-				e.preventDefault();
-			});
-			closeBtn.addEventListener("click", onClose$6);
-		}
-		const container = root.querySelector("#ShortCut");
-		container.addEventListener("drop", (e) => {
-			const target = e.target.closest(".container");
-			if (target) onDrop$10(e, target);
-		});
-		container.addEventListener("dragover", (e) => {
-			if (e.target.closest(".container")) {
-				e.stopImmediatePropagation();
-				e.preventDefault();
-			}
-		});
-		container.addEventListener("dragstart", (e) => {
-			const icon = e.target.closest(".icon");
-			if (icon) onDragStart$2(e, icon);
-		});
-		container.addEventListener("dragend", (e) => {
-			const icon = e.target.closest(".icon");
-			if (icon) onDragEnd(icon);
-		});
-		container.addEventListener("dblclick", (e) => {
-			const icon = e.target.closest(".icon");
-			if (icon) onUseShortCut(icon);
-		});
-		container.addEventListener("contextmenu", (e) => {
-			const icon = e.target.closest(".icon");
-			if (icon) onElementInfo(e, icon);
-		});
-		container.addEventListener("mousedown", (e) => {
-			if (e.target.closest(".icon")) e.stopImmediatePropagation();
-		});
-		this.draggable();
-		root.querySelectorAll(".container").forEach((el) => {
-			el.addEventListener("mouseenter", onContainerMouseEnter);
-			el.addEventListener("mouseleave", onContainerMouseLeave);
-		});
-		DB.UpdateOwnerName.ShortCut = onUpdateOwnerName$1;
-		InventoryController.getUI().onUpdateItem = onUpdateItem;
-	};
-	/**
-	* Append to body
-	*/
-	ShortCut.onAppend = function onAppend() {
-		this._host.style.height = `${34 * _preferences$31.size}px`;
-		const rect = this._host.getBoundingClientRect();
-		this._host.style.top = `${Math.min(Math.max(0, _preferences$31.y), Renderer.height - rect.height)}px`;
-		this._host.style.left = `${Math.min(Math.max(0, _preferences$31.x), Renderer.width - rect.width)}px`;
-		this.magnet.TOP = _preferences$31.magnet_top;
-		this.magnet.BOTTOM = _preferences$31.magnet_bottom;
-		this.magnet.LEFT = _preferences$31.magnet_left;
-		this.magnet.RIGHT = _preferences$31.magnet_right;
-		Controller$4.getUI().onUpdateSkill = onUpdateSkill;
-		updateEmptySlotTooltips();
-	};
-	/**
-	* When removed, clean up
-	*/
-	ShortCut.onRemove = function onRemove() {
-		const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
-		if (tooltip) tooltip.classList.remove("show");
-		for (const [index, animationId] of _activeAnimations.entries()) cancelAnimationFrame(animationId);
-		_activeAnimations.clear();
-		_preferences$31.y = parseInt(this._host.style.top, 10);
-		_preferences$31.x = parseInt(this._host.style.left, 10);
-		_preferences$31.size = Math.floor(parseInt(this._host.style.height, 10) / 34);
-		_preferences$31.magnet_top = this.magnet.TOP;
-		_preferences$31.magnet_bottom = this.magnet.BOTTOM;
-		_preferences$31.magnet_left = this.magnet.LEFT;
-		_preferences$31.magnet_right = this.magnet.RIGHT;
-		_preferences$31.save();
-	};
-	/**
-	* Request to clean the list
-	* Used only from MapEngine when exiting the game
-	*/
-	ShortCut.clean = function clean() {
-		for (const [index, animationId] of _activeAnimations.entries()) cancelAnimationFrame(animationId);
-		_activeAnimations.clear();
-		_list$5.length = 0;
-		ShortCut.getRoot().querySelectorAll(".container").forEach((el) => {
-			el.innerHTML = "";
-		});
-	};
-	/**
-	* Process shortcut
-	*
-	* @param {object} key
-	*/
-	ShortCut.onShortCut = function onShortCut(key) {
-		switch (key.cmd.replace(/\d+$/, "")) {
-			case "EXECUTE":
-				clickElement(parseInt(key.cmd.match(/\d+$/).toString(), 10));
-				break;
-			case "EXTEND":
-				_preferences$31.size = (_preferences$31.size + 1) % (_rowCount + 1);
-				_preferences$31.save();
-				this._host.style.height = `${_preferences$31.size * 34}px`;
-		}
-	};
-	ShortCut.useSkill = function useSkill(id, level) {
-		getSkillOwner(id).useSkillID(id, level);
-	};
-	ShortCut.getSkillById = function getSkillById(id) {
-		return getSkillOwner(id).getSkillById(id);
-	};
-	/**
-	* Bind UI with list of shortcut
-	*
-	* @param {Array} shortcut list
-	*/
-	ShortCut.setList = function setList(list) {
-		let skill;
-		let needGuildSkills = false;
-		ShortCut.getRoot().querySelectorAll(".container").forEach((el) => {
-			el.innerHTML = "";
-		});
-		_list$5.length = list.length;
-		_rowCount = Math.min(4, Math.floor(list.length / 9));
-		for (let i = 0, count = list.length; i < count; ++i) if (list[i].isSkill) {
-			skill = ShortCut.getSkillById(list[i].ID);
-			if (getSkillOwner(list[i].ID) === Guild_default) needGuildSkills = true;
-			if (skill && skill.level) ShortCut.addElement(i, true, list[i].ID, list[i].count || skill.level);
-			else {
-				if (!_list$5[i]) _list$5[i] = {};
-				_list$5[i].isSkill = true;
-				_list$5[i].ID = list[i].ID;
-				_list$5[i].count = list[i].count;
-			}
-		} else ShortCut.addElement(i, list[i].isSkill, list[i].ID, list[i].count);
-		if (needGuildSkills) ShortCut.onRequestGuildSkills();
-	};
-	/**
-	* Hook: ask the server for the guild skill list (set by MapEngine/Guild)
-	*/
-	ShortCut.onRequestGuildSkills = function onRequestGuildSkills() {};
-	/**
-	* Update all tooltips (for both empty and filled slots)
-	* Called when hotkey settings change
-	*/
-	ShortCut.updateAllTooltips = function updateAllTooltips() {
-		const root = ShortCut.getRoot();
-		for (let i = 0, size = _list$5.length; i < size; ++i) {
-			const container = root.querySelector(`.container[data-index="${i}"]`);
-			if (!container) continue;
-			const hotkey = getHotKeyString(i);
-			if (!_list$5[i] || !_list$5[i].isSkill && !_list$5[i].ID) {
-				if (hotkey) container.setAttribute("data-tooltip", hotkey);
-			} else if (_list$5[i] && (_list$5[i].isSkill || _list$5[i].ID)) {
-				let name = "";
-				if (_list$5[i].isSkill && SkillInfo[_list$5[i].ID]) name = SkillInfo[_list$5[i].ID].SkillName;
-				else if (_list$5[i].ID) {
-					const item = InventoryController.getUI().getItemById(_list$5[i].ID);
-					if (item) name = DB.getItemName(item);
-				}
-				if (name) {
-					const tooltipText = hotkey ? `[ ${hotkey} ] ${name}` : name;
-					container.setAttribute("data-tooltip", tooltipText);
-				}
-			}
-		}
-	};
-	ShortCut.setElement = function setElement(isSkill, ID, count) {
-		for (let i = 0, size = _list$5.length; i < size; ++i) if (_list$5[i] && _list$5[i].isSkill == isSkill && _list$5[i].ID === ID) {
-			if (isSkill && _list$5[i].count && _list$5[i].count <= count) ShortCut.addElement(i, isSkill, ID, _list$5[i].count);
-			else ShortCut.addElement(i, isSkill, ID, count);
-		}
-	};
-	/**
-	* Add an element to shortcut
-	*
-	* @param {number} index of the element
-	* @param {boolean} is a skill ?
-	* @param {number} ID
-	* @param {number} count or level
-	*/
-	ShortCut.addElement = function addElement(index, isSkill, ID, count) {
-		let file, name;
-		const ui = ShortCut.getRoot().querySelector(`.container[data-index="${index}"]`);
-		if (!ui) return;
-		ui.innerHTML = "";
-		if (!_list$5[index]) _list$5[index] = {};
-		_list$5[index].isSkill = isSkill;
-		_list$5[index].ID = ID;
-		if (isSkill) {
-			if (!count) return;
-			else {
-				_list$5[index].count = count;
-				file = SkillInfo[ID].Name;
-				name = SkillInfo[ID].SkillName;
-			}
-		} else {
-			_list$5[index].count = count;
-			const item = InventoryController.getUI().getItemById(ID);
-			if (!item) return;
-			const it = DB.getItemInfo(ID);
-			file = item.IsIdentified ? it.identifiedResourceName : it.unidentifiedResourceName;
-			name = DB.getItemName(item);
-			if (item.type === ItemType_default.WEAPON || item.type === ItemType_default.ARMOR || item.type === ItemType_default.SHADOWGEAR) count = 1;
-			else count = item.count;
-			if (!count) return;
-		}
-		const hotkey = getHotKeyString(index);
-		const tooltipText = hotkey ? `[ ${hotkey} ] ${name}` : name;
-		Client.loadFile(`${DB.INTERFACE_PATH}item/${file}.bmp`, (url) => {
-			ui.innerHTML = "<div draggable=\"true\" class=\"icon\"><div class=\"img\"></div><div class=\"amount\"></div></div>";
-			ui.querySelector(".img").style.backgroundImage = `url(${url})`;
-			ui.querySelector(".amount").textContent = count;
-			ui.setAttribute("data-tooltip", tooltipText);
-		});
-	};
-	/**
-	* Displays the cooldown over every skill
-	*
-	* @param {number} delay in ms
-	*/
-	ShortCut.setGlobalSkillDelay = function setGlobalSkillDelay(delay) {
-		_list$5.forEach((element, index) => {
-			if (element.isSkill) setDelayOnIndex(index, delay);
-		});
-	};
-	/**
-	* Displays the cooldown over a single skill
-	*
-	* @param {number} ID of the skill
-	* @param {number} delay in ms
-	*/
-	ShortCut.setSkillDelay = function setSkillDelay(ID, delay) {
-		_list$5.forEach((element, index) => {
-			if (element.isSkill && element.ID == ID) setDelayOnIndex(index, delay);
-		});
-	};
-	/**
-	* Remove an element from shortcut
-	*
-	* @param {boolean} is a skill ?
-	* @param {number} ID of the element to remove
-	* @param {number} row id
-	* @param {number} amount (optional)
-	*/
-	ShortCut.removeElement = function removeElement(isSkill, ID, row, amount) {
-		if (!ID) return;
-		const root = ShortCut.getRoot();
-		for (let i = row * 9, count = Math.min(_list$5.length, row * 9 + 9); i < count; ++i) if (_list$5[i] && _list$5[i].isSkill == isSkill && _list$5[i].ID === ID && (!isSkill || _list$5[i].count == amount)) {
-			const container = root.querySelector(`.container[data-index="${i}"]`);
-			if (container) container.innerHTML = "";
-			_list$5[i].isSkill = 0;
-			_list$5[i].ID = 0;
-			_list$5[i].count = 0;
-			ShortCut.onChange(i, 0, 0, 0);
-		}
-	};
-	Guild_default.onUpdateSkill = (id, level) => {
-		ShortCut.setElement(true, id, level);
-	};
-	SkillListMH_default.mercenary.onUpdateSkill = (id, level) => {
-		ShortCut.setElement(true, id, level);
-	};
-	SkillListMH_default.homunculus.onUpdateSkill = (id, level) => {
-		ShortCut.setElement(true, id, level);
-	};
-	/**
-	* Method to define to notify a change.
-	*
-	* @param {number} index
-	* @param {boolean} isSkill
-	* @param {number} id
-	* @param {number} count
-	*/
-	ShortCut.onChange = function onChange() {};
-	ShortCut.saveToServer = function saveToServer() {
-		if (PacketVerManager_default.value >= 20170315 && SessionStorage_default.WebToken) {
-			const hotkeys = JSON.stringify(convertHotkeysToServerFormat());
-			if (!haveHotkeysChanged(hotkeys)) return;
-			const formData = new FormData();
-			formData.append("AID", SessionStorage_default.AID);
-			formData.append("WorldName", SessionStorage_default.ServerName);
-			formData.append("AuthToken", SessionStorage_default.WebToken);
-			formData.append("data", hotkeys);
-			const xhr = new XMLHttpRequest();
-			let webserverAddress = "";
-			if (window.location.protocol !== "http:" && window.location.protocol !== "https:") webserverAddress = Configs.get("webserverAddress", "http://127.0.0.1:8888");
-			xhr.open("POST", `${webserverAddress}/userconfig/save`, true);
-			xhr.timeout = 5e3;
-			xhr.onload = () => {
-				if (xhr.status === 200) console.log("Hotkeys saved to server successfully");
-				else console.warn("Hotkey save returned non-200 status:", xhr.status);
-			};
-			xhr.onerror = () => {
-				console.warn("Hotkey save failed: web-server unreachable");
-			};
-			xhr.ontimeout = () => {
-				console.warn("Hotkey save timed out");
-			};
-			xhr.send(formData);
-		}
-	};
-	ShortCut.loadFromServer = function loadFromServer(callback) {
-		if (PacketVerManager_default.value >= 20170315 && SessionStorage_default.WebToken) {
-			const formData = new FormData();
-			formData.append("AID", SessionStorage_default.AID);
-			formData.append("WorldName", SessionStorage_default.ServerName);
-			formData.append("AuthToken", SessionStorage_default.WebToken);
-			const xhr = new XMLHttpRequest();
-			let webserverAddress = "";
-			if (window.location.protocol !== "http:" && window.location.protocol !== "https:") webserverAddress = Configs.get("webserverAddress", "http://127.0.0.1:8888");
-			xhr.open("POST", `${webserverAddress}/userconfig/load`, true);
-			xhr.timeout = 5e3;
-			xhr.onload = () => {
-				if (xhr.status === 200) try {
-					const serverData = JSON.parse(xhr.responseText);
-					_lastServerHotkeys = JSON.parse(JSON.stringify(serverData));
-					convertHotkeysFromServerFormat(serverData);
-				} catch (e) {
-					console.error("Error parsing server hotkeys:", e);
-				}
-				else console.warn("Hotkey load returned non-200 status:", xhr.status);
-				if (callback) callback();
-			};
-			xhr.onerror = () => {
-				console.warn("Hotkey load failed: web-server unreachable");
-				if (callback) callback();
-			};
-			xhr.ontimeout = () => {
-				console.warn("Hotkey load timed out");
-				if (callback) callback();
-			};
-			xhr.send(formData);
-		} else if (callback) callback();
-	};
-	ShortCut.getList = function getList() {
-		return _list$5;
-	};
-	ShortCut_default = UIManager.addComponent(ShortCut);
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickSetManager.js
-var currentSet, JoystickSetManager_default;
-var init_JoystickSetManager = __esmMin((() => {
-	currentSet = 1;
-	JoystickSetManager_default = {
-		getCurrentSet: function() {
-			return currentSet;
-		},
-		set: function(n) {
-			currentSet = n === 1 || n === 2 ? n : currentSet;
-		},
-		toggle: function() {
-			currentSet = currentSet === 1 ? 2 : 1;
-		}
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickShortcutMapper.js
-function getGroup(btn) {
-	const l1 = btn[4] === "holding";
-	const r1 = btn[5] === "holding";
-	const l2 = btn[6] === "holding";
-	const r2 = btn[7] === "holding";
-	if (l1 && r1 && !l2 && !r2) return "L1R1";
-	if (l1) return "L1";
-	if (r1) return "R1";
-	if (l2) return "L2";
-	if (r2) return "R2";
-	return "";
-}
-function getIndexFromButtons(btn, set) {
-	const group = getGroup(btn);
-	if (group === "") return -1;
-	const a = btn[0] === "pressed";
-	const b = btn[1] === "pressed";
-	const x = btn[2] === "pressed";
-	const y = btn[3] === "pressed";
-	let slot = -1;
-	let tab = 1;
-	let offset = 0;
-	if (set === 2) offset = 2;
-	if (group === "L1R1") tab = 0;
-	else if (group === "L1") tab = 1 + offset;
-	else if (group === "R1") tab = 2 + offset;
-	else if (group === "L2") tab = 1 + offset;
-	else if (group === "R2") tab = 2 + offset;
-	if (group === "L1R1") {
-		if (y) {
-			slot = 8;
-			tab = 1;
-		} else if (x) {
-			slot = 8;
-			tab = 2;
-		} else if (b) {
-			slot = 8;
-			tab = 3;
-		} else if (a) {
-			slot = 8;
-			tab = 4;
-		}
-	} else if (group === "L1" || group === "R1") {
-		if (y) slot = 0;
-		else if (x) slot = 1;
-		else if (b) slot = 2;
-		else if (a) slot = 3;
-	} else if (group === "L2" || group === "R2") {
-		if (y) slot = 4;
-		else if (x) slot = 5;
-		else if (b) slot = 6;
-		else if (a) slot = 7;
-	}
-	if (slot === -1) return -1;
-	return (tab - 1) * 9 + slot;
-}
-function prepare() {
-	if (!this.__loaded) {
-		const oldonChange = ShortCut_default.onChange;
-		ShortCut_default.onChange = function(index, isSkill, ID, count) {
-			oldonChange.call(ShortCut_default, index, isSkill, ID, count);
-			JoystickUIRenderer_default.updateByIndex(index);
-		};
-		const oldSetList = ShortCut_default.setList;
-		ShortCut_default.setList = function(list) {
-			oldSetList.call(ShortCut_default, list);
-			JoystickUIRenderer_default.sync();
-		};
-		const oldSetElement = ShortCut_default.setElement;
-		ShortCut_default.setElement = function(isSkill, ID, count) {
-			oldSetElement.call(ShortCut_default, isSkill, ID, count);
-			JoystickUIRenderer_default.updateById(ID);
-		};
-		this.__loaded = true;
-	}
-}
-var slotMapping, JoystickShortcutMapper_default;
-var init_JoystickShortcutMapper = __esmMin((() => {
-	init_JoystickSetManager();
-	init_ShortCut();
-	init_JoystickUIRenderer();
-	slotMapping = [
-		0,
-		1,
-		2,
-		3,
-		4,
-		5,
-		6,
-		7,
-		8,
-		17,
-		26,
-		35,
-		13,
-		14,
-		15,
-		16,
-		9,
-		10,
-		11,
-		12,
-		18,
-		19,
-		20,
-		21,
-		22,
-		23,
-		24,
-		25,
-		8,
-		17,
-		26,
-		35,
-		31,
-		32,
-		33,
-		34,
-		27,
-		28,
-		29,
-		30
-	];
-	JoystickShortcutMapper_default = {
-		slotMap: slotMapping,
-		prepare,
-		getGroup,
-		getShortcutIndex: function(btn) {
-			const idx = getIndexFromButtons(btn, JoystickSetManager_default.getCurrentSet());
-			if (idx === -1) return -1;
-			return idx;
-		}
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickMouseCursorAdapter.js
-function move$2(dx, dy) {
-	moveBy(dx * Controls_default.joySense, dy * Controls_default.joySense);
-}
-/**
-* Move the virtual cursor by a pixel offset, clamped to the viewport.
-*/
-function moveBy(dx, dy) {
-	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, Mouse.screen.x + dx));
-	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, Mouse.screen.y + dy));
-	const cursor = document.querySelector(".cursor");
-	if (cursor) {
-		cursor.style.left = Mouse.screen.x + "px";
-		cursor.style.top = Mouse.screen.y + "px";
-	}
-}
-function moveMouseToEntity(entity) {
-	if (!entity || !entity.position) return;
-	const mat4 = exports$3.mat4;
-	const vec4 = exports$3.vec4;
-	const _matrix = mat4.create();
-	const _vector = vec4.create();
-	const _pos = vec4.create();
-	_vector[0] = entity.position[0] + .5;
-	_vector[1] = -entity.position[2];
-	_vector[2] = entity.position[1] + .5;
-	_vector[3] = 1;
-	mat4.translate(_matrix, Camera.modelView, _vector);
-	_matrix[0] = 1;
-	_matrix[1] = 0;
-	_matrix[2] = 0;
-	_matrix[4] = 0;
-	_matrix[5] = 1;
-	_matrix[6] = 0;
-	_matrix[8] = 0;
-	_matrix[9] = 0;
-	_matrix[10] = 1;
-	mat4.multiply(_matrix, Camera.projection, _matrix);
-	_pos[0] = 0;
-	_pos[1] = 0;
-	_pos[2] = 0;
-	_pos[3] = 1;
-	vec4.transformMat4(_pos, _pos, _matrix);
-	const z = _pos[3] === 0 ? 1 : 1 / _pos[3];
-	const screenX = Renderer.width / 2 + Math.round(Renderer.width / 2 * (_pos[0] * z));
-	let screenY = Renderer.height / 2 - Math.round(Renderer.height / 2 * (_pos[1] * z));
-	screenY = screenY - 13;
-	Mouse.screen.x = screenX;
-	Mouse.screen.y = screenY;
-	const _selector = document.querySelector(".cursor");
-	if (_selector) {
-		_selector.style.left = screenX + "px";
-		_selector.style.top = screenY + "px";
-	}
-}
-/**
-* The element under the virtual cursor, looking inside shadow roots.
-*
-* Windows built on GUIComponent live in a shadow root, and
-* document.elementFromPoint only returns their host element. Events
-* dispatched there never reached the buttons inside, so A could not press
-* them, and the item/skill grid checks never matched.
-*/
-function elementAtCursor() {
-	let el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
-	while (el && el.shadowRoot) {
-		const inner = el.shadowRoot.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
-		if (!inner || inner === el) break;
-		el = inner;
-	}
-	return el;
-}
-/**
-* Put the virtual cursor at a screen position.
-*/
-function moveTo(x, y) {
-	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, x));
-	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, y));
-	const cursor = document.querySelector(".cursor");
-	if (cursor) {
-		cursor.style.left = Mouse.screen.x + "px";
-		cursor.style.top = Mouse.screen.y + "px";
-	}
-}
-/**
-* A: a full click at the cursor -- mousedown, mouseup and click, as a real
-* mouse sends. A tap used to send only mousedown and mouseup, so buttons
-* that listen for click (the escape and death menus among them) ignored it.
-* Events are composed so they bubble out of a window's shadow root.
-*/
-function leftClick() {
-	const el = elementAtCursor();
-	if (!el) {
-		handleWorldLeftClick();
-		return;
-	}
-	if (Controls_default.joyDisableVirtualMouse) return;
-	const eventOptions = {
-		bubbles: true,
-		cancelable: true,
-		composed: true,
-		view: window,
-		clientX: Mouse.screen.x,
-		clientY: Mouse.screen.y,
-		which: 1
-	};
-	el.dispatchEvent(new MouseEvent("mousedown", eventOptions));
-	setTimeout(function() {
-		el.dispatchEvent(new MouseEvent("mouseup", eventOptions));
-		el.dispatchEvent(new MouseEvent("click", eventOptions));
-	}, 50);
-}
-function rightClick(holding = false) {
-	const el = elementAtCursor();
-	const isCanvas = el && el.tagName.toLowerCase() === "canvas";
-	if (!el || isCanvas) {
-		handleWorldRightClick();
-		return;
-	}
-	if (holding) {
-		const draggableElement = el.closest(".item, .skill");
-		if (draggableElement) {
-			if (JoystickInteractionService_default.openSelectionWindow(draggableElement)) return;
-		}
-	}
-	if (Controls_default.joyDisableVirtualMouse) return;
-	el.dispatchEvent(new MouseEvent("mousedown", { which: 3 }));
-	setTimeout(function() {
-		el.dispatchEvent(new MouseEvent("mouseup", { which: 3 }));
-	}, 100);
-}
-function _dispatchMouseEvent(target, type, which) {
-	target.dispatchEvent(new MouseEvent(type, {
-		bubbles: true,
-		cancelable: true,
-		view: window,
-		button: which === 3 ? 2 : 0,
-		which
-	}));
-}
-function handleWorldLeftClick() {
-	if (!Mouse.intersect) Mouse.intersect = true;
-	_dispatchMouseEvent(Renderer.canvas, "mousedown", 1);
-	setTimeout(function() {
-		_dispatchMouseEvent(Renderer.canvas, "mouseup", 1);
-	}, 100);
-}
-function handleWorldRightClick() {
-	if (!Mouse.intersect) Mouse.intersect = true;
-	_dispatchMouseEvent(Renderer.canvas, "mousedown", 3);
-	setTimeout(function() {
-		_dispatchMouseEvent(Renderer.canvas, "mouseup", 3);
-	}, 100);
-}
-/**
-* Turn the camera by some degrees, under the rules the mouse turn follows
-* (Camera.processMouseAction).
-*
-* The camera wraps its current angle to +-360 every frame but eases toward
-* angleFinal; a target past a full turn would keep it spinning forever.
-* So once the target passes +-180, both move a full turn back, which
-* changes nothing on screen. Then the map's limits apply: indoor maps only
-* turn a little.
-*
-* @param {number} angle degrees, positive turns right
-*/
-function changeCameraAngle(angle) {
-	let target = Camera.angleFinal[1] + angle;
-	if (target > 180) {
-		target -= 360;
-		Camera.angle[1] -= 360;
-	} else if (target < -180) {
-		target += 360;
-		Camera.angle[1] += 360;
-	}
-	if (DB.isIndoor(Camera.currentMap)) target = Math.min(Math.max(target, Camera.indoorRotationFrom), Camera.indoorRotationTo);
-	else target = Math.min(Math.max(target, Camera.rotationFrom), Camera.rotationTo);
-	Camera.angleFinal[1] = target;
-	Camera.updateState();
-	Camera.save();
-}
-function changeCameraZoom(zoom) {
-	Camera.setZoom(zoom);
-}
-function _dispatchKeyEvent(target, type, which) {
-	target.dispatchEvent(new KeyboardEvent(type, {
-		bubbles: true,
-		cancelable: true,
-		which,
-		keyCode: which
-	}));
-}
-function esc() {
-	_dispatchKeyEvent(document, "keydown", 27);
-}
-function enter() {
-	_dispatchKeyEvent(document, "keydown", 13);
-}
-function contextMenu() {
-	const el = elementAtCursor();
-	if (el && el.closest(".item, .skill")) {
-		const contextMenuEvent = new MouseEvent("contextmenu", {
-			bubbles: true,
-			cancelable: true,
-			view: window,
-			clientX: Mouse.screen.x,
-			clientY: Mouse.screen.y,
-			which: 3
-		});
-		el.dispatchEvent(contextMenuEvent);
-		return true;
-	}
-	return false;
-}
-function navigateDraggableItems(direction) {
-	const el = elementAtCursor();
-	const container = el && el.closest(".item, .skill");
-	if (!container) {
-		let keyCode;
-		switch (direction) {
-			case "up":
-				keyCode = 38;
-				break;
-			case "down":
-				keyCode = 40;
-				break;
-			case "left":
-				keyCode = 37;
-				break;
-			case "right": keyCode = 39;
-		}
-		_dispatchKeyEvent(document, "keydown", keyCode);
-		return;
-	}
-	let allDraggables = Array.from(container.querySelectorAll(".item, .skill")).filter((item) => !item.matches(".tabs button, .tab-btn"));
-	if (allDraggables.length === 0) allDraggables = Array.from(document.querySelectorAll(".item, .skill")).filter((item) => item.offsetParent !== null && !item.matches(".tabs button, .tab-btn"));
-	const isSkillContainer = container.id && container.id.indexOf("positionSkills") === 0 || container.querySelector("#positionSkills1, #positionSkills2, #positionSkills3, #positionSkills4, #positionSkills5") || container.closest(".skillCol") !== null;
-	const draggableElement = container.closest(".item, .skill");
-	const currentIndex = allDraggables.indexOf(draggableElement);
-	let newIndex = currentIndex;
-	let GRID_WIDTH;
-	if (isSkillContainer) GRID_WIDTH = 7;
-	else {
-		const containerWidth = container.clientWidth || 200;
-		const iconElement = draggableElement.querySelector(".icon");
-		const totalIconWidth = (iconElement && iconElement.clientWidth || 24) + 8;
-		GRID_WIDTH = Math.max(6, Math.min(8, Math.floor(containerWidth / totalIconWidth)));
-	}
-	switch (direction) {
-		case "up":
-			newIndex = currentIndex - GRID_WIDTH;
-			break;
-		case "down":
-			newIndex = currentIndex + GRID_WIDTH;
-			break;
-		case "left":
-			newIndex = currentIndex - 1;
-			break;
-		case "right": newIndex = currentIndex + 1;
-	}
-	newIndex = Math.max(0, Math.min(allDraggables.length - 1, newIndex));
-	if (newIndex !== currentIndex && newIndex < allDraggables.length) {
-		const targetRect = allDraggables[newIndex].getBoundingClientRect();
-		if (targetRect) {
-			const targetCenterX = targetRect.left + targetRect.width / 2;
-			const targetCenterY = targetRect.top + targetRect.height / 2;
-			Mouse.screen.x = targetCenterX;
-			Mouse.screen.y = targetCenterY;
-			const _selector = document.querySelector(".cursor");
-			if (_selector) {
-				_selector.style.left = targetCenterX + "px";
-				_selector.style.top = targetCenterY + "px";
-			}
-		}
-	}
-}
-/**
-* Click the map for Quick-Cast, but only while a skill is still waiting for
-* a target. Items, self skills and skills already cast leave the game in
-* normal mode, where this click would be a plain left click on the ground:
-* it cancelled the running attack and walked to the cursor.
-*
-* @param {function} [beforeClick] runs just before the click, e.g. to put
-*   the cursor on the selected target
-*/
-function quickCastClick(beforeClick) {
-	setTimeout(function() {
-		if (Mouse.state !== Mouse.MOUSE_STATE.USESKILL) return;
-		if (beforeClick) beforeClick();
-		_dispatchMouseEvent(Renderer.canvas, "mousedown", 1);
-		setTimeout(function() {
-			_dispatchMouseEvent(Renderer.canvas, "mouseup", 1);
-		}, 100);
-	}, 100);
-}
-/**
-* Snap the virtual cursor back to the middle of the viewport.
-*/
-function recenter$1() {
-	Mouse.screen.x = Math.floor(Renderer.width / 2);
-	Mouse.screen.y = Math.floor(Renderer.height / 2);
-	const cursor = document.querySelector(".cursor");
-	if (cursor) {
-		cursor.style.left = Mouse.screen.x + "px";
-		cursor.style.top = Mouse.screen.y + "px";
-	}
-}
-var JoystickMouseCursorAdapter_default;
-var init_JoystickMouseCursorAdapter = __esmMin((() => {
-	init_Renderer();
-	init_MouseEventHandler();
-	init_gl_matrix$1();
-	init_Camera();
-	init_DBManager();
-	init_Controls();
-	init_JoystickInteractionService();
-	JoystickMouseCursorAdapter_default = {
-		quickCastClick,
-		moveMouseToEntity,
-		navigateDraggableItems,
-		contextMenu,
-		esc,
-		enter,
-		changeCameraZoom,
-		changeCameraAngle,
-		move: move$2,
-		moveBy,
-		leftClick,
-		rightClick,
-		elementAtCursor,
-		moveTo,
-		recenter: recenter$1
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickTargetCategory.js
-function get$1() {
-	const value = Controls_default.joyCycleMode | 0;
-	return NAMES[value] !== void 0 ? value : CATEGORY.MOBS;
-}
-function nameOf(category) {
-	return NAMES[category] || NAMES[CATEGORY.MOBS];
-}
-function isSupport() {
-	return get$1() === CATEGORY.SUPPORT;
-}
-/**
-* Change the category, save it and tell the listeners (the target service
-* drops a mark the new category cannot reach, the HUD relabels).
-*
-* @param {number} category CATEGORY value
-*/
-function set(category) {
-	const previous = get$1();
-	Controls_default.joyCycleMode = category;
-	Controls_default.save();
-	for (let i = 0; i < _listeners.length; i++) _listeners[i](category, previous);
-}
-/**
-* One D-pad step: 'up' to the previous category, 'down' to the next,
-* wrapping. A legacy value outside ORDER counts as Mobs.
-*
-* @param {string} direction 'up' or 'down'
-*/
-function step(direction) {
-	let index = ORDER.indexOf(get$1());
-	if (index === -1) index = 0;
-	index = (index + (direction === "up" ? -1 : 1) + ORDER.length) % ORDER.length;
-	set(ORDER[index]);
-	showList();
-}
-function onChange(callback) {
-	_listeners.push(callback);
-}
-function getList() {
-	if (_list$4 && _list$4.parentNode) return _list$4;
-	if (typeof document === "undefined" || !document.body) return null;
-	_list$4 = document.createElement("div");
-	_list$4.className = "joystick-target-category";
-	Object.assign(_list$4.style, {
-		position: "absolute",
-		left: "12px",
-		top: "40%",
-		transform: "translateY(-50%)",
-		zIndex: 1e3,
-		pointerEvents: "none",
-		display: "flex",
-		flexDirection: "column",
-		gap: "3px",
-		fontFamily: "sans-serif",
-		fontSize: "13px",
-		transition: "opacity 400ms",
-		opacity: "0"
-	});
-	document.body.appendChild(_list$4);
-	return _list$4;
-}
-/**
-* Show every category, the active one highlighted, then fade out.
-*/
-function showList() {
-	const list = getList();
-	if (!list) return;
-	const active = get$1();
-	list.textContent = "";
-	ORDER.forEach((category) => {
-		const row = document.createElement("div");
-		const on = category === active;
-		row.textContent = (on ? "▶ " : "") + nameOf(category);
-		row.dataset.category = String(category);
-		Object.assign(row.style, {
-			padding: "3px 10px",
-			borderRadius: "4px",
-			color: on ? "#fff" : "#bbb",
-			background: on ? "rgba(46, 125, 50, 0.85)" : "rgba(0, 0, 0, 0.55)",
-			fontWeight: on ? "bold" : "normal"
-		});
-		list.appendChild(row);
-	});
-	list.style.display = "flex";
-	list.style.opacity = "1";
-	if (_hideTimer) clearTimeout(_hideTimer);
-	_hideTimer = setTimeout(function() {
-		_hideTimer = null;
-		list.style.opacity = "0";
-	}, LIST_VISIBLE_MS);
-}
-function dispose$2() {
-	if (_hideTimer) {
-		clearTimeout(_hideTimer);
-		_hideTimer = null;
-	}
-	if (_list$4 && _list$4.parentNode) _list$4.parentNode.removeChild(_list$4);
-	_list$4 = null;
-}
-var CATEGORY, ORDER, NAMES, LIST_VISIBLE_MS, _list$4, _hideTimer, _listeners, JoystickTargetCategory_default;
-var init_JoystickTargetCategory = __esmMin((() => {
-	init_Controls();
-	CATEGORY = {
-		MOBS: 0,
-		ITEMS: 1,
-		BOTH: 2,
-		INTERACT: 3,
-		SUPPORT: 4
-	};
-	ORDER = [
-		CATEGORY.MOBS,
-		CATEGORY.INTERACT,
-		CATEGORY.ITEMS,
-		CATEGORY.SUPPORT
-	];
-	NAMES = {
-		[CATEGORY.MOBS]: "Mobs",
-		[CATEGORY.ITEMS]: "Items",
-		[CATEGORY.BOTH]: "Mobs & items",
-		[CATEGORY.INTERACT]: "NPCs",
-		[CATEGORY.SUPPORT]: "Support"
-	};
-	LIST_VISIBLE_MS = 2e3;
-	_list$4 = null;
-	_hideTimer = null;
-	_listeners = [];
-	JoystickTargetCategory_default = {
-		CATEGORY,
-		ORDER,
-		get: get$1,
-		set,
-		step,
-		nameOf,
-		isSupport,
-		onChange,
-		showList,
-		dispose: dispose$2
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickTargetService.js
-function getCycleTypes(Entity) {
-	switch (JoystickTargetCategory_default.get()) {
-		case CYCLE_MODE.ITEMS: return [Entity.TYPE_ITEM];
-		case CYCLE_MODE.BOTH: return [Entity.TYPE_MOB, Entity.TYPE_ITEM];
-		case CYCLE_MODE.INTERACT: return [
-			Entity.TYPE_NPC,
-			Entity.TYPE_NPC2,
-			Entity.TYPE_WARP
-		];
-		case CYCLE_MODE.SUPPORT: return [];
-		default: return [Entity.TYPE_MOB];
-	}
-}
-function isInteractable(entity) {
-	const Entity = entity.constructor;
-	return [
-		Entity.TYPE_NPC,
-		Entity.TYPE_NPC2,
-		Entity.TYPE_WARP
-	].includes(entity.objecttype);
-}
-/**
-* What the cycle and aim may select for the current mode, nearest first.
-*/
-function getCycleCandidates(player) {
-	return EntityManager.getEntitiesSortedByDistance(player, getCycleTypes(player.constructor)).filter((entity) => !(isInteractable(entity) && HIDDEN_NPC_JOBS.includes(entity.job)));
-}
-/**
-* The marked entity, or null once it was picked up, expired or left the
-* entity list.
-*/
-function getMarked() {
-	if (_marked && (_marked.remove_tick !== 0 || EntityManager.get(_marked.GID) !== _marked)) _marked = null;
-	return _marked;
-}
-function getCycledItem() {
-	const marked = getMarked();
-	return marked && marked.objecttype === marked.constructor.TYPE_ITEM ? marked : null;
-}
-function getInteractTarget() {
-	const marked = getMarked();
-	return marked && isInteractable(marked) ? marked : null;
-}
-function releaseMark() {
-	if (_marked) {
-		_marked.attachments.remove("lockon");
-		_marked = null;
-	}
-}
-/**
-* Drop the current focus without telling the server to stop attacking.
-*
-* onFocusEnd() sends CZ_CANCEL_LOCKON (rAthena: clif_parse_StopAttack) only
-* while the entity is still the focus. Clearing the focus first skips it,
-* the same trick MapControl.onMouseUp uses. Switching focus on the gamepad
-* (D-pad cycle, X picking a new target) must not stop a running attack:
-* cycling only moves the arrow, and X's REQUEST_ACT replaces the attack
-* on the server anyway.
-*/
-function dropFocusQuietly() {
-	const focus = EntityManager.getFocusEntity();
-	if (focus) {
-		EntityManager.setFocusEntity(null);
-		focus.onFocusEnd();
-	}
-}
-/**
-* Mark an item, NPC or portal: drop any combat lock-on and show the same
-* lock-on arrow mobs get, so the player sees what Y or A will act on.
-*/
-function markEntity(item) {
-	dropFocusQuietly();
-	releaseMark();
-	item.attachments.add({
-		uid: "lockon",
-		spr: "data/sprite/cursors.spr",
-		act: "data/sprite/cursors.act",
-		frame: Cursor.ACTION.LOCK,
-		repeat: true,
-		depth: 10
-	});
-	_marked = item;
-}
-/**
-* Whether the entity is something X may attack: alive, still in the current
-* map's entity list, and a mob, or a player the map state lets us attack
-* (PvP / GvG, the same rule as the mouse's attack cursor).
-*
-* The EntityManager.get() check matters: EntityManager.free() on a warp
-* cleans entities (remove_tick back to 0) but never clears the focus, so a
-* focus from the previous map would otherwise still look alive.
-*
-* @param {Entity} entity
-* @return {boolean}
-*/
-function isAttackable(entity) {
-	if (!entity || entity === SessionStorage_default.Entity) return false;
-	if (entity.action === entity.ACTION.DIE || entity.remove_tick !== 0) return false;
-	if (EntityManager.get(entity.GID) !== entity) return false;
-	const Entity = entity.constructor;
-	if (entity.objecttype === Entity.TYPE_MOB) return true;
-	return entity.objecttype === Entity.TYPE_PC && !!entity.canAttackEntity && entity.canAttackEntity();
-}
-/**
-* The focused entity if it is still an attackable target, else null.
-* A click on an NPC or a friendly player also focuses it (MapControl), and
-* that must not turn X into an attack on it.
-*
-* @return {Entity|null}
-*/
-function getAttackableFocus() {
-	const focus = EntityManager.getFocusEntity();
-	return isAttackable(focus) ? focus : null;
-}
-function getEntityInContext() {
-	const focus = getAttackableFocus();
-	if (focus) return focus;
-	let target = null;
-	if (Controls_default.attackTargetMode === 1) {
-		target = EntityManager.getLowestHpEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_MOB);
-		if (!target) target = EntityManager.getLowestHpEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_PC);
-	}
-	if (!target) target = EntityManager.getClosestEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_MOB);
-	if (!target) target = EntityManager.getClosestEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_PC);
-	return target || SessionStorage_default.Entity;
-}
-/**
-* Make the entity the focus (lock-on arrow, name) without acting on it.
-*
-* EntityControl.onFocus() for TYPE_MOB sends REQUEST_ACT / REQUEST_MOVE when
-* Session.TouchTargeting and Session.autoFollow are both off. That is right
-* for a mouse click, wrong here: a cycle step must not attack, and X sends
-* its own attack in JoystickCharacterControl.attack(), so letting onFocus
-* act too sent every new-target attack twice, with two different in-range
-* rules. Toggle TouchTargeting around the call so onFocus() takes the
-* "focused, do not attack" branch. The call is synchronous; nothing else
-* observes TouchTargeting in between.
-*/
-function focusEntity(entity) {
-	const prevTouch = SessionStorage_default.TouchTargeting;
-	SessionStorage_default.TouchTargeting = true;
-	try {
-		entity.onFocus();
-	} finally {
-		SessionStorage_default.TouchTargeting = prevTouch;
-	}
-	EntityManager.setFocusEntity(entity);
-}
-function focusTarget(entity) {
-	releaseMark();
-	const focus = EntityManager.getFocusEntity();
-	if (focus && entity.GID !== focus.GID) {
-		dropFocusQuietly();
-		focusEntity(entity);
-	} else if (!focus) focusEntity(entity);
-}
-/**
-* Step the focused target to the next (or previous) mob and/or ground item,
-* depending on ControlsSettings.joyCycleMode, by straight-line distance from
-* the player. Wraps at both ends. If nothing is focused, or the focused
-* entity is not in the sorted list (dead, picked up, out of range, wrong
-* type for the mode), 'next' jumps to the closest and 'prev' to the farthest.
-*
-* Always distance-ordered, regardless of ControlsSettings.attackTargetMode:
-* that preference governs the X-button auto-pick, not cycling, and the two
-* should not fight each other.
-*
-* @param {string} direction 'next' or 'prev'
-*/
-function cycle$1(direction) {
-	const player = SessionStorage_default.Entity;
-	if (!player) return;
-	const Entity = player.constructor;
-	const sorted = getCycleCandidates(player);
-	if (sorted.length === 0) return;
-	const current = getMarked() || EntityManager.getFocusEntity();
-	const index = current ? sorted.indexOf(current) : -1;
-	let newIndex;
-	if (index === -1) newIndex = direction === "next" ? 0 : sorted.length - 1;
-	else if (direction === "next") newIndex = (index + 1) % sorted.length;
-	else newIndex = (index - 1 + sorted.length) % sorted.length;
-	const target = sorted[newIndex];
-	if (target.objecttype !== Entity.TYPE_MOB) {
-		markEntity(target);
-		JoystickMouseCursorAdapter_default.moveMouseToEntity(target);
-		return;
-	}
-	focusTarget(target);
-	JoystickMouseCursorAdapter_default.moveMouseToEntity(target);
-}
-/**
-* Clear the focused entity (if any) and snap the virtual cursor back to the
-* middle of the viewport. Used to reset the cycle so the next D-pad press
-* starts from the closest mob again.
-*/
-function clearFocus$1() {
-	releaseMark();
-	const focus = EntityManager.getFocusEntity();
-	if (focus) {
-		focus.onFocusEnd();
-		EntityManager.setFocusEntity(null);
-	}
-	JoystickMouseCursorAdapter_default.recenter();
-}
-/**
-* Clear what the gamepad targets (L3 tap): the mark and the focus. Unlike
-* clearFocus, the cursor stays where it is.
-*/
-function clearTarget() {
-	releaseMark();
-	const focus = EntityManager.getFocusEntity();
-	if (focus) {
-		focus.onFocusEnd();
-		EntityManager.setFocusEntity(null);
-	}
-}
-var CYCLE_MODE, HIDDEN_NPC_JOBS, _marked, JoystickTargetService_default;
-var init_JoystickTargetService = __esmMin((() => {
-	init_SessionStorage();
-	init_EntityManager();
-	init_Controls();
-	init_JoystickMouseCursorAdapter();
-	init_CursorManager();
-	init_JoystickTargetCategory();
-	CYCLE_MODE = JoystickTargetCategory_default.CATEGORY;
-	HIDDEN_NPC_JOBS = [
-		111,
-		139,
-		2337
-	];
-	_marked = null;
-	/**
-	* A new target category: drop a mark it cannot reach any more (an item
-	* once the category is no longer Items, ...). The combat focus stays: X
-	* keeps attacking what it attacked, whatever is being targeted.
-	*/
-	JoystickTargetCategory_default.onChange(function() {
-		const marked = getMarked();
-		if (marked && !getCycleTypes(marked.constructor).includes(marked.objecttype)) releaseMark();
-	});
-	JoystickTargetService_default = {
-		getEntity: getEntityInContext,
-		getAttackableFocus,
-		isAttackable,
-		focus: focusTarget,
-		cycle: cycle$1,
-		clear: clearFocus$1,
-		clearTarget,
-		getItem: getCycledItem,
-		getMarked,
-		getInteractTarget,
-		releaseMark,
-		getCycleTypes,
-		getCycleCandidates,
-		/**
-		* Select an entity the aim hit: an item, NPC or portal gets the mark, a
-		* mob the focus. Never attacks and never stops a running attack.
-		*/
-		aimAt: function(entity) {
-			if (entity.objecttype !== entity.constructor.TYPE_MOB) markEntity(entity);
-			else focusTarget(entity);
-		},
-		snapCursorToFocus: function() {
-			const focus = EntityManager.getFocusEntity();
-			if (focus) JoystickMouseCursorAdapter_default.moveMouseToEntity(focus);
-		},
-		CYCLE_MODE
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickCharacterControl.js
-/**
-* Left stick is back inside the deadzone: stick moves are allowed again.
-*/
-function releaseStick() {
-	_stickHeld = false;
-}
-function move$1(x, y) {
-	const player = SessionStorage_default.Entity;
-	if (!player || _stickHeld) return;
-	SessionStorage_default.moveAction = null;
-	_lastAttackGid = null;
-	const angle = Camera.angle[1] * Math.PI / 180;
-	direction$1[0] = x * Math.cos(angle) - y * Math.sin(angle);
-	direction$1[1] = x * Math.sin(angle) + y * Math.cos(angle);
-	const nx = Math.round(player.position[0] + direction$1[0] * 3);
-	const ny = Math.round(player.position[1] + direction$1[1] * 3);
-	const movePacket = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.REQUEST_MOVE2() : new PACKET.CZ.REQUEST_MOVE();
-	movePacket.dest[0] = nx;
-	movePacket.dest[1] = ny;
-	Network.sendPacket(movePacket);
-}
-/**
-* Attack the context target (focused/cycled mob, else per attackTargetMode).
-*
-* @param {boolean} repeat true while X is held: only attack when the target
-*   differs from the last one X attacked. The server keeps attacking on its
-*   own (action 7), so re-sending would only restart the walk.
-* @return {boolean} whether an attack was sent
-*/
-function attack(repeat) {
-	const Player = SessionStorage_default.Entity;
-	if (!Player) return false;
-	const target = JoystickTargetService_default.getEntity();
-	if (!target || target === Player) return false;
-	if (repeat && target.GID === _lastAttackGid) return false;
-	JoystickTargetService_default.focus(target);
-	const entityFocus = EntityManager.getFocusEntity();
-	if (!entityFocus) return;
-	let pkt;
-	const out = [];
-	const count = PathFinding_default.search(Player.position[0] | 0, Player.position[1] | 0, entityFocus.position[0] | 0, entityFocus.position[1] | 0, Player.attack_range + 1, out);
-	if (!count) return false;
-	_lastAttackGid = entityFocus.GID;
-	_stickHeld = true;
-	if (PacketVerManager_default.value >= 20180307) pkt = new PACKET.CZ.REQUEST_ACT2();
-	else pkt = new PACKET.CZ.REQUEST_ACT();
-	pkt.action = 7;
-	pkt.targetGID = entityFocus.GID;
-	if (count < 2) {
-		SessionStorage_default.moveAction = null;
-		Network.sendPacket(pkt);
-		return true;
-	}
-	SessionStorage_default.moveAction = pkt;
-	if (PacketVerManager_default.value >= 20180307) pkt = new PACKET.CZ.REQUEST_MOVE2();
-	else pkt = new PACKET.CZ.REQUEST_MOVE();
-	pkt.dest[0] = out[(count - 1) * 2];
-	pkt.dest[1] = out[(count - 1) * 2 + 1];
-	Network.sendPacket(pkt);
-	return true;
-}
-/**
-* Pick up the item the D-pad cycle rests on, else the closest one. Out of
-* reach (more than 2 cells, same rule as a mouse click in EntityControl),
-* walk to it first and let onWalkEnd send the pickup via Session.moveAction.
-*/
-function pickUp() {
-	const Player = SessionStorage_default.Entity;
-	if (!Player) return;
-	const item = JoystickTargetService_default.getItem() || EntityManager.getClosestEntity(Player, Player.constructor.TYPE_ITEM);
-	if (!item) return;
-	let pkt = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.ITEM_PICKUP2() : new PACKET.CZ.ITEM_PICKUP();
-	pkt.ITAID = item.GID;
-	Player.lookTo(item.position[0], item.position[1]);
-	if (exports$3.vec2.distance(Player.position, item.position) > 2) {
-		SessionStorage_default.moveAction = pkt;
-		pkt = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.REQUEST_MOVE2() : new PACKET.CZ.REQUEST_MOVE();
-		pkt.dest[0] = item.position[0] | 0;
-		pkt.dest[1] = item.position[1] | 0;
-	}
-	Network.sendPacket(pkt);
-}
-/**
-* Sit down, or stand up when sitting (L3 hold): the /sit command's request.
-*/
-function toggleSit() {
-	const Player = SessionStorage_default.Entity;
-	if (!Player) return;
-	const pkt = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.REQUEST_ACT2() : new PACKET.CZ.REQUEST_ACT();
-	pkt.action = Player.action === Player.ACTION.SIT ? 3 : 2;
-	Network.sendPacket(pkt);
-}
-var direction$1, _stickHeld, _lastAttackGid, JoystickCharacterControl_default;
-var init_JoystickCharacterControl = __esmMin((() => {
-	init_SessionStorage();
-	init_EntityManager();
-	init_NetworkManager();
-	init_PacketStructure();
-	init_PacketVerManager();
-	init_gl_matrix$1();
-	init_Camera();
-	init_PathFinding();
-	init_JoystickTargetService();
-	direction$1 = exports$3.vec2.create();
-	_stickHeld = false;
-	_lastAttackGid = null;
-	JoystickCharacterControl_default = {
-		attack,
-		toggleSit,
-		pickUp,
-		move: move$1,
-		releaseStick
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickSelectionUI.html?raw
-var JoystickSelectionUI_default$2;
-var init_JoystickSelectionUI$2 = __esmMin((() => {
-	JoystickSelectionUI_default$2 = "<div id=\"shortcut-selection\" class=\"joystick-selection-window\">\r\n	<h3 class=\"selection-title\">Select slot for <span class=\"item-name\"></span></h3>\r\n	<div class=\"tab-container\">\r\n		<div class=\"tab-buttons\"></div>\r\n		<div class=\"shortcut-grid\"></div>\r\n	</div>\r\n	<div class=\"footer-instructions\">\r\n		Use L2/R2 to change tab, D-pad to navigate slot, A to select, Select to cancel\r\n	</div>\r\n</div>\r\n";
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickSelectionUI.css?raw
-var JoystickSelectionUI_default$1;
-var init_JoystickSelectionUI$1 = __esmMin((() => {
-	JoystickSelectionUI_default$1 = ":host {\r\n	top: 50%;\r\n	left: 50%;\r\n	transform: translate(-50%, -50%);\r\n	z-index: 10000;\r\n	display: none;\r\n}\r\n\r\n#shortcut-selection {\r\n	position: absolute;\r\n	top: 0;\r\n	left: 0;\r\n	background: rgba(0, 0, 0, 0.95);\r\n	border: 2px solid #fff;\r\n	padding: 20px;\r\n	color: white;\r\n	min-width: 780px;\r\n	box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);\r\n	border-radius: 8px;\r\n}\r\n\r\n#shortcut-selection h3 {\r\n	margin-top: 0;\r\n	margin-bottom: 10px;\r\n	text-align: center;\r\n}\r\n\r\n#shortcut-selection .tab-buttons {\r\n	display: flex;\r\n	gap: 5px;\r\n	margin-bottom: 10px;\r\n}\r\n\r\n#shortcut-selection .tab-btn {\r\n	padding: 5px 10px;\r\n	border: 1px solid #fff;\r\n	color: white;\r\n	cursor: pointer;\r\n	background: #666;\r\n	flex: 1;\r\n}\r\n\r\n#shortcut-selection .tab-btn.active {\r\n	background: #ff6600;\r\n}\r\n\r\n#shortcut-selection .shortcut-grid {\r\n	display: grid;\r\n	grid-template-columns: repeat(9, 1fr);\r\n	gap: 8px;\r\n	justify-content: center;\r\n	padding: 10px;\r\n	background: rgba(255, 255, 255, 0.05);\r\n	border-radius: 5px;\r\n}\r\n\r\n#shortcut-selection .slot-btn {\r\n	width: 75px;\r\n	height: 60px;\r\n	border: 2px solid #555;\r\n	background: #555;\r\n	display: flex;\r\n	align-items: center;\r\n	justify-content: center;\r\n	font-weight: bold;\r\n	cursor: pointer;\r\n	color: white;\r\n	transition: all 0.1s;\r\n	border-radius: 5px;\r\n	text-align: center;\r\n	line-height: 1.2;\r\n	padding: 5px;\r\n	box-sizing: border-box;\r\n}\r\n\r\n#shortcut-selection .slot-btn.empty {\r\n	background: #222;\r\n}\r\n\r\n#shortcut-selection .slot-btn.selected {\r\n	background: #ff6600;\r\n	border-color: #fff;\r\n}\r\n\r\n#shortcut-selection .footer-instructions {\r\n	margin-top: 15px;\r\n	text-align: center;\r\n	opacity: 0.8;\r\n}\r\n";
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickSelectionUI.js
-function setClickInterval() {
-	if (clickLock$1) clearTimeout(clickLock$1);
-	clickLock$1 = setTimeout(function() {
-		clickLock$1 = null;
-	}, 200);
-}
-function isLocked() {
-	return clickLock$1 !== null;
-}
-/**
-* Button combination for a shortcut slot, worded with the current button
-* mapping. Mirrors JoystickShortcutMapper: bar 1 is LB (slots 1-4) and LT
-* (5-8), bar 2 RB and RT, bars 3 and 4 the same in set 2, and slot 9 of
-* bar 1-4 is LB+RB with Y / X / B / A.
-*
-* @param {number} slotIndex 0-35, bar * 9 + slot
-* @return {string}
-*/
-function getJoystickComboForSlot(slotIndex) {
-	const B = JoystickButtonMap_default.BUTTON;
-	const n = JoystickButtonMap_default.nameOf;
-	const bar = Math.floor(slotIndex / 9);
-	const slot = slotIndex % 9;
-	const faces = [
-		n(B.Y),
-		n(B.X),
-		n(B.B),
-		n(B.A)
-	];
-	if (slot === 8) return n(B.LB) + "+" + n(B.RB) + "+" + faces[bar];
-	const left = bar === 0 || bar === 2;
-	const combo = (slot < 4 ? left ? n(B.LB) : n(B.RB) : left ? n(B.LT) : n(B.RT)) + "+" + faces[slot % 4];
-	return bar >= 2 ? combo + " (Set2)" : combo;
-}
-function updateGrid() {
-	const grid = JoystickSelectionUI.getRoot().querySelector(".shortcut-grid");
-	if (!grid) return;
-	grid.innerHTML = "";
-	const startIdx = currentTab * 9;
-	for (let i = 0; i < 9; i++) {
-		const globalIndex = startIdx + i;
-		const slot = ShortCut_default.getList()[globalIndex];
-		const isEmpty = !slot || !slot.isSkill && !slot.ID;
-		const displayText = getJoystickComboForSlot(globalIndex) || (i + 1).toString();
-		const slotDiv = document.createElement("div");
-		slotDiv.className = "slot-btn";
-		slotDiv.dataset.index = i;
-		slotDiv.textContent = displayText;
-		if (isEmpty) slotDiv.classList.add("empty");
-		grid.appendChild(slotDiv);
-	}
-	updateSelection();
-}
-function updateSelection() {
-	const grid = JoystickSelectionUI.getRoot().querySelector(".shortcut-grid");
-	if (!grid) return;
-	grid.querySelectorAll(".slot-btn").forEach((el) => el.classList.remove("selected"));
-	const selected = grid.querySelector(`.slot-btn[data-index="${slotInTab}"]`);
-	if (selected) selected.classList.add("selected");
-}
-function updateTabButtons() {
-	const tabButtons = JoystickSelectionUI.getRoot().querySelector(".tab-buttons");
-	if (!tabButtons) return;
-	tabButtons.querySelectorAll(".tab-btn").forEach((el) => el.classList.remove("active"));
-	const active = tabButtons.querySelector(`.tab-btn[data-tab="${currentTab}"]`);
-	if (active) active.classList.add("active");
-}
-function createTabButtons() {
-	const tabButtons = JoystickSelectionUI.getRoot().querySelector(".tab-buttons");
-	if (!tabButtons) return;
-	tabButtons.innerHTML = "";
-	for (let t = 0; t < 4; t++) {
-		const tabBtn = document.createElement("button");
-		tabBtn.className = "tab-btn";
-		tabBtn.dataset.tab = t;
-		tabBtn.textContent = `Tab ${t + 1}`;
-		tabButtons.appendChild(tabBtn);
-	}
-}
-function selectSlot() {
-	if (!itemData) return;
-	const row = currentTab;
-	const pos = row * 9 + slotInTab;
-	ShortCut_default.removeElement(itemData.isSkill, itemData.ID, row, itemData.value);
-	ShortCut_default.addElement(pos, itemData.isSkill, itemData.ID, itemData.value);
-	ShortCut_default.onChange(pos, itemData.isSkill, itemData.ID, itemData.value);
-	JoystickSelectionUI.hideSelection();
-}
-var JoystickSelectionUI, currentTab, slotInTab, itemData, clickLock$1, JoystickSelectionUI_default;
-var init_JoystickSelectionUI = __esmMin((() => {
-	init_GUIComponent();
-	init_UIManager();
-	init_ShortCut();
-	init_JoystickSelectionUI$2();
-	init_JoystickButtonMap();
-	init_JoystickSelectionUI$1();
-	JoystickSelectionUI = new GUIComponent("JoystickSelectionUI", JoystickSelectionUI_default$1);
-	JoystickSelectionUI.render = () => JoystickSelectionUI_default$2;
-	currentTab = 0;
-	slotInTab = 0;
-	itemData = null;
-	clickLock$1 = null;
-	/**
-	* Main input handler
-	* as expected by JoystickButtonInput.js
-	*/
-	JoystickSelectionUI.handleGamepadInput = function handleGamepadInput(buttons) {
-		if (isLocked()) return true;
-		if (buttons[0] !== "unpressed") {
-			setClickInterval();
-			selectSlot();
-			return true;
-		}
-		if (buttons[8] !== "unpressed") {
-			setClickInterval();
-			JoystickSelectionUI.hideSelection();
-			return true;
-		}
-		if (buttons[6] !== "unpressed") {
-			setClickInterval();
-			if (currentTab > 0) {
-				currentTab--;
-				slotInTab = 0;
-				updateGrid();
-				updateTabButtons();
-			}
-			return true;
-		}
-		if (buttons[7] !== "unpressed") {
-			setClickInterval();
-			if (currentTab < 3) {
-				currentTab++;
-				slotInTab = 0;
-				updateGrid();
-				updateTabButtons();
-			}
-			return true;
-		}
-		if (buttons[12] !== "unpressed") {
-			setClickInterval();
-			if (slotInTab >= 3) {
-				slotInTab -= 3;
-				updateSelection();
-			}
-			return true;
-		}
-		if (buttons[13] !== "unpressed") {
-			setClickInterval();
-			if (slotInTab < 6) {
-				slotInTab += 3;
-				updateSelection();
-			}
-			return true;
-		}
-		if (buttons[14] !== "unpressed") {
-			setClickInterval();
-			if (slotInTab > 0) {
-				slotInTab--;
-				updateSelection();
-			}
-			return true;
-		}
-		if (buttons[15] !== "unpressed") {
-			setClickInterval();
-			if (slotInTab < 8) {
-				slotInTab++;
-				updateSelection();
-			}
-			return true;
-		}
-		return false;
-	};
-	JoystickSelectionUI.init = function() {
-		createTabButtons();
-		this._host.style.position = "fixed";
-		this._host.style.display = "none";
-	};
-	JoystickSelectionUI.showSelection = function(data) {
-		itemData = data;
-		currentTab = 0;
-		slotInTab = 0;
-		updateGrid();
-		updateTabButtons();
-		const B = JoystickButtonMap_default.BUTTON;
-		const n = JoystickButtonMap_default.nameOf;
-		const footer = this.getRoot().querySelector(".footer-instructions");
-		if (footer) footer.textContent = "Use " + n(B.LT) + "/" + n(B.RT) + " to change tab, D-pad to navigate slot, " + n(B.A) + " to select, " + n(B.VIEW) + " to cancel";
-		this.focus();
-		this._host.style.display = "block";
-		this._fixPositionOverflow();
-	};
-	JoystickSelectionUI.hideSelection = function() {
-		this._host.style.display = "none";
-		itemData = null;
-	};
-	JoystickSelectionUI.active = function() {
-		return this._host && this._host.style.display !== "none";
-	};
-	JoystickSelectionUI_default = UIManager.addComponent(JoystickSelectionUI);
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickAimMode.js
-function isEnabled() {
-	return !!Controls_default.joyAimEnabled;
-}
-function isActive$1() {
-	return isEnabled() && Controls_default.joyRightStickMode === MODE.AIM;
-}
-/**
-* The Quick-Cast mode in effect. With aiming available, Off is not: it
-* leaves a targeted skill waiting for an A click at the cursor, and the
-* aim does not keep the cursor on the target, so Instant stands in for it.
-*
-* @return {number} QUICK_CAST value
-*/
-function quickCastMode() {
-	const mode = Controls_default.joyQuick | 0;
-	return mode === QUICK_CAST.OFF && isEnabled() ? QUICK_CAST.INSTANT : mode;
-}
-/**
-* Turn a stick vector into a map direction.
-*
-* The camera's modelView is Rx(angle[0]) . Ry(angle[1]), so a map step
-* lands on screen rotated by -angle[1]; an on-screen intent therefore
-* becomes a map step through R(+angle[1]). Uses the continuous angle, not
-* Camera.direction, which is a 45 degree sprite bucket.
-*
-* @param {number} x stick x, right positive
-* @param {number} y stick y, down positive (Gamepad API)
-* @param {number} degrees camera yaw, Camera.angle[1]
-* @return {Array<number>} unit vector [dx, dy] in map cells
-*/
-function stickToMapDirection(x, y, degrees) {
-	const angle = degrees * Math.PI / 180;
-	const sx = x;
-	const sy = -y;
-	const dx = sx * Math.cos(angle) - sy * Math.sin(angle);
-	const dy = sx * Math.sin(angle) + sy * Math.cos(angle);
-	const len = Math.hypot(dx, dy) || 1;
-	return [dx / len, dy / len];
-}
-/**
-* First entity along a ray: the smallest distance along it among entities
-* within the (slightly widening) hit zone. No length limit; the caller
-* passes only entities on screen.
-*
-* @param {Array<number>} origin [x, y] map position
-* @param {Array<number>} dir unit [dx, dy]
-* @param {Array<Entity>} entities candidates
-* @return {{entity: Entity, along: number}|null}
-*/
-function findFirstHit(origin, dir, entities) {
-	let best = null;
-	for (let i = 0; i < entities.length; i++) {
-		const entity = entities[i];
-		const dx = entity.position[0] - origin[0];
-		const dy = entity.position[1] - origin[1];
-		const along = dx * dir[0] + dy * dir[1];
-		if (along <= 0) continue;
-		if (Math.abs(dx * dir[1] - dy * dir[0]) <= HIT_RADIUS + along * HIT_SPREAD && (!best || along < best.along)) best = {
-			entity,
-			along
-		};
-	}
-	return best;
-}
-/**
-* Screen position of a ground point, or null behind the camera.
-*/
-function project(x, y) {
-	_aimWorld[0] = x + .5;
-	_aimWorld[1] = -Altitude.getCellHeight(x, y);
-	_aimWorld[2] = y + .5;
-	_aimWorld[3] = 1;
-	exports$3.vec4.transformMat4(_aimView, _aimWorld, Camera.modelView);
-	exports$3.vec4.transformMat4(_aimView, _aimView, Camera.projection);
-	if (_aimView[3] <= 0) return null;
-	return [Renderer.width / 2 + Renderer.width / 2 * (_aimView[0] / _aimView[3]), Renderer.height / 2 - Renderer.height / 2 * (_aimView[1] / _aimView[3])];
-}
-function isOnScreen(entity) {
-	const p = project(entity.position[0], entity.position[1]);
-	return !!p && p[0] >= 0 && p[0] <= Renderer.width && p[1] >= 0 && p[1] <= Renderer.height;
-}
-/**
-* Overlay canvas over the game canvas, sized to it.
-*/
-function getContext$1() {
-	const scene = Renderer.canvas;
-	if (!scene || !scene.parentNode) return null;
-	if (!_aimOverlay) {
-		_aimOverlay = document.createElement("canvas");
-		_aimOverlay.className = "joystick-aim";
-		_aimOverlay.style.position = "absolute";
-		_aimOverlay.style.top = "0px";
-		_aimOverlay.style.left = "0px";
-		_aimOverlay.style.zIndex = 1;
-		_aimOverlay.style.pointerEvents = "none";
-		scene.parentNode.insertBefore(_aimOverlay, scene.nextSibling);
-		_aimCtx = _aimOverlay.getContext("2d");
-	}
-	const dpr = window.devicePixelRatio || 1;
-	const width = Math.round(Renderer.width * dpr);
-	const height = Math.round(Renderer.height * dpr);
-	if (_aimOverlay.width !== width || _aimOverlay.height !== height) {
-		_aimOverlay.width = width;
-		_aimOverlay.height = height;
-		_aimOverlay.style.width = Renderer.width + "px";
-		_aimOverlay.style.height = Renderer.height + "px";
-	}
-	return _aimCtx;
-}
-function clearOverlay$1() {
-	if (_aimDrawn && _aimCtx) {
-		_aimCtx.setTransform(1, 0, 0, 1, 0, 0);
-		_aimCtx.clearRect(0, 0, _aimOverlay.width, _aimOverlay.height);
-		_aimDrawn = false;
-	}
-}
-/**
-* A red ring flat on the ground under the entity, in perspective.
-*
-* @param {CanvasRenderingContext2D} ctx overlay, already cleared
-* @param {Entity} entity
-* @param {number} alpha 0-1, for the fade-out
-* @param {string} [rgb] ring colour as 'r, g, b', red by default
-*/
-function drawRing(ctx, entity, alpha, rgb = "255, 64, 64") {
-	const points = [];
-	for (let i = 0; i < RING_POINTS; i++) {
-		const a = i / RING_POINTS * Math.PI * 2;
-		const p = project(entity.position[0] + Math.cos(a) * RING_RADIUS, entity.position[1] + Math.sin(a) * RING_RADIUS);
-		if (!p) return;
-		points.push(p);
-	}
-	ctx.beginPath();
-	ctx.moveTo(points[0][0], points[0][1]);
-	for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
-	ctx.closePath();
-	ctx.fillStyle = "rgba(" + rgb + ", " + .2 * alpha + ")";
-	ctx.fill();
-	ctx.lineWidth = 2.5;
-	ctx.strokeStyle = "rgba(" + rgb + ", " + .9 * alpha + ")";
-	ctx.stroke();
-	_aimDrawn = true;
-}
-/**
-* The aim line along the ground from the character, sampled so it follows
-* the terrain: to the target the aim hit, or a short stub in the aimed
-* direction while it hits nothing.
-*
-* @param {CanvasRenderingContext2D} ctx overlay, already cleared
-* @param {Array<number>} from [x, y] map position
-* @param {Array<number>} to [x, y] map position
-* @param {string} color stroke colour
-*/
-function drawAimLine(ctx, from, to, color) {
-	const dx = to[0] - from[0];
-	const dy = to[1] - from[1];
-	const length = Math.hypot(dx, dy);
-	if (length === 0) return;
-	const points = [];
-	for (let t = 0; t < length; t += LINE_STEP) {
-		const p = project(from[0] + dx / length * t, from[1] + dy / length * t);
-		if (p) points.push(p);
-	}
-	const end = project(to[0], to[1]);
-	if (end) points.push(end);
-	if (points.length < 2) return;
-	ctx.lineCap = "round";
-	ctx.lineJoin = "round";
-	[["rgba(0, 0, 0, 0.45)", 5], [color, 2.5]].forEach(([stroke, width]) => {
-		ctx.strokeStyle = stroke;
-		ctx.lineWidth = width;
-		ctx.beginPath();
-		ctx.moveTo(points[0][0], points[0][1]);
-		for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
-		ctx.stroke();
-	});
-	_aimDrawn = true;
-}
-/**
-* The entity aim mode marks: the marked item, NPC or portal, else the
-* focus if it is still an attackable target on this map (not an NPC or
-* friendly player the player clicked, nor a focus left over from the
-* previous map).
-*/
-function getTarget() {
-	return JoystickTargetService_default.getMarked() || JoystickTargetService_default.getAttackableFocus();
-}
-/**
-* Show or hide the game's cursor (CursorManager's .cursor element). Only
-* its visibility changes: Mouse.screen still follows the target, so A
-* clicks it as before.
-*/
-function setCursorHidden(hidden) {
-	if (hidden === _cursorHidden) return;
-	const cursor = document.querySelector(".cursor");
-	if (!cursor) return;
-	cursor.style.visibility = hidden ? "hidden" : "";
-	_cursorHidden = hidden;
-}
-/**
-* A real mouse move shows the cursor again, so the player taking the mouse
-* is never left without one. Synthetic events (isTrusted false) do not
-* count.
-*/
-function onMouseMove(event) {
-	if (event.isTrusted) {
-		_mouseMoved = true;
-		setCursorHidden(false);
-	}
-}
-/**
-* Aim mode left: remove the ring, forget the last hit, show the cursor.
-*/
-function release$1() {
-	_aimLastHit = null;
-	_aimRingTarget = null;
-	clearOverlay$1();
-	setCursorHidden(false);
-}
-/**
-* One frame of aim mode (JoystickCursorMotion).
-*
-* @param {number} x right stick x
-* @param {number} y right stick y
-* @param {boolean} held stick outside the deadzone
-*/
-function update$3(x, y, held) {
-	const player = SessionStorage_default.Entity;
-	if (!player) {
-		release$1();
-		return;
-	}
-	if (held) _mouseMoved = false;
-	if (Controls_default.joyAimHideCursor && !_mouseListening) {
-		window.addEventListener("mousemove", onMouseMove);
-		_mouseListening = true;
-	}
-	setCursorHidden(!!Controls_default.joyAimHideCursor && !_mouseMoved);
-	const origin = [player.position[0], player.position[1]];
-	let hit = null;
-	let dir = null;
-	if (held) {
-		dir = stickToMapDirection(x, y, Camera.angle[1]);
-		const candidates = JoystickTargetService_default.getCycleCandidates(player).filter(isOnScreen);
-		hit = findFirstHit(origin, dir, candidates);
-		if (hit && hit.entity !== _aimLastHit) {
-			JoystickTargetService_default.aimAt(hit.entity);
-			_aimLastHit = hit.entity;
-			_aimRingTarget = hit.entity;
-			_aimRingAt = performance.now();
-		}
-	} else _aimLastHit = null;
-	const target = getTarget();
-	if (held && target) JoystickMouseCursorAdapter_default.moveMouseToEntity(target);
-	let line = null;
-	if (Controls_default.joyAimLine && held) line = hit && hit.entity === target ? {
-		to: [target.position[0], target.position[1]],
-		color: LINE_COLOR_HIT
-	} : {
-		to: [origin[0] + dir[0] * LINE_IDLE_LENGTH, origin[1] + dir[1] * LINE_IDLE_LENGTH],
-		color: LINE_COLOR_IDLE
-	};
-	const fade = 1 - (performance.now() - _aimRingAt) / RING_FADE_MS;
-	const ring = Controls_default.joyAimRing && _aimRingTarget === target && target && fade > 0 ? target : null;
-	clearOverlay$1();
-	if (!line && !ring) return;
-	const ctx = getContext$1();
-	if (!ctx) return;
-	const dpr = window.devicePixelRatio || 1;
-	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-	if (line) drawAimLine(ctx, origin, line.to, line.color);
-	if (ring) drawRing(ctx, ring, fade);
-}
-/**
-* Switch the right stick between aim and cursor (tap RS click).
-*/
-function toggle() {
-	if (!isEnabled()) return;
-	Controls_default.joyRightStickMode = isActive$1() ? MODE.CURSOR : MODE.AIM;
-	Controls_default.save();
-	release$1();
-	JoystickUIRenderer_default.updateStickMode();
-	ChatBox_default.addText("Right stick: " + (isActive$1() ? "aim" : "cursor"), ChatBox_default.TYPE.INFO, ChatBox_default.FILTER.PUBLIC_LOG);
-}
-/**
-* Settings checkbox. Turning aiming on puts the right stick in aim mode
-* straight away; turning it off returns it to the cursor for good.
-*/
-function setEnabled(enabled) {
-	Controls_default.joyAimEnabled = !!enabled;
-	Controls_default.joyRightStickMode = enabled ? MODE.AIM : MODE.CURSOR;
-	if (enabled && (Controls_default.joyQuick | 0) === QUICK_CAST.OFF) Controls_default.joyQuick = QUICK_CAST.INSTANT;
-	Controls_default.save();
-	release$1();
-	JoystickUIRenderer_default.updateStickMode();
-}
-var MODE, QUICK_CAST, HIT_RADIUS, HIT_SPREAD, RING_RADIUS, RING_POINTS, RING_FADE_MS, LINE_STEP, LINE_IDLE_LENGTH, LINE_COLOR_HIT, LINE_COLOR_IDLE, _aimLastHit, _aimOverlay, _aimCtx, _aimDrawn, _aimRingTarget, _aimRingAt, _cursorHidden, _mouseMoved, _mouseListening, _aimWorld, _aimView, JoystickAimMode_default;
-var init_JoystickAimMode = __esmMin((() => {
-	init_gl_matrix$1();
-	init_SessionStorage();
-	init_Renderer();
-	init_Camera();
-	init_Altitude();
-	init_Controls();
-	init_ChatBox();
-	init_JoystickTargetService();
-	init_JoystickMouseCursorAdapter();
-	init_JoystickUIRenderer();
-	MODE = {
-		CURSOR: 0,
-		AIM: 1
-	};
-	QUICK_CAST = {
-		OFF: 0,
-		RELEASE: 1,
-		INSTANT: 2
-	};
-	HIT_RADIUS = .9;
-	HIT_SPREAD = .075;
-	RING_RADIUS = .6;
-	RING_POINTS = 24;
-	RING_FADE_MS = 2e3;
-	LINE_STEP = .5;
-	LINE_IDLE_LENGTH = 3;
-	LINE_COLOR_HIT = "rgba(255, 82, 82, 0.9)";
-	LINE_COLOR_IDLE = "rgba(255, 215, 64, 0.85)";
-	_aimLastHit = null;
-	_aimOverlay = null;
-	_aimCtx = null;
-	_aimDrawn = false;
-	_aimRingTarget = null;
-	_aimRingAt = 0;
-	_cursorHidden = false;
-	_mouseMoved = false;
-	_mouseListening = false;
-	_aimWorld = exports$3.vec4.create();
-	_aimView = exports$3.vec4.create();
-	JoystickAimMode_default = {
-		MODE,
-		QUICK_CAST,
-		isEnabled,
-		isActive: isActive$1,
-		quickCastMode,
-		setEnabled,
-		update: update$3,
-		release: release$1,
-		toggle,
-		stickToMapDirection,
-		findFirstHit,
-		project,
-		isOnScreen,
-		drawRing
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickMenuNavigation.js
-function getComponent(name) {
-	try {
-		return UIManager.getComponent(name);
-	} catch {
-		return null;
-	}
-}
-function isShown(component) {
-	const host = component && component._host;
-	return !!host && !!host.parentNode && host.style.display !== "none";
-}
-function isVisible$1(el) {
-	return el.style.display !== "none" && el.getClientRects().length > 0;
-}
-function hover(el, on) {
-	el.dispatchEvent(new MouseEvent(on ? "mouseover" : "mouseout", {
-		bubbles: true,
-		composed: true
-	}));
-}
-/**
-* Step the highlight through the open menu's buttons. Wraps at both ends;
-* the first press selects the first (or last) button.
-*
-* @param {string} direction 'up', 'down', 'left' or 'right'
-* @return {boolean} true when a menu was open and took the press
-*/
-function navigate(direction) {
-	let open = null;
-	let component = null;
-	for (let i = 0; i < MENUS.length; i++) {
-		component = getComponent(MENUS[i].component);
-		if (isShown(component)) {
-			open = MENUS[i];
-			break;
-		}
-	}
-	if (!open) {
-		_menuCurrent = null;
-		_menuButton = null;
-		return false;
-	}
-	const buttons = Array.from(component.getRoot().querySelectorAll(open.buttons)).filter(isVisible$1);
-	if (buttons.length === 0) return false;
-	const forward = direction === "down" || direction === "right";
-	let index = open === _menuCurrent && _menuButton ? buttons.indexOf(_menuButton) : -1;
-	if (index === -1) index = forward ? 0 : buttons.length - 1;
-	else index = (index + (forward ? 1 : -1) + buttons.length) % buttons.length;
-	if (_menuButton && _menuButton !== buttons[index]) hover(_menuButton, false);
-	_menuCurrent = open;
-	_menuButton = buttons[index];
-	hover(_menuButton, true);
-	const rect = _menuButton.getBoundingClientRect();
-	JoystickMouseCursorAdapter_default.moveTo(rect.left + rect.width / 2, rect.top + rect.height / 2);
-	return true;
-}
-var MENUS, _menuCurrent, _menuButton, JoystickMenuNavigation_default;
-var init_JoystickMenuNavigation = __esmMin((() => {
-	init_UIManager();
-	init_JoystickMouseCursorAdapter();
-	MENUS = [{
-		component: "Escape",
-		buttons: ".container button"
-	}];
-	_menuCurrent = null;
-	_menuButton = null;
-	JoystickMenuNavigation_default = { navigate };
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickSupportMode.js
-/**
-* Who the radial offers, in order: yourself (12 o'clock), the online party
-* members, your homunculus, your mercenary.
-*
-* @return {Array<object>} { key, kind, GID, name, job, entity, hp, hpMax, dead, selectable }
-*/
-function getMembers() {
-	const player = SessionStorage_default.Entity;
-	if (!player) return [];
-	const list = [describe("self", "self", player.GID, player.display && player.display.name, player._job, null)];
-	let party = [];
-	try {
-		party = SessionStorage_default.hasParty && controller.getPartyMembers() || [];
-	} catch {
-		party = [];
-	}
-	for (let i = 0; i < party.length; i++) {
-		const member = party[i];
-		if (member.AID === SessionStorage_default.AID || member.AID === player.GID || member.state !== 0) continue;
-		list.push(describe("aid:" + member.AID, "party", member.AID, member.characterName, member.class_, member));
-	}
-	if (SessionStorage_default.homunId) list.push(describe("homun", "homun", SessionStorage_default.homunId, null, null, null));
-	if (SessionStorage_default.mercId) list.push(describe("merc", "merc", SessionStorage_default.mercId, null, null, null));
-	return list.filter((entry) => entry.kind === "self" || entry.kind === "party" || entry.entity);
-}
-function describe(key, kind, GID, name, job, member) {
-	const entity = kind === "self" ? SessionStorage_default.Entity : liveEntity(GID);
-	let hp = -1;
-	let hpMax = 0;
-	if (entity && entity.life && entity.life.hp_max > 0) {
-		hp = entity.life.hp;
-		hpMax = entity.life.hp_max;
-	} else {
-		const life = EntityManager.getLife ? EntityManager.getLife(GID) : null;
-		if (life && life.hp_max > 0) {
-			hp = life.hp;
-			hpMax = life.hp_max;
-		}
-	}
-	const dead = !!(member && member.isDead) || !!(entity && entity.ACTION && entity.action === entity.ACTION.DIE) || hpMax > 0 && hp <= 0;
-	if (!name) name = entity && entity.display && entity.display.name || (kind === "homun" ? "Homunculus" : "Mercenary");
-	if (job === null || job === void 0) job = entity ? entity._job : 0;
-	return {
-		key,
-		kind,
-		GID,
-		name,
-		job,
-		entity,
-		hp,
-		hpMax,
-		dead,
-		selectable: !!entity
-	};
-}
-/**
-* The entity, if it is on this map and in sight.
-*/
-function liveEntity(GID) {
-	const entity = EntityManager.get(GID);
-	return entity && entity.remove_tick === 0 ? entity : null;
-}
-function hpRatio(entry) {
-	if (entry.dead) return 0;
-	return entry.hpMax > 0 ? Math.max(0, Math.min(1, entry.hp / entry.hpMax)) : -1;
-}
-function hpColor(ratio) {
-	if (ratio >= HP_GOOD) return COLOR_GOOD;
-	return ratio >= HP_LOW ? COLOR_MID : COLOR_LOW;
-}
-function getFocus() {
-	if (!_focusKey) return null;
-	const members = getMembers();
-	for (let i = 0; i < members.length; i++) if (members[i].key === _focusKey) return members[i];
-	return null;
-}
-/**
-* The focused member's entity, when it can be cast on right now.
-*/
-function getFocusEntity$1() {
-	const focus = getFocus();
-	return focus && focus.selectable ? focus.entity : null;
-}
-function setFocus(entry) {
-	_focusKey = entry ? entry.key : null;
-}
-function clearFocus() {
-	_focusKey = null;
-}
-/**
-* D-pad left / right: the next member by HP, lowest first. The dead come
-* last (a Heal does nothing for them), out-of-sight members not at all.
-*
-* @param {string} direction 'next' or 'prev'
-*/
-function cycle(direction) {
-	const members = getMembers().filter((entry) => entry.selectable);
-	if (members.length === 0) return;
-	const rank = (entry) => entry.dead ? 2 : hpRatio(entry) < 0 ? 1 : hpRatio(entry);
-	members.sort((a, b) => rank(a) - rank(b));
-	const index = members.findIndex((entry) => entry.key === _focusKey);
-	let next;
-	if (index === -1) next = direction === "next" ? 0 : members.length - 1;
-	else next = (index + (direction === "next" ? 1 : -1) + members.length) % members.length;
-	setFocus(members[next]);
-}
-/**
-* Whether a skill waiting for a target belongs to Support: one that takes
-* a friend, a homunculus, or a place. Enemy-only skills keep going to the
-* mob target (Holy Light in the middle of healing).
-*
-* @param {number} flag SkillTargetSelection.TYPE bits
-*/
-function isSupportSkill(flag) {
-	const TYPE = SkillTargetSelection_default.TYPE;
-	return (flag & (TYPE.FRIEND | TYPE.HOMUN | TYPE.PLACE)) !== 0;
-}
-/**
-* Cast the skill waiting for a target on the entity: through the target
-* selection's own check, as the party window does, or for a ground skill
-* with a click where the entity stands.
-*
-* @return {boolean} whether a skill was waiting
-*/
-function castOn(entity) {
-	const flag = SkillTargetSelection_default.getFlag();
-	if (!flag || !entity) return false;
-	if (flag & SkillTargetSelection_default.TYPE.PLACE) {
-		JoystickMouseCursorAdapter_default.moveMouseToEntity(entity);
-		JoystickMouseCursorAdapter_default.quickCastClick(function() {
-			JoystickMouseCursorAdapter_default.moveMouseToEntity(entity);
-		});
-		return true;
-	}
-	SkillTargetSelection_default.intersectEntityId(entity.GID);
-	SkillTargetSelection_default.remove();
-	return true;
-}
-/**
-* Open the radial with a skill waiting for its member.
-*
-* @param {number} index shortcut slot that cast it (-1: unknown)
-* @param {string} name skill name, shown above the radial
-*/
-function openPending(index, name) {
-	_pending$1 = {
-		index,
-		name: name || ""
-	};
-	_open$2 = true;
-	_highlight = -1;
-	_settled = -1;
-}
-function isPending() {
-	return _pending$1 !== null;
-}
-function pendingIndex() {
-	return _pending$1 ? _pending$1.index : -1;
-}
-/**
-* Drop the pending skill and close the radial.
-*
-* @param {boolean} [cancelSkill] also take the skill off the cursor
-*/
-function cancelPending(cancelSkill) {
-	if (!_pending$1) return;
-	_pending$1 = null;
-	closeRadial();
-	if (cancelSkill && SkillTargetSelection_default.getFlag()) SkillTargetSelection_default.remove();
-}
-/**
-* The same shortcut pressed again while its skill is pending: cast it on
-* yourself.
-*/
-function castPendingOnSelf() {
-	_pending$1 = null;
-	closeRadial();
-	return castOn(SessionStorage_default.Entity);
-}
-function closeRadial() {
-	_open$2 = false;
-	_highlight = -1;
-	_settled = -1;
-}
-/**
-* The segment a stick direction points at. Segment 0 sits at 12 o'clock,
-* the rest follow clockwise.
-*/
-function segmentAt(x, y, count) {
-	const step = 360 / count;
-	const degrees = Math.atan2(y, x) * 180 / Math.PI + 90;
-	return (Math.round(degrees / step) % count + count) % count;
-}
-/**
-* Let the stick go: focus the chosen member, and cast the pending skill
-* on it.
-*/
-function confirm() {
-	const index = _settled !== -1 ? _settled : _highlight;
-	const entry = index !== -1 ? _entries[index] : null;
-	const wasPending = _pending$1;
-	if (!entry || !entry.selectable) {
-		if (wasPending) {
-			_highlight = -1;
-			_settled = -1;
-			return;
-		}
-		closeRadial();
-		return;
-	}
-	setFocus(entry);
-	closeRadial();
-	if (wasPending) {
-		_pending$1 = null;
-		castOn(entry.entity);
-	}
-}
-/**
-* Whether the right stick drives the radial: always while a skill waits
-* for its member, otherwise in Support with the stick in aim mode (in
-* cursor mode it stays the cursor, for the windows).
-*/
-function ownsStick() {
-	return _pending$1 !== null || JoystickTargetCategory_default.isSupport() && JoystickAimMode_default.isActive();
-}
-/**
-* One frame (JoystickCursorMotion), before aim and cursor get the stick.
-*
-* @param {number} x right stick x
-* @param {number} y right stick y
-* @param {number} magnitude stick deflection
-* @param {number} deadzone
-* @return {boolean} true when Support took the right stick this frame
-*/
-function update$2(x, y, magnitude, deadzone) {
-	if (_pending$1 && !SkillTargetSelection_default.getFlag()) {
-		_pending$1 = null;
-		closeRadial();
-	}
-	if (!SessionStorage_default.Entity || !JoystickTargetCategory_default.isSupport() && !_pending$1) {
-		closeRadial();
-		release();
-		return false;
-	}
-	const owns = ownsStick();
-	_entries = getMembers();
-	if (owns) {
-		if (magnitude >= SELECT_MIN && _entries.length > 0) {
-			const index = segmentAt(x, y, _entries.length);
-			const now = performance.now();
-			_open$2 = true;
-			if (index !== _highlight) {
-				_highlight = index;
-				_highlightAt = now;
-			}
-			if (now - _highlightAt >= SETTLE_MS) _settled = _highlight;
-		} else if (magnitude <= deadzone && _open$2 && _highlight !== -1) confirm();
-	} else if (!_pending$1) closeRadial();
-	draw();
-	return owns;
-}
-function getContext() {
-	const scene = Renderer.canvas;
-	if (!scene || !scene.parentNode) return null;
-	if (!_overlay) {
-		_overlay = document.createElement("canvas");
-		_overlay.className = "joystick-support";
-		_overlay.style.position = "absolute";
-		_overlay.style.top = "0px";
-		_overlay.style.left = "0px";
-		_overlay.style.zIndex = 1;
-		_overlay.style.pointerEvents = "none";
-		scene.parentNode.insertBefore(_overlay, scene.nextSibling);
-		_ctx$2 = _overlay.getContext("2d");
-	}
-	const dpr = window.devicePixelRatio || 1;
-	const width = Math.round(Renderer.width * dpr);
-	const height = Math.round(Renderer.height * dpr);
-	if (_overlay.width !== width || _overlay.height !== height) {
-		_overlay.width = width;
-		_overlay.height = height;
-		_overlay.style.width = Renderer.width + "px";
-		_overlay.style.height = Renderer.height + "px";
-	}
-	return _ctx$2;
-}
-function clearOverlay() {
-	if (_drawn && _ctx$2) {
-		_ctx$2.setTransform(1, 0, 0, 1, 0, 0);
-		_ctx$2.clearRect(0, 0, _overlay.width, _overlay.height);
-		_drawn = false;
-	}
-}
-/**
-* Remove everything drawn (Support left, pad gone). The focus stays.
-*/
-function release() {
-	clearOverlay();
-}
-function draw() {
-	clearOverlay();
-	const focus = JoystickTargetCategory_default.isSupport() ? getFocusEntity$1() : null;
-	if (!_open$2 && !focus) return;
-	const ctx = getContext();
-	if (!ctx) return;
-	const dpr = window.devicePixelRatio || 1;
-	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-	if (focus && JoystickAimMode_default.isOnScreen(focus)) {
-		JoystickAimMode_default.drawRing(ctx, focus, .8, FOCUS_RING);
-		_drawn = true;
-	}
-	if (_open$2) drawRadial(ctx);
-}
-function drawRadial(ctx) {
-	const player = SessionStorage_default.Entity;
-	const feet = JoystickAimMode_default.project(player.position[0], player.position[1]);
-	if (!feet || _entries.length === 0) return;
-	const count = _entries.length;
-	const cx = feet[0];
-	const cy = feet[1] - CENTER_LIFT;
-	const outer = R_OUTER_MIN + count * R_OUTER_PER_ENTRY;
-	const step = Math.PI * 2 / count;
-	const gap = GAP_DEG * Math.PI / 180;
-	for (let i = 0; i < count; i++) {
-		const entry = _entries[i];
-		const mid = -Math.PI / 2 + i * step;
-		const a0 = mid - step / 2 + gap / 2;
-		const a1 = mid + step / 2 - gap / 2;
-		const lit = i === _highlight;
-		const rOut = lit ? outer + HIGHLIGHT_GROW : outer;
-		const alpha = entry.selectable ? 1 : .45;
-		wedge(ctx, cx, cy, R_INNER, rOut, a0, a1);
-		ctx.fillStyle = entry.selectable ? "rgba(20, 20, 20, " + .6 * alpha + ")" : "rgba(90, 90, 90, 0.5)";
-		ctx.fill();
-		const ratio = hpRatio(entry);
-		if (ratio > 0) {
-			wedge(ctx, cx, cy, R_INNER, R_INNER + (rOut - R_INNER) * ratio, a0, a1);
-			ctx.fillStyle = "rgba(" + (entry.selectable ? hpColor(ratio) : "160, 160, 160") + ", " + .75 * alpha + ")";
-			ctx.fill();
-		}
-		wedge(ctx, cx, cy, R_INNER, rOut, a0, a1);
-		if (lit) {
-			ctx.lineWidth = 2.5;
-			ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
-		} else {
-			ctx.lineWidth = entry.key === _focusKey ? 2 : 1;
-			ctx.strokeStyle = entry.key === _focusKey ? "rgba(76, 175, 80, 0.95)" : "rgba(0, 0, 0, 0.6)";
-		}
-		ctx.stroke();
-		const ir = (R_INNER + outer) / 2;
-		drawIcon(ctx, entry, cx + Math.cos(mid) * ir, cy + Math.sin(mid) * ir, alpha);
-	}
-	const shown = _highlight !== -1 ? _entries[_highlight] : getFocus();
-	if (shown) {
-		const ratio = hpRatio(shown);
-		let label = shown.name;
-		if (shown.dead) label += " (dead)";
-		else if (ratio >= 0) label += " " + Math.round(ratio * 100) + "%";
-		if (!shown.selectable) label += " - out of sight";
-		drawLabel(ctx, label, cx, cy + outer + HIGHLIGHT_GROW + 14);
-	}
-	if (_pending$1 && _pending$1.name) drawLabel(ctx, _pending$1.name, cx, cy - outer - HIGHLIGHT_GROW - 8);
-	_drawn = true;
-}
-function wedge(ctx, cx, cy, r0, r1, a0, a1) {
-	ctx.beginPath();
-	ctx.arc(cx, cy, r1, a0, a1);
-	ctx.arc(cx, cy, r0, a1, a0, true);
-	ctx.closePath();
-}
-function drawLabel(ctx, text, x, y) {
-	ctx.font = "bold 12px sans-serif";
-	ctx.textAlign = "center";
-	ctx.textBaseline = "middle";
-	ctx.lineWidth = 3;
-	ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
-	ctx.strokeText(text, x, y);
-	ctx.fillStyle = "#fff";
-	ctx.fillText(text, x, y);
-}
-/**
-* The member's head if they are in sight, else their job icon, else (no
-* icon in the data, homunculus, mercenary) a letter.
-*/
-function drawIcon(ctx, entry, x, y, alpha) {
-	let image = null;
-	if (entry.kind === "self" || entry.kind === "party") image = entry.entity && getPortrait(entry.entity) || getJobIcon(entry.job);
-	ctx.save();
-	ctx.globalAlpha = alpha;
-	if (image) ctx.drawImage(image, x - ICON_SIZE / 2, y - ICON_SIZE / 2, ICON_SIZE, ICON_SIZE);
-	else {
-		const letter = entry.kind === "homun" ? "H" : entry.kind === "merc" ? "M" : (entry.name || "?").charAt(0);
-		ctx.font = "bold 15px sans-serif";
-		ctx.textAlign = "center";
-		ctx.textBaseline = "middle";
-		ctx.lineWidth = 3;
-		ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
-		ctx.strokeText(letter, x, y);
-		ctx.fillStyle = entry.kind === "homun" || entry.kind === "merc" ? "#ffd54f" : "#fff";
-		ctx.fillText(letter, x, y);
-	}
-	ctx.restore();
-}
-function getJobIcon(job) {
-	if (job === null || job === void 0) return null;
-	if (_jobIcons.has(job)) {
-		const image = _jobIcons.get(job);
-		return image && image.complete && image.naturalWidth > 0 ? image : null;
-	}
-	_jobIcons.set(job, null);
-	try {
-		Client.loadFile(DB.INTERFACE_PATH + "renewalparty/icon_jobs_" + job + ".bmp", function(url) {
-			const image = new Image();
-			image.src = url;
-			_jobIcons.set(job, image);
-		}, function() {
-			_jobIcons.set(job, null);
-		});
-	} catch {
-		_jobIcons.set(job, null);
-	}
-	return null;
-}
-/**
-* The member's head, drawn from a separate head-only entity with their look
-* (as the guild window draws its members), cropped to what was drawn. Null
-* until the head sprite has loaded.
-*
-* @see docs/reference/guild/member-portrait.md
-*/
-function getPortrait(source) {
-	const look = [
-		source._sex,
-		source._job,
-		source.head,
-		source.headpalette
-	].join(",");
-	let portrait = _portraits.get(source.GID);
-	if (!portrait || portrait.look !== look) {
-		const entity = new Entity();
-		entity.objecttype = Entity.TYPE_PC;
-		entity.files.shadow.spr = null;
-		entity._sex = source._sex;
-		entity._job = source._job;
-		entity._effectiveJob = source._job;
-		entity.head = source.head;
-		entity.headpalette = source.headpalette;
-		entity.direction = 4;
-		entity.headDir = 0;
-		entity.action = entity.ACTION.IDLE;
-		entity.animation = {
-			tick: 0,
-			frame: 0,
-			repeat: true,
-			play: true,
-			next: false,
-			delay: 0,
-			save: false
-		};
-		const canvas = document.createElement("canvas");
-		canvas.width = canvas.height = ICON_SIZE;
-		portrait = {
-			look,
-			entity,
-			canvas,
-			ok: false,
-			triedAt: 0
-		};
-		_portraits.set(source.GID, portrait);
-	}
-	if (!portrait.ok) {
-		const now = performance.now();
-		if (now - portrait.triedAt >= PORTRAIT_RETRY_MS) {
-			portrait.triedAt = now;
-			portrait.ok = renderPortrait(portrait);
-		}
-	}
-	return portrait.ok ? portrait.canvas : null;
-}
-function renderPortrait(portrait) {
-	if (!_scratch) {
-		_scratch = document.createElement("canvas");
-		_scratch.width = _scratch.height = PORTRAIT_BOX;
-		_scratchCtx = _scratch.getContext("2d", { willReadFrequently: true });
-	}
-	_scratchCtx.clearRect(0, 0, PORTRAIT_BOX, PORTRAIT_BOX);
-	const direction = Camera.direction;
-	try {
-		Camera.direction = 4;
-		SpriteRenderer.bind2DContext(_scratchCtx, PORTRAIT_BOX / 2, 65.5);
-		portrait.entity.renderEntity();
-	} catch {
-		return false;
-	} finally {
-		Camera.direction = direction;
-	}
-	const box = opaqueBounds(_scratchCtx, PORTRAIT_BOX);
-	if (!box) return false;
-	const side = Math.max(box.right - box.left + 1, box.bottom - box.top + 1);
-	const sx = Math.max(0, Math.round((box.left + box.right + 1 - side) / 2));
-	const sy = box.top;
-	const ctx = portrait.canvas.getContext("2d");
-	ctx.clearRect(0, 0, ICON_SIZE, ICON_SIZE);
-	ctx.drawImage(_scratch, sx, sy, side, side, 0, 0, ICON_SIZE, ICON_SIZE);
-	return true;
-}
-function opaqueBounds(ctx, side) {
-	const data = ctx.getImageData(0, 0, side, side).data;
-	let top = -1, bottom = -1, left = side, right = -1;
-	for (let y = 0; y < side; ++y) for (let x = 0; x < side; ++x) if (data[(y * side + x) * 4 + 3] > 8) {
-		if (top < 0) top = y;
-		bottom = y;
-		if (x < left) left = x;
-		if (x > right) right = x;
-	}
-	return top < 0 ? null : {
-		top,
-		bottom,
-		left,
-		right
-	};
-}
-var SELECT_MIN, SETTLE_MS, R_INNER, R_OUTER_MIN, R_OUTER_PER_ENTRY, HIGHLIGHT_GROW, GAP_DEG, ICON_SIZE, CENTER_LIFT, HP_GOOD, HP_LOW, COLOR_GOOD, COLOR_MID, COLOR_LOW, FOCUS_RING, PORTRAIT_BOX, PORTRAIT_RETRY_MS, _overlay, _ctx$2, _drawn, _focusKey, _open$2, _highlight, _highlightAt, _settled, _entries, _pending$1, _portraits, _jobIcons, _scratch, _scratchCtx, JoystickSupportMode_default;
-var init_JoystickSupportMode = __esmMin((() => {
-	init_SessionStorage();
-	init_EntityManager();
-	init_Entity$1();
-	init_SpriteRenderer();
-	init_Renderer();
-	init_Camera();
-	init_Client();
-	init_DBManager();
-	init_PartyFriends();
-	init_SkillTargetSelection();
-	init_JoystickTargetCategory();
-	init_JoystickAimMode();
-	init_JoystickMouseCursorAdapter();
-	SELECT_MIN = .5;
-	SETTLE_MS = 100;
-	R_INNER = 30;
-	R_OUTER_MIN = 72;
-	R_OUTER_PER_ENTRY = 2;
-	HIGHLIGHT_GROW = 6;
-	GAP_DEG = 2;
-	ICON_SIZE = 26;
-	CENTER_LIFT = 45;
-	HP_GOOD = .5;
-	HP_LOW = .3;
-	COLOR_GOOD = "76, 175, 80";
-	COLOR_MID = "255, 193, 7";
-	COLOR_LOW = "244, 67, 54";
-	FOCUS_RING = "76, 175, 80";
-	PORTRAIT_BOX = 96;
-	PORTRAIT_RETRY_MS = 500;
-	_overlay = null;
-	_ctx$2 = null;
-	_drawn = false;
-	_focusKey = null;
-	_open$2 = false;
-	_highlight = -1;
-	_highlightAt = 0;
-	_settled = -1;
-	_entries = [];
-	_pending$1 = null;
-	_portraits = /* @__PURE__ */ new Map();
-	_jobIcons = /* @__PURE__ */ new Map();
-	_scratch = null;
-	_scratchCtx = null;
-	JoystickSupportMode_default = {
-		getMembers,
-		getFocus,
-		getFocusEntity: getFocusEntity$1,
-		setFocus,
-		clearFocus,
-		cycle,
-		isSupportSkill,
-		castOn,
-		openPending,
-		isPending,
-		pendingIndex,
-		cancelPending,
-		castPendingOnSelf,
-		ownsStick,
-		update: update$2,
-		release,
-		segmentAt,
-		isRadialOpen: () => _open$2
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickEmoteGrid.js
-/**
-* Sprite indices of every emote, in the Emoticons window's order.
-*/
-function allEmotes() {
-	const list = [];
-	const count = Object.keys(Emotions_default.order).length;
-	for (let i = 0; i < count; i++) if (Emotions_default.order[i] !== void 0) list.push(Emotions_default.order[i]);
-	return list;
-}
-function pageCount() {
-	return Math.max(1, Math.ceil(allEmotes().length / PER_PAGE));
-}
-function getFavorites() {
-	const list = Controls_default.joyEmoteFavorites;
-	return Array.isArray(list) ? list.filter((emo) => Emotions_default.names[emo] !== void 0).slice(0, MAX_FAVORITES) : [];
-}
-/**
-* The grid as rows of sprite indices: the favourites (if any), then the
-* current page.
-*/
-function getRows() {
-	const rows = [];
-	const favorites = getFavorites();
-	if (favorites.length) rows.push(favorites);
-	const page = allEmotes().slice(_page$1 * PER_PAGE, (_page$1 + 1) * PER_PAGE);
-	for (let i = 0; i < page.length; i += COLS) rows.push(page.slice(i, i + COLS));
-	return rows;
-}
-function hasFavoriteRow() {
-	return getFavorites().length > 0;
-}
-function clampSelection() {
-	const rows = getRows();
-	if (rows.length === 0) {
-		_row = 0;
-		_col = 0;
-		return;
-	}
-	_row = Math.max(0, Math.min(_row, rows.length - 1));
-	_col = Math.max(0, Math.min(_col, rows[_row].length - 1));
-}
-/**
-* Sprite index of the selected emote, or -1.
-*/
-function getSelected() {
-	const row = getRows()[_row];
-	return row && row[_col] !== void 0 ? row[_col] : -1;
-}
-/**
-* Send an emote, as typing its /command does.
-*
-* @param {number} emo sprite index
-*/
-function play(emo) {
-	const name = Emotions_default.names[emo];
-	if (name === void 0 || !(name in Emotions_default.commands)) return;
-	const pkt = new PACKET.CZ.REQ_EMOTION();
-	pkt.type = Emotions_default.commands[name];
-	Network.sendPacket(pkt);
-}
-function toggleFavorite(emo) {
-	if (emo < 0) return;
-	const favorites = getFavorites();
-	const at = favorites.indexOf(emo);
-	if (at !== -1) favorites.splice(at, 1);
-	else {
-		if (favorites.length >= MAX_FAVORITES) favorites.pop();
-		favorites.unshift(emo);
-	}
-	const hadRow = hasFavoriteRow();
-	Controls_default.joyEmoteFavorites = favorites;
-	Controls_default.save();
-	if (!hadRow && favorites.length) _row++;
-	else if (hadRow && !favorites.length) _row = Math.max(0, _row - 1);
-	clampSelection();
-}
-function move(direction) {
-	const rows = getRows();
-	if (rows.length === 0) return;
-	switch (direction) {
-		case "up":
-			_row = (_row - 1 + rows.length) % rows.length;
-			break;
-		case "down":
-			_row = (_row + 1) % rows.length;
-			break;
-		case "left":
-			_col = (_col - 1 + rows[_row].length) % rows[_row].length;
-			return;
-		case "right":
-			_col = (_col + 1) % rows[_row].length;
-			return;
-	}
-	_col = Math.min(_col, rows[_row].length - 1);
-}
-function changePage(delta) {
-	const pages = pageCount();
-	_page$1 = (_page$1 + delta + pages) % pages;
-	clampSelection();
-}
-function isActive() {
-	return _open$1;
-}
-/**
-* A fresh press, or a held D-pad direction due to repeat.
-*/
-function fires(buttons, index, repeat) {
-	const state = buttons[index];
-	if (state === "pressed") {
-		if (repeat) {
-			_repeatButton = index;
-			_repeatAt = Date.now() + REPEAT_DELAY_MS;
-		}
-		return true;
-	}
-	if (repeat && state === "holding" && _repeatButton === index && Date.now() >= _repeatAt) {
-		_repeatAt = Date.now() + REPEAT_EVERY_MS;
-		return true;
-	}
-	return false;
-}
-/**
-* Buttons while the grid is open (JoystickButtonInput, every poll).
-*
-* @param {Array<string>} buttons logical button states
-*/
-function handleInput(buttons) {
-	if (!_open$1) return;
-	if (_repeatButton !== -1 && buttons[_repeatButton] === "unpressed") _repeatButton = -1;
-	if (fires(buttons, BTN.B, false) || fires(buttons, BTN.MENU, false)) {
-		close();
-		return;
-	}
-	if (fires(buttons, BTN.A, false)) {
-		play(getSelected());
-		close();
-		return;
-	}
-	if (fires(buttons, BTN.X, false)) play(getSelected());
-	else if (fires(buttons, BTN.Y, false)) toggleFavorite(getSelected());
-	else if (fires(buttons, BTN.LB, false)) changePage(-1);
-	else if (fires(buttons, BTN.RB, false)) changePage(1);
-	else if (fires(buttons, BTN.UP, true)) move("up");
-	else if (fires(buttons, BTN.DOWN, true)) move("down");
-	else if (fires(buttons, BTN.LEFT, true)) move("left");
-	else if (fires(buttons, BTN.RIGHT, true)) move("right");
-	else return;
-	render$9();
-}
-function open() {
-	_open$1 = true;
-	_repeatButton = -1;
-	_row = 0;
-	_col = 0;
-	clampSelection();
-	loadSprites();
-	render$9();
-}
-function close() {
-	_open$1 = false;
-	_repeatButton = -1;
-	if (_root$13) _root$13.style.display = "none";
-}
-function loadSprites() {
-	if (_action$4 || _loading) return;
-	_loading = true;
-	try {
-		Client.loadFiles(["data/sprite/ÀÌÆÑÆ®/emotion.act", "data/sprite/ÀÌÆÑÆ®/emotion.spr"], (act, spr) => {
-			_action$4 = act;
-			_sprite$4 = spr;
-			_loading = false;
-			render$9();
-		});
-	} catch {
-		_loading = false;
-	}
-}
-function getRoot() {
-	if (_root$13 && _root$13.parentNode) return _root$13;
-	if (typeof document === "undefined" || !document.body) return null;
-	_root$13 = document.createElement("div");
-	_root$13.className = "joystick-emote-grid";
-	Object.assign(_root$13.style, {
-		position: "absolute",
-		left: "50%",
-		top: "45%",
-		transform: "translate(-50%, -50%)",
-		zIndex: 1001,
-		pointerEvents: "none",
-		background: "rgba(0, 0, 0, 0.75)",
-		borderRadius: "8px",
-		padding: "8px",
-		fontFamily: "sans-serif",
-		fontSize: "12px",
-		color: "#ddd",
-		display: "none"
-	});
-	document.body.appendChild(_root$13);
-	return _root$13;
-}
-/**
-* Draw one emote into a cell, as the Emoticons window does.
-*/
-function drawEmote(canvas, emo) {
-	if (!_action$4 || !_sprite$4 || !_action$4.actions[emo]) {
-		const ctx = canvas.getContext("2d");
-		ctx.fillStyle = "#bbb";
-		ctx.font = "11px sans-serif";
-		ctx.textAlign = "center";
-		ctx.textBaseline = "middle";
-		ctx.fillText("/" + Emotions_default.names[emo], CELL / 2, CELL / 2);
-		return;
-	}
-	const animations = _action$4.actions[emo].animations;
-	const layers = animations[Math.floor(animations.length / 5)].layers;
-	if (!layers.length) return;
-	SpriteRenderer.bind2DContext(canvas.getContext("2d"), CELL / 2 - layers[0].pos[0], CELL - layers[0].pos[1]);
-	for (let i = 0; i < layers.length; ++i) _entity$2.renderLayer(layers[i], _sprite$4, _sprite$4, 1, [0, 0], false);
-}
-function render$9() {
-	const root = getRoot();
-	if (!root) return;
-	if (!_open$1) {
-		root.style.display = "none";
-		return;
-	}
-	root.textContent = "";
-	root.style.display = "block";
-	const rows = getRows();
-	const favoriteRow = hasFavoriteRow();
-	const favorites = getFavorites();
-	rows.forEach((row, r) => {
-		const line = document.createElement("div");
-		Object.assign(line.style, {
-			display: "flex",
-			gap: "4px",
-			marginBottom: "4px"
-		});
-		if (favoriteRow && r === 0) {
-			line.style.paddingBottom = "4px";
-			line.style.borderBottom = "1px solid rgba(255, 215, 64, 0.5)";
-		}
-		row.forEach((emo, c) => {
-			const canvas = document.createElement("canvas");
-			canvas.width = canvas.height = CELL;
-			canvas.dataset.emote = String(emo);
-			const selected = r === _row && c === _col;
-			Object.assign(canvas.style, {
-				width: "40px",
-				height: "40px",
-				borderRadius: "4px",
-				background: selected ? "rgba(255, 255, 255, 0.25)" : "rgba(255, 255, 255, 0.06)",
-				outline: selected ? "2px solid #fff" : favorites.includes(emo) ? "1px solid #ffd740" : "none"
-			});
-			if (selected) canvas.classList.add("selected");
-			try {
-				drawEmote(canvas, emo);
-			} catch {}
-			line.appendChild(canvas);
-		});
-		root.appendChild(line);
-	});
-	const selected = getSelected();
-	const info = document.createElement("div");
-	info.className = "info";
-	info.style.marginTop = "4px";
-	info.style.textAlign = "center";
-	info.textContent = (selected >= 0 ? "/" + Emotions_default.names[selected] : "") + "  ·  page " + (_page$1 + 1) + "/" + pageCount();
-	root.appendChild(info);
-	const hint = document.createElement("div");
-	hint.style.marginTop = "2px";
-	hint.style.textAlign = "center";
-	hint.style.color = "#999";
-	hint.style.fontSize = "11px";
-	const n = JoystickButtonMap_default.nameOf;
-	hint.textContent = n(BTN.A) + " play · " + n(BTN.X) + " play, stay · " + n(BTN.Y) + " favourite · " + n(BTN.LB) + "/" + n(BTN.RB) + " page · " + n(BTN.B) + " close";
-	root.appendChild(hint);
-}
-function dispose$1() {
-	close();
-	if (_root$13 && _root$13.parentNode) _root$13.parentNode.removeChild(_root$13);
-	_root$13 = null;
-}
-var COLS, PER_PAGE, MAX_FAVORITES, CELL, REPEAT_DELAY_MS, REPEAT_EVERY_MS, BTN, _root$13, _open$1, _page$1, _row, _col, _repeatButton, _repeatAt, _action$4, _sprite$4, _loading, _entity$2, JoystickEmoteGrid_default;
-var init_JoystickEmoteGrid = __esmMin((() => {
-	init_Emotions();
-	init_Client();
-	init_Entity$1();
-	init_SpriteRenderer();
-	init_NetworkManager();
-	init_PacketStructure();
-	init_Controls();
-	init_JoystickButtonMap();
-	COLS = 6;
-	PER_PAGE = 30;
-	MAX_FAVORITES = COLS;
-	CELL = 40;
-	REPEAT_DELAY_MS = 350;
-	REPEAT_EVERY_MS = 120;
-	BTN = {
-		A: 0,
-		B: 1,
-		X: 2,
-		Y: 3,
-		LB: 4,
-		RB: 5,
-		MENU: 9,
-		UP: 12,
-		DOWN: 13,
-		LEFT: 14,
-		RIGHT: 15
-	};
-	_root$13 = null;
-	_open$1 = false;
-	_page$1 = 0;
-	_row = 0;
-	_col = 0;
-	_repeatButton = -1;
-	_repeatAt = 0;
-	_action$4 = null;
-	_sprite$4 = null;
-	_loading = false;
-	_entity$2 = new Entity();
-	JoystickEmoteGrid_default = {
-		open,
-		close,
-		isActive,
-		handleInput,
-		getSelected,
-		getRows,
-		dispose: dispose$1
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickInteractionService.js
-var SELF_CAST_HOLD_MS, HOLD_POLL_MS, JoystickInteractionService_default;
-var init_JoystickInteractionService = __esmMin((() => {
-	init_ShortCut();
-	init_Inventory();
-	init_ItemType();
-	init_JoystickCharacterControl();
-	init_JoystickTargetService();
-	init_JoystickMouseCursorAdapter();
-	init_Controls();
-	init_JoystickSelectionUI();
-	init_JoystickInputService();
-	init_DBManager();
-	init_SkillInfo();
-	init_JoystickShortcutMapper();
-	init_JoystickAimMode();
-	init_UIManager();
-	init_JoystickMenuNavigation();
-	init_SessionStorage();
-	init_SkillTargetSelection();
-	init_JoystickTargetCategory();
-	init_JoystickSupportMode();
-	init_JoystickEmoteGrid();
-	SELF_CAST_HOLD_MS = 300;
-	HOLD_POLL_MS = 30;
-	JoystickInteractionService_default = {
-		prepare: function() {},
-		dispose: function() {},
-		cancelQuick: false,
-		executeShortcut: function(index, group) {
-			const shortcut = ShortCut_default.getList()[index];
-			if (!shortcut) return;
-			if (JoystickSupportMode_default.isPending()) {
-				if (JoystickSupportMode_default.pendingIndex() === index) {
-					JoystickSupportMode_default.castPendingOnSelf();
-					return;
-				}
-				JoystickSupportMode_default.cancelPending(false);
-			}
-			if (!shortcut.isSkill) {
-				const item = InventoryController.getUI().getItemById(shortcut.ID);
-				if (!item || item.count === 0) return;
-			} else if (Controls_default.attackTargetMode) {
-				const targetEntity = JoystickTargetService_default.getEntity();
-				if (targetEntity) JoystickMouseCursorAdapter_default.moveMouseToEntity(targetEntity);
-			}
-			ShortCut_default.onShortCut({ cmd: "EXECUTE" + index });
-			if (this.watchSelfCastHold(index)) return;
-			const quickCast = JoystickAimMode_default.quickCastMode();
-			if (quickCast === JoystickAimMode_default.QUICK_CAST.INSTANT) {
-				if (!this.castInSupport(index) && !this.castAtFocus()) JoystickMouseCursorAdapter_default.quickCastClick(function() {
-					JoystickTargetService_default.snapCursorToFocus();
-				});
-			} else if (quickCast === JoystickAimMode_default.QUICK_CAST.RELEASE) {
-				this.cancelQuick = false;
-				const waitforRelease = () => {
-					setTimeout(() => {
-						const buttons = JoystickInputService_default.buttonStates;
-						if (JoystickShortcutMapper_default.getGroup(buttons) !== group) {
-							if (!this.castInSupport(index) && !this.castOnAim()) JoystickMouseCursorAdapter_default.quickCastClick();
-						} else if (!this.cancelQuick) waitforRelease();
-					}, 50);
-				};
-				waitforRelease();
-			}
-		},
-		/**
-		* Support category, a skill waiting for a friend or a place: cast it on
-		* the focused member (a ground skill where they stand), or with nobody
-		* focused open the radial with the skill pending. Enemy-only skills are
-		* left to the mob target.
-		*
-		* @param {number} index shortcut slot that cast the skill, -1 if unknown
-		* @return {boolean} whether Support took the skill
-		*/
-		castInSupport: function(index) {
-			if (!JoystickTargetCategory_default.isSupport()) return false;
-			const flag = SkillTargetSelection_default.getFlag();
-			if (!flag) return false;
-			if (!JoystickSupportMode_default.isSupportSkill(flag)) {
-				if (flag & SkillTargetSelection_default.TYPE.ENEMY && !JoystickTargetService_default.getAttackableFocus()) {
-					const mob = JoystickTargetService_default.getEntity();
-					if (mob && JoystickTargetService_default.isAttackable(mob)) {
-						SkillTargetSelection_default.intersectEntityId(mob.GID);
-						SkillTargetSelection_default.remove();
-						return true;
-					}
-				}
-				return false;
-			}
-			const member = JoystickSupportMode_default.getFocusEntity();
-			if (member) return JoystickSupportMode_default.castOn(member);
-			const shortcut = index >= 0 ? ShortCut_default.getList()[index] : null;
-			const info = shortcut && shortcut.isSkill ? SkillInfo[shortcut.ID] : null;
-			JoystickSupportMode_default.openPending(index, info ? info.SkillName : "");
-			return true;
-		},
-		/**
-		* Support category, a support skill waiting for its target: decide when
-		* the face button that cast it is let go. Released within
-		* SELF_CAST_HOLD_MS it goes the usual way (castInSupport: the focused
-		* member, or the radial); still held then, it is cast on yourself and
-		* the focus stays where it was.
-		*
-		* Quick-Cast Off is left alone: there the skill waits for A anyway.
-		*
-		* @param {number} index shortcut slot that cast the skill
-		* @return {boolean} whether the watch took over the cast
-		*/
-		watchSelfCastHold: function(index) {
-			if (!JoystickTargetCategory_default.isSupport() || JoystickAimMode_default.quickCastMode() === JoystickAimMode_default.QUICK_CAST.OFF) return false;
-			const flag = SkillTargetSelection_default.getFlag();
-			if (!flag || !JoystickSupportMode_default.isSupportSkill(flag)) return false;
-			const states = JoystickInputService_default.buttonStates || [];
-			let face = -1;
-			for (let i = 0; i < 4; i++) if (states[i] && states[i] !== "unpressed") {
-				face = i;
-				break;
-			}
-			if (face === -1) {
-				this.castInSupport(index);
-				return true;
-			}
-			const startedAt = Date.now();
-			const watch = () => {
-				setTimeout(() => {
-					if (!SkillTargetSelection_default.getFlag()) return;
-					const held = (JoystickInputService_default.buttonStates || [])[face];
-					if (!held || held === "unpressed") this.castInSupport(index);
-					else if (Date.now() - startedAt >= SELF_CAST_HOLD_MS) JoystickSupportMode_default.castOn(SessionStorage_default.Entity);
-					else watch();
-				}, HOLD_POLL_MS);
-			};
-			watch();
-			return true;
-		},
-		/**
-		* Cast the skill waiting for a target on the focused mob, if it takes an
-		* enemy target. Goes through SkillTargetSelection's own entity check, as
-		* the party window does for its members.
-		*
-		* A focus that is not an attackable target (an NPC or friendly player
-		* the player clicked, or a stale focus from the previous map) is left
-		* alone and false returned, so the caller's quick-cast click runs
-		* instead of the skill being cancelled on a target it refuses.
-		*
-		* @return {boolean} whether the skill was cast
-		*/
-		castAtFocus: function() {
-			const flag = SkillTargetSelection_default.getFlag();
-			if (!(flag & SkillTargetSelection_default.TYPE.ENEMY) || flag & SkillTargetSelection_default.TYPE.PLACE) return false;
-			const focus = JoystickTargetService_default.getAttackableFocus();
-			if (!focus) return false;
-			SkillTargetSelection_default.intersectEntityId(focus.GID);
-			SkillTargetSelection_default.remove();
-			return true;
-		},
-		/**
-		* A skill waits for a target while the right stick aims: cast it on the
-		* aimed target. The aim only moves the cursor onto the target while the
-		* stick is pushed, so a click at the cursor lands where the mob stood
-		* when the stick was let go; it has usually walked on, the click hits
-		* the ground, and the skill is dropped without a word.
-		*
-		* Enemy skills go straight to the target (castAtFocus). Anything else
-		* (ground skills, a refused focus) gets the cursor put on the target,
-		* and the caller's click follows. Over a window (a party member to
-		* heal, say) nothing changes: the click is meant for the window.
-		*
-		* @return {boolean} whether the skill was cast; false: click as usual
-		*/
-		castOnAim: function() {
-			if (!JoystickAimMode_default.isActive() || !SkillTargetSelection_default.getFlag()) return false;
-			const el = JoystickMouseCursorAdapter_default.elementAtCursor();
-			if (el && el.tagName.toLowerCase() !== "canvas") return false;
-			if (this.castAtFocus()) return true;
-			JoystickTargetService_default.snapCursorToFocus();
-			return false;
-		},
-		openSelectionWindow: function(draggableElement) {
-			const index = parseInt(draggableElement.getAttribute("data-index"), 10);
-			const isSkill = draggableElement.closest(".skill");
-			let itemData;
-			if (!isSkill) {
-				const item = InventoryController.getUI().getItemByIndex(index);
-				if (item) {
-					if (item.type === ItemType_default.UNKNOWN || item.type === ItemType_default.ETC || item.type === ItemType_default.CARD || item.type === ItemType_default.PETEGG || item.type === ItemType_default.PETARMOR) return false;
-					itemData = {
-						isSkill: false,
-						ID: item.ITID,
-						value: item.count,
-						name: DB.getItemName(item)
-					};
-				}
-			} else {
-				const skill = ShortCut_default.getSkillById(index);
-				if (skill) itemData = {
-					isSkill: true,
-					ID: skill.SKID,
-					value: skill.selectedLevel ? skill.selectedLevel : skill.level,
-					name: SkillInfo[skill.SKID].SkillName
-				};
-			}
-			if (itemData) {
-				JoystickSelectionUI_default.showSelection(itemData);
-				return true;
-			}
-			return false;
-		},
-		/**
-		* A. With an NPC or portal selected (D-pad cycle / aim in the "NPCs and
-		* portals" mode) and the cursor over the map, a press talks to the NPC
-		* or walks into the portal, wherever the cursor is, and clears the
-		* selection so the next A is an ordinary click again (NPC dialogue
-		* buttons, for one). Otherwise A is a left click at the cursor; with a
-		* skill waiting for a target in aim mode, see castOnAim().
-		*
-		* @param {boolean} holding A held rather than freshly pressed
-		*/
-		leftClick: function(holding) {
-			if (!holding && this.castOnAim()) return;
-			if (!holding && SkillTargetSelection_default.getFlag()) {
-				const el = JoystickMouseCursorAdapter_default.elementAtCursor();
-				if ((!el || el.tagName.toLowerCase() === "canvas") && this.castInSupport(-1)) return;
-			}
-			const target = JoystickTargetService_default.getInteractTarget();
-			if (target && !holding) {
-				const el = JoystickMouseCursorAdapter_default.elementAtCursor();
-				if (!el || el.tagName.toLowerCase() === "canvas") {
-					SessionStorage_default.moveAction = null;
-					JoystickTargetService_default.releaseMark();
-					target.onMouseDown();
-					return;
-				}
-			}
-			JoystickMouseCursorAdapter_default.leftClick(holding);
-		},
-		/**
-		* Open or close a window, as its keyboard shortcut does (Alt+E, ...).
-		*
-		* @param {string} name UIManager component name
-		*/
-		toggleWindow: function(name) {
-			try {
-				const component = UIManager.getComponent(name);
-				if (component && component.onShortCut) component.onShortCut({ cmd: "TOGGLE" });
-			} catch {}
-		},
-		rightClick: function(holding) {
-			if (!holding && JoystickSupportMode_default.isPending()) {
-				JoystickSupportMode_default.cancelPending(true);
-				return;
-			}
-			JoystickMouseCursorAdapter_default.rightClick(holding);
-		},
-		/**
-		* Menu hold: the emote grid.
-		*/
-		openEmoteGrid: function() {
-			JoystickEmoteGrid_default.open();
-		},
-		isEmoteGridOpen: function() {
-			return JoystickEmoteGrid_default.isActive();
-		},
-		emoteGridInput: function(buttons) {
-			JoystickEmoteGrid_default.handleInput(buttons);
-		},
-		/**
-		* L3 hold: sit down or stand up.
-		*/
-		toggleSit: function() {
-			JoystickCharacterControl_default.toggleSit();
-		},
-		/**
-		* L3 tap: drop whatever is targeted, any category: the mob focus, a
-		* marked item / NPC / portal, the support focus, a pending skill.
-		*/
-		clearTarget: function() {
-			JoystickTargetService_default.clearTarget();
-			JoystickSupportMode_default.clearFocus();
-			JoystickSupportMode_default.cancelPending(true);
-		},
-		/**
-		* RS hold: the virtual cursor back to the middle of the screen, onto the
-		* character.
-		*/
-		recenterCursor: function() {
-			JoystickMouseCursorAdapter_default.recenter();
-		},
-		pickUpItem: function() {
-			JoystickCharacterControl_default.pickUp();
-		},
-		/**
-		* @param {boolean} repeat true while X is held (see Character.attack)
-		* @return {boolean} whether an attack was sent
-		*/
-		attackTargeted: function(repeat) {
-			const sent = JoystickCharacterControl_default.attack(repeat);
-			if (sent) JoystickTargetService_default.snapCursorToFocus();
-			return sent;
-		},
-		releaseStick: function() {
-			JoystickCharacterControl_default.releaseStick();
-		},
-		moveCursor: function(dx, dy) {
-			JoystickMouseCursorAdapter_default.move(dx, dy);
-		},
-		cameraZoom: function(zoom) {
-			JoystickMouseCursorAdapter_default.changeCameraZoom(zoom);
-		},
-		cameraAngle: function(angle) {
-			JoystickMouseCursorAdapter_default.changeCameraAngle(angle);
-		},
-		escape: function() {
-			JoystickMouseCursorAdapter_default.esc();
-		},
-		enter: function() {
-			JoystickMouseCursorAdapter_default.enter();
-		},
-		showinfo: function() {
-			return JoystickMouseCursorAdapter_default.contextMenu();
-		},
-		navigateDpad: function(direction) {
-			if (JoystickMenuNavigation_default.navigate(direction)) return true;
-			if ((direction === "up" || direction === "down") && !this._uiWantsArrows()) {
-				JoystickTargetCategory_default.step(direction);
-				return true;
-			}
-			return JoystickMouseCursorAdapter_default.navigateDraggableItems(direction);
-		},
-		/**
-		* Whether D-pad up / down belong to the UI rather than the category
-		* switch: not in a map yet, the cursor on an item or skill grid, an NPC
-		* menu open, or typing in a field.
-		*/
-		_uiWantsArrows: function() {
-			if (!SessionStorage_default.Entity) return true;
-			const el = JoystickMouseCursorAdapter_default.elementAtCursor();
-			if (el && el.closest && el.closest(".item, .skill")) return true;
-			const active = typeof document !== "undefined" ? document.activeElement : null;
-			if (active && (active.isContentEditable || [
-				"input",
-				"textarea",
-				"select"
-			].includes(active.tagName.toLowerCase()))) return true;
-			try {
-				const npcMenu = UIManager.getComponent("NpcMenu");
-				const host = npcMenu && npcMenu._host;
-				if (host && host.parentNode && host.style.display !== "none") return true;
-			} catch {}
-			return false;
-		},
-		/**
-		* D-pad left/right. If the virtual cursor is parked over an item or
-		* skill container, keep today's grid navigation so inventory nav still
-		* works with the D-pad. Over the world, cycle the targeted mob.
-		*
-		* @param {string} direction 'next' or 'prev'
-		*/
-		cycleTarget: function(direction) {
-			if (JoystickMenuNavigation_default.navigate(direction === "next" ? "right" : "left")) return;
-			const el = JoystickMouseCursorAdapter_default.elementAtCursor();
-			if (el && el.closest(".item, .skill")) {
-				this.navigateDpad(direction === "next" ? "right" : "left");
-				return;
-			}
-			if (JoystickTargetCategory_default.isSupport()) {
-				JoystickSupportMode_default.cycle(direction);
-				return;
-			}
-			JoystickTargetService_default.cycle(direction);
-		},
-		/**
-		* Right stick: aim line <-> virtual cursor. Back in cursor mode the
-		* cursor returns to the character, unless it was left on a window (the
-		* inventory, say), where it stays.
-		*/
-		toggleStickMode: function() {
-			JoystickAimMode_default.toggle();
-			if (!JoystickAimMode_default.isActive()) {
-				const el = JoystickMouseCursorAdapter_default.elementAtCursor();
-				if (!el || el.tagName.toLowerCase() === "canvas") JoystickMouseCursorAdapter_default.recenter();
-			}
-		},
-		moveCharacter: function(x, y) {
-			JoystickCharacterControl_default.move(x, y);
-		}
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickButtonInput.js
-function setClickLock() {
-	clickLock = true;
-	setTimeout(function() {
-		clickLock = false;
-	}, lockTimeout);
-}
-var clickLock, lockTimeout, CAMERA_STEP_SMALL, CAMERA_STEP_LARGE, STICK_HOLD_MS, rsDownAt, rsHoldFired, lsDownAt, lsHoldFired, menuDownAt, menuHoldFired, ButtonInput;
-var init_JoystickButtonInput = __esmMin((() => {
-	init_JoystickShortcutMapper();
-	init_JoystickInteractionService();
-	init_JoystickSetManager();
-	init_JoystickUIRenderer();
-	init_JoystickSelectionUI();
-	init_Controls();
-	clickLock = false;
-	lockTimeout = 200;
-	CAMERA_STEP_SMALL = 45;
-	CAMERA_STEP_LARGE = 90;
-	STICK_HOLD_MS = 400;
-	rsDownAt = 0;
-	rsHoldFired = false;
-	lsDownAt = 0;
-	lsHoldFired = false;
-	menuDownAt = 0;
-	menuHoldFired = false;
-	ButtonInput = {
-		update: function(buttons) {
-			if (JoystickInteractionService_default.isEmoteGridOpen()) {
-				menuDownAt = buttons[9] !== "unpressed" ? menuDownAt || Date.now() : 0;
-				menuHoldFired = true;
-				JoystickInteractionService_default.emoteGridInput(buttons);
-				return true;
-			}
-			let stickButton = this._handleRightStickButton(buttons);
-			stickButton = this._handleLeftStickButton(buttons) || stickButton;
-			stickButton = this._handleMenuButton(buttons) || stickButton;
-			if (clickLock) return stickButton;
-			if (JoystickSelectionUI_default.active()) {
-				JoystickSelectionUI_default.handleGamepadInput(buttons);
-				return false;
-			}
-			let pressed = false;
-			JoystickUIRenderer_default.updateVisuals(buttons);
-			pressed |= this._handleSpecial(buttons);
-			pressed |= this._handleSetChange(buttons);
-			if (!pressed) {
-				pressed |= this._handleWorldActions(buttons);
-				pressed |= this._handleShortcuts(buttons);
-			}
-			return pressed;
-		},
-		_handleWorldActions: function(btn) {
-			let pressed = false;
-			if (JoystickShortcutMapper_default.getGroup(btn) !== "") return false;
-			if (btn[0] !== "unpressed") {
-				JoystickInteractionService_default.leftClick(btn[0] === "holding");
-				pressed = true;
-			}
-			if (btn[1] !== "unpressed") {
-				JoystickInteractionService_default.rightClick(btn[1] === "holding");
-				pressed = true;
-			}
-			if (btn[2] !== "unpressed" && JoystickInteractionService_default.attackTargeted(btn[2] === "holding")) pressed = true;
-			if (btn[3] === "pressed") {
-				JoystickInteractionService_default.pickUpItem();
-				pressed = true;
-			}
-			if (pressed) setClickLock();
-			return pressed;
-		},
-		_handleRightStickButton: function(btn) {
-			const state = btn[11];
-			if (!Controls_default.joyAimEnabled) {
-				rsDownAt = 0;
-				if (state === "pressed") JoystickInteractionService_default.recenterCursor();
-				return state !== "unpressed";
-			}
-			if (state !== "unpressed") {
-				if (!rsDownAt) {
-					rsDownAt = Date.now();
-					rsHoldFired = false;
-				} else if (!rsHoldFired && Date.now() - rsDownAt >= STICK_HOLD_MS) {
-					JoystickInteractionService_default.recenterCursor();
-					rsHoldFired = true;
-				}
-				return true;
-			}
-			if (rsDownAt) {
-				if (!rsHoldFired && !JoystickSelectionUI_default.active()) JoystickInteractionService_default.toggleStickMode();
-				rsDownAt = 0;
-				return true;
-			}
-			return false;
-		},
-		/**
-		* LS click. A tap clears the target, whatever it is; a hold sits down
-		* or stands up, once per hold. Not while the selection window is open:
-		* it has the pad then.
-		*/
-		_handleLeftStickButton: function(btn) {
-			if (btn[10] !== "unpressed") {
-				if (!lsDownAt) {
-					lsDownAt = Date.now();
-					lsHoldFired = false;
-				} else if (!lsHoldFired && Date.now() - lsDownAt >= STICK_HOLD_MS) {
-					if (!JoystickSelectionUI_default.active()) JoystickInteractionService_default.toggleSit();
-					lsHoldFired = true;
-				}
-				return true;
-			}
-			if (lsDownAt) {
-				if (!lsHoldFired && !JoystickSelectionUI_default.active()) JoystickInteractionService_default.clearTarget();
-				lsDownAt = 0;
-				return true;
-			}
-			return false;
-		},
-		/**
-		* Menu on its own (View + Menu is Escape, in _handleSpecial). A tap
-		* presses Enter on release, a hold opens the emote grid.
-		*/
-		_handleMenuButton: function(btn) {
-			const state = btn[9];
-			if (btn[8] !== "unpressed") {
-				menuDownAt = 0;
-				return false;
-			}
-			if (state !== "unpressed") {
-				if (!menuDownAt) {
-					menuDownAt = Date.now();
-					menuHoldFired = false;
-				} else if (!menuHoldFired && Date.now() - menuDownAt >= STICK_HOLD_MS) {
-					menuHoldFired = true;
-					if (!JoystickSelectionUI_default.active()) JoystickInteractionService_default.openEmoteGrid();
-				}
-				return true;
-			}
-			if (menuDownAt) {
-				if (!menuHoldFired && !JoystickSelectionUI_default.active()) JoystickInteractionService_default.enter();
-				menuDownAt = 0;
-				return true;
-			}
-			return false;
-		},
-		_handleSetChange: function(btn) {
-			const l2 = btn[6] === "holding";
-			const r2 = btn[7] === "holding";
-			if (l2 && r2 && btn[8] === "unpressed") {
-				JoystickSetManager_default.toggle();
-				JoystickUIRenderer_default.updateSetIndicator();
-				JoystickUIRenderer_default.sync();
-				setClickLock();
-				return true;
-			}
-			return false;
-		},
-		_handleSpecial: function(buttons) {
-			let pressed = false;
-			if (buttons[8] === "holding") {
-				if (buttons[12] !== "unpressed" || buttons[13] !== "unpressed" || buttons[14] !== "unpressed" || buttons[15] !== "unpressed") return true;
-				const turn = this._cameraStep(buttons);
-				if (turn) {
-					JoystickInteractionService_default.cameraAngle(turn);
-					return true;
-				}
-				if (buttons[9] !== "unpressed") {
-					JoystickInteractionService_default.escape();
-					pressed = true;
-				} else if (buttons[0] === "pressed") {
-					JoystickInteractionService_default.toggleWindow("Inventory");
-					pressed = true;
-				} else if (buttons[1] === "pressed") {
-					JoystickInteractionService_default.toggleWindow("Equipment");
-					pressed = true;
-				} else if (buttons[2] === "pressed") {
-					JoystickInteractionService_default.toggleWindow("SkillList");
-					pressed = true;
-				} else if (buttons[3] === "pressed") {
-					JoystickInteractionService_default.toggleWindow("WinStats");
-					pressed = true;
-				} else pressed = JoystickInteractionService_default.showinfo();
-				if (pressed) {
-					setClickLock();
-					return pressed;
-				}
-			}
-			if (buttons[12] !== "unpressed") {
-				JoystickInteractionService_default.navigateDpad("up");
-				pressed = true;
-			} else if (buttons[13] !== "unpressed") {
-				JoystickInteractionService_default.navigateDpad("down");
-				pressed = true;
-			} else if (buttons[14] !== "unpressed") {
-				JoystickInteractionService_default.cycleTarget("prev");
-				pressed = true;
-			} else if (buttons[15] !== "unpressed") {
-				JoystickInteractionService_default.cycleTarget("next");
-				pressed = true;
-			}
-			if (pressed) setClickLock();
-			return pressed;
-		},
-		/**
-		* Degrees a fresh LB / RB / LT / RT press turns the camera (with View
-		* held), or 0.
-		*/
-		_cameraStep: function(btn) {
-			if (btn[4] === "pressed") return -45;
-			if (btn[5] === "pressed") return CAMERA_STEP_SMALL;
-			if (btn[6] === "pressed") return -90;
-			if (btn[7] === "pressed") return CAMERA_STEP_LARGE;
-			return 0;
-		},
-		_handleShortcuts: function(btn) {
-			const idx = JoystickShortcutMapper_default.getShortcutIndex(btn);
-			if (idx !== -1) {
-				JoystickInteractionService_default.executeShortcut(idx, JoystickShortcutMapper_default.getGroup(btn));
-				setClickLock();
-				return true;
-			}
-			return false;
-		}
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickAxisInput.js
-function isRebound(x, y) {
-	if (!lastMove || Date.now() - lastMoveAt > REBOUND_MS) return false;
-	return Math.hypot(x, y) < REBOUND_MAX && x * lastMove[0] + y * lastMove[1] < 0;
-}
-var REBOUND_MS, REBOUND_MAX, MOVE_MIN, lastMove, lastMoveAt, JoystickAxisInput_default;
-var init_JoystickAxisInput = __esmMin((() => {
-	init_JoystickInteractionService();
-	init_Controls();
-	init_JoystickUIRenderer();
-	REBOUND_MS = 250;
-	REBOUND_MAX = .6;
-	MOVE_MIN = .5;
-	lastMove = null;
-	lastMoveAt = 0;
-	JoystickAxisInput_default = { update: function(axes) {
-		let active = false;
-		let lx = axes[0];
-		let ly = axes[1];
-		if (Controls_default.joyReverseStick && axes.length >= 4) {
-			lx = axes[2];
-			ly = axes[3];
-		}
-		const magnitude = Math.hypot(lx, ly);
-		if (magnitude >= Math.max(Controls_default.joyDeadline, MOVE_MIN) && !isRebound(lx, ly)) {
-			lastMove = [lx, ly];
-			lastMoveAt = Date.now();
-			JoystickInteractionService_default.moveCharacter(lx / magnitude, -ly / magnitude);
-			JoystickInteractionService_default.cancelQuick = true;
-			active = true;
-		} else JoystickInteractionService_default.releaseStick();
-		if (axes.length >= 4) {
-			let rx = axes[2];
-			let ry = axes[3];
-			if (Controls_default.joyReverseStick) {
-				rx = axes[0];
-				ry = axes[1];
-			}
-			if (Math.abs(rx) > Controls_default.joyDeadline || Math.abs(ry) > Controls_default.joyDeadline) active = true;
-		}
-		if (active) JoystickUIRenderer_default.show();
-		return active;
-	} };
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickStickFilter.js
-/**
-* Subtract the rest position, stretching each side back to the full range.
-*
-* @param {number} value raw axis value, -1..1
-* @param {number} center measured rest position
-* @return {number}
-*/
-function recenter(value, center) {
-	if (!center) return value;
-	const v = value - center;
-	const range = v > 0 ? 1 - center : 1 + center;
-	return Math.max(-1, Math.min(1, v / range));
-}
-/**
-* Treat values within the threshold as centre; rescale the rest to 0..1.
-*
-* @param {number} value axis value, -1..1
-* @param {number} threshold 0..1
-* @return {number}
-*/
-function applyThreshold(value, threshold) {
-	if (!threshold || threshold <= 0) return value;
-	const magnitude = Math.abs(value);
-	if (magnitude <= threshold || threshold >= 1) return 0;
-	return Math.sign(value) * (magnitude - threshold) / (1 - threshold);
-}
-/**
-* The stored rest positions, or null when not calibrated.
-*
-* @return {Array<number>|null}
-*/
-function getCenter() {
-	const center = Controls_default.joyStickCenter;
-	if (!Array.isArray(center) || center.length !== AXIS_COUNT || !center.every(Number.isFinite)) return null;
-	return center;
-}
-/**
-* Cleaned copy of a gamepad's axes. Axes past the two sticks pass through.
-*
-* @param {ArrayLike<number>} axes Gamepad.axes
-* @return {Array<number>}
-*/
-function filterAxes(axes) {
-	const center = getCenter();
-	const out = Array.from(axes);
-	for (let i = 0; i < Math.min(AXIS_COUNT, out.length); i++) {
-		const value = recenter(out[i], center ? center[i] : 0);
-		out[i] = applyThreshold(value, Controls_default[DRIFT_KEYS[i]]);
-	}
-	return out;
-}
-/**
-* Average rest position per axis from calibration samples, or null if a
-* stick was touched while they were taken.
-*
-* @param {Array<Array<number>>} samples raw axes, one array per read
-* @return {Array<number>|null}
-*/
-function computeCenter(samples) {
-	if (!samples.length) return null;
-	const center = [];
-	for (let i = 0; i < AXIS_COUNT; i++) {
-		let sum = 0;
-		for (const sample of samples) {
-			const value = sample[i] || 0;
-			if (Math.abs(value) > CALIBRATE_MAX_OFFSET) return null;
-			sum += value;
-		}
-		center.push(sum / samples.length);
-	}
-	return center;
-}
-function getGamepad$1() {
-	const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-	for (let i = 0; i < gamepads.length; i++) if (gamepads[i]) return gamepads[i];
-	return null;
-}
-/**
-* Stop a running calibration without saving.
-*/
-function cancelCalibration() {
-	if (_calibration) {
-		clearInterval(_calibration);
-		_calibration = null;
-	}
-}
-/**
-* Read both sticks for a second while the player leaves them alone, and
-* store their rest positions.
-*
-* @param {function(string)} done called with 'ok', 'moved' (a stick was
-*   touched, nothing saved) or 'nopad'
-*/
-function calibrate(done) {
-	cancelCalibration();
-	if (!getGamepad$1()) {
-		done("nopad");
-		return;
-	}
-	const samples = [];
-	const startedAt = Date.now();
-	_calibration = setInterval(function() {
-		const gp = getGamepad$1();
-		if (!gp) {
-			cancelCalibration();
-			done("nopad");
-			return;
-		}
-		samples.push(Array.from(gp.axes).slice(0, AXIS_COUNT));
-		if (Date.now() - startedAt < CALIBRATE_DURATION_MS) return;
-		cancelCalibration();
-		const center = computeCenter(samples);
-		if (!center) {
-			done("moved");
-			return;
-		}
-		Controls_default.joyStickCenter = center;
-		Controls_default.save();
-		done("ok");
-	}, CALIBRATE_INTERVAL_MS);
-}
-/**
-* Forget the calibration.
-*/
-function resetCalibration() {
-	cancelCalibration();
-	Controls_default.joyStickCenter = null;
-	Controls_default.save();
-}
-var DRIFT_KEYS, AXIS_COUNT, CALIBRATE_INTERVAL_MS, CALIBRATE_DURATION_MS, CALIBRATE_MAX_OFFSET, _calibration, JoystickStickFilter_default;
-var init_JoystickStickFilter = __esmMin((() => {
-	init_Controls();
-	DRIFT_KEYS = [
-		"joyDriftLX",
-		"joyDriftLY",
-		"joyDriftRX",
-		"joyDriftRY"
-	];
-	AXIS_COUNT = DRIFT_KEYS.length;
-	CALIBRATE_INTERVAL_MS = 50;
-	CALIBRATE_DURATION_MS = 1e3;
-	CALIBRATE_MAX_OFFSET = .5;
-	_calibration = null;
-	JoystickStickFilter_default = {
-		DRIFT_KEYS,
-		recenter,
-		applyThreshold,
-		filterAxes,
-		computeCenter,
-		getCenter,
-		calibrate,
-		cancelCalibration,
-		resetCalibration
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickInputService.js
-var hideTimeout, hideTimeoutHandle, JoystickInputService_default;
-var init_JoystickInputService = __esmMin((() => {
-	init_JoystickButtonInput();
-	init_JoystickAxisInput();
-	init_JoystickUIRenderer();
-	init_Controls();
-	init_JoystickButtonMap();
-	init_JoystickStickFilter();
-	hideTimeout = false;
-	hideTimeoutHandle = null;
-	JoystickInputService_default = {
-		active: false,
-		buttonStates: {},
-		_rawStates: [],
-		_listening: false,
-		prepare: function() {
-			if (this._listening) return;
-			this._boundOnConnect = this._onConnect.bind(this);
-			this._boundOnDisconnect = this._onDisconnect.bind(this);
-			window.addEventListener("gamepadconnected", this._boundOnConnect);
-			window.addEventListener("gamepaddisconnected", this._boundOnDisconnect);
-			this._listening = true;
-		},
-		dispose: function() {
-			window.removeEventListener("gamepadconnected", this._boundOnConnect);
-			window.removeEventListener("gamepaddisconnected", this._boundOnDisconnect);
-			this._listening = false;
-			if (hideTimeoutHandle) {
-				clearTimeout(hideTimeoutHandle);
-				hideTimeoutHandle = null;
-			}
-			hideTimeout = false;
-			this.active = false;
-			this.buttonStates = {};
-			this._rawStates = [];
-		},
-		getStates: function(gp) {
-			if (!gp) return null;
-			const states = {
-				buttons: [],
-				raw: [],
-				axes: []
-			};
-			const self = this;
-			gp.buttons.forEach(function(btn, index) {
-				const isPressed = btn.pressed;
-				const prevState = self._rawStates[index] || "unpressed";
-				let newState = "unpressed";
-				if (isPressed) newState = prevState === "unpressed" ? "pressed" : "holding";
-				self._rawStates[index] = newState;
-				states.raw[index] = newState;
-			});
-			states.buttons = JoystickButtonMap_default.toLogical(states.raw);
-			self.buttonStates = states.buttons;
-			JoystickStickFilter_default.filterAxes(gp.axes).forEach(function(axis, index) {
-				states.axes[index] = Math.abs(axis) > Controls_default.joyDeadline ? axis : 0;
-			});
-			return states;
-		},
-		update: function() {
-			const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-			let activeGamepad = null;
-			for (let i = 0; i < gamepads.length; i++) if (gamepads[i]) {
-				activeGamepad = gamepads[i];
-				break;
-			}
-			if (!activeGamepad) {
-				if (this.active) {
-					this.active = false;
-					JoystickUIRenderer_default.hide();
-				}
-				return false;
-			}
-			const states = this.getStates(activeGamepad);
-			let anyActivity = false;
-			if (!states) {
-				this.active = false;
-				return false;
-			}
-			const buttonsActive = JoystickButtonMap_default.consume(states.raw) || ButtonInput.update(states.buttons);
-			const axisActive = JoystickAxisInput_default.update(states.axes);
-			if (buttonsActive || axisActive) anyActivity = true;
-			if (anyActivity && !this.active) {
-				JoystickUIRenderer_default.show();
-				this.active = true;
-			}
-			if (!anyActivity && this.active && !hideTimeout) {
-				hideTimeout = true;
-				const self = this;
-				this.active = false;
-				hideTimeoutHandle = setTimeout(function() {
-					hideTimeout = false;
-					hideTimeoutHandle = null;
-					if (self.active === false) JoystickUIRenderer_default.hide();
-				}, 3e4);
-			} else if (!hideTimeout) this.active = true;
-			return true;
-		},
-		_onConnect: function() {
-			this.active = true;
-			JoystickUIRenderer_default.show();
-		},
-		_onDisconnect: function() {
-			this.active = false;
-			this.buttonStates = {};
-			this._rawStates = [];
-			JoystickUIRenderer_default.hide();
-		}
-	};
-}));
-//#endregion
-//#region src/UI/Components/JoystickUI/JoystickUIRenderer.js
-/**
-* Get internal shadow root
-* @returns {ShadowRoot|HTMLElement}
-*/
-function _getShadow() {
-	if (!ui) return null;
-	const host = ui[0];
-	return host.shadowRoot || host;
-}
-function setupUIHide() {
-	let lastMouseX = 0;
-	let lastMouseY = 0;
-	_mouseMoveHandler = (event) => {
-		if (!ui || !_isVisible$1()) return;
-		const deltaX = Math.abs(event.clientX - lastMouseX);
-		const deltaY = Math.abs(event.clientY - lastMouseY);
-		if ((deltaX > 5 || deltaY > 5) && Controls_default.joyAutoHide) {
-			hide$1();
-			JoystickInputService_default.active = false;
-		}
-		lastMouseX = event.clientX;
-		lastMouseY = event.clientY;
-	};
-	document.addEventListener("mousemove", _mouseMoveHandler);
-}
-function _isVisible$1() {
-	if (!ui) return false;
-	const host = ui[0];
-	if (!host) return false;
-	return host.style.display !== "none";
-}
-function attach(root) {
-	ui = root;
-	setupUIHide();
-}
-function updateJoystickSlot(joystickSlotIndex, shortcutIndex) {
-	const item = ShortCut_default.getList()[shortcutIndex];
-	const shadow = _getShadow();
-	if (!shadow) return;
-	const slot = shadow.querySelectorAll(".slot")[joystickSlotIndex];
-	if (!slot) return;
-	const icon = slot.querySelector(".icon");
-	const img = icon.querySelector(".img");
-	const amount = icon.querySelector(".amount");
-	if (!item || item.ID === 0) {
-		icon.style.display = "none";
-		img.style.backgroundImage = "none";
-		amount.textContent = "";
-		return;
-	}
-	icon.style.display = "block";
-	if (item.isSkill && item.count) {
-		const skillInfo = SkillInfo[item.ID];
-		if (skillInfo) Client.loadFile(`${DB.INTERFACE_PATH}item/${skillInfo.Name}.bmp`, (url) => {
-			img.style.backgroundImage = `url(${url})`;
-			amount.textContent = item.count;
-		});
-	} else {
-		const inventoryItem = InventoryController.getUI().getItemById(item.ID);
-		if (inventoryItem) {
-			const itemInfo = DB.getItemInfo(item.ID);
-			const fileName = inventoryItem.IsIdentified ? itemInfo.identifiedResourceName : itemInfo.unidentifiedResourceName;
-			let count = inventoryItem.count;
-			if ((inventoryItem.type === ItemType_default.WEAPON || inventoryItem.type === ItemType_default.ARMOR || inventoryItem.type === ItemType_default.SHADOWGEAR) && count) count = 1;
-			Client.loadFile(`${DB.INTERFACE_PATH}item/${fileName}.bmp`, (url) => {
-				img.style.backgroundImage = `url(${url})`;
-				amount.textContent = count;
-			});
-		}
-	}
-}
-function updateById(Id) {
-	if (!ui) return;
-	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
-	for (let i = 0; i < 20; i++) {
-		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
-		const shortcut = ShortCut_default.getList()[shortcutIndex];
-		if (shortcut && shortcut.ID === Id) updateJoystickSlot(i, shortcutIndex);
-	}
-}
-function updateByIndex(index) {
-	if (!ui) return;
-	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
-	for (let i = 0; i < 20; i++) {
-		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
-		if (shortcutIndex === index) updateJoystickSlot(i, shortcutIndex);
-	}
-}
-/**
-* Write the current physical button names into the HUD: group headers
-* (LB, LT, ...) and the face-button labels on each slot cross.
-*/
-function relabel() {
-	const shadow = _getShadow();
-	if (!shadow) return;
-	const B = JoystickButtonMap_default.BUTTON;
-	const groups = {
-		L1: JoystickButtonMap_default.nameOf(B.LB),
-		L2: JoystickButtonMap_default.nameOf(B.LT),
-		R1: JoystickButtonMap_default.nameOf(B.RB),
-		R2: JoystickButtonMap_default.nameOf(B.RT),
-		L1R1: JoystickButtonMap_default.nameOf(B.LB) + "+" + JoystickButtonMap_default.nameOf(B.RB)
-	};
-	const faces = {
-		top: JoystickButtonMap_default.nameOf(B.Y),
-		left: JoystickButtonMap_default.nameOf(B.X),
-		right: JoystickButtonMap_default.nameOf(B.B),
-		bottom: JoystickButtonMap_default.nameOf(B.A)
-	};
-	shadow.querySelectorAll(".group-container").forEach((group) => {
-		const header = group.querySelector(".group-header");
-		if (header && groups[group.dataset.group]) header.textContent = groups[group.dataset.group];
-		Object.keys(faces).forEach((position) => {
-			const label = group.querySelector(".slot." + position + " .key-label");
-			if (label) label.textContent = faces[position];
-		});
-	});
-}
-/**
-* Show the right stick mode (aim line / cursor) next to the set indicator.
-*/
-function updateStickMode() {
-	const shadow = _getShadow();
-	if (!shadow) return;
-	const el = shadow.querySelector(".stick-mode");
-	if (el) {
-		const aim = Controls_default.joyAimEnabled && Controls_default.joyRightStickMode === 1;
-		el.style.display = Controls_default.joyAimEnabled ? "" : "none";
-		el.textContent = aim ? "Aim" : "Cursor";
-		el.classList.toggle("aim", aim);
-	}
-}
-/**
-* Show the target category (D-pad up / down) next to the stick mode.
-*/
-function updateCategory() {
-	const shadow = _getShadow();
-	if (!shadow) return;
-	const el = shadow.querySelector(".target-category");
-	if (el) {
-		el.textContent = JoystickTargetCategory_default.nameOf(JoystickTargetCategory_default.get());
-		el.classList.toggle("support", JoystickTargetCategory_default.isSupport());
-	}
-}
-function sync() {
-	if (!ui) return;
-	relabel();
-	updateStickMode();
-	updateCategory();
-	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
-	for (let i = 0; i < 20; i++) {
-		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
-		updateJoystickSlot(i, shortcutIndex);
-	}
-}
-function updateSetIndicator() {
-	const shadow = _getShadow();
-	if (!shadow) return;
-	shadow.querySelectorAll(".set-btn").forEach((el) => el.classList.remove("active"));
-	const currentSet = JoystickSetManager_default.getCurrentSet();
-	const activeBtn = shadow.querySelector(`.set-btn:nth-child(${currentSet})`);
-	if (activeBtn) activeBtn.classList.add("active");
-}
-function updateVisuals(buttons) {
-	const shadow = _getShadow();
-	if (!shadow) return;
-	shadow.querySelectorAll(".group-container").forEach((el) => el.classList.remove("active"));
-	const activeGroup = JoystickShortcutMapper_default.getGroup(buttons);
-	if (activeGroup !== "") {
-		const active = shadow.querySelector(`[data-group="${activeGroup}"]`);
-		if (active) active.classList.add("active");
-	}
-}
-function show$1() {
-	if (ui && !_isVisible$1()) ui.show();
-}
-function hide$1() {
-	if (ui && _isVisible$1()) ui.hide();
-}
-function dispose() {
-	hide$1();
-	if (_mouseMoveHandler) {
-		document.removeEventListener("mousemove", _mouseMoveHandler);
-		_mouseMoveHandler = null;
-	}
-	ui = null;
-}
-var ui, _mouseMoveHandler, JoystickUIRenderer_default;
-var init_JoystickUIRenderer = __esmMin((() => {
-	init_ShortCut();
-	init_Inventory();
-	init_JoystickSetManager();
-	init_DBManager();
-	init_Client();
-	init_Controls();
-	init_ItemType();
-	init_JoystickShortcutMapper();
-	init_JoystickInputService();
-	init_SkillInfo();
-	init_JoystickButtonMap();
-	init_JoystickTargetCategory();
-	ui = null;
-	_mouseMoveHandler = null;
-	JoystickTargetCategory_default.onChange(updateCategory);
-	JoystickUIRenderer_default = {
-		attach,
-		dispose,
-		sync,
-		updateById,
-		updateByIndex,
-		updateSetIndicator,
-		updateVisuals,
-		relabel,
-		updateStickMode,
-		updateCategory,
-		show: show$1,
-		hide: hide$1
-	};
-}));
-//#endregion
-//#region src/UI/Components/ShortCutOption/ShortCutOption.js
-/**
-* Checks if there is a match in the temporary settings
-* Returns the name of the conflicting shortcut, or false if no conflict
-*/
-function tempMatch(key) {
-	const TempState = {};
-	let matchSC = false;
-	Object.keys(ShortCuts$1).forEach(function(SC) {
-		if (ShortCuts$1[SC].cust) {
-			TempState[SC] = {};
-			TempState[SC].key = ShortCuts$1[SC].cust.key;
-			TempState[SC].alt = ShortCuts$1[SC].cust.alt;
-			TempState[SC].ctrl = ShortCuts$1[SC].cust.ctrl;
-			TempState[SC].shift = ShortCuts$1[SC].cust.shift;
-		} else {
-			TempState[SC] = {};
-			TempState[SC].key = ShortCuts$1[SC].init.key;
-			TempState[SC].alt = ShortCuts$1[SC].init.alt;
-			TempState[SC].ctrl = ShortCuts$1[SC].init.ctrl;
-			TempState[SC].shift = ShortCuts$1[SC].init.shift;
-		}
-	});
-	Object.keys(ShortCutsTemp).forEach(function(SC) {
-		if (ShortCutsTemp[SC].cust) {
-			TempState[SC] = {};
-			TempState[SC].key = ShortCutsTemp[SC].cust.key;
-			TempState[SC].alt = ShortCutsTemp[SC].cust.alt;
-			TempState[SC].ctrl = ShortCutsTemp[SC].cust.ctrl;
-			TempState[SC].shift = ShortCutsTemp[SC].cust.shift;
-		} else {
-			TempState[SC] = {};
-			TempState[SC].key = ShortCuts$1[SC].init.key;
-			TempState[SC].alt = ShortCuts$1[SC].init.alt;
-			TempState[SC].ctrl = ShortCuts$1[SC].init.ctrl;
-			TempState[SC].shift = ShortCuts$1[SC].init.shift;
-		}
-	});
-	Object.keys(TempState).every(function(SC) {
-		if (TempState[SC]) {
-			if (TempState[SC].key == key && TempState[SC].alt == KEYS.ALT && TempState[SC].ctrl == KEYS.CTRL && TempState[SC].shift == KEYS.SHIFT) {
-				matchSC = SC;
-				return false;
-			} else return true;
-		}
-	});
-	return matchSC;
-}
-/**
-* Updates the key list on the UI
-*/
-function updateKeyList() {
-	const cells = ShortCutOption.getRoot().querySelectorAll("td[data-button]");
-	for (let i = 0; i < cells.length; i++) {
-		const btnName = cells[i].dataset.button;
-		if (getKey(btnName)) cells[i].textContent = (getAlt(btnName) ? "ALT + " : "") + (getCtrl(btnName) ? "CTRL + " : "") + (getShift(btnName) ? "SHIFT + " : "") + KEYS.toReadableKey(parseInt(getKey(btnName), 10));
-		else cells[i].textContent = "N/A";
-	}
-}
-/**
-* Resets key bindings to initial
-*/
-function resetKeysToDefault() {
-	const root = ShortCutOption.getRoot();
-	Object.keys(ShortCuts$1).forEach(function(SC) {
-		ShortCutsTemp[SC] = {};
-		ShortCutsTemp[SC].cust = false;
-		const cell = root.querySelector("td[data-button='" + SC + "']");
-		if (cell) {
-			if (ShortCuts$1[SC].cust != ShortCutsTemp[SC].cust) cell.classList.add("changed");
-			else cell.classList.remove("changed");
-		}
-	});
-	updateKeyList();
-}
-/**
-* Applies the key bindings
-*/
-function applySettings() {
-	Object.keys(ShortCutsTemp).forEach(function(SC) {
-		if (ShortCutsTemp[SC].cust) {
-			ShortCuts$1[SC].cust = {};
-			ShortCuts$1[SC].cust.key = ShortCutsTemp[SC].cust.key;
-			ShortCuts$1[SC].cust.alt = ShortCutsTemp[SC].cust.alt;
-			ShortCuts$1[SC].cust.ctrl = ShortCutsTemp[SC].cust.ctrl;
-			ShortCuts$1[SC].cust.shift = ShortCutsTemp[SC].cust.shift;
-		} else ShortCuts$1[SC].cust = false;
-	});
-	ShortCutControls_default.save();
-	BattleMode.reload();
-	ShortCutsTemp = {};
-	updateKeyList();
-	ShortCutOption.getRoot().querySelectorAll("td.changed").forEach(function(el) {
-		el.classList.remove("changed");
-	});
-	const ShortCut = UIManager.getComponent("ShortCut");
-	if (ShortCut && ShortCut.updateAllTooltips) ShortCut.updateAllTooltips();
-}
-/**
-* Cancels the key bindings
-*/
-function cancelSettings() {
-	ShortCutsTemp = {};
-	updateKeyList();
-	ShortCutOption.getRoot().querySelectorAll("td.changed").forEach(function(el) {
-		el.classList.remove("changed");
-	});
-}
-/**
-* Get shortcut key setting
-*/
-function getKey(sc) {
-	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.key : ShortCuts$1[sc].init.key;
-	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.key : ShortCuts$1[sc].init.key;
-	else return false;
-}
-/**
-* Get shortcut alt setting
-*/
-function getAlt(sc) {
-	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.alt : ShortCuts$1[sc].init.alt;
-	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.alt : ShortCuts$1[sc].init.alt;
-	else return false;
-}
-/**
-* Get shortcut ctrl setting
-*/
-function getCtrl(sc) {
-	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.ctrl : ShortCuts$1[sc].init.ctrl;
-	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.ctrl : ShortCuts$1[sc].init.ctrl;
-	else return false;
-}
-/**
-* Get shortcut shift setting
-*/
-function getShift(sc) {
-	if (ShortCutsTemp[sc]) return ShortCutsTemp[sc].cust ? ShortCutsTemp[sc].cust.shift : ShortCuts$1[sc].init.shift;
-	else if (ShortCuts$1[sc]) return ShortCuts$1[sc].cust ? ShortCuts$1[sc].cust.shift : ShortCuts$1[sc].init.shift;
-	else return false;
-}
-function onUpdateTargetOption() {
-	Controls_default.attackTargetMode = parseInt(this.value, 10);
-	Controls_default.save();
-}
-/**
-* Combinations, worded with the current button names.
-*/
-function getMappingCombos() {
-	const B = JoystickButtonMap_default.BUTTON;
-	const n = JoystickButtonMap_default.nameOf;
-	const faces = [
-		n(B.Y),
-		n(B.X),
-		n(B.B),
-		n(B.A)
-	].join(" / ");
-	const sticks = Controls_default.joyReverseStick ? ["Right stick", "Left stick"] : ["Left stick", "Right stick"];
-	return [
-		[n(B.LB) + " / " + n(B.RB) + " / " + n(B.LT) + " / " + n(B.RT) + " + " + faces, "Shortcut slot 1 / 2 / 3 / 4 of that group"],
-		[n(B.LB) + " + " + n(B.RB) + " + " + faces, "Slot 9 of skill bar 1 / 2 / 3 / 4"],
-		[n(B.LT) + " + " + n(B.RT), "Switch shortcut set (bars 1-2 / 3-4)"],
-		[n(B.VIEW) + " + " + n(B.UP) + " / " + n(B.DOWN), "Camera zoom"],
-		[n(B.VIEW) + " + " + n(B.LEFT) + " / " + n(B.RIGHT), "Camera rotate"],
-		[n(B.VIEW) + " + " + n(B.LB) + " / " + n(B.RB), "Turn camera 45 degrees left / right"],
-		[n(B.VIEW) + " + " + n(B.LT) + " / " + n(B.RT), "Turn camera 90 degrees left / right"],
-		[n(B.VIEW) + " + " + n(B.MENU), "Escape"],
-		[n(B.VIEW) + " + " + [
-			n(B.A),
-			n(B.B),
-			n(B.X),
-			n(B.Y)
-		].join(" / "), "Inventory / equipment / skills / status"],
-		[n(B.VIEW) + " (cursor on item/skill)", "Context menu"],
-		[n(B.LB) + " / " + n(B.RB) + " / " + n(B.LT) + " / " + n(B.RT) + " + " + faces + " (hold)", "Support: the support skill on yourself"],
-		[n(B.UP) + " / " + n(B.DOWN) + " / " + n(B.LEFT) + " / " + n(B.RIGHT) + " (emotes open)", "Choose an emote"],
-		[[
-			n(B.A),
-			n(B.X),
-			n(B.Y),
-			n(B.B)
-		].join(" / ") + " (emotes open)", "Play / play and stay open / favourite / close"],
-		[n(B.LB) + " / " + n(B.RB) + " (emotes open)", "Previous / next emote page"],
-		[sticks[0], "Move"],
-		[sticks[1], Controls_default.joyAimEnabled ? "Cursor, or aim (tap " + n(B.RS) + "); Support: party radial" : "Cursor; picks a member for a skill waiting in the Support radial"]
-	];
-}
-/**
-* Fill the mapping panel's tables from the current map.
-*/
-function renderMapping(root) {
-	const status = root.querySelector(".joyMappingStatus");
-	status.classList.remove("capturing");
-	status.textContent = "Remap: press Remap, then a button on the gamepad. The two buttons trade places.";
-	const roles = root.querySelector(".joyMappingRoles tbody");
-	roles.textContent = "";
-	MAPPING_ROLES.forEach(function([logical, roleLabel]) {
-		const label = typeof roleLabel === "function" ? roleLabel() : roleLabel;
-		const tr = document.createElement("tr");
-		const name = document.createElement("td");
-		const button = document.createElement("td");
-		const action = document.createElement("td");
-		const remap = document.createElement("button");
-		name.textContent = label;
-		button.textContent = JoystickButtonMap_default.nameOf(logical);
-		remap.type = "button";
-		remap.className = "joyBtn";
-		remap.textContent = "Remap";
-		remap.addEventListener("click", function() {
-			startRemap(root, logical, label, remap);
-		});
-		action.appendChild(remap);
-		tr.append(name, button, action);
-		roles.appendChild(tr);
-	});
-	const combos = root.querySelector(".joyMappingCombos tbody");
-	combos.textContent = "";
-	getMappingCombos().forEach(function([buttons, label]) {
-		const tr = document.createElement("tr");
-		const keys = document.createElement("td");
-		const what = document.createElement("td");
-		keys.textContent = buttons;
-		what.textContent = label;
-		tr.append(keys, what);
-		combos.appendChild(tr);
-	});
-}
-/**
-* Wait for a gamepad button for one role. Pressing Remap again cancels.
-*/
-function startRemap(root, logical, label, remapButton) {
-	const wasThisOne = remapButton.classList.contains("capturing");
-	JoystickButtonMap_default.cancelCapture();
-	root.querySelectorAll(".joyMappingRoles .joyBtn.capturing").forEach(function(el) {
-		el.classList.remove("capturing");
-	});
-	const status = root.querySelector(".joyMappingStatus");
-	if (wasThisOne) {
-		renderMapping(root);
-		return;
-	}
-	remapButton.classList.add("capturing");
-	status.classList.add("capturing");
-	status.textContent = "Press a gamepad button for \"" + label + "\"... (press Remap again to cancel)";
-	JoystickButtonMap_default.startCapture(function(physical) {
-		JoystickButtonMap_default.assign(logical, physical);
-		JoystickUIRenderer_default.relabel();
-		renderMapping(root);
-	});
-}
-function onUpdateAimEnabled() {
-	JoystickAimMode_default.setEnabled(this.checked);
-	showQuickCast(ShortCutOption.getRoot());
-}
-/**
-* Quick-Cast select: the mode in effect, with Off greyed out while aiming
-* is on (JoystickAimMode.quickCastMode).
-*/
-function showQuickCast(root) {
-	const select = root.querySelector(".joyQuick");
-	if (!select) return;
-	const off = select.querySelector("option[value=\"" + JoystickAimMode_default.QUICK_CAST.OFF + "\"]");
-	if (off) off.disabled = JoystickAimMode_default.isEnabled();
-	select.value = String(JoystickAimMode_default.quickCastMode());
-}
-function onUpdateAimRing() {
-	Controls_default.joyAimRing = this.checked;
-	Controls_default.save();
-}
-function onUpdateAimLine() {
-	Controls_default.joyAimLine = this.checked;
-	Controls_default.save();
-}
-function onUpdateAimHideCursor() {
-	Controls_default.joyAimHideCursor = this.checked;
-	Controls_default.save();
-}
-/**
-* Put the stored gamepad settings into the controls. The HTML only holds
-* the defaults, and L3 or RS click change some settings while the window
-* is closed.
-*/
-function reflectGamepadSettings(root) {
-	const setValue = function(selector, value) {
-		const el = root.querySelector(selector);
-		if (el) el.value = String(value);
-	};
-	setValue(".joyCycleMode", shownCategory());
-	setValue(".attackTargetMode", Controls_default.attackTargetMode | 0);
-	showQuickCast(root);
-	setValue(".joySense", Controls_default.joySense);
-	setValue(".joyDeadline", Controls_default.joyDeadline);
-	JOY_CHECKBOXES.forEach(function(key) {
-		const el = root.querySelector("." + key);
-		if (el) el.checked = !!Controls_default[key];
-	});
-	Object.keys(JOY_RANGES).forEach(function(key) {
-		setValue("." + key, Controls_default[key]);
-		showRangeValue(root, key);
-	});
-	showCalibration(root);
-}
-function showRangeValue(root, key) {
-	const label = root.querySelector(".joyValue[data-for=\"" + key + "\"]");
-	if (label) label.textContent = (Number(Controls_default[key]) || 0).toFixed(JOY_RANGES[key]);
-}
-/**
-* Calibration state under the Calibrate button.
-*
-* @param {Element} root
-* @param {string} [message] shown instead of the stored state
-*/
-function showCalibration(root, message) {
-	const status = root.querySelector(".joyCalibrateStatus");
-	if (!status) return;
-	if (message) {
-		status.textContent = message;
-		return;
-	}
-	const center = JoystickStickFilter_default.getCenter();
-	status.textContent = center ? "Rest offsets: L " + center[0].toFixed(2) + " / " + center[1].toFixed(2) + ", R " + center[2].toFixed(2) + " / " + center[3].toFixed(2) : "Not calibrated";
-}
-function onCalibrate(root) {
-	showCalibration(root, "Leave both sticks alone...");
-	JoystickStickFilter_default.calibrate(function(result) {
-		if (result === "ok") showCalibration(root);
-		else if (result === "moved") showCalibration(root, "A stick moved, nothing saved. Try again without touching them.");
-		else showCalibration(root, "No gamepad found. Press a button on it, then try again.");
-	});
-}
-/**
-* The target category as the select offers it: the old "mobs and items"
-* setting, no longer offered, shows as Mobs.
-*/
-function shownCategory() {
-	const category = JoystickTargetCategory_default.get();
-	return JoystickTargetCategory_default.ORDER.includes(category) ? category : JoystickTargetCategory_default.CATEGORY.MOBS;
-}
-function onUpdateCycleMode() {
-	JoystickTargetCategory_default.set(parseInt(this.value, 10));
-}
-function onUpdateSense() {
-	Controls_default.joySense = parseFloat(this.value, 10);
-	Controls_default.save();
-}
-function onUpdateJoyQuick() {
-	Controls_default.joyQuick = parseInt(this.value, 10);
-	Controls_default.save();
-}
-function onUpdateJoyDeadline() {
-	Controls_default.joyDeadline = parseFloat(this.value);
-	Controls_default.save();
-}
-function onUpdateAutoHide() {
-	Controls_default.joyAutoHide = !!this.checked;
-	Controls_default.save();
-}
-function onUpdateReverseStick() {
-	Controls_default.joyReverseStick = !!this.checked;
-	Controls_default.save();
-}
-function onUpdateDisableVirtualMouse() {
-	Controls_default.joyDisableVirtualMouse = !!this.checked;
-	Controls_default.save();
-}
-var JOY_RANGES, JOY_CHECKBOXES, ShortCutOption, ShortCuts$1, ShortCutsTemp, _preferences$30, MAPPING_ROLES, ShortCutOption_default;
-var init_ShortCutOption = __esmMin((() => {
-	init_KeyEventHandler();
-	init_Preferences$1();
-	init_UIManager();
-	init_GUIComponent();
-	init_Elements();
-	init_ShortCutControls();
-	init_BattleMode();
-	init_ShortCutOption$2();
-	init_ShortCutOption$1();
-	init_Controls();
-	init_JoystickButtonMap();
-	init_JoystickUIRenderer();
-	init_JoystickAimMode();
-	init_JoystickStickFilter();
-	init_JoystickTargetCategory();
-	JOY_RANGES = {
-		joyCameraSpeed: 0,
-		joyDriftLX: 2,
-		joyDriftLY: 2,
-		joyDriftRX: 2,
-		joyDriftRY: 2
-	};
-	JOY_CHECKBOXES = [
-		"joyAimEnabled",
-		"joyAimRing",
-		"joyAimLine",
-		"joyAimHideCursor",
-		"joyReverseStick",
-		"joyAutoHide",
-		"joyDisableVirtualMouse"
-	];
-	ShortCutOption = new GUIComponent("ShortCutOption", ShortCutOption_default$1);
-	ShortCuts$1 = ShortCutControls_default.ShortCuts;
-	ShortCutsTemp = {};
-	ShortCutOption.isCapturing = false;
-	_preferences$30 = Preferences.get("ShortCutOption", {
-		x: 300,
-		y: 300
-	}, 1);
-	/**
-	* Render HTML
-	*/
-	ShortCutOption.render = () => ShortCutOption_default$2;
-	/**
-	* Initialize UI
-	*/
-	ShortCutOption.init = function() {
-		const root = this.getRoot();
-		let close = root.querySelector(".close");
-		function closebtn(btn) {
-			if (btn) {
-				btn.addEventListener("mousedown", (e) => {
-					e.stopImmediatePropagation();
-					ShortCutOption.remove();
-				});
-				btn.addEventListener("click", (e) => {
-					e.stopImmediatePropagation();
-					ShortCutOption.remove();
-				});
-			}
-		}
-		closebtn(close);
-		close = root.querySelector(".button.close");
-		closebtn(close);
-		root.querySelectorAll(".tabs button").forEach(function(btn) {
-			btn.addEventListener("click", function() {
-				root.querySelectorAll(".selectedtab").forEach(function(el) {
-					el.classList.remove("selectedtab");
-				});
-				const tab = this.dataset.index;
-				root.querySelectorAll("." + tab).forEach(function(el) {
-					el.classList.add("selectedtab");
-				});
-			});
-		});
-		root.querySelectorAll("td").forEach(function(td) {
-			td.addEventListener("click", function() {
-				if (this.classList.contains("customize")) {
-					ShortCutOption.isCapturing = true;
-					root.querySelectorAll("td.selected").forEach(function(el) {
-						el.classList.remove("selected");
-					});
-					this.classList.add("selected");
-				} else {
-					ShortCutOption.isCapturing = false;
-					root.querySelectorAll("td.selected").forEach(function(el) {
-						el.classList.remove("selected");
-					});
-				}
-			});
-		});
-		const bindChange = function(selector, handler) {
-			const el = root.querySelector(selector);
-			if (el) el.addEventListener("change", handler);
-		};
-		bindChange(".attackTargetMode", onUpdateTargetOption);
-		bindChange(".joyCycleMode", onUpdateCycleMode);
-		bindChange(".joyAimEnabled", onUpdateAimEnabled);
-		bindChange(".joyAimRing", onUpdateAimRing);
-		bindChange(".joyAimLine", onUpdateAimLine);
-		bindChange(".joyAimHideCursor", onUpdateAimHideCursor);
-		Object.keys(JOY_RANGES).forEach(function(key) {
-			const input = root.querySelector("." + key);
-			if (!input) return;
-			input.addEventListener("input", function() {
-				Controls_default[key] = parseFloat(this.value);
-				showRangeValue(root, key);
-			});
-			input.addEventListener("change", function() {
-				Controls_default.save();
-			});
-		});
-		root.querySelector(".joyCalibrate").addEventListener("click", function() {
-			onCalibrate(root);
-		});
-		root.querySelector(".joyCalibrateReset").addEventListener("click", function() {
-			JoystickStickFilter_default.resetCalibration();
-			showCalibration(root);
-		});
-		const gamepadTab = root.querySelector(".content.t_gamepad");
-		root.querySelector(".joyMappingOpen").addEventListener("click", function() {
-			renderMapping(root);
-			gamepadTab.classList.add("mapping-open");
-		});
-		root.querySelector(".joyMappingBack").addEventListener("click", function() {
-			JoystickButtonMap_default.cancelCapture();
-			gamepadTab.classList.remove("mapping-open");
-		});
-		root.querySelector(".joyMappingReset").addEventListener("click", function() {
-			JoystickButtonMap_default.cancelCapture();
-			JoystickButtonMap_default.reset();
-			JoystickUIRenderer_default.relabel();
-			renderMapping(root);
-		});
-		bindChange(".joySense", onUpdateSense);
-		bindChange(".joyQuick", onUpdateJoyQuick);
-		bindChange(".joyDeadline", onUpdateJoyDeadline);
-		bindChange(".joyReverseStick", onUpdateReverseStick);
-		bindChange(".joyAutoHide", onUpdateAutoHide);
-		bindChange(".joyDisableVirtualMouse", onUpdateDisableVirtualMouse);
-		const resetBtn = root.querySelector(".button.reset");
-		if (resetBtn) resetBtn.addEventListener("click", function() {
-			resetKeysToDefault();
-		});
-		const okBtn = root.querySelector(".button.ok");
-		if (okBtn) okBtn.addEventListener("click", function() {
-			applySettings();
-		});
-		const cancelBtn = root.querySelector(".button.cancel");
-		if (cancelBtn) cancelBtn.addEventListener("click", function() {
-			cancelSettings();
-		});
-		updateKeyList();
-		this.draggable(".titlebar");
-	};
-	/**
-	* Apply preferences once append to body
-	*/
-	ShortCutOption.onAppend = function() {
-		const cycleMode = this.getRoot().querySelector(".joyCycleMode");
-		if (cycleMode) cycleMode.value = String(shownCategory());
-		reflectGamepadSettings(this.getRoot());
-		this._host.style.left = _preferences$30.x + "px";
-		this._host.style.top = _preferences$30.y + "px";
-		this._host.style.zIndex = 100;
-	};
-	/**
-	* Remove from window (and so clean up)
-	*/
-	ShortCutOption.onRemove = function() {
-		JoystickButtonMap_default.cancelCapture();
-		JoystickStickFilter_default.cancelCalibration();
-		_preferences$30.x = parseInt(this._host.style.left, 10);
-		_preferences$30.y = parseInt(this._host.style.top, 10);
-		_preferences$30.save();
-	};
-	/**
-	* Process key
-	*
-	* @param {object} key
-	*/
-	ShortCutOption.onKeyDown = function(event) {
-		if (ShortCutOption.isCapturing) {
-			if (16 != event.which && 17 != event.which && 18 != event.which) {
-				const root = ShortCutOption.getRoot();
-				const box = root.querySelector("td.selected");
-				const currentSC = box ? box.dataset.button : null;
-				if (!box || !currentSC || !ShortCuts$1[currentSC]) {
-					if (box) console.warn("Shortcut \"" + currentSC + "\" is not defined in ShortCutControls");
-					root.querySelectorAll("td.selected").forEach(function(el) {
-						el.classList.remove("selected");
-					});
-					ShortCutOption.isCapturing = false;
-					event.preventDefault();
-					event.stopImmediatePropagation();
-					return false;
-				}
-				if (event.which == 27) {
-					ShortCutsTemp[currentSC] = {};
-					ShortCutsTemp[currentSC].cust = {};
-					ShortCutsTemp[currentSC].cust.key = "";
-					ShortCutsTemp[currentSC].cust.alt = false;
-					ShortCutsTemp[currentSC].cust.ctrl = false;
-					ShortCutsTemp[currentSC].cust.shift = false;
-				} else {
-					const conflictSC = tempMatch(event.which);
-					if (conflictSC && conflictSC !== currentSC) {
-						const oldKey = getKey(currentSC);
-						const oldAlt = getAlt(currentSC);
-						const oldCtrl = getCtrl(currentSC);
-						const oldShift = getShift(currentSC);
-						ShortCutsTemp[conflictSC] = {};
-						ShortCutsTemp[conflictSC].cust = {};
-						ShortCutsTemp[conflictSC].cust.key = oldKey;
-						ShortCutsTemp[conflictSC].cust.alt = oldAlt;
-						ShortCutsTemp[conflictSC].cust.ctrl = oldCtrl;
-						ShortCutsTemp[conflictSC].cust.shift = oldShift;
-						const conflictCell = root.querySelector("td[data-button='" + conflictSC + "']");
-						if (conflictCell) {
-							conflictCell.classList.add("changed");
-							conflictCell.textContent = (oldAlt ? "ALT + " : "") + (oldCtrl ? "CTRL + " : "") + (oldShift ? "SHIFT + " : "") + (oldKey ? KEYS.toReadableKey(parseInt(oldKey, 10)) : "N/A");
-						}
-					}
-					ShortCutsTemp[currentSC] = {};
-					ShortCutsTemp[currentSC].cust = {};
-					ShortCutsTemp[currentSC].cust.key = event.which;
-					ShortCutsTemp[currentSC].cust.alt = KEYS.ALT;
-					ShortCutsTemp[currentSC].cust.ctrl = KEYS.CTRL;
-					ShortCutsTemp[currentSC].cust.shift = KEYS.SHIFT;
-				}
-				box.textContent = (getAlt(currentSC) ? "ALT + " : "") + (getCtrl(currentSC) ? "CTRL + " : "") + (getShift(currentSC) ? "SHIFT + " : "") + KEYS.toReadableKey(getKey(currentSC), 10);
-				root.querySelectorAll("td.selected").forEach(function(el) {
-					el.classList.add("changed");
-					el.classList.remove("selected");
-				});
-				ShortCutOption.isCapturing = false;
-				event.preventDefault();
-				event.stopImmediatePropagation();
-				return false;
-			}
-		}
-	};
-	MAPPING_ROLES = [
-		[JoystickButtonMap_default.BUTTON.A, "Click / confirm"],
-		[JoystickButtonMap_default.BUTTON.B, "Right click (hold on item/skill: options) - cancels a skill waiting in the Support radial"],
-		[JoystickButtonMap_default.BUTTON.X, "Attack target"],
-		[JoystickButtonMap_default.BUTTON.Y, "Pick up item"],
-		[JoystickButtonMap_default.BUTTON.LEFT, "Previous target (Support: party member; grid left on items)"],
-		[JoystickButtonMap_default.BUTTON.RIGHT, "Next target (Support: party member, lowest HP first; grid right on items)"],
-		[JoystickButtonMap_default.BUTTON.UP, "Previous target category (up in item grids and NPC menus)"],
-		[JoystickButtonMap_default.BUTTON.DOWN, "Next target category (down in item grids and NPC menus)"],
-		[JoystickButtonMap_default.BUTTON.LS, "Tap: clear target - Hold: sit / stand"],
-		[JoystickButtonMap_default.BUTTON.RS, () => Controls_default.joyAimEnabled ? "Tap: right stick aim/cursor - Hold: recenter cursor" : "Recenter cursor"],
-		[JoystickButtonMap_default.BUTTON.MENU, "Tap: Enter - Hold: emotes"],
-		[JoystickButtonMap_default.BUTTON.VIEW, "Camera & menu modifier"],
-		[JoystickButtonMap_default.BUTTON.LB, "Shortcuts: skill bar 1, slots 1-4"],
-		[JoystickButtonMap_default.BUTTON.LT, "Shortcuts: skill bar 1, slots 5-8"],
-		[JoystickButtonMap_default.BUTTON.RB, "Shortcuts: skill bar 2, slots 1-4"],
-		[JoystickButtonMap_default.BUTTON.RT, "Shortcuts: skill bar 2, slots 5-8"]
-	];
-	ShortCutOption.mouseMode = GUIComponent.MouseMode.STOP;
-	ShortCutOption.needFocus = true;
-	ShortCutOption_default = UIManager.addComponent(ShortCutOption);
-}));
-//#endregion
-//#region src/UI/Components/Escape/Escape.html?raw
-var Escape_default$2;
-var init_Escape$2 = __esmMin((() => {
-	Escape_default$2 = "<div id=\"Escape\" data-background=\"basic_interface/titlebar_fix.bmp\">\r\n	<div class=\"top\">\r\n		<button\r\n			class=\"node\"\r\n			data-background=\"basic_interface/sys_base_off.bmp\"\r\n			data-hover=\"basic_interface/sys_base_on.bmp\"\r\n		></button>\r\n		<div class=\"title\" data-text=\"1483\">Select Option</div>\r\n	</div>\r\n\r\n	<div class=\"container\">\r\n		<button\r\n			class=\"resurection\"\r\n			data-background=\"esc_05a.bmp\"\r\n			data-hover=\"esc_05b.bmp\"\r\n			data-down=\"esc_05c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"savepoint\"\r\n			data-background=\"esc_04a.bmp\"\r\n			data-hover=\"esc_04b.bmp\"\r\n			data-down=\"esc_04c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"charselect\"\r\n			data-background=\"esc_01a.bmp\"\r\n			data-hover=\"esc_01b.bmp\"\r\n			data-down=\"esc_01c.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"graphics\"\r\n			data-background=\"esc_06a.bmp\"\r\n			data-hover=\"esc_06b.bmp\"\r\n			data-down=\"esc_06c.bmp\"\r\n		></button>\r\n		<button class=\"sound\" data-background=\"esc_07a.bmp\" data-hover=\"esc_07b.bmp\" data-down=\"esc_07c.bmp\"></button>\r\n		<button class=\"hotkey\" data-background=\"esc_08a.bmp\" data-hover=\"esc_08b.bmp\" data-down=\"esc_08c.bmp\"></button>\r\n		<button class=\"exit\" data-background=\"esc_03a.bmp\" data-hover=\"esc_03b.bmp\" data-down=\"esc_03c.bmp\"></button>\r\n		<button class=\"cancel\" data-background=\"esc_02a.bmp\" data-hover=\"esc_02b.bmp\" data-down=\"esc_02c.bmp\"></button>\r\n	</div>\r\n</div>\r\n";
-}));
-//#endregion
-//#region src/UI/Components/Escape/Escape.css?raw
-var Escape_default$1;
-var init_Escape$1 = __esmMin((() => {
-	Escape_default$1 = ":host {\r\n	width: 280px;\r\n	height: auto;\r\n	top: 200px;\r\n	left: 200px;\r\n}\r\n\r\n#Escape {\r\n	width: 280px;\r\n	height: auto;\r\n	border-radius: 5px;\r\n	background-color: white;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#Escape .top .node {\r\n	width: 11px;\r\n	height: 11px;\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#Escape .top .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n\r\n#Escape .container {\r\n	width: 220px;\r\n	height: auto;\r\n	padding: 20px 30px 6px 30px;\r\n}\r\n\r\n#Escape .container button {\r\n	width: 221px;\r\n	height: 20px;\r\n	margin-top: 3px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n";
-}));
-//#endregion
-//#region src/UI/Components/Escape/Escape.js
-/**
-* Click on Sound button, toggle the UI
-*/
-function onToggleSoundUI() {
-	if (!SoundOption_default._host || !SoundOption_default._host.parentNode) SoundOption_default.append();
-	else SoundOption_default.remove();
-}
-/**
-* Click on Graphic button, toggle the UI
-*/
-function onToggleGraphicUI() {
-	if (!GraphicsOption_default._host || !GraphicsOption_default._host.parentNode) GraphicsOption_default.append();
-	else GraphicsOption_default.remove();
-}
-/**
-* Click on Shortcut button, toggle the UI
-*/
-function onToggleShortcutUI() {
-	if (!ShortCutOption_default._host || !ShortCutOption_default._host.parentNode) ShortCutOption_default.append();
-	else ShortCutOption_default.remove();
-}
-/**
-* Draw the buttons plugins added (UI/MenuHooks.js) after the settings buttons,
-* from their own pictures, the way the menu's buttons are drawn. Hidden with
-* the settings buttons while the death menu shows.
-*/
-function renderHookedButtons() {
-	const root = Escape.getRoot();
-	const exit = root.querySelector(".exit");
-	if (!exit) return;
-	root.querySelectorAll(".hooked").forEach((el) => el.remove());
-	const settingsShown = root.querySelector(".graphics")?.style.display !== "none";
-	MenuHooks_default.list().forEach((button) => {
-		const el = document.createElement("button");
-		el.className = "hooked";
-		el.dataset.background = button.background;
-		if (button.hover) el.dataset.hover = button.hover;
-		if (button.down) el.dataset.down = button.down;
-		if (button.title) {
-			el.title = button.title;
-			el.setAttribute("aria-label", button.title);
-		}
-		el.style.display = settingsShown ? "" : "none";
-		el.addEventListener("click", () => MenuHooks_default.press(button));
-		GUIComponent.processDataAttrs(el);
-		exit.before(el);
-	});
-}
-var Escape, Escape_default;
-var init_Escape = __esmMin((() => {
-	init_KeyEventHandler();
-	init_Renderer();
-	init_UIManager();
-	init_GUIComponent();
-	init_ExitHooks();
-	init_MenuHooks();
-	init_SoundOption();
-	init_GraphicsOption();
-	init_ShortCutOption();
-	init_Escape$2();
-	init_Escape$1();
-	Escape = new GUIComponent("Escape", Escape_default$1);
-	/**
-	* Render HTML
-	*/
-	Escape.render = () => Escape_default$2;
-	/**
-	* Initialize UI
-	*/
-	Escape.init = function init() {
-		const root = this.getRoot();
-		const rect = this._host.getBoundingClientRect();
-		this._host.style.top = (Renderer.height - rect.height) * .75 + "px";
-		this._host.style.left = (Renderer.width - rect.width) * .5 + "px";
-		this.draggable();
-		const nodeBtn = root.querySelector(".node");
-		if (nodeBtn) nodeBtn.addEventListener("mousedown", function(event) {
-			event.stopImmediatePropagation();
-			return false;
-		});
-		root.querySelectorAll("button").forEach(function(el) {
-			el.style.display = "";
-		});
-		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
-			el.style.display = "none";
-		});
-		root.querySelector(".sound").addEventListener("click", onToggleSoundUI);
-		root.querySelector(".graphics").addEventListener("click", onToggleGraphicUI);
-		root.querySelector(".resurection").addEventListener("click", function() {
-			Escape.onResurectionRequest();
-		});
-		root.querySelector(".savepoint").addEventListener("click", function() {
-			Escape.onReturnSavePointRequest();
-		});
-		root.querySelector(".charselect").addEventListener("click", function() {
-			ExitHooks_default.emit("charSelect", "escape");
-			Escape.onCharSelectionRequest();
-		});
-		root.querySelector(".hotkey").addEventListener("click", onToggleShortcutUI);
-		root.querySelector(".exit").addEventListener("click", function() {
-			ExitHooks_default.emit("login", "escape");
-			Escape.onExitRequest();
-		});
-		root.querySelector(".cancel").addEventListener("click", function() {
-			Escape._host.style.display = "none";
-		});
-		renderHookedButtons();
-		MenuHooks_default.onChange(renderHookedButtons);
-		this._host.style.display = "none";
-	};
-	/**
-	* Window must not be visible once append
-	* but need to be here to manage key event
-	*/
-	Escape.onAppend = function onAppend() {
-		this._host.style.display = "none";
-	};
-	/**
-	* Reset buttons once UI is removed
-	*/
-	Escape.onRemove = function onRemove() {
-		this._host.style.display = "none";
-		const root = this.getRoot();
-		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
-			el.style.display = "none";
-		});
-		root.querySelectorAll(".graphics, .sound, .hotkey, .hooked").forEach(function(el) {
-			el.style.display = "";
-		});
-	};
-	/**
-	* Key Listener
-	*
-	* @param {object} event
-	* @return {boolean}
-	*/
-	Escape.onKeyDown = function onKeyDown(event) {
-		if (event.which === KEYS.ESCAPE || event.key === "Escape") {
-			if (this._host.style.display === "none") {
-				this._host.style.display = "";
-				this.focus();
-			} else this._host.style.display = "none";
-		}
-	};
-	/**
-	* Show death menu (called when player dies)
-	*/
-	Escape.showDeathMenu = function showDeathMenu(hasSiegfried) {
-		const root = this.getRoot();
-		this._host.style.display = "";
-		root.querySelector(".savepoint").style.display = "";
-		if (hasSiegfried) root.querySelector(".resurection").style.display = "";
-		root.querySelectorAll(".graphics, .sound, .hotkey, .hooked").forEach(function(el) {
-			el.style.display = "none";
-		});
-	};
-	/**
-	* Reset to normal menu (called when player resurrects)
-	*/
-	Escape.resetMenu = function resetMenu() {
-		this._host.style.display = "none";
-		const root = this.getRoot();
-		root.querySelectorAll(".resurection, .savepoint").forEach(function(el) {
-			el.style.display = "none";
-		});
-		root.querySelectorAll(".graphics, .sound, .hotkey, .hooked").forEach(function(el) {
-			el.style.display = "";
-		});
-	};
-	/**
-	* @var {function} callback when player want to resurect using Token of Siegfried
-	*/
-	Escape.onResurectionRequest = function onResurectionRequest() {};
-	/**
-	* @var {function} callback to define to disconnect from game
-	*/
-	Escape.onExitRequest = function onExitRequest() {};
-	/**
-	* @var {function} callback when player want to resurect using Token of Siegfried
-	*/
-	Escape.onReturnSavePointRequest = function onReturnSavePointRequest() {};
-	/**
-	* @var {function} callback when player want to return to char selection
-	*/
-	Escape.onCharSelectionRequest = function onCharSelectionRequest() {};
-	Escape.mouseMode = GUIComponent.MouseMode.STOP;
-	Escape.needFocus = true;
-	Escape_default = UIManager.addComponent(Escape);
-}));
-//#endregion
-//#region src/UI/Components/CheckAttendance/CheckAttendance.html?raw
-var CheckAttendance_default$2;
-var init_CheckAttendance$2 = __esmMin((() => {
-	CheckAttendance_default$2 = "<div id=\"CheckAttendance\">\r\n	<div class=\"titlebar\" data-background=\"check_attendance/attendance_bg.bmp\">\r\n		<div class=\"top-panel\">\r\n			<div class=\"top-panel-reward\">\r\n				<div class=\"text\">Check Reward</div>\r\n			</div>\r\n			<div class=\"top-panel-period\"></div>\r\n		</div>\r\n		<div class=\"left-panel\">\r\n			<ul class=\"days-list\"></ul>\r\n		</div>\r\n		<div class=\"right-panel\">\r\n			<div class=\"total-days\"></div>\r\n			<div class=\"npc\"></div>\r\n			<div class=\"remaining-days\">\r\n				<div class=\"remaining-day\">\r\n					<div class=\"remaining-day-text\"></div>\r\n				</div>\r\n				<div class=\"remaining-text\">\r\n					<div class=\"remaining-text-div\">Day</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n		<div class=\"bottom-panel\">\r\n			<div class=\"close-container\">\r\n				<ui-button\r\n					class=\"close-container-btn\"\r\n					bg=\"check_attendance/bt_ok_normal.bmp\"\r\n					down=\"check_attendance/bt_ok_press.bmp\"\r\n					>Close</ui-button\r\n				>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
-}));
-//#endregion
-//#region src/UI/Components/CheckAttendance/CheckAttendance.css?raw
-var CheckAttendance_default$1;
-var init_CheckAttendance$1 = __esmMin((() => {
-	CheckAttendance_default$1 = ":host {\r\n	width: 488px;\r\n	height: 413px;\r\n}\r\n\r\n#CheckAttendance {\r\n	position: absolute;\r\n	width: 488px;\r\n	height: 413px;\r\n}\r\n\r\n#CheckAttendance .titlebar {\r\n	width: 100%;\r\n	height: 100%;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel {\r\n	width: 100%;\r\n	height: 85px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-reward {\r\n	width: 100%;\r\n	height: 70px;\r\n	position: relative;\r\n	display: flex;\r\n	justify-content: center;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-reward .text {\r\n	font-weight: bolder;\r\n	color: #633921;\r\n	display: table;\r\n	position: absolute;\r\n	top: 55%;\r\n}\r\n\r\n#CheckAttendance .titlebar .top-panel .top-panel-period {\r\n	width: 100%;\r\n	height: 15px;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #a55239;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel {\r\n	width: 335px;\r\n	height: 270px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list {\r\n	list-style: none;\r\n	padding-left: 25px;\r\n	margin-top: 8px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item {\r\n	float: left;\r\n	width: 58px;\r\n	height: 60px;\r\n	margin: 2px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item {\r\n	width: 100%;\r\n	height: 40px;\r\n	position: relative;\r\n	background-position: center;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .item-quantity {\r\n	position: absolute;\r\n	bottom: 2px;\r\n	right: 15px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .name {\r\n	position: relative;\r\n	display: none;\r\n	z-index: 1;\r\n	top: -10px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item:hover .name {\r\n	display: table;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .item .name {\r\n	display: none;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .day {\r\n	width: 100%;\r\n	height: 20px;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #394aa5;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked,\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked-hidden,\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .completed {\r\n	position: absolute;\r\n	width: 58px;\r\n	height: 60px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#CheckAttendance .titlebar .left-panel .days-list .attendance-item .checked-hidden {\r\n	display: none;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel {\r\n	width: 152px;\r\n	height: 270px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .total-days {\r\n	width: 80%;\r\n	height: 85px;\r\n	text-align: center;\r\n	display: flex;\r\n	align-items: center;\r\n	font-weight: bold;\r\n	color: #a53963;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .npc {\r\n	width: 100%;\r\n	height: 105px;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days {\r\n	width: 100%;\r\n	height: 80px;\r\n	font-weight: bold;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-day {\r\n	height: 100%;\r\n	width: 85px;\r\n	float: left;\r\n	position: relative;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-day .remaining-day-text {\r\n	position: absolute;\r\n	right: 10px;\r\n	bottom: 20px;\r\n	font-weight: bolder;\r\n	font-size: 20px;\r\n	color: white;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-text {\r\n	height: 100%;\r\n	width: 35px;\r\n	float: left;\r\n	position: relative;\r\n	font-weight: bolder;\r\n}\r\n\r\n#CheckAttendance .titlebar .right-panel .remaining-days .remaining-text .remaining-text-div {\r\n	position: absolute;\r\n	left: 3px;\r\n	bottom: 20px;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel {\r\n	width: 100%;\r\n	height: 58px;\r\n	float: left;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel .close-container {\r\n	width: 100%;\r\n	height: 100%;\r\n	position: relative;\r\n}\r\n\r\n#CheckAttendance .titlebar .bottom-panel .close-container .close-container-btn {\r\n	width: 146px;\r\n	height: 30px;\r\n	border: 0;\r\n	font-weight: bold;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	position: absolute;\r\n	top: 35%;\r\n	left: 35%;\r\n	display: inline-block;\r\n	text-align: center;\r\n	line-height: 30px;\r\n}\r\n";
-}));
-//#endregion
-//#region src/UI/Components/CheckAttendance/CheckAttendance.js
-/**
-* Request Attendance Item
-*/
-function onClickAttendance(e) {
-	const root = CheckAttendance.getRoot();
-	const el = e.currentTarget;
-	const id = el.id;
-	const checkedHidden = root.querySelector(`#${id} .checked-hidden`);
-	if (checkedHidden) checkedHidden.className = "checked";
-	const completedDiv = document.createElement("div");
-	completedDiv.className = "completed";
-	completedDiv.dataset.background = "check_attendance/bt_slot_complete.tga";
-	el.appendChild(completedDiv);
-	GUIComponent.processDataAttrs(completedDiv);
-	const total_days_string = `${parseInt(_checkAttendanceData / 10) + 1} Day attendance success`;
-	const totalDaysEl = root.querySelector(".total-days");
-	if (totalDaysEl) totalDaysEl.innerHTML = total_days_string;
-	const _pkt = new PACKET.CZ.REQ_CHECK_ATTENDANCE();
-	Network.sendPacket(_pkt);
-}
-var CheckAttendance, _checkAttendanceData, _CheckAttendanceInfo, _preferences$29, CheckAttendance_default;
-var init_CheckAttendance = __esmMin((() => {
-	init_DBManager();
-	init_Preferences$1();
-	init_Renderer();
-	init_UIManager();
-	init_GUIComponent();
-	init_NetworkManager();
-	init_PacketStructure();
-	init_CheckAttendance$2();
-	init_CheckAttendance$1();
-	init_ChatBox();
-	init_Elements();
-	CheckAttendance = new GUIComponent("CheckAttendance", CheckAttendance_default$1);
-	CheckAttendance.render = () => CheckAttendance_default$2;
-	_preferences$29 = Preferences.get("CheckAttendance", {
-		x: 200,
-		y: 200
-	}, 1);
-	/**
-	* Initialize the component (event listener, etc.)
-	*/
-	CheckAttendance.init = function init() {
-		_CheckAttendanceInfo = DB.getCheckAttendanceInfo();
-		const root = this.getRoot();
-		const baseEl = root.querySelector(".base");
-		if (baseEl) baseEl.addEventListener("mousedown", (event) => {
-			event.stopImmediatePropagation();
-			event.preventDefault();
-		});
-		root.querySelector(".close-container-btn").addEventListener("click", () => {
-			CheckAttendance._host.style.display = "none";
-		});
-		this.draggable(root.querySelector(".titlebar"));
-	};
-	/**
-	* Once append to the DOM, start to position the UI
-	*/
-	CheckAttendance.onAppend = function onAppend() {
-		Object.assign(this._host.style, {
-			top: `${Math.min(Math.max(0, _preferences$29.y), Renderer.height - this._host.getBoundingClientRect().height)}px`,
-			left: `${Math.min(Math.max(0, _preferences$29.x), Renderer.width - this._host.getBoundingClientRect().width)}px`
-		});
-		if (!_preferences$29.show) this._host.style.display = "none";
-		if (_checkAttendanceData >= 0 && _CheckAttendanceInfo.Config) {
-			CheckAttendance.updateUI();
-			this.focus();
-		} else ChatBox_default.addText("Currently there is no attendance check event.", ChatBox_default.TYPE.ERROR | ChatBox_default.TYPE.SELF);
-	};
-	/**
-	* Window Shortcuts
-	*/
-	CheckAttendance.onShortCut = function onShortCut(key) {
-		switch (key.cmd) {
-			case "TOGGLE": if (this._host.style.display === "none") {
-				this._host.style.display = "";
-				this.focus();
-			} else this._host.style.display = "none";
-		}
-	};
-	/**
-	* Show/Hide UI
-	*/
-	CheckAttendance.toggle = function toggle() {
-		if (this._host.style.display !== "none") this._host.style.display = "none";
-		else {
-			const _pkt = new PACKET.CZ.UI_OPEN();
-			_pkt.UIType = 5;
-			Network.sendPacket(_pkt);
-		}
-	};
-	/**
-	* Set Data to Attendance
-	*/
-	CheckAttendance.setData = function setData(data) {
-		_checkAttendanceData = data;
-	};
-	/**
-	* Update CheckAttendance UI
-	*/
-	CheckAttendance.updateUI = function updateUI() {
-		const root = this.getRoot();
-		let already_requested = 0;
-		let attendance_count = 0;
-		let current_day = 1;
-		if (_CheckAttendanceInfo.Config) {
-			const regex = /(\d{4})(\d{2})(\d{2})/;
-			const start = regex.exec(_CheckAttendanceInfo.Config.StartDate);
-			const end = regex.exec(_CheckAttendanceInfo.Config.EndDate);
-			const period_string = `Event Period: From ${start[2]}/${start[3]} ~ Until ${end[2]}/${end[3]} (Month/Day) 24:00`;
-			const periodEl = root.querySelector(".top-panel-period");
-			if (periodEl) periodEl.innerHTML = period_string;
-			if (_checkAttendanceData >= 0) {
-				already_requested = _checkAttendanceData % 10;
-				attendance_count = parseInt(_checkAttendanceData / 10);
-				current_day = attendance_count + 1;
-				const total_days_string = attendance_count >= 20 || already_requested ? `${attendance_count} Day attendance success` : `Click the item to claim day ${current_day} reward`;
-				const end_date = /* @__PURE__ */ new Date(`${end[1]}-${end[2]}-${end[3]}`);
-				const now_date = /* @__PURE__ */ new Date();
-				const remaining_days = Math.round(Math.abs((end_date.getTime() - now_date.getTime()) / 864e5));
-				const totalDaysEl = root.querySelector(".total-days");
-				if (totalDaysEl) totalDaysEl.innerHTML = total_days_string;
-				const remainingEl = root.querySelector(".remaining-day-text");
-				if (remainingEl) remainingEl.textContent = remaining_days;
-			}
-		}
-		if (_CheckAttendanceInfo.Rewards) {
-			const daysList = root.querySelector(".days-list");
-			for (let i = 0; i < 20; i++) {
-				const item = DB.getItemInfo(_CheckAttendanceInfo.Rewards[i].item_id);
-				const day = i + 1;
-				const background = !already_requested && day == current_day ? `data-background="check_attendance/bt_slot_a.bmp" data-down="check_attendance/bt_slot_press.bmp"` : "";
-				const checked = day <= attendance_count ? "checked" : "checked-hidden";
-				const slot_complete_string = day > (already_requested ? attendance_count - 1 : attendance_count) ? "bt_slot_complete" : "bt_slot_off";
-				const item_slot = `<li id="attendance_day_${i}" class="attendance-item" ${background}><div class="item" data-background="${DB.INTERFACE_PATH}item/${item.identifiedResourceName}.bmp"><span class="item-quantity">${_CheckAttendanceInfo.Rewards[i].quantity}</span><span class="name">${item.identifiedDisplayName}</span><div class="${checked}" data-background="check_attendance/${slot_complete_string}.tga"></div></div><div class="day">${day} Day</div></li>`;
-				if (daysList) daysList.insertAdjacentHTML("beforeend", item_slot);
-				if (!already_requested && day == current_day) {
-					const dayEl = root.querySelector(`#attendance_day_${i}`);
-					if (dayEl) {
-						dayEl.addEventListener("click", onClickAttendance);
-						dayEl.classList.add("event_add_cursor");
-					}
-				}
-			}
-			const dataAttrSelector = "[data-background],[data-hover],[data-down],[data-active],[data-text],[data-preload]";
-			if (daysList) daysList.querySelectorAll(dataAttrSelector).forEach((node) => {
-				GUIComponent.processDataAttrs(node);
-			});
-		}
-	};
-	/**
-	* Clean CheckAttendance UI
-	*/
-	CheckAttendance.cleanUI = function cleanUI() {
-		const root = CheckAttendance.getRoot();
-		const periodEl = root.querySelector(".top-panel-period");
-		if (periodEl) periodEl.innerHTML = "";
-		const daysListEl = root.querySelector(".days-list");
-		if (daysListEl) daysListEl.innerHTML = "";
-		const totalDaysEl = root.querySelector(".total-days");
-		if (totalDaysEl) totalDaysEl.innerHTML = "";
-		const remainingEl = root.querySelector(".remaining-day-text");
-		if (remainingEl) remainingEl.innerHTML = "";
-	};
-	/**
-	* Close the window
-	*/
-	CheckAttendance.onClose = function onClose() {
-		CheckAttendance._host.style.display = "none";
-	};
-	CheckAttendance_default = UIManager.addComponent(CheckAttendance);
-}));
-//#endregion
 //#region src/UI/Components/Quest/QuestCommon.js
 /**
 * Create a Quest component from a version-specific configuration.
@@ -240568,7 +234212,7 @@ function createQuest(config) {
 				item.addEventListener("click", (e) => onClickMenu(e));
 			});
 			const activeList = root.querySelector("#active-quest-list");
-			if (activeList) activeList.style.display = "block";
+			if (activeList) activeList.style.display = "";
 			const toggleBtn = root.querySelector(".toggle-quest-list");
 			if (toggleBtn) toggleBtn.addEventListener("click", () => onClickQuestCheckbox());
 			this.ui.hide();
@@ -240580,7 +234224,7 @@ function createQuest(config) {
 				item.addEventListener("click", (e) => onClickMenu(e));
 			});
 			const activeList = root.querySelector("#active-quest-list");
-			if (activeList) activeList.style.display = "block";
+			if (activeList) activeList.style.display = "";
 			this.draggable(".titlebar");
 		}
 	};
@@ -240612,7 +234256,7 @@ function createQuest(config) {
 				const el = root.querySelector(".quest-menu");
 				if (el) el.style.backgroundImage = `url(${data})`;
 			});
-			root.querySelector("#active-quest-list").style.display = "block";
+			root.querySelector("#active-quest-list").style.display = "";
 			root.querySelector("#inactive-quest-list").style.display = "none";
 			root.querySelector("#all-quest-list").style.display = "none";
 			if (!_preferences.show) this.ui.hide();
@@ -240628,7 +234272,7 @@ function createQuest(config) {
 		if (root) {
 			if (renewLayout) {
 				const activeList = root.querySelector("#active-quest-list");
-				if (activeList) activeList.style.display = "block";
+				if (activeList) activeList.style.display = "";
 				const inactiveList = root.querySelector("#inactive-quest-list");
 				if (inactiveList) inactiveList.style.display = "none";
 				const featureList = root.querySelector("#feature-quest-list");
@@ -240880,19 +234524,19 @@ function createQuest(config) {
 			switch (_active_menu) {
 				case "feature":
 					background_image = "bg_quest2";
-					root.querySelector("#feature-quest-list").style.display = "block";
+					root.querySelector("#feature-quest-list").style.display = "";
 					break;
 				case "inactive":
 					background_image = "bg_quest3";
-					root.querySelector("#inactive-quest-list").style.display = "block";
+					root.querySelector("#inactive-quest-list").style.display = "";
 					break;
 				case "cooldown":
 					background_image = "bg_quest4";
-					root.querySelector("#cooldown-quest-list").style.display = "block";
+					root.querySelector("#cooldown-quest-list").style.display = "";
 					break;
 				default:
 					background_image = "bg_quest1";
-					root.querySelector("#active-quest-list").style.display = "block";
+					root.querySelector("#active-quest-list").style.display = "";
 			}
 			Client.loadFile(`${DB.INTERFACE_PATH}renew_questui/${background_image}.bmp`, (data) => {
 				const titlebar = root.querySelector(".titlebar");
@@ -240906,15 +234550,15 @@ function createQuest(config) {
 			switch (_active_menu) {
 				case "inactive":
 					background_image = "tab_que_02";
-					root.querySelector("#inactive-quest-list").style.display = "block";
+					root.querySelector("#inactive-quest-list").style.display = "";
 					break;
 				case "all":
 					background_image = "tab_que_03";
-					root.querySelector("#all-quest-list").style.display = "block";
+					root.querySelector("#all-quest-list").style.display = "";
 					break;
 				default:
 					background_image = "tab_que_01";
-					root.querySelector("#active-quest-list").style.display = "block";
+					root.querySelector("#active-quest-list").style.display = "";
 			}
 			Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/${background_image}.bmp`, (data) => {
 				const el = root.querySelector(".quest-menu");
@@ -241372,14 +235016,14 @@ function isInCooldown(quest) {
 	if (quest.end_time > epoch_seconds) return true;
 	return false;
 }
-var _preferences$28, QuestWindow, QuestWindow_default;
+var _preferences$29, QuestWindow, QuestWindow_default;
 var init_QuestWindow = __esmMin((() => {
 	init_Preferences$1();
 	init_UIManager();
 	init_GUIComponent();
 	init_QuestWindow$2();
 	init_QuestWindow$1();
-	_preferences$28 = Preferences.get("Quest", {
+	_preferences$29 = Preferences.get("Quest", {
 		x: 200,
 		y: 200,
 		show: false,
@@ -241399,7 +235043,7 @@ var init_QuestWindow = __esmMin((() => {
 	* Once append to the DOM, start to position the UI
 	*/
 	QuestWindow.onAppend = function onAppend() {
-		if (!_preferences$28.showwindow) this.ui.hide();
+		if (!_preferences$29.showwindow) this.ui.hide();
 	};
 	/**
 	* Clean up UI
@@ -241567,7 +235211,7 @@ var init_Achievement$2 = __esmMin((() => {
 }));
 //#endregion
 //#region src/UI/Components/Achievement/Achievement.js
-var _preferences$27, MAJOR_CATEGORIES, AchievementComponent, Achievement, Achievement_default;
+var _preferences$28, MAJOR_CATEGORIES, AchievementComponent, Achievement, Achievement_default;
 var init_Achievement$1 = __esmMin((() => {
 	init_GUIComponent();
 	init_UIManager();
@@ -241581,7 +235225,7 @@ var init_Achievement$1 = __esmMin((() => {
 	init_ItemInfo();
 	init_Achievement$3();
 	init_Achievement$2();
-	_preferences$27 = Preferences.get("Achievement", {
+	_preferences$28 = Preferences.get("Achievement", {
 		x: 100,
 		y: 100
 	}, 1);
@@ -241724,15 +235368,15 @@ var init_Achievement$1 = __esmMin((() => {
 			this._host.style.display = "none";
 		}
 		onAppend() {
-			this._host.style.left = `${_preferences$27.x}px`;
-			this._host.style.top = `${_preferences$27.y}px`;
+			this._host.style.left = `${_preferences$28.x}px`;
+			this._host.style.top = `${_preferences$28.y}px`;
 			this._fixPositionOverflow();
 			this.updateHeaderAndView();
 		}
 		onRemove() {
-			_preferences$27.x = parseInt(this._host.style.left, 10);
-			_preferences$27.y = parseInt(this._host.style.top, 10);
-			_preferences$27.save();
+			_preferences$28.x = parseInt(this._host.style.left, 10);
+			_preferences$28.y = parseInt(this._host.style.top, 10);
+			_preferences$28.save();
 		}
 		toggle() {
 			if (this.__active && this._host.style.display !== "none") this._host.style.display = "none";
@@ -242441,7 +236085,7 @@ function performSearch(query) {
 /**
 * Closing window
 */
-function onClose$5() {
+function onClose$6() {
 	Reputation._host.style.display = "none";
 }
 /**
@@ -242492,7 +236136,7 @@ function clearHighlights() {
 		el.dataset.highlight = "false";
 	});
 }
-var Reputation, _preferences$26, bg, bg_highlight, indicator_empty, indicator_blue, indicator_red, Reputation_default;
+var Reputation, _preferences$27, bg, bg_highlight, indicator_empty, indicator_blue, indicator_red, Reputation_default;
 var init_Reputation = __esmMin((() => {
 	init_DBManager();
 	init_NetworkManager();
@@ -242505,7 +236149,7 @@ var init_Reputation = __esmMin((() => {
 	init_Reputation$2();
 	init_Reputation$1();
 	Reputation = new GUIComponent("Reputation", Reputation_default$1);
-	_preferences$26 = Preferences.get("Reputation", {
+	_preferences$27 = Preferences.get("Reputation", {
 		x: 400,
 		y: 200,
 		show: true
@@ -242559,9 +236203,9 @@ var init_Reputation = __esmMin((() => {
 			});
 		});
 		const closeBtn = root.querySelector(".close");
-		if (closeBtn) closeBtn.addEventListener("click", onClose$5);
+		if (closeBtn) closeBtn.addEventListener("click", onClose$6);
 		const bigCloseBtn = root.querySelector(".big_btn_close");
-		if (bigCloseBtn) bigCloseBtn.addEventListener("click", onClose$5);
+		if (bigCloseBtn) bigCloseBtn.addEventListener("click", onClose$6);
 		const prevBtn = root.querySelector(".page_prev");
 		if (prevBtn) prevBtn.addEventListener("click", () => {
 			if (Reputation.page.current > 0) renderReputePage(Reputation.page.current - 1);
@@ -242588,8 +236232,8 @@ var init_Reputation = __esmMin((() => {
 	* binding group selector events and rendering the default view.
 	*/
 	Reputation.onAppend = function onAppend() {
-		this._host.style.top = `${Math.min(Math.max(0, _preferences$26.y), window.innerHeight - (this._host.offsetHeight || 0))}px`;
-		this._host.style.left = `${Math.min(Math.max(0, _preferences$26.x), window.innerWidth - (this._host.offsetWidth || 0))}px`;
+		this._host.style.top = `${Math.min(Math.max(0, _preferences$27.y), window.innerHeight - (this._host.offsetHeight || 0))}px`;
+		this._host.style.left = `${Math.min(Math.max(0, _preferences$27.x), window.innerWidth - (this._host.offsetWidth || 0))}px`;
 		buildGroupSelector();
 		bindGroupSelector();
 		bindSearch();
@@ -242600,10 +236244,10 @@ var init_Reputation = __esmMin((() => {
 	* Once remove from body, save user preferences
 	*/
 	Reputation.onRemove = function onRemove() {
-		_preferences$26.show = this._host.style.display !== "none";
-		_preferences$26.y = parseInt(this._host.style.top, 10);
-		_preferences$26.x = parseInt(this._host.style.left, 10);
-		_preferences$26.save();
+		_preferences$27.show = this._host.style.display !== "none";
+		_preferences$27.y = parseInt(this._host.style.top, 10);
+		_preferences$27.x = parseInt(this._host.style.left, 10);
+		_preferences$27.save();
 	};
 	/**
 	* Request to toggle open/close reputation
@@ -242633,7 +236277,7 @@ var init_Reputation = __esmMin((() => {
 //#endregion
 //#region src/UI/Components/BasicInfo/BasicInfoCommon.js
 function createBasicInfo(config) {
-	const { name, htmlText, cssText, prefKey, reduceDefault = true, innerId, topbarItemSelector = ".topbar button", topbarDblClick = false, toggleButtonsEvent = "mousedown", buttonsSelector = ".buttons button", buttonsEvent = "mousedown", buttonKeyBy = "class", infoOpensWinStats = true, partyViaGetUI = false, hasToolbarToggle = false, miniLayout = false, hideIds = [], barScale = 1.27, hasApBar = false, menuTip = false } = config;
+	const { name, htmlText, cssText, prefKey, reduceDefault = true, innerId, topbarItemSelector = ".topbar button", topbarDblClick = false, toggleButtonsEvent = "mousedown", buttonsSelector = ".buttons button", buttonsEvent = "mousedown", buttonKeyBy = "class", infoOpensWinStats = true, partyViaGetUI = false, hasToolbarToggle = false, miniLayout = false, hideIds = [], barScale = 1.27, hasApBar = false } = config;
 	const Component = new GUIComponent(name, cssText);
 	/**
 	* Stored data
@@ -242744,38 +236388,8 @@ function createBasicInfo(config) {
 	/**
 	* Initialize UI
 	*/
-	/**
-	* Draw the name of the button the pointer is on in one tip below the frame.
-	*
-	* Each button used to draw its own name above itself, which the menu, now that it scrolls,
-	* would clip. The tip sits outside it and takes its text from the button's `.name`.
-	*/
-	function setupMenuTip(root) {
-		const inner = root.querySelector(innerId);
-		const buttons = root.querySelector(".buttons");
-		if (!inner || !buttons) return;
-		const tip = document.createElement("div");
-		tip.className = "menu_tip";
-		inner.appendChild(tip);
-		const hide = () => {
-			tip.style.display = "none";
-		};
-		buttons.addEventListener("mouseover", (event) => {
-			const button = event.target.closest(buttonsSelector);
-			const label = button && button.querySelector(".name");
-			if (!label || !label.textContent.trim()) {
-				hide();
-				return;
-			}
-			tip.textContent = label.textContent;
-			tip.style.display = "block";
-		});
-		buttons.addEventListener("mouseleave", hide);
-		buttons.addEventListener("scroll", hide);
-	}
 	Component.init = function init() {
 		const root = this.getRoot();
-		if (menuTip) setupMenuTip(root);
 		root.querySelectorAll(topbarItemSelector).forEach((el) => {
 			el.addEventListener("mousedown", (e) => e.stopImmediatePropagation());
 		});
@@ -242916,11 +236530,8 @@ function createBasicInfo(config) {
 	* @param {number} val2 maximum value
 	* @param {string} color bar color prefix
 	*/
-	const barUpdates = {};
 	function updateBar(root, type, val1, val2, color) {
 		const perc = Math.floor(val1 * 100 / val2);
-		const update = barUpdates[type] = (barUpdates[type] || 0) + 1;
-		const isLatest = () => barUpdates[type] === update;
 		root.querySelectorAll(`.${type}_value`).forEach((el) => {
 			el.textContent = val1;
 		});
@@ -242938,18 +236549,18 @@ function createBasicInfo(config) {
 		}
 		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/gze${color}_left.bmp`, (url) => {
 			const el = root.querySelector(`.${type}_bar_left`);
-			if (el && isLatest()) el.style.backgroundImage = `url(${url})`;
+			if (el) el.style.backgroundImage = `url(${url})`;
 		});
 		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/gze${color}_mid.bmp`, (url) => {
 			const el = root.querySelector(`.${type}_bar_middle`);
-			if (el && isLatest()) {
+			if (el) {
 				el.style.backgroundImage = `url(${url})`;
 				el.style.width = `${Math.floor(Math.min(perc, 100) * barScale)}px`;
 			}
 		});
 		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/gze${color}_right.bmp`, (url) => {
 			const el = root.querySelector(`.${type}_bar_right`);
-			if (el && isLatest()) {
+			if (el) {
 				el.style.backgroundImage = `url(${url})`;
 				el.style.left = `${Math.floor(Math.min(perc, 100) * barScale)}px`;
 			}
@@ -243160,13 +236771,13 @@ var init_BasicInfoV3 = __esmMin((() => {
 //#region src/UI/Components/BasicInfo/BasicInfoV4/BasicInfoV4.html?raw
 var BasicInfoV4_default$2;
 var init_BasicInfoV4$2 = __esmMin((() => {
-	BasicInfoV4_default$2 = "<div\r\n	id=\"BasicInfoV4\"\r\n	class=\"large\"\r\n	data-background=\"basic_interface/basewin_bg2.bmp\"\r\n	data-preload=\"basic_interface/gzered_left.bmp;basic_interface/gzered_mid.bmp;basic_interface/gzered_right.bmp;basic_interface/gzeblue_left.bmp;basic_interface/gzeblue_mid.bmp;basic_interface/gzeblue_right.bmp\"\r\n>\r\n	<div class=\"topbar\">\r\n		<button\r\n			class=\"left\"\r\n			data-background=\"basic_interface/sys_base_off.bmp\"\r\n			data-hover=\"basic_interface/sys_base_on.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"right\"\r\n			data-background=\"basic_interface/sys_mini_off.bmp\"\r\n			data-hover=\"basic_interface/sys_mini_on.bmp\"\r\n		></button>\r\n	</div>\r\n\r\n	<!-- LARGE INTERFACE -->\r\n	<div class=\"large\">\r\n		<div class=\"title\" data-text=\"238\">Basic Information</div>\r\n		<div class=\"name\"><span class=\"name_value\"></span></div>\r\n		<div class=\"job\"><span class=\"job_value\"></span></div>\r\n\r\n		<div class=\"hp_title\">HP</div>\r\n		<div class=\"hp_bar\">\r\n			<div class=\"hp_bar_left\"></div>\r\n			<div class=\"hp_bar_middle\"></div>\r\n			<div class=\"hp_bar_right\"></div>\r\n			<div class=\"hp_bar_perc\"><span class=\"hp_value\"></span> / <span class=\"hp_max_value\"></span></div>\r\n		</div>\r\n		<div class=\"hp_perc\"></div>\r\n\r\n		<div class=\"sp_title\">SP</div>\r\n		<div class=\"sp_bar\">\r\n			<div class=\"sp_bar_left\"></div>\r\n			<div class=\"sp_bar_middle\"></div>\r\n			<div class=\"sp_bar_right\"></div>\r\n			<div class=\"sp_bar_perc\"><span class=\"sp_value\"></span> / <span class=\"sp_max_value\"></span></div>\r\n		</div>\r\n		<div class=\"sp_perc\"></div>\r\n\r\n		<div class=\"blvl\">Base Lv. <span class=\"blvl_value\"></span></div>\r\n		<div class=\"bexp\">\r\n			<div></div>\r\n		</div>\r\n\r\n		<div class=\"jlvl\">Job Lv. <span class=\"jlvl_value\"></span></div>\r\n		<div class=\"jexp\">\r\n			<div></div>\r\n		</div>\r\n\r\n		<div class=\"extra\">\r\n			<span class=\"weight\"\r\n				>Weight : <span class=\"weight_value\">0</span> / <span class=\"weight_total\">0</span></span\r\n			>\r\n			Zeny : <span class=\"zeny_value\">0</span>\r\n		</div>\r\n	</div>\r\n\r\n	<!-- SMALL INTERFACE -->\r\n	<div class=\"small\">\r\n		<div class=\"line1 name_value\"></div>\r\n		<div class=\"line2\">\r\n			Lv.<span class=\"blvl_value\"></span> / <span class=\"job_value\"></span> / Lv.<span class=\"jlvl_value\"></span>\r\n			/ Exp. <span class=\"bexp_value\"></span>\r\n		</div>\r\n		<div class=\"line3\">\r\n			HP. <span class=\"hp_value\"></span> / <span class=\"hp_max_value\"></span> | SP.\r\n			<span class=\"sp_value\"></span> / <span class=\"sp_max_value\"></span>\r\n		</div>\r\n	</div>\r\n\r\n	<button\r\n		id=\"btn_open\"\r\n		class=\"btn_open bt_menu toggle_btns\"\r\n		data-background=\"menu_icon/bt_menu_normal.bmp\"\r\n		data-hover=\"menu_icon/bt_menu_over.bmp\"\r\n		data-down=\"menu_icon/bt_menu_press.bmp\"\r\n	></button>\r\n	<button\r\n		id=\"btn_close\"\r\n		class=\"btn_close bt_menu toggle_btns\"\r\n		data-background=\"menu_icon/bt_menu_close_normal.bmp\"\r\n		data-hover=\"menu_icon/bt_menu_close_over.bmp\"\r\n		data-down=\"menu_icon/bt_menu_close_press.bmp\"\r\n	></button>\r\n\r\n	<!-- BUTTONS -->\r\n	<div class=\"buttons\" data-background=\"menu_icon/bg_menu.tga\">\r\n		<button\r\n			id=\"info\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_status.bmp\"\r\n			data-down=\"menu_icon/bt_status_press.bmp\"\r\n		>\r\n			<span class=\"name\">Status (Alt + A)</span>\r\n		</button>\r\n		<button\r\n			id=\"equip\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_equip.bmp\"\r\n			data-down=\"menu_icon/bt_equip_press.bmp\"\r\n		>\r\n			<span class=\"name\">Equip (Alt + Q)</span>\r\n		</button>\r\n		<button\r\n			id=\"item\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_item.bmp\"\r\n			data-down=\"menu_icon/bt_item_press.bmp\"\r\n		>\r\n			<div\r\n				class=\"btn_overlay\"\r\n				data-background=\"menu_icon/bt_item_new.bmp\"\r\n				data-down=\"menu_icon/bt_item_new_press.bmp\"\r\n			></div>\r\n			<span class=\"name\">Inventory (Alt + E)</span>\r\n		</button>\r\n		<button\r\n			id=\"skill\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_skill.bmp\"\r\n			data-down=\"menu_icon/bt_skill_press.bmp\"\r\n		>\r\n			<span class=\"name\">SkillTree (Alt + S)</span>\r\n		</button>\r\n		<button\r\n			id=\"party\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_party.bmp\"\r\n			data-down=\"menu_icon/bt_party_press.bmp\"\r\n		>\r\n			<span class=\"name\">Party (Alt + Z)</span>\r\n		</button>\r\n		<button\r\n			id=\"guild\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_guild.bmp\"\r\n			data-down=\"menu_icon/bt_guild_press.bmp\"\r\n		>\r\n			<span class=\"name\">Guild (Alt + G)</span>\r\n		</button>\r\n		<button\r\n			id=\"battle\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_battle.bmp\"\r\n			data-down=\"menu_icon/bt_battle_press.bmp\"\r\n		>\r\n			<span class=\"name\">Battleground</span>\r\n		</button>\r\n		<button\r\n			id=\"quest\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_quest.bmp\"\r\n			data-down=\"menu_icon/bt_quest_press.bmp\"\r\n		>\r\n			<span class=\"name\">Quest List (Alt + U)</span>\r\n		</button>\r\n		<button\r\n			id=\"map\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_map.bmp\"\r\n			data-down=\"menu_icon/bt_map_press.bmp\"\r\n		>\r\n			<span class=\"name\">World Map (Ctrl + ')</span>\r\n		</button>\r\n		<button\r\n			id=\"navigation\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_navigation.bmp\"\r\n			data-down=\"menu_icon/bt_navigation_press.bmp\"\r\n		>\r\n			<span class=\"name\">Navigation</span>\r\n		</button>\r\n		<button\r\n			id=\"option\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_option.bmp\"\r\n			data-down=\"menu_icon/bt_option_press.bmp\"\r\n		>\r\n			<span class=\"name\">Option (Esc)</span>\r\n		</button>\r\n		<button\r\n			id=\"bank\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_bank.bmp\"\r\n			data-down=\"menu_icon/bt_bank_press.bmp\"\r\n		>\r\n			<span class=\"name\">Bank (Ctrl + B)</span>\r\n		</button>\r\n		<button\r\n			id=\"replay\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_rec.bmp\"\r\n			data-down=\"menu_icon/bt_rec_press.bmp\"\r\n		>\r\n			<span class=\"name\">Replay</span>\r\n		</button>\r\n		<button\r\n			id=\"mail\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_mail.bmp\"\r\n			data-down=\"menu_icon/bt_mail_press.bmp\"\r\n		>\r\n			<span class=\"name\">Mail</span>\r\n		</button>\r\n		<button\r\n			id=\"achievment\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_achievement.bmp\"\r\n			data-down=\"menu_icon/bt_achievement_press.bmp\"\r\n		>\r\n			<span class=\"name\">Achievement</span>\r\n		</button>\r\n		<button\r\n			id=\"tipbox\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_tip.bmp\"\r\n			data-down=\"menu_icon/bt_tip_press.bmp\"\r\n		>\r\n			<span class=\"name\">Tipbox (Alt + D)</span>\r\n		</button>\r\n		<button\r\n			id=\"shortcut\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_keyboard.bmp\"\r\n			data-down=\"menu_icon/bt_keyboard_press.bmp\"\r\n		>\r\n			<span class=\"name\">ShortCut Description</span>\r\n		</button>\r\n		<button\r\n			id=\"attendance\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_attendance.bmp\"\r\n			data-down=\"menu_icon/bt_attendance_press.bmp\"\r\n		>\r\n			<span class=\"name\">Attendance Check</span>\r\n		</button>\r\n		<button\r\n			id=\"agency\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_adventureragency.bmp\"\r\n			data-down=\"menu_icon/bt_adventureragency_press.bmp\"\r\n		>\r\n			<span class=\"name\">Adventurer's Agency (Ctrl + Z)</span>\r\n		</button>\r\n		<button\r\n			id=\"repute\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_repute.bmp\"\r\n			data-down=\"menu_icon/bt_repute_press.bmp\"\r\n		>\r\n			<span class=\"name\">Reputation Status</span>\r\n		</button>\r\n	</div>\r\n</div>\r\n";
+	BasicInfoV4_default$2 = "<div\r\n	id=\"BasicInfoV4\"\r\n	class=\"large\"\r\n	data-background=\"basic_interface/basewin_bg2.bmp\"\r\n	data-preload=\"basic_interface/gzered_left.bmp;basic_interface/gzered_mid.bmp;basic_interface/gzered_right.bmp;basic_interface/gzeblue_left.bmp;basic_interface/gzeblue_mid.bmp;basic_interface/gzeblue_right.bmp\"\r\n>\r\n	<div class=\"topbar\">\r\n		<button\r\n			class=\"left\"\r\n			data-background=\"basic_interface/sys_base_off.bmp\"\r\n			data-hover=\"basic_interface/sys_base_on.bmp\"\r\n		></button>\r\n		<button\r\n			class=\"right\"\r\n			data-background=\"basic_interface/sys_mini_off.bmp\"\r\n			data-hover=\"basic_interface/sys_mini_on.bmp\"\r\n		></button>\r\n	</div>\r\n\r\n	<!-- LARGE INTERFACE -->\r\n	<div class=\"large\">\r\n		<div class=\"title\" data-text=\"238\">Basic Information</div>\r\n		<div class=\"name\"><span class=\"name_value\"></span></div>\r\n		<div class=\"job\"><span class=\"job_value\"></span></div>\r\n\r\n		<div class=\"hp_title\">HP</div>\r\n		<div class=\"hp_bar\">\r\n			<div class=\"hp_bar_left\"></div>\r\n			<div class=\"hp_bar_middle\"></div>\r\n			<div class=\"hp_bar_right\"></div>\r\n			<div class=\"hp_bar_perc\"><span class=\"hp_value\"></span> / <span class=\"hp_max_value\"></span></div>\r\n		</div>\r\n		<div class=\"hp_perc\"></div>\r\n\r\n		<div class=\"sp_title\">SP</div>\r\n		<div class=\"sp_bar\">\r\n			<div class=\"sp_bar_left\"></div>\r\n			<div class=\"sp_bar_middle\"></div>\r\n			<div class=\"sp_bar_right\"></div>\r\n			<div class=\"sp_bar_perc\"><span class=\"sp_value\"></span> / <span class=\"sp_max_value\"></span></div>\r\n		</div>\r\n		<div class=\"sp_perc\"></div>\r\n\r\n		<div class=\"blvl\">Base Lv. <span class=\"blvl_value\"></span></div>\r\n		<div class=\"bexp\">\r\n			<div></div>\r\n		</div>\r\n\r\n		<div class=\"jlvl\">Job Lv. <span class=\"jlvl_value\"></span></div>\r\n		<div class=\"jexp\">\r\n			<div></div>\r\n		</div>\r\n\r\n		<div class=\"extra\">\r\n			<span class=\"weight\"\r\n				>Weight : <span class=\"weight_value\">0</span> / <span class=\"weight_total\">0</span></span\r\n			>\r\n			Zeny : <span class=\"zeny_value\">0</span>\r\n		</div>\r\n	</div>\r\n\r\n	<!-- SMALL INTERFACE -->\r\n	<div class=\"small\">\r\n		<div class=\"line1 name_value\"></div>\r\n		<div class=\"line2\">\r\n			Lv.<span class=\"blvl_value\"></span> / <span class=\"job_value\"></span> / Lv.<span class=\"jlvl_value\"></span>\r\n			/ Exp. <span class=\"bexp_value\"></span>\r\n		</div>\r\n		<div class=\"line3\">\r\n			HP. <span class=\"hp_value\"></span> / <span class=\"hp_max_value\"></span> | SP.\r\n			<span class=\"sp_value\"></span> / <span class=\"sp_max_value\"></span>\r\n		</div>\r\n	</div>\r\n\r\n	<button\r\n		id=\"btn_open\"\r\n		class=\"btn_open bt_menu toggle_btns\"\r\n		data-background=\"menu_icon/bt_menu_normal.bmp\"\r\n		data-hover=\"menu_icon/bt_menu_over.bmp\"\r\n		data-down=\"menu_icon/bt_menu_press.bmp\"\r\n	></button>\r\n	<button\r\n		id=\"btn_close\"\r\n		class=\"btn_close bt_menu toggle_btns\"\r\n		data-background=\"menu_icon/bt_menu_close_normal.bmp\"\r\n		data-hover=\"menu_icon/bt_menu_close_over.bmp\"\r\n		data-down=\"menu_icon/bt_menu_close_press.bmp\"\r\n	></button>\r\n\r\n	<!-- BUTTONS -->\r\n	<div class=\"buttons\" data-background=\"menu_icon/bg_menu.tga\">\r\n		<button\r\n			id=\"info\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_status.bmp\"\r\n			data-down=\"menu_icon/bt_status_press.bmp\"\r\n		>\r\n			<span class=\"name\">Status (Alt + A)</span>\r\n		</button>\r\n		<button\r\n			id=\"equip\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_equip.bmp\"\r\n			data-down=\"menu_icon/bt_equip_press.bmp\"\r\n		>\r\n			<span class=\"name\">Equip (Alt + Q)</span>\r\n		</button>\r\n		<button\r\n			id=\"item\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_item.bmp\"\r\n			data-down=\"menu_icon/bt_item_press.bmp\"\r\n		>\r\n			<div\r\n				class=\"btn_overlay\"\r\n				data-background=\"menu_icon/bt_item_new.bmp\"\r\n				data-down=\"menu_icon/bt_item_new_press.bmp\"\r\n			></div>\r\n			<span class=\"name\">Inventory (Alt + E)</span>\r\n		</button>\r\n		<button\r\n			id=\"skill\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_skill.bmp\"\r\n			data-down=\"menu_icon/bt_skill_press.bmp\"\r\n		>\r\n			<span class=\"name\">SkillTree (Alt + S)</span>\r\n		</button>\r\n		<button\r\n			id=\"party\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_party.bmp\"\r\n			data-down=\"menu_icon/bt_party_press.bmp\"\r\n		>\r\n			<span class=\"name\">Party (Alt + Z)</span>\r\n		</button>\r\n		<button\r\n			id=\"guild\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_guild.bmp\"\r\n			data-down=\"menu_icon/bt_guild_press.bmp\"\r\n		>\r\n			<span class=\"name\">Guild (Alt + G)</span>\r\n		</button>\r\n		<button\r\n			id=\"battle\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_battle.bmp\"\r\n			data-down=\"menu_icon/bt_battle_press.bmp\"\r\n		>\r\n			<span class=\"name\">Battleground</span>\r\n		</button>\r\n		<button\r\n			id=\"quest\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_quest.bmp\"\r\n			data-down=\"menu_icon/bt_quest_press.bmp\"\r\n		>\r\n			<span class=\"name\">Quest List (Alt + U)</span>\r\n		</button>\r\n		<button\r\n			id=\"map\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_map.bmp\"\r\n			data-down=\"menu_icon/bt_map_press.bmp\"\r\n		>\r\n			<span class=\"name\">World Map (Ctrl + ')</span>\r\n		</button>\r\n		<button\r\n			id=\"navigation\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_navigation.bmp\"\r\n			data-down=\"menu_icon/bt_navigation_press.bmp\"\r\n		>\r\n			<span class=\"name\">Navigation</span>\r\n		</button>\r\n		<button\r\n			id=\"option\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_option.bmp\"\r\n			data-down=\"menu_icon/bt_option_press.bmp\"\r\n		>\r\n			<span class=\"name\">Option (Esc)</span>\r\n		</button>\r\n		<button\r\n			id=\"bank\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_bank.bmp\"\r\n			data-down=\"menu_icon/bt_bank_press.bmp\"\r\n		>\r\n			<span class=\"name\">Bank (Ctrl + B)</span>\r\n		</button>\r\n		<button\r\n			id=\"replay\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_rec.bmp\"\r\n			data-down=\"menu_icon/bt_rec_press.bmp\"\r\n		>\r\n			<span class=\"name\">Replay</span>\r\n		</button>\r\n		<button\r\n			id=\"mail\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_mail.bmp\"\r\n			data-down=\"menu_icon/bt_mail_press.bmp\"\r\n		>\r\n			<span class=\"name\">Mail</span>\r\n		</button>\r\n		<button\r\n			id=\"achievment\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_achievement.bmp\"\r\n			data-down=\"menu_icon/bt_achievement_press.bmp\"\r\n		>\r\n			<span class=\"name\">Achievement</span>\r\n		</button>\r\n		<button\r\n			id=\"tipbox\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_tip.bmp\"\r\n			data-down=\"menu_icon/bt_tip_press.bmp\"\r\n		>\r\n			<span class=\"name\">Tipbox (Alt + D)</span>\r\n		</button>\r\n		<button\r\n			id=\"shortcut\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_keyboard.bmp\"\r\n			data-down=\"menu_icon/bt_keyboard_press.bmp\"\r\n		>\r\n			<span class=\"name\">ShortCut Description</span>\r\n		</button>\r\n		<button\r\n			id=\"attendance\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_attendance.bmp\"\r\n			data-down=\"menu_icon/bt_attendance_press.bmp\"\r\n		>\r\n			<span class=\"name\">Attendance Check</span>\r\n		</button>\r\n		<button\r\n			id=\"agency\"\r\n			class=\"event_add_cursor\"\r\n			data-background=\"menu_icon/bt_adventureragency.bmp\"\r\n			data-down=\"menu_icon/bt_adventureragency_press.bmp\"\r\n		>\r\n			<span class=\"name\">Adventurer's Agency (Ctrl + Z)</span>\r\n		</button>\r\n		<!--<button class=\"reputation\" data-background=\"menu_icon/\" data-hover=\"menu_icon/\" data-down=\"menu_icon/\"></button> -->\r\n	</div>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/BasicInfo/BasicInfoV4/BasicInfoV4.css?raw
 var BasicInfoV4_default$1;
 var init_BasicInfoV4$1 = __esmMin((() => {
-	BasicInfoV4_default$1 = ":host {\r\n	width: 220px;\r\n	height: 135px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#BasicInfoV4 {\r\n	position: absolute;\r\n	width: 220px;\r\n	height: 135px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#BasicInfoV4.small .large {\r\n	display: none;\r\n}\r\n#BasicInfoV4.large .small {\r\n	display: none;\r\n	border-radius: 5px;\r\n}\r\n#BasicInfoV4.small {\r\n	height: 53px;\r\n}\r\n#BasicInfoV4.large .bt_menu {\r\n	top: 135px;\r\n}\r\n#BasicInfoV4.small .bt_menu {\r\n	top: 53px;\r\n}\r\n\r\n#BasicInfoV4.large .buttons {\r\n	top: 144px;\r\n}\r\n#BasicInfoV4.small .buttons {\r\n	top: 62px;\r\n}\r\n\r\n#BasicInfoV4 .topbar {\r\n	height: 16px;\r\n}\r\n#BasicInfoV4 .topbar .left {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n#BasicInfoV4 .topbar .right {\r\n	position: absolute;\r\n	top: 3px;\r\n	right: 2px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n\r\n/* LARGE */\r\n#BasicInfoV4 .large .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n}\r\n#BasicInfoV4 .large .name {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 20px;\r\n}\r\n#BasicInfoV4 .large .job {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 33px;\r\n}\r\n#BasicInfoV4 .large .hp_title {\r\n	position: absolute;\r\n	top: 50px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .sp_title {\r\n	position: absolute;\r\n	top: 65px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .hp_bar,\r\n#BasicInfoV4 .large .sp_bar {\r\n	position: absolute;\r\n	top: 53px;\r\n	left: 35px;\r\n	width: 135px;\r\n	height: 9px;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV4 .large .sp_bar {\r\n	top: 68px;\r\n}\r\n#BasicInfoV4 .large .hp_bar div,\r\n#BasicInfoV4 .large .sp_bar div {\r\n	width: 4px;\r\n	height: 9px;\r\n	float: left;\r\n}\r\n#BasicInfoV4 .large div.hp_bar_perc,\r\n#BasicInfoV4 .large div.sp_bar_perc {\r\n	text-align: center;\r\n	width: 127px;\r\n	position: absolute;\r\n	top: -1px;\r\n}\r\n#BasicInfoV4 .large .hp_perc {\r\n	position: absolute;\r\n	top: 50px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV4 .large .sp_perc {\r\n	position: absolute;\r\n	top: 65px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV4 .large .blvl {\r\n	position: absolute;\r\n	top: 86px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .jlvl {\r\n	position: absolute;\r\n	top: 97px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .bexp,\r\n#BasicInfoV4 .large .jexp {\r\n	position: absolute;\r\n	top: 89px;\r\n	left: 84px;\r\n	width: 110px;\r\n	height: 4px;\r\n	border: 1px solid #afafaf;\r\n	background-color: white;\r\n}\r\n#BasicInfoV4 .large .bexp div,\r\n#BasicInfoV4 .large .jexp div {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 0%;\r\n	height: 4px;\r\n	background-color: #4262a5;\r\n}\r\n#BasicInfoV4 .large .jexp {\r\n	top: 101px;\r\n}\r\n#BasicInfoV4 .large .extra {\r\n	position: absolute;\r\n	top: 119px;\r\n	right: -15px;\r\n	width: 100%;\r\n	padding-right: 20px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	text-align: right;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .buttons {\r\n	position: absolute;\r\n	left: 0px;\r\n	top: 9px;\r\n	width: 220px;\r\n	height: 132px;\r\n	overflow-x: hidden;\r\n	overflow-y: auto; /* the client's scrollbar attaches to this, and only shows when there is more */\r\n	display: grid;\r\n	grid-template-columns: auto auto auto auto auto;\r\n	align-content: start; /* rows keep their height instead of stretching to fill the panel */\r\n	justify-items: center;\r\n	background-position: left bottom;\r\n}\r\n#BasicInfoV4 .bt_menu {\r\n	position: absolute;\r\n	left: 0px;\r\n	width: 219px;\r\n	height: 9px;\r\n}\r\n#BasicInfoV4 .buttons:hover {\r\n}\r\n#BasicInfoV4 .buttons button {\r\n	width: 32px;\r\n	height: 32px;\r\n	border: none;\r\n	margin: 6px;\r\n	background: transparent;\r\n}\r\n/* The scrollbar takes 13px of the panel only while it scrolls. Five buttons still\r\n   fit in what is left if their side margins give up 2px each. */\r\n#BasicInfoV4 .buttons[style*='padding-right: 13px'] > button[id] {\r\n	margin: 6px 4px;\r\n}\r\n\r\n/* REDUCED */\r\n#BasicInfoV4 .small .line1 {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .small .line2 {\r\n	position: absolute;\r\n	top: 20px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .small .line3 {\r\n	position: absolute;\r\n	top: 36px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .toggle_btns {\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: rgba(0, 0, 0, 0);\r\n}\r\n\r\n#BasicInfoV4 .buttons button .name {\r\n	display: none;\r\n}\r\n\r\n/* A button's name is drawn once, centred below the frame, rather than inside the\r\n   button, where a panel that scrolls would clip it. BasicInfoCommon fills it in. */\r\n#BasicInfoV4 .menu_tip {\r\n	display: none;\r\n	position: absolute;\r\n	left: 110px;\r\n	transform: translateX(-50%);\r\n	z-index: 10;\r\n	pointer-events: none;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#BasicInfoV4.large .menu_tip {\r\n	top: 280px; /* the panel is at 144px, 132px tall */\r\n}\r\n#BasicInfoV4.small .menu_tip {\r\n	top: 198px; /* the panel is at 62px, 132px tall */\r\n}\r\n\r\n#BasicInfoV4 .buttons .btn_overlay {\r\n	pointer-events: none;\r\n	width: 35px;\r\n	height: 40px;\r\n	border: none;\r\n	position: relative;\r\n	top: -6px;\r\n	left: 0;\r\n	display: none;\r\n}\r\n#BasicInfoV4 .buttons button:active .btn_overlay {\r\n	pointer-events: none;\r\n	top: -5px;\r\n}\r\n";
+	BasicInfoV4_default$1 = ":host {\r\n	width: 220px;\r\n	height: 135px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#BasicInfoV4 {\r\n	position: absolute;\r\n	width: 220px;\r\n	height: 135px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#BasicInfoV4.small .large {\r\n	display: none;\r\n}\r\n#BasicInfoV4.large .small {\r\n	display: none;\r\n	border-radius: 5px;\r\n}\r\n#BasicInfoV4.small {\r\n	height: 53px;\r\n}\r\n#BasicInfoV4.large .bt_menu {\r\n	top: 135px;\r\n}\r\n#BasicInfoV4.small .bt_menu {\r\n	top: 53px;\r\n}\r\n\r\n#BasicInfoV4.large .buttons {\r\n	top: 144px;\r\n}\r\n#BasicInfoV4.small .buttons {\r\n	top: 62px;\r\n}\r\n\r\n#BasicInfoV4 .topbar {\r\n	height: 16px;\r\n}\r\n#BasicInfoV4 .topbar .left {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n#BasicInfoV4 .topbar .right {\r\n	position: absolute;\r\n	top: 3px;\r\n	right: 2px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n\r\n/* LARGE */\r\n#BasicInfoV4 .large .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n}\r\n#BasicInfoV4 .large .name {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 20px;\r\n}\r\n#BasicInfoV4 .large .job {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 33px;\r\n}\r\n#BasicInfoV4 .large .hp_title {\r\n	position: absolute;\r\n	top: 50px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .sp_title {\r\n	position: absolute;\r\n	top: 65px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .hp_bar,\r\n#BasicInfoV4 .large .sp_bar {\r\n	position: absolute;\r\n	top: 53px;\r\n	left: 35px;\r\n	width: 135px;\r\n	height: 9px;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV4 .large .sp_bar {\r\n	top: 68px;\r\n}\r\n#BasicInfoV4 .large .hp_bar div,\r\n#BasicInfoV4 .large .sp_bar div {\r\n	width: 4px;\r\n	height: 9px;\r\n	float: left;\r\n}\r\n#BasicInfoV4 .large div.hp_bar_perc,\r\n#BasicInfoV4 .large div.sp_bar_perc {\r\n	text-align: center;\r\n	width: 127px;\r\n	position: absolute;\r\n	top: -1px;\r\n}\r\n#BasicInfoV4 .large .hp_perc {\r\n	position: absolute;\r\n	top: 50px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV4 .large .sp_perc {\r\n	position: absolute;\r\n	top: 65px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV4 .large .blvl {\r\n	position: absolute;\r\n	top: 86px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .jlvl {\r\n	position: absolute;\r\n	top: 97px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV4 .large .bexp,\r\n#BasicInfoV4 .large .jexp {\r\n	position: absolute;\r\n	top: 89px;\r\n	left: 84px;\r\n	width: 110px;\r\n	height: 4px;\r\n	border: 1px solid #afafaf;\r\n	background-color: white;\r\n}\r\n#BasicInfoV4 .large .bexp div,\r\n#BasicInfoV4 .large .jexp div {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 0%;\r\n	height: 4px;\r\n	background-color: #4262a5;\r\n}\r\n#BasicInfoV4 .large .jexp {\r\n	top: 101px;\r\n}\r\n#BasicInfoV4 .large .extra {\r\n	position: absolute;\r\n	top: 119px;\r\n	right: -15px;\r\n	width: 100%;\r\n	padding-right: 20px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	text-align: right;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .buttons {\r\n	position: absolute;\r\n	left: 0px;\r\n	top: 9px;\r\n	width: 220px;\r\n	display: grid;\r\n	grid-template-columns: auto auto auto auto auto;\r\n	justify-items: center;\r\n	background-position: left bottom;\r\n}\r\n#BasicInfoV4 .bt_menu {\r\n	position: absolute;\r\n	left: 0px;\r\n	width: 219px;\r\n	height: 9px;\r\n}\r\n#BasicInfoV4 .buttons:hover {\r\n}\r\n#BasicInfoV4 .buttons button {\r\n	width: 32px;\r\n	height: 32px;\r\n	border: none;\r\n	margin: 6px;\r\n	background: transparent;\r\n}\r\n\r\n/* REDUCED */\r\n#BasicInfoV4 .small .line1 {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .small .line2 {\r\n	position: absolute;\r\n	top: 20px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .small .line3 {\r\n	position: absolute;\r\n	top: 36px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV4 .toggle_btns {\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: rgba(0, 0, 0, 0);\r\n}\r\n\r\n#BasicInfoV4 .buttons button .name {\r\n	pointer-events: none;\r\n	position: relative;\r\n	display: none;\r\n	z-index: 1;\r\n	top: -20px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#BasicInfoV4 .buttons button:hover .name {\r\n	display: table;\r\n}\r\n#BasicInfoV4 .buttons button .name {\r\n	display: none;\r\n}\r\n\r\n#BasicInfoV4 .buttons .btn_overlay {\r\n	pointer-events: none;\r\n	width: 35px;\r\n	height: 40px;\r\n	border: none;\r\n	position: relative;\r\n	top: -6px;\r\n	left: 0;\r\n	display: none;\r\n}\r\n#BasicInfoV4 .buttons button:active .btn_overlay {\r\n	pointer-events: none;\r\n	top: -5px;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/BasicInfo/BasicInfoV4/BasicInfoV4.js
@@ -243197,7 +236808,6 @@ var init_BasicInfoV4 = __esmMin((() => {
 			"shortcut",
 			"agency"
 		],
-		menuTip: true,
 		barScale: 1.27
 	});
 }));
@@ -243211,7 +236821,7 @@ var init_BasicInfoV5$2 = __esmMin((() => {
 //#region src/UI/Components/BasicInfo/BasicInfoV5/BasicInfoV5.css?raw
 var BasicInfoV5_default$1;
 var init_BasicInfoV5$1 = __esmMin((() => {
-	BasicInfoV5_default$1 = ":host {\r\n	width: 220px;\r\n	height: 150px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#BasicInfoV5 {\r\n	position: absolute;\r\n	width: 220px;\r\n	height: 150px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#BasicInfoV5.small .large {\r\n	display: none;\r\n}\r\n#BasicInfoV5.large .small {\r\n	display: none;\r\n	border-radius: 5px;\r\n}\r\n#BasicInfoV5.small {\r\n	height: 70px;\r\n}\r\n#BasicInfoV5.large .bt_menu {\r\n	top: 150px;\r\n}\r\n#BasicInfoV5.small .bt_menu {\r\n	top: 70px;\r\n}\r\n\r\n#BasicInfoV5.large .buttons {\r\n	top: 160px;\r\n}\r\n#BasicInfoV5.small .buttons {\r\n	top: 80px;\r\n}\r\n\r\n#BasicInfoV5 .topbar .left {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n#BasicInfoV5 .topbar .right {\r\n	position: absolute;\r\n	top: 3px;\r\n	right: 2px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n\r\n/* LARGE */\r\n#BasicInfoV5 .large .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n}\r\n#BasicInfoV5 .large .name {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 20px;\r\n}\r\n#BasicInfoV5 .large .job {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 33px;\r\n}\r\n#BasicInfoV5 .large .hp_title {\r\n	position: absolute;\r\n	top: 50px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .sp_title {\r\n	position: absolute;\r\n	top: 65px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .ap_title {\r\n	position: absolute;\r\n	top: 80px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .hp_bar,\r\n#BasicInfoV5 .large .sp_bar,\r\n#BasicInfoV5 .large .ap_bar {\r\n	position: absolute;\r\n	top: 53px;\r\n	left: 35px;\r\n	width: 135px;\r\n	height: 9px;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .large .sp_bar {\r\n	top: 68px;\r\n}\r\n#BasicInfoV5 .large .ap_bar {\r\n	top: 83px;\r\n	background: linear-gradient(\r\n		to bottom,\r\n		#5a5a63 0%,\r\n		#a5a5ad 15%,\r\n		#bdc6ce 30%,\r\n		#ceced6 45%,\r\n		#d6dede 65%,\r\n		#e7e7ef 70%,\r\n		#f7f7f7 80%\r\n	);\r\n	border-radius: 15px;\r\n	border: 1px solid #b5b5b5;\r\n}\r\n#BasicInfoV5 .large .hp_bar div,\r\n#BasicInfoV5 .large .sp_bar div,\r\n#BasicInfoV5 .large .ap_bar div {\r\n	width: 4px;\r\n	height: 9px;\r\n	float: left;\r\n}\r\n#BasicInfoV5 .large div.hp_bar_perc,\r\n#BasicInfoV5 .large div.sp_bar_perc,\r\n#BasicInfoV5 .large div.ap_bar_perc {\r\n	text-align: center;\r\n	width: 127px;\r\n	position: absolute;\r\n	top: -1px;\r\n}\r\n#BasicInfoV5 .large .hp_perc {\r\n	position: absolute;\r\n	top: 50px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .sp_perc {\r\n	position: absolute;\r\n	top: 65px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .ap_perc {\r\n	position: absolute;\r\n	top: 80px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .blvl {\r\n	position: absolute;\r\n	top: 101px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .jlvl {\r\n	position: absolute;\r\n	top: 112px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .bexp,\r\n#BasicInfoV5 .large .jexp {\r\n	position: absolute;\r\n	top: 104px;\r\n	left: 84px;\r\n	width: 110px;\r\n	height: 4px;\r\n	border: 1px solid #afafaf;\r\n	background-color: white;\r\n}\r\n#BasicInfoV5 .large .bexp div,\r\n#BasicInfoV5 .large .jexp div {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 0%;\r\n	height: 4px;\r\n	background-color: #4262a5;\r\n}\r\n#BasicInfoV5 .large .jexp {\r\n	top: 116px;\r\n}\r\n#BasicInfoV5 .large .extra {\r\n	position: absolute;\r\n	top: 134px;\r\n	right: -15px;\r\n	width: 100%;\r\n	padding-right: 20px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	text-align: right;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .buttons {\r\n	position: absolute;\r\n	left: 0px;\r\n	top: 9px;\r\n	width: 220px;\r\n	height: 132px;\r\n	overflow-x: hidden;\r\n	overflow-y: auto; /* the client's scrollbar attaches to this, and only shows when there is more */\r\n	background-repeat: no-repeat;\r\n	background-position: bottom; /* alinha o fundo pela base */\r\n}\r\n#BasicInfoV5 .bt_menu {\r\n	position: absolute;\r\n	left: 0px;\r\n	width: 219px;\r\n	height: 9px;\r\n}\r\n#BasicInfoV5 .buttons:hover {\r\n}\r\n#BasicInfoV5 .buttons > div[id] {\r\n	float: left;\r\n	width: 32px;\r\n	height: 32px;\r\n	border: none;\r\n	margin: 6px;\r\n}\r\n/* The scrollbar takes 13px of the panel only while it scrolls. Five buttons still\r\n   fit in what is left if their side margins give up 2px each. */\r\n#BasicInfoV5 .buttons[style*='padding-right: 13px'] > div[id] {\r\n	margin: 6px 4px;\r\n}\r\n#BasicInfoV5 .buttons .clear {\r\n	clear: both;\r\n}\r\n\r\n/* REDUCED */\r\n#BasicInfoV5 .small .line1 {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .small .info-container {\r\n	position: absolute;\r\n	top: 17px;\r\n	height: 60px;\r\n	width: 220px;\r\n	background-color: #ffffff;\r\n}\r\n#BasicInfoV5 .small .hpcontainer,\r\n#BasicInfoV5 .small .spcontainer {\r\n	position: absolute;\r\n	width: 130px;\r\n}\r\n#BasicInfoV5 .small .expcontainer,\r\n#BasicInfoV5 .small .apcontainer {\r\n	position: absolute;\r\n	width: 65px;\r\n	left: 140px;\r\n}\r\n#BasicInfoV5 .small .line2 {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .small .line3 {\r\n	position: absolute;\r\n	top: 20px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line3 .hp_max_value {\r\n	display: inline-block;\r\n	width: 65px;\r\n	text-align: left;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line4 {\r\n	position: absolute;\r\n	top: 35px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line4 .sp_max_value {\r\n	display: inline-block;\r\n	width: 73px;\r\n	text-align: left;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .toggle_btns {\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: rgba(0, 0, 0, 0);\r\n}\r\n\r\n#BasicInfoV5 .buttons div .name {\r\n	display: none;\r\n}\r\n\r\n/* A button's name is drawn once, centred below the frame, rather than inside the\r\n   button, where a panel that scrolls would clip it. BasicInfoCommon fills it in. */\r\n#BasicInfoV5 .menu_tip {\r\n	display: none;\r\n	position: absolute;\r\n	left: 110px;\r\n	transform: translateX(-50%);\r\n	z-index: 10;\r\n	pointer-events: none;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#BasicInfoV5.large .menu_tip {\r\n	top: 296px; /* the panel is at 160px, 132px tall */\r\n}\r\n#BasicInfoV5.small .menu_tip {\r\n	top: 216px; /* the panel is at 80px, 132px tall */\r\n}\r\n\r\n#BasicInfoV5 .buttons .btn_overlay {\r\n	width: 35px;\r\n	height: 40px;\r\n	border: none;\r\n	position: relative;\r\n	/* The picture's tile starts 6px below its top and flush left, which puts it over\r\n	   its button; -13px and -7px left it up and to the left, and past the panel's top. */\r\n	top: -6px;\r\n	left: 0;\r\n	z-index: 10;\r\n	display: none;\r\n}\r\n";
+	BasicInfoV5_default$1 = ":host {\r\n	width: 220px;\r\n	height: 150px;\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#BasicInfoV5 {\r\n	position: absolute;\r\n	width: 220px;\r\n	height: 150px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#BasicInfoV5.small .large {\r\n	display: none;\r\n}\r\n#BasicInfoV5.large .small {\r\n	display: none;\r\n	border-radius: 5px;\r\n}\r\n#BasicInfoV5.small {\r\n	height: 70px;\r\n}\r\n#BasicInfoV5.large .bt_menu {\r\n	top: 150px;\r\n}\r\n#BasicInfoV5.small .bt_menu {\r\n	top: 70px;\r\n}\r\n\r\n#BasicInfoV5.large .buttons {\r\n	top: 160px;\r\n}\r\n#BasicInfoV5.small .buttons {\r\n	top: 80px;\r\n}\r\n\r\n#BasicInfoV5 .topbar .left {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 4px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n#BasicInfoV5 .topbar .right {\r\n	position: absolute;\r\n	top: 3px;\r\n	right: 2px;\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background: none;\r\n}\r\n\r\n/* LARGE */\r\n#BasicInfoV5 .large .title {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n}\r\n#BasicInfoV5 .large .name {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 20px;\r\n}\r\n#BasicInfoV5 .large .job {\r\n	position: absolute;\r\n	left: 10px;\r\n	top: 33px;\r\n}\r\n#BasicInfoV5 .large .hp_title {\r\n	position: absolute;\r\n	top: 50px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .sp_title {\r\n	position: absolute;\r\n	top: 65px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .ap_title {\r\n	position: absolute;\r\n	top: 80px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .hp_bar,\r\n#BasicInfoV5 .large .sp_bar,\r\n#BasicInfoV5 .large .ap_bar {\r\n	position: absolute;\r\n	top: 53px;\r\n	left: 35px;\r\n	width: 135px;\r\n	height: 9px;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .large .sp_bar {\r\n	top: 68px;\r\n}\r\n#BasicInfoV5 .large .ap_bar {\r\n	top: 83px;\r\n	background: linear-gradient(\r\n		to bottom,\r\n		#5a5a63 0%,\r\n		#a5a5ad 15%,\r\n		#bdc6ce 30%,\r\n		#ceced6 45%,\r\n		#d6dede 65%,\r\n		#e7e7ef 70%,\r\n		#f7f7f7 80%\r\n	);\r\n	border-radius: 15px;\r\n	border: 1px solid #b5b5b5;\r\n}\r\n#BasicInfoV5 .large .hp_bar div,\r\n#BasicInfoV5 .large .sp_bar div,\r\n#BasicInfoV5 .large .ap_bar div {\r\n	width: 4px;\r\n	height: 9px;\r\n	float: left;\r\n}\r\n#BasicInfoV5 .large div.hp_bar_perc,\r\n#BasicInfoV5 .large div.sp_bar_perc,\r\n#BasicInfoV5 .large div.ap_bar_perc {\r\n	text-align: center;\r\n	width: 127px;\r\n	position: absolute;\r\n	top: -1px;\r\n}\r\n#BasicInfoV5 .large .hp_perc {\r\n	position: absolute;\r\n	top: 50px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .sp_perc {\r\n	position: absolute;\r\n	top: 65px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .ap_perc {\r\n	position: absolute;\r\n	top: 80px;\r\n	right: 20px;\r\n}\r\n#BasicInfoV5 .large .blvl {\r\n	position: absolute;\r\n	top: 101px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .jlvl {\r\n	position: absolute;\r\n	top: 112px;\r\n	left: 15px;\r\n}\r\n#BasicInfoV5 .large .bexp,\r\n#BasicInfoV5 .large .jexp {\r\n	position: absolute;\r\n	top: 104px;\r\n	left: 84px;\r\n	width: 110px;\r\n	height: 4px;\r\n	border: 1px solid #afafaf;\r\n	background-color: white;\r\n}\r\n#BasicInfoV5 .large .bexp div,\r\n#BasicInfoV5 .large .jexp div {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 0%;\r\n	height: 4px;\r\n	background-color: #4262a5;\r\n}\r\n#BasicInfoV5 .large .jexp {\r\n	top: 116px;\r\n}\r\n#BasicInfoV5 .large .extra {\r\n	position: absolute;\r\n	top: 134px;\r\n	right: -15px;\r\n	width: 100%;\r\n	padding-right: 20px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n	text-align: right;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .buttons {\r\n	position: absolute;\r\n	left: 0px;\r\n	top: 9px;\r\n	width: 220px;\r\n	height: 132px;\r\n	background-repeat: no-repeat;\r\n	background-position: bottom; /* alinha o fundo pela base */\r\n}\r\n#BasicInfoV5 .bt_menu {\r\n	position: absolute;\r\n	left: 0px;\r\n	width: 219px;\r\n	height: 9px;\r\n}\r\n#BasicInfoV5 .buttons:hover {\r\n}\r\n#BasicInfoV5 .buttons > div[id] {\r\n	float: left;\r\n	width: 32px;\r\n	height: 32px;\r\n	border: none;\r\n	margin: 6px;\r\n}\r\n#BasicInfoV5 .buttons .clear {\r\n	clear: both;\r\n}\r\n\r\n/* REDUCED */\r\n#BasicInfoV5 .small .line1 {\r\n	position: absolute;\r\n	top: 2px;\r\n	left: 18px;\r\n	text-shadow: 1px 1px white;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .small .info-container {\r\n	position: absolute;\r\n	top: 17px;\r\n	height: 60px;\r\n	width: 220px;\r\n	background-color: #ffffff;\r\n}\r\n#BasicInfoV5 .small .hpcontainer,\r\n#BasicInfoV5 .small .spcontainer {\r\n	position: absolute;\r\n	width: 130px;\r\n}\r\n#BasicInfoV5 .small .expcontainer,\r\n#BasicInfoV5 .small .apcontainer {\r\n	position: absolute;\r\n	width: 65px;\r\n	left: 140px;\r\n}\r\n#BasicInfoV5 .small .line2 {\r\n	position: absolute;\r\n	top: 3px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n}\r\n#BasicInfoV5 .small .line3 {\r\n	position: absolute;\r\n	top: 20px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line3 .hp_max_value {\r\n	display: inline-block;\r\n	width: 65px;\r\n	text-align: left;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line4 {\r\n	position: absolute;\r\n	top: 35px;\r\n	left: 10px;\r\n	white-space: nowrap;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .small .line4 .sp_max_value {\r\n	display: inline-block;\r\n	width: 73px;\r\n	text-align: left;\r\n	font-weight: normal;\r\n}\r\n#BasicInfoV5 .toggle_btns {\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: rgba(0, 0, 0, 0);\r\n}\r\n\r\n#BasicInfoV5 .buttons div .name {\r\n	position: relative;\r\n	display: none;\r\n	z-index: 1;\r\n	top: -20px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#BasicInfoV5 .buttons div:hover .name {\r\n	display: table;\r\n}\r\n#BasicInfoV5 .buttons div .name {\r\n	display: none;\r\n}\r\n\r\n#BasicInfoV5 .buttons .btn_overlay {\r\n	width: 35px;\r\n	height: 40px;\r\n	border: none;\r\n	position: relative;\r\n	top: -13px;\r\n	left: -7px;\r\n	z-index: 10;\r\n	display: none;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/BasicInfo/BasicInfoV5/BasicInfoV5.js
@@ -243242,7 +236852,6 @@ var init_BasicInfoV5 = __esmMin((() => {
 			"shortcut",
 			"agency"
 		],
-		menuTip: true,
 		barScale: 1.27,
 		hasApBar: true
 	});
@@ -245210,7 +238819,7 @@ function calculateAnimation(layer, keyIndex, result) {
 	}
 	return true;
 }
-var mat4$20, D3DBLEND, _program$22, _buffer$16, _bufferData, _matrix$6, _lastAngle, PIXEL_TO_WORLD_Z, anim, StrEffect;
+var mat4$20, D3DBLEND, _program$21, _buffer$15, _bufferData, _matrix$6, _lastAngle, PIXEL_TO_WORLD_Z, anim, StrEffect;
 var init_StrEffect = __esmMin((() => {
 	init_StrEffect$2();
 	init_StrEffect$1();
@@ -245219,8 +238828,8 @@ var init_StrEffect = __esmMin((() => {
 	init_Client();
 	mat4$20 = gl_matrix_default.mat4;
 	D3DBLEND = {};
-	_program$22 = null;
-	_buffer$16 = null;
+	_program$21 = null;
+	_buffer$15 = null;
 	_bufferData = /* @__PURE__ */ new Float32Array(16);
 	_matrix$6 = mat4$20.create();
 	_lastAngle = -1;
@@ -245282,17 +238891,6 @@ var init_StrEffect = __esmMin((() => {
 		free(gl) {
 			this.ready = false;
 		}
-		/** Advance expiration even when distance culling skips drawing. */
-		updateLifetime(tick) {
-			if (this.needCleanUp || this.persistent || tick < this.startTick) return;
-			const endTick = this._Params?.Inst?.endTick;
-			if (endTick > 0 && tick >= endTick) {
-				this.needCleanUp = true;
-				return;
-			}
-			const strFile = Client.loadFile(this.filename, null, null, { texturePath: this.texturePath });
-			if (strFile && tick >= this.startTick + strFile.maxKey / strFile.fps * 1e3) this.needCleanUp = true;
-		}
 		/**
 		* Render in 3D effect
 		*
@@ -245300,8 +238898,6 @@ var init_StrEffect = __esmMin((() => {
 		* @param {number} tick
 		*/
 		render(gl, tick) {
-			this.updateLifetime(tick);
-			if (this.needCleanUp || tick < this.startTick) return;
 			let layer;
 			let i, keyIndex;
 			if (this.ownerEntity && this.ownerEntity.position) {
@@ -245344,8 +238940,8 @@ var init_StrEffect = __esmMin((() => {
 		* @param {StrAnimation} animation object
 		*/
 		renderAnimation(gl, material, animat) {
-			const uniform = _program$22.uniform;
-			const attribute = _program$22.attribute;
+			const uniform = _program$21.uniform;
+			const attribute = _program$21.attribute;
 			let sizeScale = 1;
 			if (this.ownerEntity) sizeScale = (this.ownerEntity.xSize + this.ownerEntity.ySize) / 2 / 5;
 			_bufferData[0] = animat.xy[0] * sizeScale;
@@ -245384,7 +238980,7 @@ var init_StrEffect = __esmMin((() => {
 			gl.uniform1f(uniform.uVerticalBase, verticalBase);
 			gl.uniform3fv(uniform.uSpritePosition, this.position);
 			gl.uniformMatrix4fv(uniform.uSpriteAngle, false, _matrix$6);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$16);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$15);
 			gl.bufferSubData(gl.ARRAY_BUFFER, 0, _bufferData);
 			gl.vertexAttribPointer(attribute.aPosition, 2, gl.FLOAT, false, 16, 0);
 			gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 16, 8);
@@ -245398,12 +238994,12 @@ var init_StrEffect = __esmMin((() => {
 		* @param {object} gl context
 		*/
 		static init(gl) {
-			if (!_buffer$16) {
-				_buffer$16 = gl.createBuffer();
-				gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$16);
+			if (!_buffer$15) {
+				_buffer$15 = gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$15);
 				gl.bufferData(gl.ARRAY_BUFFER, _bufferData.byteLength, gl.DYNAMIC_DRAW);
 			}
-			if (!_program$22) _program$22 = WebGL_default.createShaderProgram(gl, StrEffect_default$1, StrEffect_default);
+			if (!_program$21) _program$21 = WebGL_default.createShaderProgram(gl, StrEffect_default$1, StrEffect_default);
 			D3DBLEND[1] = gl.ZERO;
 			D3DBLEND[2] = gl.ONE;
 			D3DBLEND[3] = gl.SRC_COLOR;
@@ -245425,13 +239021,13 @@ var init_StrEffect = __esmMin((() => {
 		* @param {object} webgl context
 		*/
 		static free(gl) {
-			if (_program$22) {
-				gl.deleteProgram(_program$22);
-				_program$22 = null;
+			if (_program$21) {
+				gl.deleteProgram(_program$21);
+				_program$21 = null;
 			}
-			if (_buffer$16) {
-				gl.deleteBuffer(_buffer$16);
-				_buffer$16 = null;
+			if (_buffer$15) {
+				gl.deleteBuffer(_buffer$15);
+				_buffer$15 = null;
 			}
 			this.ready = false;
 		}
@@ -245445,10 +239041,10 @@ var init_StrEffect = __esmMin((() => {
 		* @param {number} tick
 		*/
 		static beforeRender(gl, modelView, projection, fog, tick) {
-			const uniform = _program$22.uniform;
-			const attribute = _program$22.attribute;
+			const uniform = _program$21.uniform;
+			const attribute = _program$21.attribute;
 			gl.depthMask(false);
-			gl.useProgram(_program$22);
+			gl.useProgram(_program$21);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1f(uniform.uFogNear, fog.near * 100);
@@ -245466,8 +239062,8 @@ var init_StrEffect = __esmMin((() => {
 		*/
 		static afterRender(gl) {
 			gl.depthMask(true);
-			gl.disableVertexAttribArray(_program$22.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$22.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$21.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$21.attribute.aTextureCoord);
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 		}
 	};
@@ -247035,7 +240631,7 @@ function onClickValidateName(e) {
 *
 * @param {event}
 */
-function onDrop$9(event) {
+function onDrop$10(event) {
 	let item, data;
 	event.stopImmediatePropagation();
 	event.preventDefault();
@@ -247205,7 +240801,7 @@ var init_WriteRodex = __esmMin((() => {
 		valueInput.max = SessionStorage_default.zeny;
 		root.querySelector(".item-list").innerHTML = "";
 		const itemsEl = root.querySelector(".items");
-		itemsEl.addEventListener("drop", onDrop$9);
+		itemsEl.addEventListener("drop", onDrop$10);
 		itemsEl.addEventListener("dragover", stopPropagation$8);
 		this._host.style.display = "";
 		this.focus();
@@ -247562,7 +241158,7 @@ function createInventory(config) {
 		this.magnet.BOTTOM = _preferences.magnet_bottom;
 		this.magnet.LEFT = _preferences.magnet_left;
 		this.magnet.RIGHT = _preferences.magnet_right;
-		_realSize = _preferences.reduce ? 0 : this._host.offsetHeight;
+		_realSize = _preferences.reduce ? 0 : this._host.getBoundingClientRect().height;
 		const miniBtnAppend = root.querySelector(".titlebar .mini");
 		if (miniBtnAppend) miniBtnAppend.dispatchEvent(new Event("mousedown"));
 	};
@@ -247580,8 +241176,9 @@ function createInventory(config) {
 		_preferences.reduce = !!_realSize;
 		_preferences.y = parseInt(this._host.style.top, 10);
 		_preferences.x = parseInt(this._host.style.left, 10);
-		_preferences.width = Math.floor((this._host.offsetWidth - 25) / 32);
-		if (resizableHeight) _preferences.height = Math.floor((this._host.offsetHeight - 20) / 32);
+		const hostRect = this._host.getBoundingClientRect();
+		_preferences.width = Math.floor((hostRect.width - 25) / 32);
+		if (resizableHeight) _preferences.height = Math.floor((hostRect.height - 20) / 32);
 		_preferences.magnet_top = this.magnet.TOP;
 		_preferences.magnet_bottom = this.magnet.BOTTOM;
 		_preferences.magnet_left = this.magnet.LEFT;
@@ -247672,7 +241269,7 @@ function createInventory(config) {
 			if (lastItem) {
 				const itemRect = lastItem.getBoundingClientRect();
 				const hostRect = hostEl.getBoundingClientRect();
-				if (itemRect.bottom < hostRect.bottom && hostEl.scrollTop > 0) hostEl.scrollTop = Math.max(0, hostEl.scrollTop - (hostRect.bottom - itemRect.bottom) / Component.scale);
+				if (itemRect.bottom < hostRect.bottom && hostEl.scrollTop > 0) hostEl.scrollTop = Math.max(0, hostEl.scrollTop - (hostRect.bottom - itemRect.bottom));
 			}
 			if (hostEl.scrollTop > maxScroll) hostEl.scrollTop = maxScroll;
 			if (hostEl._roScrollbarRestart) hostEl._roScrollbarRestart();
@@ -247954,12 +241551,10 @@ function createInventory(config) {
 		let lastWidth = 0;
 		let lastHeight = 0;
 		function resizing() {
-			const extraX = 25;
-			const scale = Component.scale;
-			let w = Math.floor(((Mouse.screen.x - left) / scale - extraX) / 32);
+			let w = Math.floor((Mouse.screen.x - left - 25) / 32);
 			w = Math.min(Math.max(w, 6), resizableHeight ? 8 : 9);
 			if (resizableHeight) {
-				let h = Math.floor(((Mouse.screen.y - top) / scale - 20) / 32);
+				let h = Math.floor((Mouse.screen.y - top - 20) / 32);
 				h = Math.min(Math.max(h, 2), 5);
 				if (w === lastWidth && h === lastHeight) return;
 				Component.resize(w, h);
@@ -248023,7 +241618,7 @@ function createInventory(config) {
 			Component._host.style.height = `${_realSize}px`;
 			_realSize = 0;
 		} else {
-			_realSize = Component._host.offsetHeight;
+			_realSize = Component._host.getBoundingClientRect().height;
 			Component._host.style.height = "17px";
 			if (panel) panel.style.display = "none";
 		}
@@ -248053,10 +241648,6 @@ function createInventory(config) {
 			data = JSON.parse(event.dataTransfer.getData("Text"));
 			item = data.data;
 		} catch (_e) {
-			return false;
-		}
-		if (data.type === "item" && data.from === "Equipment") {
-			EquipmentController.getUI().onUnEquip(item.index);
 			return false;
 		}
 		if (data.type !== "item" || data.from !== "Storage" && data.from !== "CartItems" && data.from !== "Mail" && data.from !== "WriteRodex") return false;
@@ -248110,9 +241701,8 @@ function createInventory(config) {
 		const rootRect = rootEl.getBoundingClientRect();
 		if (overlay) {
 			overlay.style.display = "block";
-			const scale = Component.scale;
-			overlay.style.top = `${(itemRect.top - rootRect.top) / scale}px`;
-			overlay.style.left = `${(itemRect.left - rootRect.left) / scale + 35}px`;
+			overlay.style.top = `${itemRect.top - rootRect.top}px`;
+			overlay.style.left = `${itemRect.left - rootRect.left + 35}px`;
 			overlay.innerHTML = _sanitizeHtml$7(`${DB.getItemName(item)}: ${item.count || 1}${quantity}`);
 			if (item.IsIdentified) overlay.classList.remove("grey");
 			else overlay.classList.add("grey");
@@ -248702,14 +242292,6 @@ function createStorage(config) {
 				searchBtn.addEventListener("mousedown", (e) => e.stopImmediatePropagation());
 				searchBtn.addEventListener("click", () => Component.onSearch());
 			}
-			const searchInput = root.querySelector("#storage-search-input");
-			if (searchInput) searchInput.addEventListener("keydown", (e) => {
-				if (e.which === KEYS.ENTER || e.key === "Enter") {
-					e.preventDefault();
-					e.stopPropagation();
-					Component.onEnterPressed();
-				}
-			});
 		}
 		if (hasOrderBy) {
 			const orderBySelect = root.querySelector(".storage-order-by");
@@ -248768,7 +242350,7 @@ function createStorage(config) {
 		_list.length = 0;
 		_preferences.y = parseInt(this._host.style.top, 10);
 		_preferences.x = parseInt(this._host.style.left, 10);
-		_preferences.height = Math.floor((this._host.offsetHeight - 20) / 32);
+		_preferences.height = Math.floor((this._host.getBoundingClientRect().height - 20) / 32);
 		_preferences.save();
 		if (hasFilters) {
 			for (const tabId in _openFilters) if (_openFilters.hasOwnProperty(tabId)) _openFilters[tabId].remove();
@@ -248867,37 +242449,35 @@ function createStorage(config) {
 		if (event.which === KEYS.ESCAPE || event.key === "Escape") {
 			if (typeof Component.onClosePressed === "function") Component.onClosePressed();
 		}
+		if (hasSearch && (event.which === KEYS.ENTER || event.key === "Enter")) {
+			if (typeof Component.onEnterPressed === "function") Component.onEnterPressed();
+		}
 	};
-	if (hasSearch) {
-		Component.onSearch = function onSearch() {
-			const searchInput = this.getRoot().querySelector("#storage-search-input");
-			if (!searchInput) return;
-			const searchTerm = searchInput.value.toLowerCase();
-			const filteredItems = _list.filter((item) => {
-				return DB.getItemName(item).toLowerCase().indexOf(searchTerm) > -1;
-			});
-			if (!_openFilters[ItemType_default.SEARCH]) {
-				const newFilter = new StorageFilter(ItemType_default.SEARCH);
-				_openFilters[ItemType_default.SEARCH] = newFilter;
-				newFilter.onCloseCallback = function() {
-					if (_openFilters[ItemType_default.SEARCH]) delete _openFilters[ItemType_default.SEARCH];
-				};
-				newFilter.onTransferItemToOtherUI = function(item) {
-					Component.transferItemToOtherUI(item);
-				};
-				newFilter.append();
-				newFilter.setItems("Search", filteredItems, ItemType_default.SEARCH);
-			} else _openFilters[ItemType_default.SEARCH].setItems("Search", filteredItems, ItemType_default.SEARCH);
-		};
-		Component.onEnterPressed = function onEnterPressed() {
-			Component.onSearch();
-		};
-	}
+	if (hasSearch) Component.onSearch = function onSearch() {
+		const searchInput = this.getRoot().querySelector("#storage-search-input");
+		if (!searchInput) return;
+		const searchTerm = searchInput.value.toLowerCase();
+		const filteredItems = _list.filter((item) => {
+			return DB.getItemName(item).toLowerCase().indexOf(searchTerm) > -1;
+		});
+		if (!_openFilters[ItemType_default.SEARCH]) {
+			const newFilter = new StorageFilter(ItemType_default.SEARCH);
+			_openFilters[ItemType_default.SEARCH] = newFilter;
+			newFilter.onCloseCallback = function() {
+				if (_openFilters[ItemType_default.SEARCH]) delete _openFilters[ItemType_default.SEARCH];
+			};
+			newFilter.onTransferItemToOtherUI = function(item) {
+				Component.transferItemToOtherUI(item);
+			};
+			newFilter.append();
+			newFilter.setItems("Search", filteredItems, ItemType_default.SEARCH);
+		} else _openFilters[ItemType_default.SEARCH].setItems("Search", filteredItems, ItemType_default.SEARCH);
+	};
 	function onResize() {
 		const top = Component._host.offsetTop;
 		let lastHeight = 0;
 		function resizing() {
-			let h = Math.floor(((Mouse.screen.y - top) / Component.scale - 20) / 32);
+			let h = Math.floor((Mouse.screen.y - top - 20) / 32);
 			h = Math.min(Math.max(h, 8), 17);
 			if (h === lastHeight) return;
 			resizeHeight(h);
@@ -248972,7 +242552,11 @@ function createStorage(config) {
 		return -1;
 	}
 	function onScroll(event, contentEl) {
-		WheelSteps_default.scrollRows(event, contentEl, 32);
+		let delta;
+		if (event.wheelDelta) delta = event.wheelDelta / 120;
+		else if (event.detail) delta = -event.detail;
+		else if (event.deltaY) delta = -event.deltaY / 100;
+		contentEl.scrollTop = Math.floor(contentEl.scrollTop / 32) * 32 - delta * 32;
 		event.preventDefault();
 	}
 	function onFilterWindowOpen(button) {
@@ -249006,7 +242590,7 @@ function createStorage(config) {
 		const overlay = root.querySelector(".overlay");
 		if (overlay) {
 			overlay.textContent = title;
-			const height = Component._host.offsetHeight;
+			const height = Component._host.getBoundingClientRect().height;
 			overlay.style.top = `${height - 50}px`;
 			overlay.style.left = `${button.offsetLeft}px`;
 			overlay.style.display = "";
@@ -249099,7 +242683,6 @@ var init_StorageCommon = __esmMin((() => {
 	init_ItemInfo();
 	init_CartItems();
 	init_Inventory();
-	init_WheelSteps();
 }));
 //#endregion
 //#region src/UI/Components/Storage/StorageV0/Storage.html?raw
@@ -249141,7 +242724,31 @@ var init_StorageFilter$1 = __esmMin((() => {
 }));
 //#endregion
 //#region src/UI/Components/Storage/StorageV3/StorageFilter.js
-var StorageFilter;
+function StorageFilter(tabId) {
+	const prefName = "StorageFilter_" + tabId;
+	GUIComponent.call(this, prefName, StorageFilter_default);
+	this.render = () => StorageFilter_default$1;
+	this.onRemove = function() {
+		const root = this.getRoot();
+		const content = root.querySelector(".content");
+		if (content) content.innerHTML = "";
+		this._list.length = 0;
+		this._currentTabId = -1;
+		this._preferences.y = parseInt(this._host.style.top, 10);
+		this._preferences.x = parseInt(this._host.style.left, 10);
+		this._preferences.height = Math.floor((root.querySelector(".content") ? root.querySelector(".content").offsetHeight : 128) / 32);
+		this._preferences.save();
+		if (typeof this.onCloseCallback === "function") this.onCloseCallback();
+	};
+	this._list = [];
+	this._currentTabId = -1;
+	this._preferences = Preferences.get(prefName, {
+		x: 300 + tabId * 20,
+		y: 200 + tabId * 20,
+		height: 4
+	}, 1);
+	this.onCloseCallback = null;
+}
 var init_StorageFilter = __esmMin((() => {
 	init_DBManager();
 	init_Client();
@@ -249153,33 +242760,8 @@ var init_StorageFilter = __esmMin((() => {
 	init_ItemInfo();
 	init_StorageFilter$2();
 	init_StorageFilter$1();
-	StorageFilter = class extends GUIComponent {
-		constructor(tabId) {
-			const prefName = "StorageFilter_" + tabId;
-			super(prefName, StorageFilter_default);
-			this.render = () => StorageFilter_default$1;
-			this.onRemove = function() {
-				const root = this.getRoot();
-				const content = root.querySelector(".content");
-				if (content) content.innerHTML = "";
-				this._list.length = 0;
-				this._currentTabId = -1;
-				this._preferences.y = parseInt(this._host.style.top, 10);
-				this._preferences.x = parseInt(this._host.style.left, 10);
-				this._preferences.height = Math.floor((root.querySelector(".content") ? root.querySelector(".content").offsetHeight : 128) / 32);
-				this._preferences.save();
-				if (typeof this.onCloseCallback === "function") this.onCloseCallback();
-			};
-			this._list = [];
-			this._currentTabId = -1;
-			this._preferences = Preferences.get(prefName, {
-				x: 300 + tabId * 20,
-				y: 200 + tabId * 20,
-				height: 4
-			}, 1);
-			this.onCloseCallback = null;
-		}
-	};
+	StorageFilter.prototype = Object.create(GUIComponent.prototype);
+	StorageFilter.prototype.constructor = StorageFilter;
 	StorageFilter.prototype.init = function init() {
 		const self = this;
 		const root = this.getRoot();
@@ -249461,7 +243043,7 @@ var init_Storage$1 = __esmMin((() => {
 /**
 * Extend inventory window size
 */
-function onResize$5() {
+function onResize$6() {
 	const content = CartItems.getRoot().querySelector(".container .content");
 	const hideEl = CartItems.getRoot().querySelector(".hide");
 	const top = CartItems._host.offsetTop;
@@ -249513,7 +243095,7 @@ function onToggleReduction() {
 *
 * @param {event}
 */
-function onDrop$8(event) {
+function onDrop$9(event) {
 	let item, data;
 	event.stopImmediatePropagation();
 	try {
@@ -249549,8 +243131,9 @@ function onDrop$8(event) {
 * Block the scroll to move 32px at each move
 */
 function onScroll$5(event) {
+	const delta = event.deltaY > 0 ? -1 : 1;
 	const el = event.currentTarget;
-	WheelSteps_default.scrollRows(event, el, 32);
+	el.scrollTop = Math.floor(el.scrollTop / 32) * 32 - delta * 32;
 	if (el._roScrollbarRestart) el._roScrollbarRestart();
 	event.stopImmediatePropagation();
 	event.preventDefault();
@@ -249670,7 +243253,7 @@ function onItemUsed$1(event) {
 	event.stopImmediatePropagation();
 	event.preventDefault();
 }
-var CartItems, _realSize$1, _preferences$25, CartItems_default;
+var CartItems, _realSize$1, _preferences$26, CartItems_default;
 var init_CartItems = __esmMin((() => {
 	init_DBManager();
 	init_ItemType();
@@ -249691,7 +243274,6 @@ var init_CartItems = __esmMin((() => {
 	init_Storage$1();
 	init_Inventory();
 	init_Equipment();
-	init_WheelSteps();
 	CartItems = new GUIComponent("CartItems", CartItems_default$1);
 	CartItems.render = () => CartItems_default$2;
 	/**
@@ -249699,7 +243281,7 @@ var init_CartItems = __esmMin((() => {
 	*/
 	CartItems.list = [];
 	_realSize$1 = 0;
-	_preferences$25 = Preferences.get("CartItems", {
+	_preferences$26 = Preferences.get("CartItems", {
 		x: 200,
 		y: 200,
 		width: 7,
@@ -249717,16 +243299,13 @@ var init_CartItems = __esmMin((() => {
 		const miniBtn = root.querySelector(".titlebar .mini");
 		if (miniBtn) miniBtn.addEventListener("click", onToggleReduction);
 		const extendBtn = root.querySelector(".footer .extend");
-		if (extendBtn) extendBtn.addEventListener("mousedown", onResize$5);
+		if (extendBtn) extendBtn.addEventListener("mousedown", onResize$6);
 		const closeBtn = root.querySelector(".titlebar .close");
 		if (closeBtn) closeBtn.addEventListener("click", () => {
 			CartItems._host.style.display = "none";
 		});
-		this._host.addEventListener("drop", onDrop$8);
-		this._host.addEventListener("dragover", (e) => {
-			e.stopImmediatePropagation();
-			e.preventDefault();
-		});
+		this._host.addEventListener("drop", onDrop$9);
+		this._host.addEventListener("dragover", (e) => e.stopImmediatePropagation());
 		const content = root.querySelector(".container .content");
 		if (content) {
 			content.addEventListener("wheel", onScroll$5);
@@ -249761,12 +243340,12 @@ var init_CartItems = __esmMin((() => {
 	*/
 	CartItems.onAppend = function OnAppend() {
 		if (SessionStorage_default.Entity.hasCart === false) this._host.style.display = "none";
-		if (!_preferences$25.show) this._host.style.display = "none";
-		this.resize(_preferences$25.width, _preferences$25.height);
+		if (!_preferences$26.show) this._host.style.display = "none";
+		this.resize(_preferences$26.width, _preferences$26.height);
 		const hostRect = this._host.getBoundingClientRect();
-		this._host.style.top = `${Math.min(Math.max(0, _preferences$25.y), Renderer.height - hostRect.height)}px`;
-		this._host.style.left = `${Math.min(Math.max(0, _preferences$25.x), Renderer.width - hostRect.width)}px`;
-		_realSize$1 = _preferences$25.reduce ? 0 : hostRect.height;
+		this._host.style.top = `${Math.min(Math.max(0, _preferences$26.y), Renderer.height - hostRect.height)}px`;
+		this._host.style.left = `${Math.min(Math.max(0, _preferences$26.x), Renderer.width - hostRect.width)}px`;
+		_realSize$1 = _preferences$26.reduce ? 0 : hostRect.height;
 		const miniBtn = this.getRoot().querySelector(".titlebar .mini");
 		if (miniBtn) miniBtn.dispatchEvent(new Event("mousedown"));
 	};
@@ -249778,14 +243357,14 @@ var init_CartItems = __esmMin((() => {
 		if (content) content.innerHTML = "";
 		this.list.length = 0;
 		document.querySelectorAll(".ItemInfo").forEach((el) => el.remove());
-		_preferences$25.show = this._host.style.display !== "none";
-		_preferences$25.reduce = !!_realSize$1;
-		_preferences$25.y = parseInt(this._host.style.top, 10);
-		_preferences$25.x = parseInt(this._host.style.left, 10);
+		_preferences$26.show = this._host.style.display !== "none";
+		_preferences$26.reduce = !!_realSize$1;
+		_preferences$26.y = parseInt(this._host.style.top, 10);
+		_preferences$26.x = parseInt(this._host.style.left, 10);
 		const hostRect = this._host.getBoundingClientRect();
-		_preferences$25.width = Math.floor((hostRect.width - 25) / 32);
-		_preferences$25.height = Math.floor((hostRect.height - 20) / 32);
-		_preferences$25.save();
+		_preferences$26.width = Math.floor((hostRect.width - 25) / 32);
+		_preferences$26.height = Math.floor((hostRect.height - 20) / 32);
+		_preferences$26.save();
 	};
 	/**
 	* Process shortcut
@@ -250031,7 +243610,6 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 	Component.init = function init() {
 		const root = Component.getRoot();
 		const canvases = root.querySelectorAll("canvas");
-		_ctx.length = 0;
 		if (canvases[0]) _ctx.push(canvases[0].getContext("2d"));
 		if (canvases[1]) _ctx.push(canvases[1].getContext("2d"));
 		const tabsEl = root.querySelector("#tabs");
@@ -250110,15 +243688,12 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 			const switchEquipBtn = root.querySelector(".switch_equip");
 			if (switchEquipBtn) switchEquipBtn.addEventListener("click", onSwtichEquip);
 		}
-		if (titles) {
-			const titleList = root.querySelector("#title_list");
-			if (titleList) titleList.addEventListener("click", onTitleClick);
-			this.loadTitles();
-		}
+		if (titles) this.loadTitles();
 		this._host.addEventListener("dragover", onDragOver);
 		this._host.addEventListener("dragleave", onDragLeave);
 		this._host.addEventListener("drop", onDrop);
-		root.querySelectorAll(".content").forEach((content) => {
+		const content = root.querySelector(".content");
+		if (content) {
 			content.addEventListener("contextmenu", (e) => {
 				e.preventDefault();
 				const item = e.target.closest(".item");
@@ -250135,14 +243710,7 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 			content.addEventListener("mouseout", (e) => {
 				if (e.target.closest("button")) onEquipmentOut();
 			});
-			content.addEventListener("dragstart", (e) => {
-				const item = e.target.closest(".item");
-				if (item) onEquipmentDragStart.call(item, e);
-			});
-			content.addEventListener("dragend", (e) => {
-				if (e.target.closest(".item")) onEquipmentDragEnd();
-			});
-		});
+		}
 		this.draggable(".titlebar");
 		if (switchEquip) switchappend = root.querySelector(".footer");
 		if (costumeConfig) {
@@ -250152,7 +243720,16 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 			if (costumeSpan && costumeSpan.tagName === "SPAN") costumeSpan.style.display = "none";
 		}
 		if (damageSkin) {
-			root.querySelectorAll("#damageskin .skin-option").forEach((btn) => {
+			const skinButtons = root.querySelectorAll("#damageskin .skin-option");
+			skinButtons.forEach((btn) => {
+				btn.setAttribute("data-background", "showdamage/btn_damage.bmp");
+				btn.setAttribute("data-hover", "showdamage/btn_damage_press.bmp");
+				btn.setAttribute("data-down", "showdamage/btn_damage_pick.bmp");
+			});
+			if (this.parseHTML) skinButtons.forEach((btn) => {
+				this.parseHTML.call(btn);
+			});
+			skinButtons.forEach((btn) => {
 				btn.addEventListener("mousedown", function() {
 					const skinId = parseInt(this.getAttribute("data-skin"), 10);
 					Component.setDamageSkin(skinId);
@@ -250347,7 +243924,7 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 		const selector = getSelectorFromLocation$1(location);
 		const gradeInner = enchantGrade ? "<div class=\"grade\"></div>" : "";
 		root.querySelectorAll(selector).forEach((cell) => {
-			cell.innerHTML = "<div class=\"item\" data-index=\"" + item.index + "\" draggable=\"true\"><button>" + gradeInner + "</button><span class=\"itemName\">" + escapeHTML$1(add3Dots(DB.getItemName(item, {
+			cell.innerHTML = "<div class=\"item\" data-index=\"" + item.index + "\"><button>" + gradeInner + "</button><span class=\"itemName\">" + escapeHTML$1(add3Dots(DB.getItemName(item, {
 				showItemGrade: false,
 				showItemSlots: false,
 				showItemOptions: false
@@ -250544,7 +244121,6 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 				}
 			}
 		}
-		event.preventDefault();
 		event.stopImmediatePropagation();
 		return false;
 	}
@@ -250561,12 +244137,6 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 		try {
 			data = JSON.parse(event.dataTransfer.getData("Text"));
 		} catch (_e) {
-			return false;
-		}
-		if (data && data.type === "item" && data.from === "Equipment") {
-			Component.getRoot().querySelectorAll("td").forEach((td) => {
-				td.style.backgroundImage = "none";
-			});
 			return false;
 		}
 		if (data && data.type === "item") {
@@ -250600,26 +244170,6 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 		const overlay = Component.getRoot().querySelector(".overlay");
 		if (overlay) overlay.style.display = "none";
 	}
-	function onEquipmentDragStart(event) {
-		const index = parseInt(this.getAttribute("data-index"), 10);
-		const item = _list[index];
-		if (!item) return;
-		const img = new Image();
-		const btn = this.querySelector("button");
-		const url = btn ? btn.style.backgroundImage.match(/\((.*?)\)/)?.[1]?.replace(/('|")/g, "") : "";
-		img.decoding = "async";
-		img.src = url || "";
-		event.dataTransfer.setDragImage(img, 12, 12);
-		event.dataTransfer.setData("Text", JSON.stringify(window._OBJ_DRAG_ = {
-			type: "item",
-			from: "Equipment",
-			data: item
-		}));
-		onEquipmentOut();
-	}
-	function onEquipmentDragEnd() {
-		delete window._OBJ_DRAG_;
-	}
 	function onEquipmentOver() {
 		const idx = parseInt(this.parentNode.getAttribute("data-index"), 10);
 		const item = _list[idx];
@@ -250629,9 +244179,8 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 		const rootEl = root.querySelector("#" + name) || root;
 		const btnRect = this.getBoundingClientRect();
 		const rootRect = rootEl.getBoundingClientRect();
-		const scale = Component.scale;
-		const top = (btnRect.top - rootRect.top) / scale;
-		const left = (btnRect.left - rootRect.left) / scale;
+		const top = btnRect.top - rootRect.top;
+		const left = btnRect.left - rootRect.left;
 		if (!top && !left) return;
 		if (overlay) {
 			overlay.style.display = "block";
@@ -250678,15 +244227,6 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 	} else Component.isInEquipList = function() {
 		return 0;
 	};
-	function onTitleClick(e) {
-		const option = e.target.closest(".title-option");
-		if (option) {
-			e.preventDefault();
-			e.stopPropagation();
-			const titleId = parseInt(option.getAttribute("data-title"));
-			Component.selectTitle(titleId);
-		}
-	}
 	if (titles) {
 		Component.loadTitles = function() {
 			const titleList = Component.getRoot().querySelector("#title_list");
@@ -250699,13 +244239,24 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 			removeEl.setAttribute("data-title", "0");
 			removeEl.textContent = removeTitleText;
 			titleList.appendChild(removeEl);
-			(SessionStorage_default.Achievement && SessionStorage_default.Achievement.titles || []).slice().sort((a, b) => a - b).forEach((titleId) => {
-				const selectedClass = titleId === _currentTitleId ? " selected" : "";
+			const allTitles = DB.getAllTitles();
+			for (const titleId in allTitles) if (allTitles.hasOwnProperty(titleId)) {
+				const titleName = allTitles[titleId];
+				const selectedClass = parseInt(titleId) === _currentTitleId ? " selected" : "";
 				const titleEl = document.createElement("div");
 				titleEl.className = `title-option${selectedClass}`;
 				titleEl.setAttribute("data-title", titleId);
-				titleEl.textContent = DB.getTitleString(titleId);
+				titleEl.textContent = titleName;
 				titleList.appendChild(titleEl);
+			}
+			titleList.addEventListener("click", (e) => {
+				const option = e.target.closest(".title-option");
+				if (option) {
+					e.preventDefault();
+					e.stopPropagation();
+					const titleId = parseInt(option.getAttribute("data-title"));
+					Component.selectTitle(titleId);
+				}
 			});
 		};
 		Component.selectTitle = function(titleId) {
@@ -250720,11 +244271,31 @@ function createEquipment({ name, htmlText, cssText, entityRender = true, enchant
 	}
 	if (damageSkin) {
 		Component.setDamageSkin = function setDamageSkin(skinId) {
+			const root = Component.getRoot();
+			const buttons = root.querySelectorAll("#damageskin .skin-option");
+			const buttonSelected = root.querySelector(`#damageskin .skin-option[data-skin="${skinId}"]`);
 			GraphicsSettings.damageSkin = skinId;
 			GraphicsSettings.save();
-			Component.getRoot().querySelectorAll("#damageskin .skin-option").forEach((btn) => {
-				btn.classList.toggle("active", parseInt(btn.getAttribute("data-skin"), 10) === skinId);
+			buttons.forEach((btn) => {
+				btn.setAttribute("data-background", "showdamage/btn_damage.bmp");
+				btn.setAttribute("data-hover", "showdamage/btn_damage_press.bmp");
+				btn.setAttribute("data-down", "showdamage/btn_damage_pick.bmp");
 			});
+			if (this.parseHTML) buttons.forEach((btn) => {
+				this.parseHTML.call(btn);
+			});
+			Client.loadFile(DB.INTERFACE_PATH + "showdamage/btn_damage.bmp", (data) => {
+				buttons.forEach((btn) => {
+					btn.style.backgroundImage = `url(${data})`;
+				});
+			});
+			if (buttonSelected) {
+				Client.loadFile(DB.INTERFACE_PATH + "showdamage/btn_damage_pick.bmp", (data) => {
+					buttonSelected.style.backgroundImage = `url(${data})`;
+				});
+				buttonSelected.onmouseover = null;
+				buttonSelected.onmouseout = null;
+			}
 		};
 		Component.setDamageMotion = function setDamageMotion(motionId) {
 			GraphicsSettings.damageMotion = motionId;
@@ -250878,13 +244449,13 @@ var init_EquipmentV3 = __esmMin((() => {
 //#region src/UI/Components/Equipment/EquipmentV4/EquipmentV4.html?raw
 var EquipmentV4_default$2;
 var init_EquipmentV4$2 = __esmMin((() => {
-	EquipmentV4_default$2 = "<div id=\"EquipmentV4\" data-repload=\"basic_interface/item_invert.bmp\">\r\n	<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n		<div class=\"left\">\r\n			<button\r\n				class=\"base\"\r\n				data-background=\"basic_interface/sys_base_off.bmp\"\r\n				data-hover=\"basic_interface/sys_base_on.bmp\"\r\n			></button>\r\n			<span class=\"text\" data-text=\"104\">Equipment</span>\r\n		</div>\r\n		<div class=\"right\">\r\n			<button\r\n				class=\"base mini\"\r\n				data-background=\"basic_interface/sys_mini_off.bmp\"\r\n				data-hover=\"basic_interface/sys_mini_on.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"base close\"\r\n				data-background=\"basic_interface/sys_close_off.bmp\"\r\n				data-hover=\"basic_interface/sys_close_on.bmp\"\r\n			></button>\r\n		</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n	<div class=\"overlay\"></div>\r\n	<div class=\"tab-manager\" id=\"tabs\">\r\n		<div class=\"tab\">\r\n			<a href=\"#general\"><span data-text=\"3158\">General</span></a>\r\n		</div>\r\n		<div class=\"tab\">\r\n			<a href=\"#costume\"><span data-text=\"3159\">Costume</span></a>\r\n		</div>\r\n		<div class=\"tab\">\r\n			<a href=\"#title\"><span data-text=\"3160\">Title</span></a>\r\n		</div>\r\n		<div class=\"tab\">\r\n			<a href=\"#damageskin\"><span data-text=\"3990\">Damage Font</span></a>\r\n		</div>\r\n	</div>\r\n	<div class=\"panel\">\r\n		<table class=\"content\" id=\"general\" data-background=\"basic_interface/equipwin_bg.bmp\">\r\n			<tr>\r\n				<td class=\"head_top col1\"></td>\r\n				<td rowspan=\"6\">\r\n					<!-- avoid applying css on td directly-->\r\n					<div class=\"col2 ammo_container\">\r\n						<div class=\"ammo\"></div>\r\n						<button\r\n							class=\"cartitems\"\r\n							data-background=\"basic_interface/btn_items_off.bmp\"\r\n							data-hover=\"basic_interface/btn_items_on.bmp\"\r\n						></button>\r\n						<button class=\"removeOption\" data-background=\"basic_interface/btn_off.bmp\"></button>\r\n						<canvas width=\"55\" height=\"125\"></canvas>\r\n					</div>\r\n				</td>\r\n				<td class=\"head_mid col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"head_bottom col1\"></td>\r\n				<td class=\"armor col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"weapon col1\"></td>\r\n				<td class=\"shield col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"garment col1\"></td>\r\n				<td class=\"shoes col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"accessory1 col1\"></td>\r\n				<td class=\"accessory2 col3\"></td>\r\n			</tr>\r\n		</table>\r\n		<table class=\"content\" id=\"costume\" data-background=\"basic_interface/equipwin_special.bmp\">\r\n			<tr>\r\n				<td class=\"costume_head_top col1\"></td>\r\n				<td rowspan=\"6\">\r\n					<!-- avoid applying css on td directly-->\r\n					<div class=\"col2 ammo_container\">\r\n						<canvas width=\"55\" height=\"125\"></canvas>\r\n					</div>\r\n				</td>\r\n				<td class=\"costume_head_mid col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"costume_head_bottom col1\"></td>\r\n				<td class=\"shadow_armor col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"shadow_weapon col1\"></td>\r\n				<td class=\"shadow_shield col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"shadow_garment col1\"></td>\r\n				<td class=\"shadow_shoes col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"shadow_accessory1 col1\"></td>\r\n				<td class=\"shadow_accessory2 col3\"></td>\r\n			</tr>\r\n		</table>\r\n		<table class=\"content\" id=\"title\">\r\n			<tr>\r\n				<td colspan=\"3\">\r\n					<div class=\"title-list\" id=\"title_list\"></div>\r\n				</td>\r\n			</tr>\r\n		</table>\r\n		<table class=\"content\" id=\"damageskin\">\r\n			<!-- Select Damage Font -->\r\n			<tr>\r\n				<td colspan=\"3\">\r\n					<div class=\"damageskin-selector\" data-background=\"showdamage/bg_damage.bmp\">\r\n						<div class=\"skin-wrapper\">\r\n							<div>\r\n								<button\r\n									class=\"checkbox motion-check\"\r\n									data-motion=\"0\"\r\n									data-background=\"checkbox_0.bmp\"\r\n								></button>\r\n								<span data-text=\"3994\">Default</span>\r\n							</div>\r\n							<!-- Damage Skin 0: Default -->\r\n							<button\r\n								class=\"skin-option\"\r\n								data-skin=\"0\"\r\n								data-background=\"showdamage/btn_damage.bmp\"\r\n								data-hover=\"showdamage/btn_damage_press.bmp\"\r\n								data-down=\"showdamage/btn_damage_pick.bmp\"\r\n								data-active=\"showdamage/btn_damage_pick.bmp\"\r\n							>\r\n								<span>Default</span>\r\n								<div class=\"icon\" data-background=\"showdamage/icon_damage00.bmp\"></div>\r\n							</button>\r\n						</div>\r\n						<div class=\"skin-wrapper\">\r\n							<div>\r\n								<button\r\n									class=\"checkbox motion-check\"\r\n									data-motion=\"1\"\r\n									data-background=\"checkbox_0.bmp\"\r\n								></button>\r\n								<span data-text=\"3993\">Left</span>\r\n							</div>\r\n							<!-- Damage Skin 1: Color -->\r\n							<button\r\n								class=\"skin-option\"\r\n								data-skin=\"1\"\r\n								data-background=\"showdamage/btn_damage.bmp\"\r\n								data-hover=\"showdamage/btn_damage_press.bmp\"\r\n								data-down=\"showdamage/btn_damage_pick.bmp\"\r\n								data-active=\"showdamage/btn_damage_pick.bmp\"\r\n							>\r\n								<span>Color</span>\r\n								<div class=\"icon\" data-background=\"showdamage/icon_damage01.bmp\"></div>\r\n							</button>\r\n						</div>\r\n						<div class=\"skin-wrapper\">\r\n							<div>\r\n								<button\r\n									class=\"checkbox motion-check\"\r\n									data-motion=\"2\"\r\n									data-background=\"checkbox_0.bmp\"\r\n								></button>\r\n								<span data-text=\"3992\">Top</span>\r\n							</div>\r\n							<!-- Damage Skin 2: Han -->\r\n							<button\r\n								class=\"skin-option\"\r\n								data-skin=\"2\"\r\n								data-background=\"showdamage/btn_damage.bmp\"\r\n								data-hover=\"showdamage/btn_damage_press.bmp\"\r\n								data-down=\"showdamage/btn_damage_pick.bmp\"\r\n								data-active=\"showdamage/btn_damage_pick.bmp\"\r\n							>\r\n								<span>Han</span>\r\n								<div class=\"icon\" data-background=\"showdamage/icon_damage02.bmp\"></div>\r\n							</button>\r\n						</div>\r\n						<div class=\"skin-wrapper\">\r\n							<div>\r\n								<button\r\n									class=\"checkbox motion-check\"\r\n									data-motion=\"3\"\r\n									data-background=\"checkbox_0.bmp\"\r\n								></button>\r\n								<span data-text=\"3991\">Right</span>\r\n							</div>\r\n							<!-- Damage Skin 3: Hidden -->\r\n							<button\r\n								class=\"skin-option\"\r\n								data-skin=\"3\"\r\n								data-background=\"showdamage/btn_damage.bmp\"\r\n								data-hover=\"showdamage/btn_damage_press.bmp\"\r\n								data-down=\"showdamage/btn_damage_pick.bmp\"\r\n								data-active=\"showdamage/btn_damage_pick.bmp\"\r\n							>\r\n								<span>Hidden</span>\r\n								<div class=\"icon\" data-background=\"showdamage/icon_damage03.bmp\"></div>\r\n							</button>\r\n						</div>\r\n					</div>\r\n				</td>\r\n			</tr>\r\n		</table>\r\n		<div class=\"footer\" id=\"equipment_footer\" data-background=\"basic_interface/equipwin_bg2.bmp\">\r\n			<div class=\"left\">\r\n				<button class=\"show_equip\" data-background=\"checkbox_0.bmp\" data-preload=\"checkbox_1.bmp\"></button>\r\n				<span data-text=\"1362\">Show Equip</span>\r\n				<button class=\"show_costume\" data-background=\"checkbox_1.bmp\" data-preload=\"checkbox_0.bmp\"></button>\r\n				<span data-text=\"4103\">Show Costume</span>\r\n			</div>\r\n			<div class=\"right\">\r\n				<button\r\n					class=\"switch_equip\"\r\n					data-background=\"basic_interface/btn_e_change_a.bmp\"\r\n					data-hover=\"basic_interface/btn_e_change_b.bmp\"\r\n				></button>\r\n				<button\r\n					class=\"remove_equip\"\r\n					data-background=\"basic_interface/btn_e_off_a.bmp\"\r\n					data-hover=\"basic_interface/btn_e_off_b.bmp\"\r\n				></button>\r\n			</div>\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n		<div class=\"status_component\">\r\n			<!-- Import status component -->\r\n		</div>\r\n	</div>\r\n	<button\r\n		id=\"lvlup_base\"\r\n		data-background=\"basic_interface/lv_up_off.bmp\"\r\n		data-sown=\"basic_interface/lv_up_on.bmp\"\r\n	></button>\r\n</div>\r\n";
+	EquipmentV4_default$2 = "<div id=\"EquipmentV4\" data-repload=\"basic_interface/item_invert.bmp\">\r\n	<div class=\"titlebar\" data-background=\"basic_interface/titlebar_mid.bmp\">\r\n		<div class=\"left\">\r\n			<button\r\n				class=\"base\"\r\n				data-background=\"basic_interface/sys_base_off.bmp\"\r\n				data-hover=\"basic_interface/sys_base_on.bmp\"\r\n			></button>\r\n			<span class=\"text\" data-text=\"104\">Equipment</span>\r\n		</div>\r\n		<div class=\"right\">\r\n			<button\r\n				class=\"base mini\"\r\n				data-background=\"basic_interface/sys_mini_off.bmp\"\r\n				data-hover=\"basic_interface/sys_mini_on.bmp\"\r\n			></button>\r\n			<button\r\n				class=\"base close\"\r\n				data-background=\"basic_interface/sys_close_off.bmp\"\r\n				data-hover=\"basic_interface/sys_close_on.bmp\"\r\n			></button>\r\n		</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n	<div class=\"overlay\"></div>\r\n	<div class=\"tab-manager\" id=\"tabs\">\r\n		<div class=\"tab\">\r\n			<a href=\"#general\"><span data-text=\"3158\">General</span></a>\r\n		</div>\r\n		<div class=\"tab\">\r\n			<a href=\"#costume\"><span data-text=\"3159\">Costume</span></a>\r\n		</div>\r\n		<div class=\"tab\">\r\n			<a href=\"#title\"><span data-text=\"3160\">Title</span></a>\r\n		</div>\r\n		<div class=\"tab\">\r\n			<a href=\"#damageskin\"><span data-text=\"3990\">Damage Font</span></a>\r\n		</div>\r\n	</div>\r\n	<div class=\"panel\">\r\n		<table class=\"content\" id=\"general\" data-background=\"basic_interface/equipwin_bg.bmp\">\r\n			<tr>\r\n				<td class=\"head_top col1\"></td>\r\n				<td rowspan=\"6\">\r\n					<!-- avoid applying css on td directly-->\r\n					<div class=\"col2 ammo_container\">\r\n						<div class=\"ammo\"></div>\r\n						<button\r\n							class=\"cartitems\"\r\n							data-background=\"basic_interface/btn_items_off.bmp\"\r\n							data-hover=\"basic_interface/btn_items_on.bmp\"\r\n						></button>\r\n						<button class=\"removeOption\" data-background=\"basic_interface/btn_off.bmp\"></button>\r\n						<canvas width=\"55\" height=\"125\"></canvas>\r\n					</div>\r\n				</td>\r\n				<td class=\"head_mid col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"head_bottom col1\"></td>\r\n				<td class=\"armor col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"weapon col1\"></td>\r\n				<td class=\"shield col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"garment col1\"></td>\r\n				<td class=\"shoes col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"accessory1 col1\"></td>\r\n				<td class=\"accessory2 col3\"></td>\r\n			</tr>\r\n		</table>\r\n		<table class=\"content\" id=\"costume\" data-background=\"basic_interface/equipwin_special.bmp\">\r\n			<tr>\r\n				<td class=\"costume_head_top col1\"></td>\r\n				<td rowspan=\"6\">\r\n					<!-- avoid applying css on td directly-->\r\n					<div class=\"col2 ammo_container\">\r\n						<canvas width=\"55\" height=\"125\"></canvas>\r\n					</div>\r\n				</td>\r\n				<td class=\"costume_head_mid col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"costume_head_bottom col1\"></td>\r\n				<td class=\"shadow_armor col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"shadow_weapon col1\"></td>\r\n				<td class=\"shadow_shield col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"shadow_garment col1\"></td>\r\n				<td class=\"shadow_shoes col3\"></td>\r\n			</tr>\r\n			<tr>\r\n				<td class=\"shadow_accessory1 col1\"></td>\r\n				<td class=\"shadow_accessory2 col3\"></td>\r\n			</tr>\r\n		</table>\r\n		<table class=\"content\" id=\"title\">\r\n			<tr>\r\n				<td colspan=\"3\">\r\n					<div class=\"title-list\" id=\"title_list\"></div>\r\n				</td>\r\n			</tr>\r\n		</table>\r\n		<table class=\"content\" id=\"damageskin\">\r\n			<!-- Select Damage Font -->\r\n			<tr>\r\n				<td colspan=\"3\">\r\n					<div class=\"damageskin-selector\" data-background=\"showdamage/bg_damage.bmp\">\r\n						<div class=\"skin-wrapper\">\r\n							<div>\r\n								<button\r\n									class=\"checkbox motion-check\"\r\n									data-motion=\"0\"\r\n									data-background=\"checkbox_0.bmp\"\r\n								></button>\r\n								<span data-text=\"3994\">Default</span>\r\n							</div>\r\n							<!-- Damage Skin 0: Default -->\r\n							<button class=\"skin-option\" data-skin=\"0\">\r\n								<span>Default</span>\r\n								<div class=\"icon\" data-background=\"showdamage/icon_damage00.bmp\"></div>\r\n							</button>\r\n						</div>\r\n						<div class=\"skin-wrapper\">\r\n							<div>\r\n								<button\r\n									class=\"checkbox motion-check\"\r\n									data-motion=\"1\"\r\n									data-background=\"checkbox_0.bmp\"\r\n								></button>\r\n								<span data-text=\"3993\">Left</span>\r\n							</div>\r\n							<!-- Damage Skin 1: Color -->\r\n							<button class=\"skin-option\" data-skin=\"1\">\r\n								<span>Color</span>\r\n								<div class=\"icon\" data-background=\"showdamage/icon_damage01.bmp\"></div>\r\n							</button>\r\n						</div>\r\n						<div class=\"skin-wrapper\">\r\n							<div>\r\n								<button\r\n									class=\"checkbox motion-check\"\r\n									data-motion=\"2\"\r\n									data-background=\"checkbox_0.bmp\"\r\n								></button>\r\n								<span data-text=\"3992\">Top</span>\r\n							</div>\r\n							<!-- Damage Skin 2: Han -->\r\n							<button class=\"skin-option\" data-skin=\"2\">\r\n								<span>Han</span>\r\n								<div class=\"icon\" data-background=\"showdamage/icon_damage02.bmp\"></div>\r\n							</button>\r\n						</div>\r\n						<div class=\"skin-wrapper\">\r\n							<div>\r\n								<button\r\n									class=\"checkbox motion-check\"\r\n									data-motion=\"3\"\r\n									data-background=\"checkbox_0.bmp\"\r\n								></button>\r\n								<span data-text=\"3991\">Right</span>\r\n							</div>\r\n							<!-- Damage Skin 3: Hidden -->\r\n							<button class=\"skin-option\" data-skin=\"3\">\r\n								<span>Hidden</span>\r\n								<div class=\"icon\" data-background=\"showdamage/icon_damage03.bmp\"></div>\r\n							</button>\r\n						</div>\r\n					</div>\r\n				</td>\r\n			</tr>\r\n		</table>\r\n		<div class=\"footer\" id=\"equipment_footer\" data-background=\"basic_interface/equipwin_bg2.bmp\">\r\n			<div class=\"left\">\r\n				<button class=\"show_equip\" data-background=\"checkbox_0.bmp\" data-preload=\"checkbox_1.bmp\"></button>\r\n				<span data-text=\"1362\">Show Equip</span>\r\n				<button class=\"show_costume\" data-background=\"checkbox_1.bmp\" data-preload=\"checkbox_0.bmp\"></button>\r\n				<span data-text=\"4103\">Show Costume</span>\r\n			</div>\r\n			<div class=\"right\">\r\n				<button\r\n					class=\"switch_equip\"\r\n					data-background=\"basic_interface/btn_e_change_a.bmp\"\r\n					data-hover=\"basic_interface/btn_e_change_b.bmp\"\r\n				></button>\r\n				<button\r\n					class=\"remove_equip\"\r\n					data-background=\"basic_interface/btn_e_off_a.bmp\"\r\n					data-hover=\"basic_interface/btn_e_off_b.bmp\"\r\n				></button>\r\n			</div>\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n		<div class=\"status_component\">\r\n			<!-- Import status component -->\r\n		</div>\r\n	</div>\r\n	<button\r\n		id=\"lvlup_base\"\r\n		data-background=\"basic_interface/lv_up_off.bmp\"\r\n		data-sown=\"basic_interface/lv_up_on.bmp\"\r\n	></button>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/Equipment/EquipmentV4/EquipmentV4.css?raw
 var EquipmentV4_default$1;
 var init_EquipmentV4$1 = __esmMin((() => {
-	EquipmentV4_default$1 = ":host {\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#EquipmentV4 {\r\n	position: relative;\r\n	width: 280px;\r\n}\r\n\r\n#EquipmentV4 .clear {\r\n	clear: both;\r\n}\r\n\r\n#EquipmentV4 .titlebar {\r\n	width: 280px;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n}\r\n#EquipmentV4 .titlebar .base {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n#EquipmentV4 .titlebar .text {\r\n	text-shadow: 1px 1px white;\r\n	vertical-align: -2px;\r\n	white-space: nowrap;\r\n	/* chrome bug */\r\n	display: inline-block;\r\n	width: 32px;\r\n	height: 13px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n\r\n#EquipmentV4 .titlebar .left {\r\n	margin-left: 3px;\r\n	float: left;\r\n}\r\n#EquipmentV4 .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n}\r\n#EquipmentV4 .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n#EquipmentV4 .tab-manager {\r\n	position: relative;\r\n	width: inherit;\r\n	background-color: white;\r\n	height: 15px;\r\n	display: flex;\r\n}\r\n\r\n/* A tab is as wide as its label, so a long one (\"Damage Indicator\") stays on\r\n   one line instead of wrapping below the bar onto the window. The minimum fits\r\n   the short labels in bold, so selecting one doesn't move the tabs. A label too\r\n   long for the bar ends in an ellipsis. */\r\n#EquipmentV4 .tab {\r\n	flex: 0 1 auto;\r\n	min-width: 0;\r\n}\r\n#EquipmentV4 .tab a {\r\n	box-sizing: border-box;\r\n	min-width: 57px;\r\n	height: 100%;\r\n	padding: 0 2px;\r\n	color: #42454a;\r\n	border: 1px solid #c9c3ba;\r\n	border-bottom: none;\r\n	text-decoration: none;\r\n	display: block;\r\n	border-radius: 3px 3px 0 0;\r\n	text-align: center;\r\n	white-space: nowrap;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n}\r\n#EquipmentV4 .tab a.selected {\r\n	color: #000;\r\n	font-weight: bold;\r\n	border-bottom: 1px solid white;\r\n	position: relative;\r\n	z-index: 100;\r\n	background-color: white;\r\n}\r\n#EquipmentV4 .tab a.selected:after {\r\n	content: '';\r\n	display: block;\r\n	height: 1px;\r\n	width: 1px;\r\n	position: absolute;\r\n	bottom: -1px;\r\n	left: -1px;\r\n}\r\n\r\n#EquipmentV4 .panel {\r\n	background-color: white;\r\n	border-top: 1px solid gray;\r\n	height: 150px;\r\n}\r\n#EquipmentV4 .equipmentV0 .panel {\r\n	background-color: inherit;\r\n}\r\n#EquipmentV4 table.content {\r\n	width: 280px;\r\n	height: 130px;\r\n	border-spacing: 0;\r\n}\r\n#EquipmentV4 table.content.hide {\r\n	display: none;\r\n}\r\n#EquipmentV4 .content {\r\n	display: inline-block;\r\n	width: 280px;\r\n	height: 130px;\r\n	border-spacing: 0;\r\n}\r\n#EquipmentV4 .col1,\r\n#EquipmentV4 .col3 {\r\n	width: 115px;\r\n	height: 24px;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#EquipmentV4 .col1 {\r\n	background-position: 5% 50%;\r\n	min-width: 110px;\r\n}\r\n#EquipmentV4 .col3 {\r\n	background-position: 95% 50%;\r\n	min-width: 110px;\r\n}\r\n\r\n#EquipmentV4 .overlay {\r\n	position: absolute;\r\n	display: none;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 13px;\r\n	padding: 5px;\r\n	background: rgba(0, 0, 0, 0.7);\r\n	color: white;\r\n	text-shadow: 1px 1px black;\r\n}\r\n\r\n#EquipmentV4 .item button {\r\n	width: 24px;\r\n	height: 24px;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	border: none;\r\n}\r\n#EquipmentV4 .item span {\r\n	width: 80px;\r\n	height: 24px;\r\n	display: inline-block;\r\n	line-height: 12px;\r\n	word-break: break-all;\r\n	overflow: hidden;\r\n	text-shadow: 1px 1px white;\r\n}\r\n\r\n#EquipmentV4 .col3 .item button,\r\n#EquipmentV4 .col3 .item span {\r\n	float: right;\r\n}\r\n#EquipmentV4 .col1 .item button,\r\n#EquipmentV4 .col1 .item span {\r\n	float: left;\r\n}\r\n#EquipmentV4 .col1 .item {\r\n	padding-left: 4px;\r\n}\r\n#EquipmentV4 .col3 .item {\r\n	padding-right: 4px;\r\n}\r\n#EquipmentV4 .col1 .item .itemName {\r\n	display: flex;\r\n	align-items: center;\r\n}\r\n#EquipmentV4 .col3 .item .itemName {\r\n	display: flex;\r\n	align-items: center;\r\n}\r\n\r\n#EquipmentV4 .ammo_container {\r\n	position: relative;\r\n}\r\n#EquipmentV4 .ammo {\r\n	position: absolute;\r\n	top: 30px;\r\n}\r\n#EquipmentV4 .ammo .item {\r\n	text-align: center;\r\n}\r\n#EquipmentV4 .ammo .item span {\r\n	width: 45px;\r\n}\r\n#EquipmentV4 .cartitems {\r\n	position: absolute;\r\n	top: 65px;\r\n	left: 14px;\r\n	width: 36px;\r\n	height: 36px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n	display: none;\r\n}\r\n#EquipmentV4 .removeOption {\r\n	position: absolute;\r\n	top: 90px;\r\n	left: 12px;\r\n	width: 36px;\r\n	height: 36px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n	display: none;\r\n}\r\n\r\n#EquipmentV4 .footer {\r\n	height: 20px;\r\n	border-bottom: 1px solid #c0c0c0;\r\n	background-position: 0px -130px;\r\n	position: relative;\r\n	top: -3px;\r\n}\r\n#EquipmentV4 .footer .left {\r\n	float: left;\r\n	text-align: left;\r\n	margin-left: 5px;\r\n	margin-top: 3px;\r\n}\r\n#EquipmentV4 .footer .right {\r\n	float: right;\r\n	text-align: right;\r\n	margin-right: 5px;\r\n	margin-top: 3px;\r\n}\r\n#EquipmentV4 .footer .view_status {\r\n	width: 9px;\r\n	height: 14px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#EquipmentV4 .footer .show_equip {\r\n	width: 10px;\r\n	height: 12px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#EquipmentV4 .footer .show_costume {\r\n	width: 10px;\r\n	height: 12px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#EquipmentV4 .footer .switch_equip {\r\n	width: 40px;\r\n	height: 20px;\r\n	border: none;\r\n	position: relative;\r\n	top: -3px;\r\n}\r\n#EquipmentV4 .footer .remove_equip {\r\n	width: 40px;\r\n	height: 20px;\r\n	border: none;\r\n	position: relative;\r\n	top: -3px;\r\n}\r\n\r\n#lvlup_base {\r\n	z-index: 51;\r\n	position: absolute;\r\n	left: 0px;\r\n	bottom: 0px;\r\n	width: 43px;\r\n	height: 43px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#EquipmentV4 #damageskin .damageskin-selector {\r\n	display: flex;\r\n	justify-content: center;\r\n	align-items: center;\r\n	width: 280px;\r\n	margin: 0 auto;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-option {\r\n	display: flex;\r\n	flex-direction: column;\r\n	align-items: center;\r\n	justify-content: center;\r\n\r\n	width: 64px;\r\n	height: 92px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n	margin-top: 3px;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-option span {\r\n	position: relative;\r\n	top: -9px;\r\n	font-weight: bold;\r\n	text-align: center;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-option .icon {\r\n	width: 36px;\r\n	height: 36px;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-wrapper {\r\n	width: 64px;\r\n	display: flex;\r\n	flex-direction: column;\r\n	align-items: center;\r\n	justify-content: center;\r\n	gap: 0;\r\n	padding: 0;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-wrapper > div:first-child {\r\n	margin-top: 8px;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-wrapper .label {\r\n	margin-top: 6px;\r\n	text-align: center;\r\n}\r\n\r\n#EquipmentV4 .motion-check {\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n	cursor: pointer;\r\n	width: 10px;\r\n	height: 12px;\r\n	margin-right: 4px;\r\n}\r\n\r\n#EquipmentV4 .item .grade {\r\n	position: relative;\r\n	width: 12px;\r\n	height: 12px;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	pointer-events: none;\r\n	z-index: 2;\r\n	top: 5px;\r\n}\r\n\r\n#EquipmentV4 #title .title-list {\r\n	height: 125px;\r\n	width: 280px;\r\n	overflow-y: auto;\r\n	overflow-x: hidden;\r\n	padding: 8px 8px;\r\n	border: 1px solid #c0c0c0;\r\n	background-color: #f8f8f8;\r\n}\r\n\r\n#EquipmentV4 .title-option {\r\n	padding: 1px;\r\n	margin: 1px 0;\r\n	cursor: pointer;\r\n	background-color: transparent;\r\n	border: 1px solid transparent;\r\n	white-space: nowrap;\r\n	width: 100%;\r\n}\r\n\r\n#EquipmentV4 .title-option.selected {\r\n	background-color: #e0e0e0;\r\n	font-weight: bold;\r\n}\r\n\r\n#EquipmentV4 .title-option:hover {\r\n	background-color: #e0e0e0;\r\n}\r\n";
+	EquipmentV4_default$1 = ":host {\r\n	top: 0px;\r\n	left: 0px;\r\n}\r\n\r\n#EquipmentV4 {\r\n	position: relative;\r\n	width: 280px;\r\n}\r\n\r\n#EquipmentV4 .clear {\r\n	clear: both;\r\n}\r\n\r\n#EquipmentV4 .titlebar {\r\n	width: 280px;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n}\r\n#EquipmentV4 .titlebar .base {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n#EquipmentV4 .titlebar .text {\r\n	text-shadow: 1px 1px white;\r\n	vertical-align: -2px;\r\n	white-space: nowrap;\r\n	/* chrome bug */\r\n	display: inline-block;\r\n	width: 32px;\r\n	height: 13px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n\r\n#EquipmentV4 .titlebar .left {\r\n	margin-left: 3px;\r\n	float: left;\r\n}\r\n#EquipmentV4 .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n}\r\n#EquipmentV4 .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n#EquipmentV4 .tab-manager {\r\n	position: relative;\r\n	width: inherit;\r\n	background-color: white;\r\n	height: 15px;\r\n	display: flex;\r\n}\r\n\r\n#EquipmentV4 .tab a {\r\n	width: 60px;\r\n	height: 100%;\r\n	color: #42454a;\r\n	border: 1px solid #c9c3ba;\r\n	border-bottom: none;\r\n	text-decoration: none;\r\n	display: inline-block;\r\n	vertical-align: bottom;\r\n	border-radius: 3px 3px 0 0;\r\n	text-align: center;\r\n}\r\n#EquipmentV4 .tab a.selected {\r\n	color: #000;\r\n	font-weight: bold;\r\n	border-bottom: 1px solid white;\r\n	position: relative;\r\n	z-index: 100;\r\n	background-color: white;\r\n}\r\n#EquipmentV4 .tab a.selected:after {\r\n	content: '';\r\n	display: block;\r\n	height: 1px;\r\n	width: 1px;\r\n	position: absolute;\r\n	bottom: -1px;\r\n	left: -1px;\r\n}\r\n\r\n#EquipmentV4 .panel {\r\n	background-color: white;\r\n	border-top: 1px solid gray;\r\n	height: 150px;\r\n}\r\n#EquipmentV4 .equipmentV0 .panel {\r\n	background-color: inherit;\r\n}\r\n#EquipmentV4 table.content {\r\n	width: 280px;\r\n	height: 130px;\r\n	border-spacing: 0;\r\n}\r\n#EquipmentV4 table.content.hide {\r\n	display: none;\r\n}\r\n#EquipmentV4 .content {\r\n	display: inline-block;\r\n	width: 280px;\r\n	height: 130px;\r\n	border-spacing: 0;\r\n}\r\n#EquipmentV4 .col1,\r\n#EquipmentV4 .col3 {\r\n	width: 115px;\r\n	height: 24px;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#EquipmentV4 .col1 {\r\n	background-position: 5% 50%;\r\n	min-width: 110px;\r\n}\r\n#EquipmentV4 .col3 {\r\n	background-position: 95% 50%;\r\n	min-width: 110px;\r\n}\r\n\r\n#EquipmentV4 .overlay {\r\n	position: absolute;\r\n	display: none;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 13px;\r\n	padding: 5px;\r\n	background: rgba(0, 0, 0, 0.7);\r\n	color: white;\r\n	text-shadow: 1px 1px black;\r\n}\r\n\r\n#EquipmentV4 .item button {\r\n	width: 24px;\r\n	height: 24px;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	border: none;\r\n}\r\n#EquipmentV4 .item span {\r\n	width: 80px;\r\n	height: 24px;\r\n	display: inline-block;\r\n	line-height: 12px;\r\n	word-break: break-all;\r\n	overflow: hidden;\r\n	text-shadow: 1px 1px white;\r\n}\r\n\r\n#EquipmentV4 .col3 .item button,\r\n#EquipmentV4 .col3 .item span {\r\n	float: right;\r\n}\r\n#EquipmentV4 .col1 .item button,\r\n#EquipmentV4 .col1 .item span {\r\n	float: left;\r\n}\r\n#EquipmentV4 .col1 .item {\r\n	padding-left: 4px;\r\n}\r\n#EquipmentV4 .col3 .item {\r\n	padding-right: 4px;\r\n}\r\n#EquipmentV4 .col1 .item .itemName {\r\n	display: flex;\r\n	align-items: center;\r\n}\r\n#EquipmentV4 .col3 .item .itemName {\r\n	display: flex;\r\n	align-items: center;\r\n}\r\n\r\n#EquipmentV4 .ammo_container {\r\n	position: relative;\r\n}\r\n#EquipmentV4 .ammo {\r\n	position: absolute;\r\n	top: 30px;\r\n}\r\n#EquipmentV4 .ammo .item {\r\n	text-align: center;\r\n}\r\n#EquipmentV4 .ammo .item span {\r\n	width: 45px;\r\n}\r\n#EquipmentV4 .cartitems {\r\n	position: absolute;\r\n	top: 65px;\r\n	left: 14px;\r\n	width: 36px;\r\n	height: 36px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n	display: none;\r\n}\r\n#EquipmentV4 .removeOption {\r\n	position: absolute;\r\n	top: 90px;\r\n	left: 12px;\r\n	width: 36px;\r\n	height: 36px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n	display: none;\r\n}\r\n\r\n#EquipmentV4 .footer {\r\n	height: 20px;\r\n	border-bottom: 1px solid #c0c0c0;\r\n	background-position: 0px -130px;\r\n	position: relative;\r\n	top: -3px;\r\n}\r\n#EquipmentV4 .footer .left {\r\n	float: left;\r\n	text-align: left;\r\n	margin-left: 5px;\r\n	margin-top: 3px;\r\n}\r\n#EquipmentV4 .footer .right {\r\n	float: right;\r\n	text-align: right;\r\n	margin-right: 5px;\r\n	margin-top: 3px;\r\n}\r\n#EquipmentV4 .footer .view_status {\r\n	width: 9px;\r\n	height: 14px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#EquipmentV4 .footer .show_equip {\r\n	width: 10px;\r\n	height: 12px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#EquipmentV4 .footer .show_costume {\r\n	width: 10px;\r\n	height: 12px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#EquipmentV4 .footer .switch_equip {\r\n	width: 40px;\r\n	height: 20px;\r\n	border: none;\r\n	position: relative;\r\n	top: -3px;\r\n}\r\n#EquipmentV4 .footer .remove_equip {\r\n	width: 40px;\r\n	height: 20px;\r\n	border: none;\r\n	position: relative;\r\n	top: -3px;\r\n}\r\n\r\n#lvlup_base {\r\n	z-index: 51;\r\n	position: absolute;\r\n	left: 0px;\r\n	bottom: 0px;\r\n	width: 43px;\r\n	height: 43px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#EquipmentV4 #damageskin .damageskin-selector {\r\n	display: flex;\r\n	justify-content: center;\r\n	align-items: center;\r\n	width: 280px;\r\n	margin: 0 auto;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-option {\r\n	display: flex;\r\n	flex-direction: column;\r\n	align-items: center;\r\n	justify-content: center;\r\n\r\n	width: 64px;\r\n	height: 92px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: none;\r\n	margin-top: 3px;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-option span {\r\n	position: relative;\r\n	top: -9px;\r\n	font-weight: bold;\r\n	text-align: center;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-option .icon {\r\n	width: 36px;\r\n	height: 36px;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-wrapper {\r\n	width: 64px;\r\n	display: flex;\r\n	flex-direction: column;\r\n	align-items: center;\r\n	justify-content: center;\r\n	gap: 0;\r\n	padding: 0;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-wrapper > div:first-child {\r\n	margin-top: 8px;\r\n}\r\n\r\n#EquipmentV4 #damageskin .skin-wrapper .label {\r\n	margin-top: 6px;\r\n	text-align: center;\r\n}\r\n\r\n#EquipmentV4 .motion-check {\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n	cursor: pointer;\r\n	width: 10px;\r\n	height: 12px;\r\n	margin-right: 4px;\r\n}\r\n\r\n#EquipmentV4 .item .grade {\r\n	position: relative;\r\n	width: 12px;\r\n	height: 12px;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	pointer-events: none;\r\n	z-index: 2;\r\n	top: 5px;\r\n}\r\n\r\n#EquipmentV4 #title .title-list {\r\n	height: 125px;\r\n	width: 280px;\r\n	overflow-y: auto;\r\n	overflow-x: hidden;\r\n	padding: 8px 8px;\r\n	border: 1px solid #c0c0c0;\r\n	background-color: #f8f8f8;\r\n}\r\n\r\n#EquipmentV4 .title-option {\r\n	padding: 1px;\r\n	margin: 1px 0;\r\n	cursor: pointer;\r\n	background-color: transparent;\r\n	border: 1px solid transparent;\r\n	white-space: nowrap;\r\n	width: 100%;\r\n}\r\n\r\n#EquipmentV4 .title-option.selected {\r\n	background-color: #e0e0e0;\r\n	font-weight: bold;\r\n}\r\n\r\n#EquipmentV4 .title-option:hover {\r\n	background-color: #e0e0e0;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/Equipment/EquipmentV4/EquipmentV4.js
@@ -250989,11 +244560,11 @@ function addCard(cardList, itemId, index, slotCount) {
 /**
 * Extend ItemInfo window size
 */
-function onResize$4() {
+function onResize$5() {
 	const top = ItemInfo._host.offsetTop;
 	let lastHeight = 0;
 	function resizing() {
-		const h = Math.floor((Mouse.screen.y - top) / ItemInfo.scale);
+		const h = Math.floor(Mouse.screen.y - top);
 		if (h === lastHeight) return;
 		resize$3(h);
 		lastHeight = h;
@@ -251304,7 +244875,7 @@ var init_ItemInfo = __esmMin((() => {
 		this._host.style.top = "200px";
 		this._host.style.left = "480px";
 		const extendBtn = root.querySelector(".extend");
-		if (extendBtn) extendBtn.addEventListener("mousedown", onResize$4);
+		if (extendBtn) extendBtn.addEventListener("mousedown", onResize$5);
 		const closeBtn = root.querySelector(".close");
 		if (closeBtn) {
 			closeBtn.addEventListener("mousedown", (e) => {
@@ -251523,7 +245094,7 @@ function processText(text) {
 	text = processColorCodes(text);
 	return text;
 }
-function _isVisible(el) {
+function _isVisible$1(el) {
 	return !!el && getComputedStyle(el).display !== "none";
 }
 var NpcBox, _needCleanUp, NpcBox_default;
@@ -251623,17 +245194,17 @@ var init_NpcBox = __esmMin((() => {
 		switch (event.which) {
 			case KEYS.SPACE:
 			case KEYS.ENTER:
-				if (_isVisible(root.querySelector(".next"))) {
+				if (_isVisible$1(root.querySelector(".next"))) {
 					this.next();
 					break;
 				}
-				if (_isVisible(root.querySelector(".close"))) {
+				if (_isVisible$1(root.querySelector(".close"))) {
 					this.close();
 					break;
 				}
 				return true;
 			case KEYS.ESCAPE:
-				if (_isVisible(root.querySelector(".close"))) {
+				if (_isVisible$1(root.querySelector(".close"))) {
 					this.close();
 					break;
 				}
@@ -251730,7 +245301,7 @@ function parseChatSetup() {
 	this.requestRoom();
 	this.hide();
 }
-var ChatRoomCreate, _preferences$24, ChatRoomCreate_default;
+var ChatRoomCreate, _preferences$25, ChatRoomCreate_default;
 var init_ChatRoomCreate = __esmMin((() => {
 	init_DBManager();
 	init_KeyEventHandler();
@@ -251766,7 +245337,7 @@ var init_ChatRoomCreate = __esmMin((() => {
 	* @var {string} password
 	*/
 	ChatRoomCreate.password = "";
-	_preferences$24 = Preferences.get("ChatRoomCreate", {
+	_preferences$25 = Preferences.get("ChatRoomCreate", {
 		x: 480,
 		y: 200,
 		show: false
@@ -251800,18 +245371,18 @@ var init_ChatRoomCreate = __esmMin((() => {
 	* Once append to body
 	*/
 	ChatRoomCreate.onAppend = function onAppend() {
-		if (!_preferences$24.show) this._host.style.display = "none";
-		this._host.style.top = Math.min(Math.max(0, _preferences$24.y), Renderer.height - this._host.offsetHeight) + "px";
-		this._host.style.left = Math.min(Math.max(0, _preferences$24.x), Renderer.width - this._host.offsetWidth) + "px";
+		if (!_preferences$25.show) this._host.style.display = "none";
+		this._host.style.top = Math.min(Math.max(0, _preferences$25.y), Renderer.height - this._host.offsetHeight) + "px";
+		this._host.style.left = Math.min(Math.max(0, _preferences$25.x), Renderer.width - this._host.offsetWidth) + "px";
 	};
 	/**
 	* Once removed from DOM, save preferences
 	*/
 	ChatRoomCreate.onRemove = function onRemove() {
-		_preferences$24.show = this._host.style.display !== "none";
-		_preferences$24.y = parseInt(this._host.style.top, 10);
-		_preferences$24.x = parseInt(this._host.style.left, 10);
-		_preferences$24.save();
+		_preferences$25.show = this._host.style.display !== "none";
+		_preferences$25.y = parseInt(this._host.style.top, 10);
+		_preferences$25.x = parseInt(this._host.style.left, 10);
+		_preferences$25.save();
 		ChatRoomCreate.editMode = false;
 	};
 	/**
@@ -251821,7 +245392,7 @@ var init_ChatRoomCreate = __esmMin((() => {
 		this._host.style.display = "";
 		this.getRoot().querySelector(".title").focus();
 		this._fixPositionOverflow();
-		_preferences$24.show = true;
+		_preferences$25.show = true;
 	};
 	/**
 	* Hide the setup ui
@@ -251830,7 +245401,7 @@ var init_ChatRoomCreate = __esmMin((() => {
 		this._host.style.display = "none";
 		this.getRoot().querySelector(".setup").reset();
 		ChatRoomCreate.editMode = false;
-		_preferences$24.show = false;
+		_preferences$25.show = false;
 	};
 	/**
 	* Pre-fill form with values (used by ChatRoom.openRoomSettings)
@@ -251994,7 +245565,7 @@ function sendChatMessage() {
 /**
 * Resize ChatRoom via drag
 */
-function onResize$3() {
+function onResize$4() {
 	const top = ChatRoom._host.offsetTop;
 	const left = ChatRoom._host.offsetLeft;
 	let lastWidth = 0;
@@ -252039,7 +245610,7 @@ function resize$2(width, height) {
 		if (inner) ChatRoom._host.style.height = inner.offsetHeight + "px";
 	}
 }
-var ChatRoom, _gridWidth, _gridHeight, _preferences$23, ChatRoom_default;
+var ChatRoom, _gridWidth, _gridHeight, _preferences$24, ChatRoom_default;
 var init_ChatRoom$1 = __esmMin((() => {
 	init_Preferences$1();
 	init_Renderer();
@@ -252096,7 +245667,7 @@ var init_ChatRoom$1 = __esmMin((() => {
 	ChatRoom.isOpen = false;
 	_gridWidth = 7;
 	_gridHeight = 3;
-	_preferences$23 = Preferences.get("ChatRoom", {
+	_preferences$24 = Preferences.get("ChatRoom", {
 		x: 480,
 		y: 200,
 		width: 7,
@@ -252116,7 +245687,7 @@ var init_ChatRoom$1 = __esmMin((() => {
 		root.querySelector(".sendmsg").addEventListener("mousedown", (event) => {
 			event.stopImmediatePropagation();
 		});
-		root.querySelector(".extend").addEventListener("mousedown", onResize$3);
+		root.querySelector(".extend").addEventListener("mousedown", onResize$4);
 		this.draggable(".titlebar");
 	};
 	/**
@@ -252125,11 +245696,11 @@ var init_ChatRoom$1 = __esmMin((() => {
 	ChatRoom.onAppend = function onAppend() {
 		const root = this.getRoot();
 		this.isOpen = true;
-		_gridWidth = _preferences$23.width;
-		_gridHeight = _preferences$23.height;
+		_gridWidth = _preferences$24.width;
+		_gridHeight = _preferences$24.height;
 		resize$2(_gridWidth, _gridHeight);
-		this._host.style.top = Math.min(Math.max(0, _preferences$23.y), Renderer.height - this._host.getBoundingClientRect().height) + "px";
-		this._host.style.left = Math.min(Math.max(0, _preferences$23.x), Renderer.width - this._host.getBoundingClientRect().width) + "px";
+		this._host.style.top = Math.min(Math.max(0, _preferences$24.y), Renderer.height - this._host.getBoundingClientRect().height) + "px";
+		this._host.style.left = Math.min(Math.max(0, _preferences$24.x), Renderer.width - this._host.getBoundingClientRect().width) + "px";
 		root.querySelector(".sendmsg").focus();
 		this.updateChat();
 	};
@@ -252146,11 +245717,11 @@ var init_ChatRoom$1 = __esmMin((() => {
 		this.isOpen = false;
 		const messages = this.getRoot().querySelector(".messages");
 		if (messages) messages.innerHTML = "";
-		_preferences$23.y = parseInt(this._host.style.top, 10);
-		_preferences$23.x = parseInt(this._host.style.left, 10);
-		_preferences$23.width = _gridWidth;
-		_preferences$23.height = _gridHeight;
-		_preferences$23.save();
+		_preferences$24.y = parseInt(this._host.style.top, 10);
+		_preferences$24.x = parseInt(this._host.style.left, 10);
+		_preferences$24.width = _gridWidth;
+		_preferences$24.height = _gridHeight;
+		_preferences$24.save();
 		this.exitRoom();
 	};
 	/**
@@ -253453,6 +247024,929 @@ var init_Inflate = __esmMin((() => {
 	};
 }));
 //#endregion
+//#region src/UI/Components/SkillListMH/SkillListMH.js
+/**
+* Build a Homunculus/Mercenary skill window on top of the shared SkillList
+* factory, using its list-only (old-style) mode and layering the MH-specific
+* bits (window name, titlebar text, drag origin, Escape-to-close) on top.
+*/
+function createSkillListMH(type) {
+	const component = createSkillList({
+		name: `SkillList${type === "homunculus" ? "HOM" : "MER"}`,
+		htmlText: SkillList_default$2,
+		cssText: SkillList_default$1,
+		listOnly: true,
+		dragFrom: "SkillListMH",
+		titlebarText: type === "homunculus" ? "Homunculus Skills" : "Mercenary Skills",
+		containerSelector: ".SkillList",
+		preferenceDefaults: {
+			x: 100,
+			y: 200,
+			width: 8,
+			height: 5,
+			show: false
+		}
+	});
+	component.onKeyDown = function onKeyDown(event) {
+		if ((event.which === KEYS.ESCAPE || event.key === "Escape") && this.ui.is(":visible")) this.toggle();
+	};
+	return component;
+}
+var SkillListMH_default;
+var init_SkillListMH = __esmMin((() => {
+	init_KeyEventHandler();
+	init_SkillListCommon();
+	init_SkillList$3();
+	init_SkillList$2();
+	SkillListMH_default = {
+		homunculus: createSkillListMH("homunculus"),
+		mercenary: createSkillListMH("mercenary")
+	};
+}));
+//#endregion
+//#region src/UI/Components/ShortCut/ShortCut.html?raw
+var ShortCut_default$2;
+var init_ShortCut$2 = __esmMin((() => {
+	ShortCut_default$2 = "<div id=\"ShortCut\" data-background=\"basic_interface/shortitem_bg.bmp\">\r\n	<button\r\n		class=\"close\"\r\n		data-background=\"basic_interface/sys_close_off.bmp\"\r\n		data-hover=\"basic_interface/sys_close_on.bmp\"\r\n	></button>\r\n	<button class=\"resize\" data-background=\"btn_resize.bmp\"></button>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"0\"></div>\r\n		<div class=\"container\" data-index=\"1\"></div>\r\n		<div class=\"container\" data-index=\"2\"></div>\r\n		<div class=\"container\" data-index=\"3\"></div>\r\n		<div class=\"container\" data-index=\"4\"></div>\r\n		<div class=\"container\" data-index=\"5\"></div>\r\n		<div class=\"container\" data-index=\"6\"></div>\r\n		<div class=\"container\" data-index=\"7\"></div>\r\n		<div class=\"container\" data-index=\"8\"></div>\r\n		<div class=\"index\">1</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"9\"></div>\r\n		<div class=\"container\" data-index=\"10\"></div>\r\n		<div class=\"container\" data-index=\"11\"></div>\r\n		<div class=\"container\" data-index=\"12\"></div>\r\n		<div class=\"container\" data-index=\"13\"></div>\r\n		<div class=\"container\" data-index=\"14\"></div>\r\n		<div class=\"container\" data-index=\"15\"></div>\r\n		<div class=\"container\" data-index=\"16\"></div>\r\n		<div class=\"container\" data-index=\"17\"></div>\r\n		<div class=\"index\">2</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"18\"></div>\r\n		<div class=\"container\" data-index=\"19\"></div>\r\n		<div class=\"container\" data-index=\"20\"></div>\r\n		<div class=\"container\" data-index=\"21\"></div>\r\n		<div class=\"container\" data-index=\"22\"></div>\r\n		<div class=\"container\" data-index=\"23\"></div>\r\n		<div class=\"container\" data-index=\"24\"></div>\r\n		<div class=\"container\" data-index=\"25\"></div>\r\n		<div class=\"container\" data-index=\"26\"></div>\r\n		<div class=\"index\">3</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"row\">\r\n		<div class=\"container\" data-index=\"27\"></div>\r\n		<div class=\"container\" data-index=\"28\"></div>\r\n		<div class=\"container\" data-index=\"29\"></div>\r\n		<div class=\"container\" data-index=\"30\"></div>\r\n		<div class=\"container\" data-index=\"31\"></div>\r\n		<div class=\"container\" data-index=\"32\"></div>\r\n		<div class=\"container\" data-index=\"33\"></div>\r\n		<div class=\"container\" data-index=\"34\"></div>\r\n		<div class=\"container\" data-index=\"35\"></div>\r\n		<div class=\"index\">4</div>\r\n		<div class=\"clear\"></div>\r\n	</div>\r\n\r\n	<div class=\"shortcut-tooltip\"></div>\r\n</div>\r\n";
+}));
+//#endregion
+//#region src/UI/Components/ShortCut/ShortCut.css?raw
+var ShortCut_default$1;
+var init_ShortCut$1 = __esmMin((() => {
+	ShortCut_default$1 = ":host {\r\n	width: 280px;\r\n	top: 0px;\r\n	left: 480px;\r\n	overflow: hidden;\r\n}\r\n\r\n#ShortCut {\r\n	position: absolute;\r\n	width: 280px;\r\n	height: 100%;\r\n	background-repeat: repeat-y;\r\n}\r\n#ShortCut .close {\r\n	position: absolute;\r\n	top: 2px;\r\n	right: 2px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 11px;\r\n	height: 11px;\r\n}\r\n#ShortCut .resize {\r\n	position: absolute;\r\n	bottom: 1px;\r\n	right: 1px;\r\n	border: none;\r\n	background-color: transparent;\r\n	width: 13px;\r\n	height: 13px;\r\n}\r\n\r\n#ShortCut .row {\r\n	position: relative;\r\n}\r\n#ShortCut .row .container {\r\n	float: left;\r\n	width: 24px;\r\n	height: 23px;\r\n	margin-top: 5px;\r\n	margin-left: 5px;\r\n	margin-bottom: 6px;\r\n}\r\n#ShortCut .row .container:hover {\r\n	background-color: #b5ffb5;\r\n}\r\n#ShortCut .row .index {\r\n	float: left;\r\n	position: relative;\r\n	top: 13px;\r\n	left: 5px;\r\n}\r\n#ShortCut .row .clear {\r\n}\r\n\r\n#ShortCut .icon {\r\n	position: relative;\r\n}\r\n#ShortCut .icon .img {\r\n	width: 24px;\r\n	height: 24px;\r\n	background-repeat: no-repeat;\r\n	border: none;\r\n	background-color: transparent;\r\n}\r\n#ShortCut .icon .name {\r\n	display: none;\r\n	z-index: 1;\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n}\r\n#ShortCut .icon:hover .name {\r\n	display: block;\r\n}\r\n#ShortCut .icon.hide .name {\r\n	display: none;\r\n}\r\n#ShortCut .icon .amount {\r\n	position: absolute;\r\n	right: 1px;\r\n	top: 20px;\r\n	text-shadow: 1px 1px 0px white;\r\n	text-align: right;\r\n	font-weight: bold;\r\n}\r\n\r\n.shortcut-tooltip {\r\n	display: none;\r\n	position: fixed;\r\n	background-color: rgba(0, 0, 0, 0.8);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 2px 6px;\r\n	white-space: nowrap;\r\n	z-index: 10000;\r\n	border-radius: 2px;\r\n	pointer-events: none;\r\n	line-height: 1.2;\r\n}\r\n.shortcut-tooltip.show {\r\n	display: block;\r\n}\r\n\r\n#ShortCut .cooldown-overlay {\r\n	position: absolute;\r\n	top: 0;\r\n	left: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	pointer-events: none;\r\n	border-radius: 2px;\r\n	z-index: 999;\r\n	background: conic-gradient(rgba(0, 0, 0, 0.75) 0deg, transparent 0deg);\r\n}\r\n";
+}));
+//#endregion
+//#region src/UI/Components/ShortCut/ShortCut.js
+var ShortCut_exports = /* @__PURE__ */ __exportAll({ default: () => ShortCut_default });
+/**
+* Resolve which skill window owns a skill id
+*
+* @param {number} skill id
+* @return {object} component exposing useSkillID / getSkillById
+*/
+function getSkillOwner(id) {
+	if (id >= SkillConst_default.GD_APPROVAL && id <= SkillConst_default.GD_LAST) return Guild_default;
+	if (id >= SkillConst_default.HOMUN_BEGIN && id <= SkillConst_default.HOMUN_LAST) return SkillListMH_default.homunculus;
+	if (id >= SkillConst_default.MERCENARY_BEGIN && id <= SkillConst_default.MERCENARY_LAST) return SkillListMH_default.mercenary;
+	return Controller$4.getUI();
+}
+/**
+* Update tooltip for empty slots with hotkey only
+*/
+function updateEmptySlotTooltips() {
+	const containers = ShortCut.getRoot().querySelectorAll(".container");
+	for (let i = 0; i < containers.length; ++i) if (!_list$4[i] || !_list$4[i].isSkill && !_list$4[i].ID) {
+		const hotkey = getHotKeyString(i);
+		if (hotkey) containers[i].setAttribute("data-tooltip", hotkey);
+	}
+}
+/**
+* Get hotkey string for shortcut index
+*
+* @param {number} index of the shortcut slot
+* @return {string} hotkey string or empty string
+*/
+function getHotKeyString(index) {
+	const shortcutKeys = [
+		"F1_1",
+		"F1_2",
+		"F1_3",
+		"F1_4",
+		"F1_5",
+		"F1_6",
+		"F1_7",
+		"F1_8",
+		"F1_9",
+		"F2_1",
+		"F2_2",
+		"F2_3",
+		"F2_4",
+		"F2_5",
+		"F2_6",
+		"F2_7",
+		"F2_8",
+		"F2_9",
+		"F3_1",
+		"F3_2",
+		"F3_3",
+		"F3_4",
+		"F3_5",
+		"F3_6",
+		"F3_7",
+		"F3_8",
+		"F3_9",
+		"F4_1",
+		"F4_2",
+		"F4_3",
+		"F4_4",
+		"F4_5",
+		"F4_6",
+		"F4_7",
+		"F4_8",
+		"F4_9"
+	];
+	if (index < 0 || index >= shortcutKeys.length) return "";
+	const scKey = shortcutKeys[index];
+	const shortcut = ShortCutControls_default.ShortCuts[scKey];
+	if (!shortcut) return "";
+	const key = shortcut.cust ? shortcut.cust.key : shortcut.init.key;
+	const alt = shortcut.cust ? shortcut.cust.alt : shortcut.init.alt;
+	const ctrl = shortcut.cust ? shortcut.cust.ctrl : shortcut.init.ctrl;
+	const shift = shortcut.cust ? shortcut.cust.shift : shortcut.init.shift;
+	if (!key) return "";
+	let hotkeyStr = "";
+	if (alt) hotkeyStr += "ALT + ";
+	if (ctrl) hotkeyStr += "CTRL + ";
+	if (shift) hotkeyStr += "SHIFT + ";
+	hotkeyStr += KEYS.toReadableKey(key);
+	return hotkeyStr;
+}
+/**
+* Show fixed tooltip on container hover
+*/
+function onContainerMouseEnter(event) {
+	const tooltipText = event.currentTarget.getAttribute("data-tooltip");
+	if (tooltipText) {
+		const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
+		const hostRect = ShortCut._host.getBoundingClientRect();
+		tooltip.textContent = tooltipText;
+		tooltip.classList.add("show");
+		const tooltipRect = tooltip.getBoundingClientRect();
+		const showAbove = window.innerHeight - (hostRect.top + hostRect.height) < tooltipRect.height + 10;
+		const left = hostRect.left + hostRect.width / 2 - tooltipRect.width / 2;
+		let top;
+		if (showAbove) top = hostRect.top - tooltipRect.height - 2;
+		else top = hostRect.top + hostRect.height + 2;
+		tooltip.style.left = `${left}px`;
+		tooltip.style.top = `${top}px`;
+	}
+}
+/**
+* Hide fixed tooltip on container leave
+*/
+function onContainerMouseLeave() {
+	const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
+	if (tooltip) tooltip.classList.remove("show");
+}
+/**
+* Resizing hotkey window
+*/
+function onResize$3(event) {
+	const host = ShortCut._host;
+	const top = host.offsetTop;
+	let lastHeight = 0;
+	function resizing() {
+		let h = Math.floor((Mouse.screen.y - top) / 34 + 1);
+		h = Math.min(Math.max(h, 1), _rowCount);
+		if (h === lastHeight) return;
+		host.style.height = `${h * 34}px`;
+		_preferences$23.size = h;
+		_preferences$23.save();
+		lastHeight = h;
+	}
+	const _Interval = setInterval(resizing, 30);
+	const mouseUpHandler = (_event) => {
+		if (_event.which === 1) {
+			clearInterval(_Interval);
+			window.removeEventListener("mouseup", mouseUpHandler);
+		}
+	};
+	window.addEventListener("mouseup", mouseUpHandler);
+	event.stopImmediatePropagation();
+	event.preventDefault();
+}
+/**
+* Displays the cooldown overlay on an icon
+*
+* @param {number} index of the icon
+* @param {number} delay in ms
+*/
+function setDelayOnIndex(index, delay) {
+	if (!_list$4[index]) return;
+	if (_list$4[index].Delay && _list$4[index].Delay >= Renderer.tick + delay) return;
+	_list$4[index].Delay = Renderer.tick + delay;
+	const ui = ShortCut.getRoot().querySelector(`.container[data-index="${index}"]`);
+	if (!ui) return;
+	const existing = ui.querySelector(".cooldown-overlay");
+	if (existing) existing.remove();
+	const overlay = document.createElement("div");
+	overlay.className = "cooldown-overlay";
+	const icon = ui.querySelector(".icon");
+	if (icon) {
+		icon.appendChild(overlay);
+		const img = icon.querySelector(".img");
+		if (img) img.style.filter = "none";
+	}
+	if (_activeAnimations.has(index)) {
+		cancelAnimationFrame(_activeAnimations.get(index));
+		_activeAnimations.delete(index);
+	}
+	function updateCooldown() {
+		if (!_list$4 || !_list$4[index]) {
+			overlay.remove();
+			if (_activeAnimations.has(index)) {
+				cancelAnimationFrame(_activeAnimations.get(index));
+				_activeAnimations.delete(index);
+			}
+			return;
+		}
+		const now = Renderer.tick;
+		const remaining = _list$4[index].Delay - now;
+		if (remaining <= 0 || !_list$4[index].Delay) {
+			overlay.remove();
+			_list$4[index].Delay = 0;
+			if (_activeAnimations.has(index)) {
+				cancelAnimationFrame(_activeAnimations.get(index));
+				_activeAnimations.delete(index);
+			}
+			return;
+		}
+		const degrees = (1 - remaining / delay) * 360;
+		overlay.style.background = `conic-gradient(transparent 0deg, transparent ${degrees}deg, rgba(0,0,0,0.75) ${degrees}deg)`;
+		const animationId = requestAnimationFrame(updateCooldown);
+		_activeAnimations.set(index, animationId);
+	}
+	const animationId = requestAnimationFrame(updateCooldown);
+	_activeAnimations.set(index, animationId);
+}
+/**
+* Drop something in the shortcut
+* Does the client allow other source than shortcut, inventory
+* and skill window to save to shortcut ?
+*/
+function onDrop$8(event, target) {
+	let data, element;
+	const index = parseInt(target.getAttribute("data-index"), 10);
+	const row = Math.floor(index / 9);
+	event.stopImmediatePropagation();
+	event.preventDefault();
+	try {
+		data = JSON.parse(event.dataTransfer.getData("Text"));
+		element = data.data;
+	} catch (_e) {
+		return;
+	}
+	if (data.type !== "item" && data.type !== "skill") return;
+	switch (data.from) {
+		case "SkillList":
+		case "Guild":
+		case "SkillListMH":
+			ShortCut.removeElement(true, element.SKID, row, element.selectedLevel ? element.selectedLevel : element.level);
+			ShortCut.addElement(index, true, element.SKID, element.selectedLevel ? element.selectedLevel : element.level);
+			ShortCut.onChange(index, true, element.SKID, element.selectedLevel ? element.selectedLevel : element.level);
+			break;
+		case "Inventory":
+			ShortCut.removeElement(false, element.ITID, row);
+			ShortCut.addElement(index, false, element.ITID, 0);
+			ShortCut.onChange(index, false, element.ITID, 0);
+			break;
+		case "ShortCut":
+			ShortCut.removeElement(element.isSkill, element.ID, row, element.isSkill ? element.count : null);
+			ShortCut.addElement(index, element.isSkill, element.ID, element.count);
+			ShortCut.onChange(index, element.isSkill, element.ID, element.count);
+	}
+}
+/**
+* Stop the drag and drop
+*/
+function onDragEnd(icon) {
+	delete window._OBJ_DRAG_;
+	icon.classList.remove("hide");
+}
+/**
+* Prepare data to be stored in the dragged element
+* to change position in the shortcut.
+*/
+function onDragStart$2(event, icon) {
+	const index = parseInt(icon.parentNode.getAttribute("data-index"), 10);
+	icon.classList.add("hide");
+	const img = new Image();
+	img.decoding = "async";
+	img.src = icon.querySelector(".img").style.backgroundImage.match(/\(([^)]+)/)[1].replace(/"/g, "");
+	event.dataTransfer.setDragImage(img, 12, 12);
+	event.dataTransfer.setData("Text", JSON.stringify(window._OBJ_DRAG_ = {
+		type: _list$4[index].isSkill ? "skill" : "item",
+		from: "ShortCut",
+		data: _list$4[index]
+	}));
+}
+/**
+* Get informations from a skill/item when
+* using right click on it.
+*/
+function onElementInfo(event, icon) {
+	const index = parseInt(icon.parentNode.getAttribute("data-index"), 10);
+	const element = _list$4[index];
+	event.stopImmediatePropagation();
+	event.preventDefault();
+	if (element.isSkill) {
+		if (SkillDescription_default.uid === _list$4[index].ID) SkillDescription_default.remove();
+		else {
+			SkillDescription_default.append();
+			SkillDescription_default.setSkill(_list$4[index].ID);
+		}
+	} else {
+		if (ItemInfo_default.uid === _list$4[index].ID) {
+			ItemInfo_default.remove();
+			return;
+		}
+		ItemInfo_default.append();
+		ItemInfo_default.uid = _list$4[index].ID;
+		ItemInfo_default.setItem(InventoryController.getUI().getItemById(_list$4[index].ID));
+	}
+}
+/**
+* Double-click on a shortcut
+*/
+function onUseShortCut(icon) {
+	clickElement(parseInt(icon.parentNode.getAttribute("data-index"), 10));
+}
+/**
+* Clicking on a shortcut
+*
+* @param {number} shortcut index
+*/
+function clickElement(index) {
+	const shortcut = _list$4[index];
+	SkillTargetSelection_default.remove();
+	if (!shortcut) return;
+	if (shortcut.isSkill) ShortCut.useSkill(shortcut.ID, shortcut.count);
+	else {
+		const item = InventoryController.getUI().getItemById(_list$4[index].ID);
+		if (item) InventoryController.getUI().useItem(item);
+	}
+}
+/**
+* Closing the window
+*/
+function onClose$5() {
+	ShortCut._host.style.height = "0px";
+	_preferences$23.size = 0;
+	_preferences$23.save();
+}
+/**
+* Hook Inventory, get informations when there is a change
+* to update the shortcut
+*
+* @param {number} index
+* @param {number} count
+*/
+function onUpdateItem(index, count) {
+	ShortCut.setElement(false, index, count);
+}
+/**
+* Hook Skill List, get informations when there is a change
+* to update the shortcut
+*
+* @param {number} skill id
+* @param {number} level
+*/
+function onUpdateSkill(id, level) {
+	ShortCut.setElement(true, id, level);
+}
+function onUpdateOwnerName$1() {
+	for (const index in _list$4) if (!_list$4[index].isSkill) ShortCut.setElement(false, _list$4[index].ID, _list$4[index].count);
+}
+function convertHotkeysToServerFormat() {
+	const serverData = {
+		Type: 1,
+		data: {
+			EmotionHotkey: [],
+			UserHotkey_V2: { SkillBar_1Tab: [] }
+		}
+	};
+	[
+		"Macro1",
+		"Macro2",
+		"Macro3",
+		"Macro4",
+		"Macro5",
+		"Macro6",
+		"Macro7",
+		"Macro8",
+		"Macro9",
+		"Macro10"
+	].forEach((key, index) => {
+		const shortcut = ShortCutControls_default.ShortCuts[key];
+		if (shortcut && shortcut.cust && shortcut.cust.emotion) serverData.data.EmotionHotkey[index] = shortcut.cust.emotion;
+	});
+	[
+		"F1_1",
+		"F1_2",
+		"F1_3",
+		"F1_4",
+		"F1_5",
+		"F1_6",
+		"F1_7",
+		"F1_8",
+		"F1_9",
+		"F2_1",
+		"F2_2",
+		"F2_3",
+		"F2_4",
+		"F2_5",
+		"F2_6",
+		"F2_7",
+		"F2_8",
+		"F2_9",
+		"F3_1",
+		"F3_2",
+		"F3_3",
+		"F3_4",
+		"F3_5",
+		"F3_6",
+		"F3_7",
+		"F3_8",
+		"F3_9",
+		"F4_1",
+		"F4_2",
+		"F4_3",
+		"F4_4",
+		"F4_5",
+		"F4_6",
+		"F4_7",
+		"F4_8",
+		"F4_9"
+	].forEach((key, index) => {
+		const shortcut = ShortCutControls_default.ShortCuts[key];
+		if (shortcut) {
+			const keyData = shortcut.cust || shortcut.init;
+			serverData.data.UserHotkey_V2.SkillBar_1Tab.push({
+				desc: `Skill ${index + 1}`,
+				index,
+				key1: keyData.key || 0,
+				key2: 0
+			});
+		}
+	});
+	return serverData;
+}
+function convertHotkeysFromServerFormat(serverData) {
+	if (!serverData || !serverData.data) return;
+	if (serverData.data.EmotionHotkey) {
+		const emotionKeys = [
+			"Macro1",
+			"Macro2",
+			"Macro3",
+			"Macro4",
+			"Macro5",
+			"Macro6",
+			"Macro7",
+			"Macro8",
+			"Macro9",
+			"Macro10"
+		];
+		serverData.data.EmotionHotkey.forEach((emotion, index) => {
+			if (emotion && emotionKeys[index]) {
+				if (!ShortCutControls_default.ShortCuts[emotionKeys[index]].cust) ShortCutControls_default.ShortCuts[emotionKeys[index]].cust = {};
+				ShortCutControls_default.ShortCuts[emotionKeys[index]].cust.emotion = emotion;
+			}
+		});
+	}
+	if (serverData.data.UserHotkey_V2 && serverData.data.UserHotkey_V2.SkillBar_1Tab) {
+		const shortcutKeys = [
+			"F1_1",
+			"F1_2",
+			"F1_3",
+			"F1_4",
+			"F1_5",
+			"F1_6",
+			"F1_7",
+			"F1_8",
+			"F1_9",
+			"F2_1",
+			"F2_2",
+			"F2_3",
+			"F2_4",
+			"F2_5",
+			"F2_6",
+			"F2_7",
+			"F2_8",
+			"F2_9",
+			"F3_1",
+			"F3_2",
+			"F3_3",
+			"F3_4",
+			"F3_5",
+			"F3_6",
+			"F3_7",
+			"F3_8",
+			"F3_9",
+			"F4_1",
+			"F4_2",
+			"F4_3",
+			"F4_4",
+			"F4_5",
+			"F4_6",
+			"F4_7",
+			"F4_8",
+			"F4_9"
+		];
+		serverData.data.UserHotkey_V2.SkillBar_1Tab.forEach((skillData) => {
+			if (skillData && skillData.index < shortcutKeys.length) {
+				const key = shortcutKeys[skillData.index];
+				if (key && skillData.key1) {
+					if (!ShortCutControls_default.ShortCuts[key].cust) ShortCutControls_default.ShortCuts[key].cust = {};
+					ShortCutControls_default.ShortCuts[key].cust.key = skillData.key1;
+				}
+			}
+		});
+	}
+}
+function haveHotkeysChanged(currentData) {
+	if (!_lastServerHotkeys) return true;
+	return JSON.stringify(currentData) !== JSON.stringify(_lastServerHotkeys);
+}
+var ShortCut, _list$4, _rowCount, _lastServerHotkeys, _activeAnimations, _preferences$23, ShortCut_default;
+var init_ShortCut = __esmMin((() => {
+	init_DBManager();
+	init_ItemType();
+	init_SkillInfo();
+	init_SkillConst();
+	init_Client();
+	init_Preferences$1();
+	init_SessionStorage();
+	init_Renderer();
+	init_MouseEventHandler();
+	init_UIManager();
+	init_GUIComponent();
+	init_ItemInfo();
+	init_Inventory();
+	init_SkillListMH();
+	init_SkillDescription();
+	init_SkillTargetSelection();
+	init_Guild$1();
+	init_ShortCutControls();
+	init_KeyEventHandler();
+	init_Configs();
+	init_PacketVerManager();
+	init_SkillList();
+	init_ShortCut$2();
+	init_ShortCut$1();
+	ShortCut = new GUIComponent("ShortCut", ShortCut_default$1);
+	ShortCut.render = () => ShortCut_default$2;
+	_list$4 = [];
+	_rowCount = 0;
+	_lastServerHotkeys = null;
+	_activeAnimations = /* @__PURE__ */ new Map();
+	_preferences$23 = Preferences.get("ShortCut", {
+		x: 480,
+		y: 0,
+		size: 1,
+		magnet_top: true,
+		magnet_bottom: false,
+		magnet_left: false,
+		magnet_right: false
+	}, 1);
+	/**
+	* Initialize UI
+	*/
+	ShortCut.init = function init() {
+		const root = ShortCut.getRoot();
+		const resizeBtn = root.querySelector(".resize");
+		if (resizeBtn) resizeBtn.addEventListener("mousedown", onResize$3);
+		const closeBtn = root.querySelector(".close");
+		if (closeBtn) {
+			closeBtn.addEventListener("mousedown", (e) => {
+				e.stopImmediatePropagation();
+				e.preventDefault();
+			});
+			closeBtn.addEventListener("click", onClose$5);
+		}
+		const container = root.querySelector("#ShortCut");
+		container.addEventListener("drop", (e) => {
+			const target = e.target.closest(".container");
+			if (target) onDrop$8(e, target);
+		});
+		container.addEventListener("dragover", (e) => {
+			if (e.target.closest(".container")) {
+				e.stopImmediatePropagation();
+				e.preventDefault();
+			}
+		});
+		container.addEventListener("dragstart", (e) => {
+			const icon = e.target.closest(".icon");
+			if (icon) onDragStart$2(e, icon);
+		});
+		container.addEventListener("dragend", (e) => {
+			const icon = e.target.closest(".icon");
+			if (icon) onDragEnd(icon);
+		});
+		container.addEventListener("dblclick", (e) => {
+			const icon = e.target.closest(".icon");
+			if (icon) onUseShortCut(icon);
+		});
+		container.addEventListener("contextmenu", (e) => {
+			const icon = e.target.closest(".icon");
+			if (icon) onElementInfo(e, icon);
+		});
+		container.addEventListener("mousedown", (e) => {
+			if (e.target.closest(".icon")) e.stopImmediatePropagation();
+		});
+		this.draggable();
+		root.querySelectorAll(".container").forEach((el) => {
+			el.addEventListener("mouseenter", onContainerMouseEnter);
+			el.addEventListener("mouseleave", onContainerMouseLeave);
+		});
+		DB.UpdateOwnerName.ShortCut = onUpdateOwnerName$1;
+		InventoryController.getUI().onUpdateItem = onUpdateItem;
+	};
+	/**
+	* Append to body
+	*/
+	ShortCut.onAppend = function onAppend() {
+		this._host.style.height = `${34 * _preferences$23.size}px`;
+		const rect = this._host.getBoundingClientRect();
+		this._host.style.top = `${Math.min(Math.max(0, _preferences$23.y), Renderer.height - rect.height)}px`;
+		this._host.style.left = `${Math.min(Math.max(0, _preferences$23.x), Renderer.width - rect.width)}px`;
+		this.magnet.TOP = _preferences$23.magnet_top;
+		this.magnet.BOTTOM = _preferences$23.magnet_bottom;
+		this.magnet.LEFT = _preferences$23.magnet_left;
+		this.magnet.RIGHT = _preferences$23.magnet_right;
+		Controller$4.getUI().onUpdateSkill = onUpdateSkill;
+		updateEmptySlotTooltips();
+	};
+	/**
+	* When removed, clean up
+	*/
+	ShortCut.onRemove = function onRemove() {
+		const tooltip = ShortCut.getRoot().querySelector(".shortcut-tooltip");
+		if (tooltip) tooltip.classList.remove("show");
+		for (const [index, animationId] of _activeAnimations.entries()) cancelAnimationFrame(animationId);
+		_activeAnimations.clear();
+		_preferences$23.y = parseInt(this._host.style.top, 10);
+		_preferences$23.x = parseInt(this._host.style.left, 10);
+		_preferences$23.size = Math.floor(parseInt(this._host.style.height, 10) / 34);
+		_preferences$23.magnet_top = this.magnet.TOP;
+		_preferences$23.magnet_bottom = this.magnet.BOTTOM;
+		_preferences$23.magnet_left = this.magnet.LEFT;
+		_preferences$23.magnet_right = this.magnet.RIGHT;
+		_preferences$23.save();
+	};
+	/**
+	* Request to clean the list
+	* Used only from MapEngine when exiting the game
+	*/
+	ShortCut.clean = function clean() {
+		for (const [index, animationId] of _activeAnimations.entries()) cancelAnimationFrame(animationId);
+		_activeAnimations.clear();
+		_list$4.length = 0;
+		ShortCut.getRoot().querySelectorAll(".container").forEach((el) => {
+			el.innerHTML = "";
+		});
+	};
+	/**
+	* Process shortcut
+	*
+	* @param {object} key
+	*/
+	ShortCut.onShortCut = function onShortCut(key) {
+		switch (key.cmd.replace(/\d+$/, "")) {
+			case "EXECUTE":
+				clickElement(parseInt(key.cmd.match(/\d+$/).toString(), 10));
+				break;
+			case "EXTEND":
+				_preferences$23.size = (_preferences$23.size + 1) % (_rowCount + 1);
+				_preferences$23.save();
+				this._host.style.height = `${_preferences$23.size * 34}px`;
+		}
+	};
+	ShortCut.useSkill = function useSkill(id, level) {
+		getSkillOwner(id).useSkillID(id, level);
+	};
+	ShortCut.getSkillById = function getSkillById(id) {
+		return getSkillOwner(id).getSkillById(id);
+	};
+	/**
+	* Bind UI with list of shortcut
+	*
+	* @param {Array} shortcut list
+	*/
+	ShortCut.setList = function setList(list) {
+		let skill;
+		let needGuildSkills = false;
+		ShortCut.getRoot().querySelectorAll(".container").forEach((el) => {
+			el.innerHTML = "";
+		});
+		_list$4.length = list.length;
+		_rowCount = Math.min(4, Math.floor(list.length / 9));
+		for (let i = 0, count = list.length; i < count; ++i) if (list[i].isSkill) {
+			skill = ShortCut.getSkillById(list[i].ID);
+			if (getSkillOwner(list[i].ID) === Guild_default) needGuildSkills = true;
+			if (skill && skill.level) ShortCut.addElement(i, true, list[i].ID, list[i].count || skill.level);
+			else {
+				if (!_list$4[i]) _list$4[i] = {};
+				_list$4[i].isSkill = true;
+				_list$4[i].ID = list[i].ID;
+				_list$4[i].count = list[i].count;
+			}
+		} else ShortCut.addElement(i, list[i].isSkill, list[i].ID, list[i].count);
+		if (needGuildSkills) ShortCut.onRequestGuildSkills();
+	};
+	/**
+	* Hook: ask the server for the guild skill list (set by MapEngine/Guild)
+	*/
+	ShortCut.onRequestGuildSkills = function onRequestGuildSkills() {};
+	/**
+	* Update all tooltips (for both empty and filled slots)
+	* Called when hotkey settings change
+	*/
+	ShortCut.updateAllTooltips = function updateAllTooltips() {
+		const root = ShortCut.getRoot();
+		for (let i = 0, size = _list$4.length; i < size; ++i) {
+			const container = root.querySelector(`.container[data-index="${i}"]`);
+			if (!container) continue;
+			const hotkey = getHotKeyString(i);
+			if (!_list$4[i] || !_list$4[i].isSkill && !_list$4[i].ID) {
+				if (hotkey) container.setAttribute("data-tooltip", hotkey);
+			} else if (_list$4[i] && (_list$4[i].isSkill || _list$4[i].ID)) {
+				let name = "";
+				if (_list$4[i].isSkill && SkillInfo[_list$4[i].ID]) name = SkillInfo[_list$4[i].ID].SkillName;
+				else if (_list$4[i].ID) {
+					const item = InventoryController.getUI().getItemById(_list$4[i].ID);
+					if (item) name = DB.getItemName(item);
+				}
+				if (name) {
+					const tooltipText = hotkey ? `[ ${hotkey} ] ${name}` : name;
+					container.setAttribute("data-tooltip", tooltipText);
+				}
+			}
+		}
+	};
+	ShortCut.setElement = function setElement(isSkill, ID, count) {
+		for (let i = 0, size = _list$4.length; i < size; ++i) if (_list$4[i] && _list$4[i].isSkill == isSkill && _list$4[i].ID === ID) {
+			if (isSkill && _list$4[i].count && _list$4[i].count <= count) ShortCut.addElement(i, isSkill, ID, _list$4[i].count);
+			else ShortCut.addElement(i, isSkill, ID, count);
+		}
+	};
+	/**
+	* Add an element to shortcut
+	*
+	* @param {number} index of the element
+	* @param {boolean} is a skill ?
+	* @param {number} ID
+	* @param {number} count or level
+	*/
+	ShortCut.addElement = function addElement(index, isSkill, ID, count) {
+		let file, name;
+		const ui = ShortCut.getRoot().querySelector(`.container[data-index="${index}"]`);
+		if (!ui) return;
+		ui.innerHTML = "";
+		if (!_list$4[index]) _list$4[index] = {};
+		_list$4[index].isSkill = isSkill;
+		_list$4[index].ID = ID;
+		if (isSkill) {
+			if (!count) return;
+			else {
+				_list$4[index].count = count;
+				file = SkillInfo[ID].Name;
+				name = SkillInfo[ID].SkillName;
+			}
+		} else {
+			_list$4[index].count = count;
+			const item = InventoryController.getUI().getItemById(ID);
+			if (!item) return;
+			const it = DB.getItemInfo(ID);
+			file = item.IsIdentified ? it.identifiedResourceName : it.unidentifiedResourceName;
+			name = DB.getItemName(item);
+			if (item.type === ItemType_default.WEAPON || item.type === ItemType_default.ARMOR || item.type === ItemType_default.SHADOWGEAR) count = 1;
+			else count = item.count;
+			if (!count) return;
+		}
+		const hotkey = getHotKeyString(index);
+		const tooltipText = hotkey ? `[ ${hotkey} ] ${name}` : name;
+		Client.loadFile(`${DB.INTERFACE_PATH}item/${file}.bmp`, (url) => {
+			ui.innerHTML = "<div draggable=\"true\" class=\"icon\"><div class=\"img\"></div><div class=\"amount\"></div></div>";
+			ui.querySelector(".img").style.backgroundImage = `url(${url})`;
+			ui.querySelector(".amount").textContent = count;
+			ui.setAttribute("data-tooltip", tooltipText);
+		});
+	};
+	/**
+	* Displays the cooldown over every skill
+	*
+	* @param {number} delay in ms
+	*/
+	ShortCut.setGlobalSkillDelay = function setGlobalSkillDelay(delay) {
+		_list$4.forEach((element, index) => {
+			if (element.isSkill) setDelayOnIndex(index, delay);
+		});
+	};
+	/**
+	* Displays the cooldown over a single skill
+	*
+	* @param {number} ID of the skill
+	* @param {number} delay in ms
+	*/
+	ShortCut.setSkillDelay = function setSkillDelay(ID, delay) {
+		_list$4.forEach((element, index) => {
+			if (element.isSkill && element.ID == ID) setDelayOnIndex(index, delay);
+		});
+	};
+	/**
+	* Remove an element from shortcut
+	*
+	* @param {boolean} is a skill ?
+	* @param {number} ID of the element to remove
+	* @param {number} row id
+	* @param {number} amount (optional)
+	*/
+	ShortCut.removeElement = function removeElement(isSkill, ID, row, amount) {
+		if (!ID) return;
+		const root = ShortCut.getRoot();
+		for (let i = row * 9, count = Math.min(_list$4.length, row * 9 + 9); i < count; ++i) if (_list$4[i] && _list$4[i].isSkill == isSkill && _list$4[i].ID === ID && (!isSkill || _list$4[i].count == amount)) {
+			const container = root.querySelector(`.container[data-index="${i}"]`);
+			if (container) container.innerHTML = "";
+			_list$4[i].isSkill = 0;
+			_list$4[i].ID = 0;
+			_list$4[i].count = 0;
+			ShortCut.onChange(i, 0, 0, 0);
+		}
+	};
+	Guild_default.onUpdateSkill = (id, level) => {
+		ShortCut.setElement(true, id, level);
+	};
+	SkillListMH_default.mercenary.onUpdateSkill = (id, level) => {
+		ShortCut.setElement(true, id, level);
+	};
+	SkillListMH_default.homunculus.onUpdateSkill = (id, level) => {
+		ShortCut.setElement(true, id, level);
+	};
+	/**
+	* Method to define to notify a change.
+	*
+	* @param {number} index
+	* @param {boolean} isSkill
+	* @param {number} id
+	* @param {number} count
+	*/
+	ShortCut.onChange = function onChange() {};
+	ShortCut.saveToServer = function saveToServer() {
+		if (PacketVerManager_default.value >= 20170315 && SessionStorage_default.WebToken) {
+			const hotkeys = JSON.stringify(convertHotkeysToServerFormat());
+			if (!haveHotkeysChanged(hotkeys)) return;
+			const formData = new FormData();
+			formData.append("AID", SessionStorage_default.AID);
+			formData.append("WorldName", SessionStorage_default.ServerName);
+			formData.append("AuthToken", SessionStorage_default.WebToken);
+			formData.append("data", hotkeys);
+			const xhr = new XMLHttpRequest();
+			let webserverAddress = "";
+			if (window.location.protocol !== "http:" && window.location.protocol !== "https:") webserverAddress = Configs.get("webserverAddress", "http://127.0.0.1:8888");
+			xhr.open("POST", `${webserverAddress}/userconfig/save`, true);
+			xhr.timeout = 5e3;
+			xhr.onload = () => {
+				if (xhr.status === 200) console.log("Hotkeys saved to server successfully");
+				else console.warn("Hotkey save returned non-200 status:", xhr.status);
+			};
+			xhr.onerror = () => {
+				console.warn("Hotkey save failed: web-server unreachable");
+			};
+			xhr.ontimeout = () => {
+				console.warn("Hotkey save timed out");
+			};
+			xhr.send(formData);
+		}
+	};
+	ShortCut.loadFromServer = function loadFromServer(callback) {
+		if (PacketVerManager_default.value >= 20170315 && SessionStorage_default.WebToken) {
+			const formData = new FormData();
+			formData.append("AID", SessionStorage_default.AID);
+			formData.append("WorldName", SessionStorage_default.ServerName);
+			formData.append("AuthToken", SessionStorage_default.WebToken);
+			const xhr = new XMLHttpRequest();
+			let webserverAddress = "";
+			if (window.location.protocol !== "http:" && window.location.protocol !== "https:") webserverAddress = Configs.get("webserverAddress", "http://127.0.0.1:8888");
+			xhr.open("POST", `${webserverAddress}/userconfig/load`, true);
+			xhr.timeout = 5e3;
+			xhr.onload = () => {
+				if (xhr.status === 200) try {
+					const serverData = JSON.parse(xhr.responseText);
+					_lastServerHotkeys = JSON.parse(JSON.stringify(serverData));
+					convertHotkeysFromServerFormat(serverData);
+				} catch (e) {
+					console.error("Error parsing server hotkeys:", e);
+				}
+				else console.warn("Hotkey load returned non-200 status:", xhr.status);
+				if (callback) callback();
+			};
+			xhr.onerror = () => {
+				console.warn("Hotkey load failed: web-server unreachable");
+				if (callback) callback();
+			};
+			xhr.ontimeout = () => {
+				console.warn("Hotkey load timed out");
+				if (callback) callback();
+			};
+			xhr.send(formData);
+		} else if (callback) callback();
+	};
+	ShortCut.getList = function getList() {
+		return _list$4;
+	};
+	ShortCut_default = UIManager.addComponent(ShortCut);
+}));
+//#endregion
 //#region src/Engine/MapEngine/Guild.js
 function adler32(data) {
 	let s1 = 1;
@@ -254437,17 +248931,9 @@ var init_AIDriver = __esmMin((() => {
 			const Mercenary = UIManager.getComponent("MercenaryInformations");
 			function addCTX(lua, isHoAI = true) {
 				const ctx = lua.ctx;
-				const SkillListAI = UIManager.getComponent(isHoAI ? "SkillListHOM" : "SkillListMER");
-				function getAISkill(id) {
-					if (id === null || id === void 0 || !SkillListAI || !SkillListAI.getSkillById) return null;
-					return SkillListAI.getSkillById(Number(id));
-				}
-				function isOwnAIUnit(id) {
-					return Number(id) === (isHoAI ? SessionStorage_default.homunId : SessionStorage_default.mercId);
-				}
 				lua.doStringSync(`
-			function GetV(V_, id, skill, lv)
-				local res = GetVJS(V_, id, skill, lv)
+			function GetV(V_, id)
+				local res = GetVJS(V_, id)
 				if(V_ == 1 or V_ == 13) then
 					return res[1], res[2]
 				end
@@ -254489,7 +248975,7 @@ var init_AIDriver = __esmMin((() => {
 					if (isHoAI) Homun.reqAttack(id, targetGID);
 					else Mercenary.reqAttack(id, targetGID);
 				};
-				ctx.GetVJS = (V_, id, skillId, skillLv) => {
+				ctx.GetVJS = (V_, id) => {
 					const entity = EntityManager.get(Number(id));
 					switch (V_) {
 						case 0: return SessionStorage_default.AID;
@@ -254510,12 +248996,7 @@ var init_AIDriver = __esmMin((() => {
 						case 3: return entity ? entity.action : 0;
 						case 4: return entity ? entity.attack_range : 1;
 						case 5: return entity && entity.targetGID && entity.targetGID > 0 ? entity.targetGID : -1;
-						case 6:
-							if (skillId !== null && skillId !== void 0 && isOwnAIUnit(id)) {
-								const skill = getAISkill(skillId);
-								if (skill) return skill.level > 0 ? skill.attackRange || 1 : 0;
-							}
-							return entity ? entity.attack_range : 1;
+						case 6: return entity ? entity.attack_range : 1;
 						case 7: return entity ? entity.job % 6e3 : -1;
 						case 8: return entity.life.hp || -1;
 						case 9: return entity.life.sp || -1;
@@ -254525,10 +249006,6 @@ var init_AIDriver = __esmMin((() => {
 							if (entity === null) return 0;
 							return Number((entity.job + "").substring(1));
 						case 14:
-							if (skillId !== null && skillId !== void 0 && isOwnAIUnit(id)) {
-								const skill = getAISkill(skillId);
-								if (skill) return skill.level > 0 ? skill.attackRange || 1 : 0;
-							}
 							if (entity !== null) return entity.attack_range || 1;
 							return 1;
 						default:
@@ -254599,15 +249076,9 @@ var init_AIDriver = __esmMin((() => {
 						const homun = EntityManager.get(Number(homunId));
 						const target = EntityManager.get(Number(targetID));
 						if (!homun || !target) return 0;
-						const aiSkill = getAISkill(skillId);
-						const infoRange = SkillInfo[skillId] && SkillInfo[skillId].AttackRange ? SkillInfo[skillId].AttackRange[level - 1] : null;
-						let range;
-						if (aiSkill && aiSkill.attackRange > 0) range = aiSkill.attackRange;
-						else if (Number.isFinite(infoRange) && infoRange > 0) range = infoRange + 1;
-						else range = homun.attack_range || 1;
+						const range = SkillInfo[skillId].AttackRange[level - 1] + 1 || homun.attack_range || 1;
 						if (homun.position[0] > 0 && homun.position[1] > 0 && target.position[0] > 0 && target.position[1] > 0) {
-							const dist = distance(homun.position[0], homun.position[1], target.position[0], target.position[1]);
-							if (range >= dist) {
+							if (range >= distance(homun.position[0], homun.position[1], target.position[0], target.position[1])) {
 								if (canUseAISkill(homun)) {
 									let pkt;
 									if (PacketVerManager_default.value >= 20180307) pkt = new PACKET.CZ.USE_SKILL2();
@@ -257357,10 +251828,10 @@ var init_ProcessCommand = __esmMin((() => {
 				SessionStorage_default.homCustomAI = !SessionStorage_default.homCustomAI;
 				if (SessionStorage_default.homCustomAI) {
 					HomunInformations_default.resetAI();
-					this.addText(DB.getMessage(1023), this.TYPE.INFO, this.FILTER.PUBLIC_LOG);
+					this.addText(DB.getMessage(1024), this.TYPE.INFO, this.FILTER.PUBLIC_LOG);
 				} else {
 					HomunInformations_default.resetAI();
-					this.addText(DB.getMessage(1024), this.TYPE.INFO, this.FILTER.PUBLIC_LOG);
+					this.addText(DB.getMessage(1023), this.TYPE.INFO, this.FILTER.PUBLIC_LOG);
 				}
 			}
 		},
@@ -257810,7 +252281,7 @@ function generateCylinder(totalCircleSides, circleSides, repeatTextureX) {
 	}
 	return new Float32Array(mesh);
 }
-var _program$21, blendMode$3, mat4$19, _matrix$5, Cylinder;
+var _program$20, blendMode$3, mat4$19, _matrix$5, Cylinder;
 var init_Cylinder = __esmMin((() => {
 	init_WebGL();
 	init_gl_matrix();
@@ -257914,8 +252385,8 @@ var init_Cylinder = __esmMin((() => {
 		render(gl, tick) {
 			const renderCount = tick - this.startTick;
 			const duration = this.endTick - this.startTick;
-			const uniform = _program$21.uniform;
-			const attribute = _program$21.attribute;
+			const uniform = _program$20.uniform;
+			const attribute = _program$20.attribute;
 			gl.bindTexture(gl.TEXTURE_2D, this.texture);
 			if (this.repeatTextureX > 1) gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
 			gl.enableVertexAttribArray(attribute.aPosition);
@@ -258035,7 +252506,7 @@ var init_Cylinder = __esmMin((() => {
 			blendMode$3[13] = gl.CONSTANT_ALPHA;
 			blendMode$3[14] = gl.ONE_MINUS_CONSTANT_ALPHA;
 			blendMode$3[15] = gl.SRC_ALPHA_SATURATE;
-			_program$21 = WebGL_default.createShaderProgram(gl, Cylinder_default$1, Cylinder_default);
+			_program$20 = WebGL_default.createShaderProgram(gl, Cylinder_default$1, Cylinder_default);
 			this.ready = true;
 			this.renderBeforeEntities = false;
 		}
@@ -258045,9 +252516,9 @@ var init_Cylinder = __esmMin((() => {
 		* @param {object} webgl context
 		*/
 		static free(gl) {
-			if (_program$21) {
-				gl.deleteProgram(_program$21);
-				_program$21 = null;
+			if (_program$20) {
+				gl.deleteProgram(_program$20);
+				_program$20 = null;
 			}
 			if (this.buffer) gl.deleteBuffer(this.buffer);
 			this.ready = false;
@@ -258058,8 +252529,8 @@ var init_Cylinder = __esmMin((() => {
 		* @param {object} webgl context
 		*/
 		static beforeRender(gl, modelView, projection, fog, tick) {
-			const uniform = _program$21.uniform;
-			gl.useProgram(_program$21);
+			const uniform = _program$20.uniform;
+			gl.useProgram(_program$20);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -258075,8 +252546,8 @@ var init_Cylinder = __esmMin((() => {
 		* @param {object} webgl context
 		*/
 		static afterRender(gl) {
-			gl.disableVertexAttribArray(_program$21.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$21.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$20.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$20.attribute.aTextureCoord);
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 		}
 	};
@@ -259390,7 +253861,7 @@ function initModel(gl, data) {
 		WebGL_default.texture(gl, data.infos[i].texture, onTextureLoaded, i);
 	}
 }
-var _program$20, _normalMat, mat4$17, mat3$2, quat, vec3$3, _light$1, RsmEffect;
+var _program$19, _normalMat, mat4$17, mat3$2, quat, vec3$3, _light$1, RsmEffect;
 var init_RsmEffect = __esmMin((() => {
 	init_RsmEffect$2();
 	init_RsmEffect$1();
@@ -259398,7 +253869,7 @@ var init_RsmEffect = __esmMin((() => {
 	init_gl_matrix();
 	init_Client();
 	init_Model();
-	_program$20 = null;
+	_program$19 = null;
 	_normalMat = /* @__PURE__ */ new Float32Array(9);
 	mat4$17 = gl_matrix_default.mat4;
 	mat3$2 = gl_matrix_default.mat3;
@@ -259448,7 +253919,7 @@ var init_RsmEffect = __esmMin((() => {
 			this._Params = params;
 		}
 		static init(gl) {
-			_program$20 = WebGL_default.createShaderProgram(gl, RsmEffect_default$1, RsmEffect_default);
+			_program$19 = WebGL_default.createShaderProgram(gl, RsmEffect_default$1, RsmEffect_default);
 			this.ready = true;
 		}
 		init(gl, tick) {
@@ -259528,18 +253999,18 @@ var init_RsmEffect = __esmMin((() => {
 			this.ready = false;
 		}
 		static free(gl) {
-			if (_program$20) {
-				gl.deleteProgram(_program$20);
-				_program$20 = null;
+			if (_program$19) {
+				gl.deleteProgram(_program$19);
+				_program$19 = null;
 			}
 			this.ready = false;
 		}
 		static beforeRender(gl, modelView, projection, fog, tick) {
 			mat4$17.toInverseMat3(modelView, _normalMat);
 			mat3$2.transpose(_normalMat, _normalMat);
-			const uniform = _program$20.uniform;
-			const attribute = _program$20.attribute;
-			gl.useProgram(_program$20);
+			const uniform = _program$19.uniform;
+			const attribute = _program$19.attribute;
+			gl.useProgram(_program$19);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniformMatrix3fv(uniform.uNormalMat, false, _normalMat);
@@ -259559,7 +254030,7 @@ var init_RsmEffect = __esmMin((() => {
 			gl.uniform1i(uniform.uDiffuse, 0);
 		}
 		render(gl, tick) {
-			const uniform = _program$20.uniform;
+			const uniform = _program$19.uniform;
 			if (this.isAnimated && this.model && this.animLen > 0) {
 				const elapsed = tick - this.startTick;
 				const frame = Math.floor(elapsed * this.fps / 1e3 % this.animLen);
@@ -259571,7 +254042,7 @@ var init_RsmEffect = __esmMin((() => {
 			gl.uniform3fv(uniform.uPosition, this.position);
 			gl.uniform1f(uniform.uSize, this.size);
 			gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
-			const attribute = _program$20.attribute;
+			const attribute = _program$19.attribute;
 			gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 36, 0);
 			gl.vertexAttribPointer(attribute.aVertexNormal, 3, gl.FLOAT, false, 36, 12);
 			gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 36, 24);
@@ -259582,7 +254053,7 @@ var init_RsmEffect = __esmMin((() => {
 			}
 		}
 		static afterRender(gl) {
-			const attribute = _program$20.attribute;
+			const attribute = _program$19.attribute;
 			gl.disableVertexAttribArray(attribute.aPosition);
 			gl.disableVertexAttribArray(attribute.aVertexNormal);
 			gl.disableVertexAttribArray(attribute.aTextureCoord);
@@ -260606,7 +255077,7 @@ var init_QuadHorn$1 = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/QuadHorn.js
-var _program$19, mat4$16, blendMode, vertices, texCoords, rand$1, QuadHorn;
+var _program$18, mat4$16, blendMode, vertices, texCoords, rand$1, QuadHorn;
 var init_QuadHorn = __esmMin((() => {
 	init_WebGL();
 	init_gl_matrix();
@@ -260742,8 +255213,8 @@ var init_QuadHorn = __esmMin((() => {
 			this.ready = false;
 		}
 		render(gl, tick) {
-			const uniform = _program$19.uniform;
-			const attribute = _program$19.attribute;
+			const uniform = _program$18.uniform;
+			const attribute = _program$18.attribute;
 			const deltaStart = (tick - this.startTick) / 1e3;
 			const deltaEnd = (tick - this.endTick) / 1e3;
 			gl.bindTexture(gl.TEXTURE_2D, this.texture);
@@ -260830,7 +255301,7 @@ var init_QuadHorn = __esmMin((() => {
 			gl.flush();
 		}
 		static init(gl) {
-			_program$19 = WebGL_default.createShaderProgram(gl, QuadHorn_default$1, QuadHorn_default);
+			_program$18 = WebGL_default.createShaderProgram(gl, QuadHorn_default$1, QuadHorn_default);
 			blendMode[1] = gl.ZERO;
 			blendMode[2] = gl.ONE;
 			blendMode[3] = gl.SRC_COLOR;
@@ -260850,16 +255321,16 @@ var init_QuadHorn = __esmMin((() => {
 			this.renderBeforeEntities = true;
 		}
 		static free(gl) {
-			if (_program$19) {
-				gl.deleteProgram(_program$19);
-				_program$19 = null;
+			if (_program$18) {
+				gl.deleteProgram(_program$18);
+				_program$18 = null;
 			}
 			if (this.buffer) gl.deleteBuffer(this.buffer);
 			this.ready = false;
 		}
 		static beforeRender(gl, modelView, projection, fog, tick) {
-			const uniform = _program$19.uniform;
-			gl.useProgram(_program$19);
+			const uniform = _program$18.uniform;
+			gl.useProgram(_program$18);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -260870,9 +255341,9 @@ var init_QuadHorn = __esmMin((() => {
 			gl.uniform1i(uniform.uDiffuse, 0);
 		}
 		static afterRender(gl) {
-			gl.disableVertexAttribArray(_program$19.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$19.attribute.aTextureCoord);
-			gl.disableVertexAttribArray(_program$19.attribute.aColor);
+			gl.disableVertexAttribArray(_program$18.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$18.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$18.attribute.aColor);
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 		}
 	};
@@ -261087,7 +255558,7 @@ function setVertex(index, x, y, z, u, v) {
 	_vertices[offset + 3] = u;
 	_vertices[offset + 4] = v;
 }
-var mat4$15, _matrix$4, UNIT, LAYER_COUNT, SEGMENT_COUNT, TEXTURE_COUNT, SEGMENT_HEIGHT, EFFECT_TICK_MS, OPACITY, PARTICLE_TEXTURE, PARTICLE_CYCLE_MS, PARTICLE_SIZE, PARTICLE_COLOR, PARTICLE_FLOATS, PARTICLE_CORNERS, _program$18, _particleProgram, _textureCache, _vertices, WaterfallEffect;
+var mat4$15, _matrix$4, UNIT, LAYER_COUNT, SEGMENT_COUNT, TEXTURE_COUNT, SEGMENT_HEIGHT, EFFECT_TICK_MS, OPACITY, PARTICLE_TEXTURE, PARTICLE_CYCLE_MS, PARTICLE_SIZE, PARTICLE_COLOR, PARTICLE_FLOATS, PARTICLE_CORNERS, _program$17, _particleProgram, _textureCache, _vertices, WaterfallEffect;
 var init_WaterfallEffect = __esmMin((() => {
 	init_WebGL();
 	init_gl_matrix();
@@ -261160,8 +255631,8 @@ var init_WaterfallEffect = __esmMin((() => {
 			this.textureCache = loadTextures(gl, this.textureSet, this);
 		}
 		render(gl, tick) {
-			const uniform = _program$18.uniform;
-			const attribute = _program$18.attribute;
+			const uniform = _program$17.uniform;
+			const attribute = _program$17.attribute;
 			mat4$15.identity(_matrix$4);
 			mat4$15.translate(_matrix$4, _matrix$4, [
 				this.position[0] + .5,
@@ -261232,9 +255703,9 @@ var init_WaterfallEffect = __esmMin((() => {
 			gl.disableVertexAttribArray(attribute.aCorner);
 			gl.disableVertexAttribArray(attribute.aSeed);
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-			gl.useProgram(_program$18);
-			gl.enableVertexAttribArray(_program$18.attribute.aPosition);
-			gl.enableVertexAttribArray(_program$18.attribute.aTextureCoord);
+			gl.useProgram(_program$17);
+			gl.enableVertexAttribArray(_program$17.attribute.aPosition);
+			gl.enableVertexAttribArray(_program$17.attribute.aTextureCoord);
 		}
 		/**
 		* Free WebGL resources
@@ -261279,9 +255750,9 @@ var init_WaterfallEffect = __esmMin((() => {
 			gl.uniform1f(_particleProgram.uniform.uFogFar, fog.far);
 			gl.uniform1i(_particleProgram.uniform.uTexture, 0);
 			gl.uniform3fv(_particleProgram.uniform.uColor, PARTICLE_COLOR);
-			const uniform = _program$18.uniform;
-			const attribute = _program$18.attribute;
-			gl.useProgram(_program$18);
+			const uniform = _program$17.uniform;
+			const attribute = _program$17.attribute;
+			gl.useProgram(_program$17);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1i(uniform.uFogUse, fogUse);
@@ -261304,8 +255775,8 @@ var init_WaterfallEffect = __esmMin((() => {
 		*/
 		static afterRender(gl) {
 			gl.depthMask(true);
-			gl.disableVertexAttribArray(_program$18.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$18.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$17.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$17.attribute.aTextureCoord);
 		}
 		/**
 		* Initialize the effect type
@@ -261313,7 +255784,7 @@ var init_WaterfallEffect = __esmMin((() => {
 		* @param {WebGLRenderingContext} gl
 		*/
 		static init(gl) {
-			_program$18 = WebGL_default.createShaderProgram(gl, WaterfallEffect_default$1, WaterfallEffect_default);
+			_program$17 = WebGL_default.createShaderProgram(gl, WaterfallEffect_default$1, WaterfallEffect_default);
 			_particleProgram = WebGL_default.createShaderProgram(gl, WaterfallParticle_default$1, WaterfallParticle_default);
 			this.ready = true;
 		}
@@ -261331,9 +255802,9 @@ var init_WaterfallEffect = __esmMin((() => {
 				cache.waiters.clear();
 			});
 			_textureCache.clear();
-			if (_program$18) gl.deleteProgram(_program$18);
+			if (_program$17) gl.deleteProgram(_program$17);
 			if (_particleProgram) gl.deleteProgram(_particleProgram);
-			_program$18 = null;
+			_program$17 = null;
 			_particleProgram = null;
 			this.ready = false;
 			this.needInit = true;
@@ -261484,7 +255955,7 @@ function clean(name, AID, effectID) {
 function cleanRepeat(name, AID, effectID) {
 	const effectIdList = Array.isArray(effectID) ? effectID : [effectID];
 	_list$3[name].forEach((item) => {
-		if ((!AID || item._Params.Init.ownerAID === AID) && (!effectID || effectIdList.includes(item._Params.Inst.effectID))) {
+		if ((!AID || item._Params.Init.ownerAID === AID) && (!effectID || effectIdList.includes(item.effectID))) {
 			if (item._Params.Inst.persistent) item._Params.Inst.persistent = false;
 			if (item._Params.Inst.repeatEnd) item._Params.Inst.repeatEnd = false;
 		}
@@ -261635,14 +256106,13 @@ var init_EffectManager = __esmMin((() => {
 					for (j = 0, size = list.length; j < size; ++j) {
 						if (!!list[j].renderBeforeEntities !== renderBeforeEntities) continue;
 						const effect = list[j];
-						if (effect.updateLifetime) effect.updateLifetime(tick);
 						const pos = effect._Params && effect._Params.Inst ? effect._Params.Inst.position : null;
 						let culled = false;
 						if (pos) {
 							if ((pos[0] - center[0]) * (pos[0] - center[0]) + (pos[1] - center[1]) * (pos[1] - center[1]) > cullDistanceSq) {
 								let shouldRemove = false;
 								if (effect._Params.Inst.duration > 0 && effect._Params.Inst.endTick > 0 && tick > effect._Params.Inst.endTick) shouldRemove = true;
-								if (shouldRemove || effect.needCleanUp) {
+								if (shouldRemove) {
 									effect.needCleanUp = true;
 									culled = true;
 								} else {
@@ -261651,7 +256121,7 @@ var init_EffectManager = __esmMin((() => {
 								}
 							}
 						}
-						if (!culled && !effect.needCleanUp) {
+						if (!culled) {
 							if (!effect.ready && effect.needInit) {
 								effect.init(gl);
 								effect.needInit = false;
@@ -262292,7 +256762,7 @@ var init_EntitySignboard = __esmMin((() => {
 			btn.addEventListener("dblclick", this._dblclickHandler);
 			btn.addEventListener("mousedown", this._mousedownHandler);
 		}
-		this._host.style.zIndex = "30";
+		this._host.style.zIndex = "45";
 	};
 	/**
 	* Remove data from UI
@@ -262371,7 +256841,6 @@ var signboards, mat4$14, vec4$6, _pos$7, _size$6, SignboardManager;
 var init_SignboardManager = __esmMin((() => {
 	init_gl_matrix();
 	init_Renderer();
-	init_Altitude();
 	init_DBManager();
 	init_EntitySignboard();
 	init_VerticalFlip();
@@ -262411,7 +256880,7 @@ var init_SignboardManager = __esmMin((() => {
 			signboards.forEach((signboard) => {
 				const ui = signboard.ui.ui[0];
 				_vector[0] = signboard.x + .5;
-				_vector[1] = -Altitude.getCellHeight(signboard.x, signboard.y);
+				_vector[1] = 0;
 				_vector[2] = signboard.y + .5;
 				mat4$14.translate(_matrix, modelView, _vector);
 				_matrix[0] = 1;
@@ -262680,7 +257149,7 @@ var init_Blind$1 = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/Shaders/Blind.js
-var _program$17, _buffer$15, _active, Blind;
+var _program$16, _buffer$14, _active, Blind;
 var init_Blind = __esmMin((() => {
 	init_WebGL();
 	init_Camera();
@@ -262696,31 +257165,31 @@ var init_Blind = __esmMin((() => {
 		* @param {WebGLFramebuffer} outputFbo - Target buffer
 		*/
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$15 || !_program$17 || !Blind.isActive()) return;
+			if (!_buffer$14 || !_program$16 || !Blind.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
-			gl.useProgram(_program$17);
+			gl.useProgram(_program$16);
 			const baseRadius = .2;
 			const baseFalloff = .5;
 			const zoom = Camera.zoomFinal;
 			const focusRadius = baseRadius + (63 - zoom) / 1e3;
 			const focusFalloff = baseFalloff + (63 - zoom) / 1e3;
-			gl.uniform1f(_program$17.uniform.uFocusRadius, focusRadius);
-			gl.uniform1f(_program$17.uniform.uFocusFalloff, focusFalloff);
-			gl.uniform2f(_program$17.uniform.uAspectRatio, gl.canvas.width / gl.canvas.height, 1);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$15);
-			const posLoc = _program$17.attribute.aPosition;
+			gl.uniform1f(_program$16.uniform.uFocusRadius, focusRadius);
+			gl.uniform1f(_program$16.uniform.uFocusFalloff, focusFalloff);
+			gl.uniform2f(_program$16.uniform.uAspectRatio, gl.canvas.width / gl.canvas.height, 1);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$14);
+			const posLoc = _program$16.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
 			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 			gl.activeTexture(gl.TEXTURE0);
 			gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-			gl.uniform1i(_program$17.uniform.uTexture, 0);
+			gl.uniform1i(_program$16.uniform.uTexture, 0);
 			gl.drawArrays(gl.TRIANGLES, 0, 6);
 			PostProcess.afterRenderPass(gl);
 		}
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$17 = WebGL_default.createShaderProgram(gl, Common_default, Blind_default);
+				_program$16 = WebGL_default.createShaderProgram(gl, Common_default, Blind_default);
 			} catch (e) {
 				console.error("Error compiling Blind shader.", e);
 				return;
@@ -262739,8 +257208,8 @@ var init_Blind = __esmMin((() => {
 				1,
 				1
 			]);
-			_buffer$15 = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$15);
+			_buffer$14 = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$14);
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
 		static isActive() {
@@ -262750,11 +257219,11 @@ var init_Blind = __esmMin((() => {
 			_active = bool;
 		}
 		static program() {
-			return _program$17;
+			return _program$16;
 		}
 		static clean(gl) {
-			if (_buffer$15) gl.deleteBuffer(_buffer$15);
-			_program$17 = _buffer$15 = null;
+			if (_buffer$14) gl.deleteBuffer(_buffer$14);
+			_program$16 = _buffer$14 = null;
 		}
 	};
 }));
@@ -262963,8 +257432,8 @@ function init$8(gl, mapname) {
 	if (_color) _display = true;
 	else _display = false;
 	gl.clearColor(color[0], color[1], color[2], color[3]);
-	if (!_textures$2.length && _display) {
-		_textures$2.length = 8;
+	if (!_textures$1.length && _display) {
+		_textures$1.length = 8;
 		for (i = 0; i < 7; i++) loadCloudTexture(gl, i);
 	}
 }
@@ -262977,7 +257446,7 @@ function init$8(gl, mapname) {
 function loadCloudTexture(gl, i) {
 	Client.loadFile("data/texture/effect/cloud" + (i + 1) + ".tga", function(buffer) {
 		WebGL_default.texture(gl, buffer, function(texture) {
-			_textures$2[i] = texture;
+			_textures$1[i] = texture;
 		});
 	});
 }
@@ -262994,7 +257463,7 @@ function setUpCloudData() {
 			death_tick: 0
 		};
 		cloudInit(_clouds[i]);
-		_clouds[i].sprite = Math.random() * (_textures$2.length - 1) | 0;
+		_clouds[i].sprite = Math.random() * (_textures$1.length - 1) | 0;
 		_clouds[i].death_tick = _clouds[i].born_tick + Math.random() * 8e3;
 		_clouds[i].born_tick -= 2e3;
 	}
@@ -263049,7 +257518,7 @@ function render$8(gl, modelView, projection, fog, tick) {
 		else opacity = 1;
 		SpriteRenderer.zIndex = 0;
 		SpriteRenderer.color[3] = opacity;
-		SpriteRenderer.image.texture = _textures$2[cloud.sprite];
+		SpriteRenderer.image.texture = _textures$1[cloud.sprite];
 		const dt = Math.min(tick - (cloud._lastTick || cloud.born_tick), 250);
 		cloud._lastTick = tick;
 		vec3$8.scaleAndAdd(cloud.position, cloud.position, cloud.direction, dt / 25);
@@ -263060,7 +257529,7 @@ function render$8(gl, modelView, projection, fog, tick) {
 	}
 	SpriteRenderer.unbind(gl);
 }
-var MAX_CLOUDS, _clouds, _textures$2, _color, _display, Sky_default;
+var MAX_CLOUDS, _clouds, _textures$1, _color, _display, Sky_default;
 var init_Sky = __esmMin((() => {
 	init_WebGL();
 	init_WeatherEffect();
@@ -263070,7 +257539,7 @@ var init_Sky = __esmMin((() => {
 	init_gl_matrix();
 	MAX_CLOUDS = 150;
 	_clouds = new Array(MAX_CLOUDS);
-	_textures$2 = [];
+	_textures$1 = [];
 	_color = null;
 	_display = true;
 	Sky_default = {
@@ -263079,83 +257548,6 @@ var init_Sky = __esmMin((() => {
 		render: render$8
 	};
 }));
-//#endregion
-//#region src/DB/Map/CustomMaps.js
-/**
-* DB/Map/CustomMaps.js
-*
-* What the client config says about maps the client's own tables do not
-* know: the `customMaps` entry, keyed by '<map>.rsw'.
-*
-*   customMaps: {
-*     'my_isle.rsw': {
-*       skyColor: [0.4, 0.6, 0.8, 1.0],  // RGBA, 0 to 1: the colour behind the map
-*       cloudColor: [1.0, 1.0, 1.0],     // RGB, 0 to 1: clouds across it; none without
-*       weather: 'snow',                 // a screen effect ScreenEffectManager starts
-*       bgm: 'my_isle.mp3'               // played from BGM/, as mp3nametable.txt names one
-*     }
-*   }
-*
-* The sky and weather come from DB/Effects/WeatherEffect.js, a fixed list of a
-* dozen official maps, and the music from data/mp3nametable.txt, one table for
-* the whole game. Official clients keep the first in the executable, so a
-* custom map could have neither a sky nor music of its own. A map named here
-* gets what its entry gives and keeps the rest; every other map is unchanged.
-*
-* This file is part of ROBrowser, (http://www.robrowser.com/).
-*/
-/**
-* Whether `color` is a list of `size` numbers from 0 to 1.
-*/
-function isColor(color, size) {
-	return Array.isArray(color) && color.length === size && color.every((c) => typeof c === "number" && Number.isFinite(c) && c >= 0 && c <= 1);
-}
-/**
-* The entries of a `customMaps` config, by lower-case '<map>.rsw'.
-*
-* @param {object} config the `customMaps` config, or undefined
-* @return {Map<string, object>}
-*/
-function entries(config) {
-	const out = /* @__PURE__ */ new Map();
-	if (!config || typeof config !== "object") return out;
-	for (const [key, entry] of Object.entries(config)) {
-		if (!entry || typeof entry !== "object") continue;
-		const name = key.toLowerCase();
-		out.set(name.endsWith(".rsw") ? name : `${name}.rsw`, entry);
-	}
-	return out;
-}
-/**
-* Add the sky and weather of each map in `config` to the weather tables
-* (`WeatherEffect.js`): a map named there replaces what they say about it.
-*
-* @param {object} weather the tables, `{ sky, effects }`
-* @param {object} config the `customMaps` config, or undefined
-* @return {object} weather
-*/
-function addCustomMapWeather(weather, config) {
-	for (const [map, entry] of entries(config)) {
-		if (isColor(entry.skyColor, 4)) weather.sky[map] = {
-			skyColor: entry.skyColor.slice(),
-			cloudColor: isColor(entry.cloudColor, 3) ? entry.cloudColor.slice() : null
-		};
-		if (typeof entry.weather === "string" && entry.weather) weather.effects[map] = { weather: entry.weather };
-	}
-	return weather;
-}
-/**
-* The music `config` gives a map, or null for the map's own.
-*
-* @param {object} config the `customMaps` config, or undefined
-* @param {string} worldResource '<map>.rsw'
-* @return {string|null}
-*/
-function customMapBgm(config, worldResource) {
-	const entry = entries(config).get(String(worldResource).toLowerCase());
-	return entry && typeof entry.bgm === "string" && entry.bgm ? entry.bgm : null;
-}
-var init_CustomMaps = __esmMin((() => {}));
 //#endregion
 //#region src/Renderer/Effects/Damage.js
 var EndureSound, dpr$1, procCanvas$1, procCtx$1, _skin, _damageSkins, _loadedSkinsData, _enableSuffix, _msgNames, _list$1, _rgbaFrame, prevCombo, Damage;
@@ -263623,142 +258015,1259 @@ var init_Damage = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/UI/Components/JoystickUI/JoystickCameraMotion.js
-/**
-* Whether the physical button playing a role is down.
-*/
-function isDown(gp, map, logical) {
-	const button = gp.buttons[map[logical]];
-	return !!button && button.pressed;
-}
-/**
-* One frame.
-*
-* @param {Gamepad} gp
-* @param {number} dt seconds since the last frame
-*/
-function update$1(gp, dt) {
-	if (!gp.buttons || JoystickButtonMap_default.isCapturing()) return;
-	const map = JoystickButtonMap_default.getMap();
-	const B = JoystickButtonMap_default.BUTTON;
-	if (!isDown(gp, map, B.VIEW) || JoystickSelectionUI_default.active()) return;
-	const turn = (isDown(gp, map, B.RIGHT) ? 1 : 0) - (isDown(gp, map, B.LEFT) ? 1 : 0);
-	if (turn) {
-		const speed = Number(Controls_default.joyCameraSpeed) || DEFAULT_TURN_PER_SEC;
-		JoystickMouseCursorAdapter_default.changeCameraAngle(turn * speed * dt);
-	}
-	const zoom = (isDown(gp, map, B.DOWN) ? 1 : 0) - (isDown(gp, map, B.UP) ? 1 : 0);
-	if (zoom) JoystickMouseCursorAdapter_default.changeCameraZoom(zoom * ZOOM_PER_SEC * dt);
-}
-var ZOOM_PER_SEC, DEFAULT_TURN_PER_SEC, JoystickCameraMotion_default;
-var init_JoystickCameraMotion = __esmMin((() => {
-	init_Controls();
-	init_JoystickButtonMap();
-	init_JoystickMouseCursorAdapter();
-	init_JoystickSelectionUI();
-	ZOOM_PER_SEC = 14;
-	DEFAULT_TURN_PER_SEC = 90;
-	JoystickCameraMotion_default = { update: update$1 };
+//#region src/UI/Components/JoystickUI/JoystickSetManager.js
+var currentSet, JoystickSetManager_default;
+var init_JoystickSetManager = __esmMin((() => {
+	currentSet = 1;
+	JoystickSetManager_default = {
+		getCurrentSet: function() {
+			return currentSet;
+		},
+		set: function(n) {
+			currentSet = n === 1 || n === 2 ? n : currentSet;
+		},
+		toggle: function() {
+			currentSet = currentSet === 1 ? 2 : 1;
+		}
+	};
 }));
 //#endregion
-//#region src/UI/Components/JoystickUI/JoystickCursorMotion.js
-function getGamepad() {
-	const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-	for (let i = 0; i < gamepads.length; i++) if (gamepads[i]) return gamepads[i];
-	return null;
-}
-function frame(time) {
-	const gp = getGamepad();
-	if (!gp) {
-		JoystickAimMode_default.release();
-		JoystickSupportMode_default.release();
-		frameHandle = null;
-		return;
-	}
-	frameHandle = requestAnimationFrame(frame);
-	const dt = Math.min(MAX_DT, (time - lastTime) / 1e3);
-	lastTime = time;
-	if (dt > 0) JoystickCameraMotion_default.update(gp, dt);
-	if (gp.axes.length < 4 || dt <= 0) {
-		JoystickAimMode_default.release();
-		JoystickSupportMode_default.release();
-		return;
-	}
-	const axes = JoystickStickFilter_default.filterAxes(gp.axes);
-	let x = axes[2];
-	let y = axes[3];
-	if (Controls_default.joyReverseStick) {
-		x = axes[0];
-		y = axes[1];
-	}
-	const magnitude = Math.hypot(x, y);
-	const deadzone = Controls_default.joyDeadline;
-	if (JoystickSupportMode_default.update(x, y, magnitude, deadzone)) {
-		JoystickAimMode_default.release();
-		return;
-	}
-	if (JoystickAimMode_default.isActive()) {
-		JoystickAimMode_default.update(x, y, magnitude > deadzone);
-		return;
-	}
-	JoystickAimMode_default.release();
-	if (magnitude <= deadzone) return;
-	const scaled = Math.min(1, (magnitude - deadzone) / (1 - deadzone));
-	const step = scaled * scaled * Controls_default.joySense * SENSE_TO_PX_PER_SEC * dt / magnitude;
-	JoystickMouseCursorAdapter_default.moveBy(x * step, y * step);
-}
+//#region src/UI/Components/JoystickUI/JoystickUIRenderer.js
 /**
-* Begin the frame loop if it is armed, not already running, and a pad is
-* connected (or just announced itself).
-*
-* @param {boolean} [connected] skip the getGamepads() check
+* Get internal shadow root
+* @returns {ShadowRoot|HTMLElement}
 */
-function wake(connected) {
-	if (!enabled || frameHandle !== null || typeof requestAnimationFrame !== "function") return;
-	if (!connected && !getGamepad()) return;
-	lastTime = performance.now();
-	frameHandle = requestAnimationFrame(frame);
+function _getShadow() {
+	if (!ui) return null;
+	const host = ui[0];
+	return host.shadowRoot || host;
 }
-function onConnect() {
-	wake(true);
+function setupUIHide() {
+	let lastMouseX = 0;
+	let lastMouseY = 0;
+	_mouseMoveHandler = (event) => {
+		if (!ui || !_isVisible()) return;
+		const deltaX = Math.abs(event.clientX - lastMouseX);
+		const deltaY = Math.abs(event.clientY - lastMouseY);
+		if ((deltaX > 5 || deltaY > 5) && Controls_default.joyAutoHide) {
+			hide();
+			JoystickInputService_default.active = false;
+		}
+		lastMouseX = event.clientX;
+		lastMouseY = event.clientY;
+	};
+	document.addEventListener("mousemove", _mouseMoveHandler);
 }
-var SENSE_TO_PX_PER_SEC, MAX_DT, frameHandle, lastTime, enabled, JoystickCursorMotion_default;
-var init_JoystickCursorMotion = __esmMin((() => {
+function _isVisible() {
+	if (!ui) return false;
+	const host = ui[0];
+	if (!host) return false;
+	return host.style.display !== "none";
+}
+function attach(root) {
+	ui = root;
+	setupUIHide();
+}
+function updateJoystickSlot(joystickSlotIndex, shortcutIndex) {
+	const item = ShortCut_default.getList()[shortcutIndex];
+	const shadow = _getShadow();
+	if (!shadow) return;
+	const slot = shadow.querySelectorAll(".slot")[joystickSlotIndex];
+	if (!slot) return;
+	const icon = slot.querySelector(".icon");
+	const img = icon.querySelector(".img");
+	const amount = icon.querySelector(".amount");
+	if (!item || item.ID === 0) {
+		icon.style.display = "none";
+		img.style.backgroundImage = "none";
+		amount.textContent = "";
+		return;
+	}
+	icon.style.display = "block";
+	if (item.isSkill && item.count) {
+		const skillInfo = SkillInfo[item.ID];
+		if (skillInfo) Client.loadFile(`${DB.INTERFACE_PATH}item/${skillInfo.Name}.bmp`, (url) => {
+			img.style.backgroundImage = `url(${url})`;
+			amount.textContent = item.count;
+		});
+	} else {
+		const inventoryItem = InventoryController.getUI().getItemById(item.ID);
+		if (inventoryItem) {
+			const itemInfo = DB.getItemInfo(item.ID);
+			const fileName = inventoryItem.IsIdentified ? itemInfo.identifiedResourceName : itemInfo.unidentifiedResourceName;
+			let count = inventoryItem.count;
+			if ((inventoryItem.type === ItemType_default.WEAPON || inventoryItem.type === ItemType_default.ARMOR || inventoryItem.type === ItemType_default.SHADOWGEAR) && count) count = 1;
+			Client.loadFile(`${DB.INTERFACE_PATH}item/${fileName}.bmp`, (url) => {
+				img.style.backgroundImage = `url(${url})`;
+				amount.textContent = count;
+			});
+		}
+	}
+}
+function updateById(Id) {
+	if (!ui) return;
+	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
+	for (let i = 0; i < 20; i++) {
+		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
+		const shortcut = ShortCut_default.getList()[shortcutIndex];
+		if (shortcut && shortcut.ID === Id) updateJoystickSlot(i, shortcutIndex);
+	}
+}
+function updateByIndex(index) {
+	if (!ui) return;
+	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
+	for (let i = 0; i < 20; i++) {
+		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
+		if (shortcutIndex === index) updateJoystickSlot(i, shortcutIndex);
+	}
+}
+function sync() {
+	if (!ui) return;
+	const startIdx = JoystickSetManager_default.getCurrentSet() === 1 ? 0 : 20;
+	for (let i = 0; i < 20; i++) {
+		const shortcutIndex = JoystickShortcutMapper_default.slotMap[startIdx + i];
+		updateJoystickSlot(i, shortcutIndex);
+	}
+}
+function updateSetIndicator() {
+	const shadow = _getShadow();
+	if (!shadow) return;
+	shadow.querySelectorAll(".set-btn").forEach((el) => el.classList.remove("active"));
+	const currentSet = JoystickSetManager_default.getCurrentSet();
+	const activeBtn = shadow.querySelector(`.set-btn:nth-child(${currentSet})`);
+	if (activeBtn) activeBtn.classList.add("active");
+}
+function updateVisuals(buttons) {
+	const shadow = _getShadow();
+	if (!shadow) return;
+	shadow.querySelectorAll(".group-container").forEach((el) => el.classList.remove("active"));
+	const activeGroup = JoystickShortcutMapper_default.getGroup(buttons);
+	if (activeGroup !== "") {
+		const active = shadow.querySelector(`[data-group="${activeGroup}"]`);
+		if (active) active.classList.add("active");
+	}
+}
+function show() {
+	if (ui && !_isVisible()) ui.show();
+}
+function hide() {
+	if (ui && _isVisible()) ui.hide();
+}
+function dispose() {
+	hide();
+	if (_mouseMoveHandler) {
+		document.removeEventListener("mousemove", _mouseMoveHandler);
+		_mouseMoveHandler = null;
+	}
+	ui = null;
+}
+var ui, _mouseMoveHandler, JoystickUIRenderer_default;
+var init_JoystickUIRenderer = __esmMin((() => {
+	init_ShortCut();
+	init_Inventory();
+	init_JoystickSetManager();
+	init_DBManager();
+	init_Client();
 	init_Controls();
-	init_JoystickMouseCursorAdapter();
-	init_JoystickAimMode();
-	init_JoystickStickFilter();
-	init_JoystickCameraMotion();
-	init_JoystickSupportMode();
-	SENSE_TO_PX_PER_SEC = 10;
-	MAX_DT = .05;
-	frameHandle = null;
-	lastTime = 0;
-	enabled = false;
-	JoystickCursorMotion_default = {
-		start: function() {
-			if (enabled) return;
-			enabled = true;
-			window.addEventListener("gamepadconnected", onConnect);
-			wake();
-		},
-		/**
-		* Called by the poll whenever it sees a pad: a backstop for a pad that
-		* shows up in getGamepads() without a 'gamepadconnected' reaching us
-		* (the event fires once per pad, not again after a map change).
-		*/
-		wake: function() {
-			wake();
-		},
-		stop: function() {
-			enabled = false;
-			window.removeEventListener("gamepadconnected", onConnect);
-			if (frameHandle !== null) {
-				cancelAnimationFrame(frameHandle);
-				frameHandle = null;
+	init_ItemType();
+	init_JoystickShortcutMapper();
+	init_JoystickInputService();
+	init_SkillInfo();
+	ui = null;
+	_mouseMoveHandler = null;
+	JoystickUIRenderer_default = {
+		attach,
+		dispose,
+		sync,
+		updateById,
+		updateByIndex,
+		updateSetIndicator,
+		updateVisuals,
+		show,
+		hide
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickShortcutMapper.js
+function getGroup(btn) {
+	const l1 = btn[4] === "holding";
+	const r1 = btn[5] === "holding";
+	const l2 = btn[6] === "holding";
+	const r2 = btn[7] === "holding";
+	if (l1 && r1 && !l2 && !r2) return "L1R1";
+	if (l1) return "L1";
+	if (r1) return "R1";
+	if (l2) return "L2";
+	if (r2) return "R2";
+	return "";
+}
+function getIndexFromButtons(btn, set) {
+	const group = getGroup(btn);
+	if (group === "") return -1;
+	const a = btn[0] !== "unpressed";
+	const b = btn[1] !== "unpressed";
+	const x = btn[2] !== "unpressed";
+	const y = btn[3] !== "unpressed";
+	let slot = -1;
+	let tab = 1;
+	let offset = 0;
+	if (set === 2) offset = 2;
+	if (group === "L1R1") tab = 0;
+	else if (group === "L1") tab = 1 + offset;
+	else if (group === "R1") tab = 2 + offset;
+	else if (group === "L2") tab = 1 + offset;
+	else if (group === "R2") tab = 2 + offset;
+	if (group === "L1R1") {
+		if (y) {
+			slot = 8;
+			tab = 1;
+		} else if (x) {
+			slot = 8;
+			tab = 2;
+		} else if (b) {
+			slot = 8;
+			tab = 3;
+		} else if (a) {
+			slot = 8;
+			tab = 4;
+		}
+	} else if (group === "L1" || group === "R1") {
+		if (y) slot = 0;
+		else if (x) slot = 1;
+		else if (b) slot = 2;
+		else if (a) slot = 3;
+	} else if (group === "L2" || group === "R2") {
+		if (y) slot = 4;
+		else if (x) slot = 5;
+		else if (b) slot = 6;
+		else if (a) slot = 7;
+	}
+	if (slot === -1) return -1;
+	return (tab - 1) * 9 + slot;
+}
+function prepare() {
+	if (!this.__loaded) {
+		const oldonChange = ShortCut_default.onChange;
+		ShortCut_default.onChange = function(index, isSkill, ID, count) {
+			oldonChange.call(ShortCut_default, index, isSkill, ID, count);
+			JoystickUIRenderer_default.updateByIndex(index);
+		};
+		const oldSetList = ShortCut_default.setList;
+		ShortCut_default.setList = function(list) {
+			oldSetList.call(ShortCut_default, list);
+			JoystickUIRenderer_default.sync();
+		};
+		const oldSetElement = ShortCut_default.setElement;
+		ShortCut_default.setElement = function(isSkill, ID, count) {
+			oldSetElement.call(ShortCut_default, isSkill, ID, count);
+			JoystickUIRenderer_default.updateById(ID);
+		};
+		this.__loaded = true;
+	}
+}
+var slotMapping, JoystickShortcutMapper_default;
+var init_JoystickShortcutMapper = __esmMin((() => {
+	init_JoystickSetManager();
+	init_ShortCut();
+	init_JoystickUIRenderer();
+	slotMapping = [
+		0,
+		1,
+		2,
+		3,
+		4,
+		5,
+		6,
+		7,
+		8,
+		17,
+		26,
+		35,
+		13,
+		14,
+		15,
+		16,
+		9,
+		10,
+		11,
+		12,
+		18,
+		19,
+		20,
+		21,
+		22,
+		23,
+		24,
+		25,
+		8,
+		17,
+		26,
+		35,
+		31,
+		32,
+		33,
+		34,
+		27,
+		28,
+		29,
+		30
+	];
+	JoystickShortcutMapper_default = {
+		slotMap: slotMapping,
+		prepare,
+		getGroup,
+		getShortcutIndex: function(btn) {
+			const idx = getIndexFromButtons(btn, JoystickSetManager_default.getCurrentSet());
+			if (idx === -1) return -1;
+			return idx;
+		}
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickTargetService.js
+function getEntityInContext() {
+	let target = null;
+	if (Controls_default.attackTargetMode === 1) {
+		target = EntityManager.getLowestHpEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_MOB);
+		if (!target) target = EntityManager.getLowestHpEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_PC);
+	}
+	if (!target) target = EntityManager.getClosestEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_MOB);
+	if (!target) target = EntityManager.getClosestEntity(SessionStorage_default.Entity, SessionStorage_default.Entity.constructor.TYPE_PC);
+	return target || SessionStorage_default.Entity;
+}
+function focusTarget(entity) {
+	let focus = EntityManager.getFocusEntity();
+	if (!focus || focus.action === focus.ACTION.DIE) focus = EntityManager.getFocusEntity();
+	if (focus && entity.GID !== focus.GID) {
+		focus.onFocusEnd();
+		EntityManager.setFocusEntity(null);
+		entity.onFocus();
+		EntityManager.setFocusEntity(entity);
+	} else if (!focus) {
+		entity.onFocus();
+		EntityManager.setFocusEntity(entity);
+	}
+}
+var JoystickTargetService_default;
+var init_JoystickTargetService = __esmMin((() => {
+	init_SessionStorage();
+	init_EntityManager();
+	init_Controls();
+	JoystickTargetService_default = {
+		getEntity: getEntityInContext,
+		focus: focusTarget
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickCharacterControl.js
+function move$1(x, y) {
+	const player = SessionStorage_default.Entity;
+	if (!player) return;
+	direction$1[0] = x;
+	direction$1[1] = y;
+	exports$3.mat2.identity(rotate$1);
+	exports$3.mat2.rotate(rotate$1, rotate$1, -Camera.direction * 45 / 180 * Math.PI);
+	exports$3.vec2.transformMat2(direction$1, direction$1, rotate$1);
+	const nx = Math.round(player.position[0] + direction$1[0] * 3);
+	const ny = Math.round(player.position[1] + direction$1[1] * 3);
+	const movePacket = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.REQUEST_MOVE2() : new PACKET.CZ.REQUEST_MOVE();
+	movePacket.dest[0] = nx;
+	movePacket.dest[1] = ny;
+	Network.sendPacket(movePacket);
+}
+function attack() {
+	const Player = SessionStorage_default.Entity;
+	if (!Player) return;
+	const target = JoystickTargetService_default.getEntity();
+	if (!target) return;
+	JoystickTargetService_default.focus(target);
+	const entityFocus = EntityManager.getFocusEntity();
+	if (!entityFocus) return;
+	let pkt;
+	const out = [];
+	const count = PathFinding_default.search(Player.position[0] | 0, Player.position[1] | 0, entityFocus.position[0] | 0, entityFocus.position[1] | 0, Player.attack_range + 1, out);
+	if (!count) return true;
+	if (PacketVerManager_default.value >= 20180307) pkt = new PACKET.CZ.REQUEST_ACT2();
+	else pkt = new PACKET.CZ.REQUEST_ACT();
+	pkt.action = 7;
+	pkt.targetGID = entityFocus.GID;
+	if (count < Player.attack_range + 1) {
+		Network.sendPacket(pkt);
+		return true;
+	}
+	SessionStorage_default.moveAction = pkt;
+	if (PacketVerManager_default.value >= 20180307) pkt = new PACKET.CZ.REQUEST_MOVE2();
+	else pkt = new PACKET.CZ.REQUEST_MOVE();
+	pkt.dest[0] = out[(count - 1) * 2];
+	pkt.dest[1] = out[(count - 1) * 2 + 1];
+	Network.sendPacket(pkt);
+}
+function pickUp() {
+	const Player = SessionStorage_default.Entity;
+	if (!Player) return;
+	const item = EntityManager.getClosestEntity(Player, EntityManager.TYPE_ITEM);
+	if (!item) return;
+	const pkt = PacketVerManager_default.value >= 20180307 ? new PACKET.CZ.ITEM_PICKUP2() : new PACKET.CZ.ITEM_PICKUP();
+	pkt.ITAID = item.GID;
+	Network.sendPacket(pkt);
+}
+var direction$1, rotate$1, JoystickCharacterControl_default;
+var init_JoystickCharacterControl = __esmMin((() => {
+	init_SessionStorage();
+	init_EntityManager();
+	init_NetworkManager();
+	init_PacketStructure();
+	init_PacketVerManager();
+	init_gl_matrix$1();
+	init_Camera();
+	init_PathFinding();
+	init_JoystickTargetService();
+	direction$1 = exports$3.vec2.create();
+	rotate$1 = exports$3.mat2.create();
+	JoystickCharacterControl_default = {
+		attack,
+		pickUp,
+		move: move$1
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickMouseCursorAdapter.js
+function move(dx, dy) {
+	Mouse.screen.x = Math.max(0, Math.min(Renderer.width, Mouse.screen.x + dx * Controls_default.joySense));
+	Mouse.screen.y = Math.max(0, Math.min(Renderer.height, Mouse.screen.y + dy * Controls_default.joySense));
+	const cursor = document.querySelector(".cursor");
+	if (cursor) {
+		cursor.style.left = Mouse.screen.x + "px";
+		cursor.style.top = Mouse.screen.y + "px";
+	}
+}
+function moveMouseToEntity(entity) {
+	if (!entity || !entity.position) return;
+	const mat4 = exports$3.mat4;
+	const vec4 = exports$3.vec4;
+	const _matrix = mat4.create();
+	const _vector = vec4.create();
+	const _pos = vec4.create();
+	_vector[0] = entity.position[0] + .5;
+	_vector[1] = -entity.position[2];
+	_vector[2] = entity.position[1] + .5;
+	_vector[3] = 1;
+	mat4.translate(_matrix, Camera.modelView, _vector);
+	_matrix[0] = 1;
+	_matrix[1] = 0;
+	_matrix[2] = 0;
+	_matrix[4] = 0;
+	_matrix[5] = 1;
+	_matrix[6] = 0;
+	_matrix[8] = 0;
+	_matrix[9] = 0;
+	_matrix[10] = 1;
+	mat4.multiply(_matrix, Camera.projection, _matrix);
+	_pos[0] = 0;
+	_pos[1] = 0;
+	_pos[2] = 0;
+	_pos[3] = 1;
+	vec4.transformMat4(_pos, _pos, _matrix);
+	const z = _pos[3] === 0 ? 1 : 1 / _pos[3];
+	const screenX = Renderer.width / 2 + Math.round(Renderer.width / 2 * (_pos[0] * z));
+	let screenY = Renderer.height / 2 - Math.round(Renderer.height / 2 * (_pos[1] * z));
+	screenY = screenY - 13;
+	Mouse.screen.x = screenX;
+	Mouse.screen.y = screenY;
+	const _selector = document.querySelector(".cursor");
+	if (_selector) {
+		_selector.style.left = screenX + "px";
+		_selector.style.top = screenY + "px";
+	}
+}
+function leftClick(click = false) {
+	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	if (!el) {
+		handleWorldLeftClick();
+		return;
+	}
+	if (Controls_default.joyDisableVirtualMouse) return;
+	const eventOptions = {
+		bubbles: true,
+		cancelable: true,
+		view: window,
+		clientX: Mouse.screen.x,
+		clientY: Mouse.screen.y,
+		which: 1
+	};
+	el.dispatchEvent(new MouseEvent("mousedown", eventOptions));
+	setTimeout(function() {
+		el.dispatchEvent(new MouseEvent("mouseup", eventOptions));
+		if (click) el.dispatchEvent(new MouseEvent("click", eventOptions));
+	}, 50);
+}
+function rightClick(holding = false) {
+	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	const isCanvas = el && el.tagName.toLowerCase() === "canvas";
+	if (!el || isCanvas) {
+		handleWorldRightClick();
+		return;
+	}
+	if (holding) {
+		const draggableElement = el.closest(".item, .skill");
+		if (draggableElement) {
+			if (JoystickInteractionService_default.openSelectionWindow(draggableElement)) return;
+		}
+	}
+	if (Controls_default.joyDisableVirtualMouse) return;
+	el.dispatchEvent(new MouseEvent("mousedown", { which: 3 }));
+	setTimeout(function() {
+		el.dispatchEvent(new MouseEvent("mouseup", { which: 3 }));
+	}, 100);
+}
+function _dispatchMouseEvent(target, type, which) {
+	target.dispatchEvent(new MouseEvent(type, {
+		bubbles: true,
+		cancelable: true,
+		view: window,
+		button: which === 3 ? 2 : 0,
+		which
+	}));
+}
+function handleWorldLeftClick() {
+	if (!Mouse.intersect) Mouse.intersect = true;
+	_dispatchMouseEvent(Renderer.canvas, "mousedown", 1);
+	setTimeout(function() {
+		_dispatchMouseEvent(Renderer.canvas, "mouseup", 1);
+	}, 100);
+}
+function handleWorldRightClick() {
+	if (!Mouse.intersect) Mouse.intersect = true;
+	_dispatchMouseEvent(Renderer.canvas, "mousedown", 3);
+	setTimeout(function() {
+		_dispatchMouseEvent(Renderer.canvas, "mouseup", 3);
+	}, 100);
+}
+function changeCameraAngle(angle) {
+	Camera.angleFinal[1] += angle;
+	Camera.updateState();
+	Camera.save();
+}
+function changeCameraZoom(zoom) {
+	Camera.setZoom(zoom);
+}
+function _dispatchKeyEvent(target, type, which) {
+	target.dispatchEvent(new KeyboardEvent(type, {
+		bubbles: true,
+		cancelable: true,
+		which,
+		keyCode: which
+	}));
+}
+function esc() {
+	_dispatchKeyEvent(document, "keydown", 27);
+}
+function enter() {
+	_dispatchKeyEvent(document, "keydown", 13);
+}
+function contextMenu() {
+	const el = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y);
+	const draggableElement = el.closest(".item, .skill");
+	if (el && draggableElement) {
+		const contextMenuEvent = new MouseEvent("contextmenu", {
+			bubbles: true,
+			cancelable: true,
+			view: window,
+			clientX: Mouse.screen.x,
+			clientY: Mouse.screen.y,
+			which: 3
+		});
+		el.dispatchEvent(contextMenuEvent);
+		return true;
+	}
+	return false;
+}
+function navigateDraggableItems(direction) {
+	const container = document.elementFromPoint(Mouse.screen.x, Mouse.screen.y).closest(".item, .skill");
+	if (!container) {
+		let keyCode;
+		switch (direction) {
+			case "up":
+				keyCode = 38;
+				break;
+			case "down":
+				keyCode = 40;
+				break;
+			case "left":
+				keyCode = 37;
+				break;
+			case "right": keyCode = 39;
+		}
+		_dispatchKeyEvent(document, "keydown", keyCode);
+		return;
+	}
+	let allDraggables = Array.from(container.querySelectorAll(".item, .skill")).filter((item) => !item.matches(".tabs button, .tab-btn"));
+	if (allDraggables.length === 0) allDraggables = Array.from(document.querySelectorAll(".item, .skill")).filter((item) => item.offsetParent !== null && !item.matches(".tabs button, .tab-btn"));
+	const isSkillContainer = container.id && container.id.indexOf("positionSkills") === 0 || container.querySelector("#positionSkills1, #positionSkills2, #positionSkills3, #positionSkills4, #positionSkills5") || container.closest(".skillCol") !== null;
+	const draggableElement = container.closest(".item, .skill");
+	const currentIndex = allDraggables.indexOf(draggableElement);
+	let newIndex = currentIndex;
+	let GRID_WIDTH;
+	if (isSkillContainer) GRID_WIDTH = 7;
+	else {
+		const containerWidth = container.clientWidth || 200;
+		const iconElement = draggableElement.querySelector(".icon");
+		const totalIconWidth = (iconElement && iconElement.clientWidth || 24) + 8;
+		GRID_WIDTH = Math.max(6, Math.min(8, Math.floor(containerWidth / totalIconWidth)));
+	}
+	switch (direction) {
+		case "up":
+			newIndex = currentIndex - GRID_WIDTH;
+			break;
+		case "down":
+			newIndex = currentIndex + GRID_WIDTH;
+			break;
+		case "left":
+			newIndex = currentIndex - 1;
+			break;
+		case "right": newIndex = currentIndex + 1;
+	}
+	newIndex = Math.max(0, Math.min(allDraggables.length - 1, newIndex));
+	if (newIndex !== currentIndex && newIndex < allDraggables.length) {
+		const targetRect = allDraggables[newIndex].getBoundingClientRect();
+		if (targetRect) {
+			const targetCenterX = targetRect.left + targetRect.width / 2;
+			const targetCenterY = targetRect.top + targetRect.height / 2;
+			Mouse.screen.x = targetCenterX;
+			Mouse.screen.y = targetCenterY;
+			const _selector = document.querySelector(".cursor");
+			if (_selector) {
+				_selector.style.left = targetCenterX + "px";
+				_selector.style.top = targetCenterY + "px";
 			}
-			JoystickAimMode_default.release();
-			JoystickSupportMode_default.release();
+		}
+	}
+}
+function quickCastClick() {
+	setTimeout(function() {
+		_dispatchMouseEvent(Renderer.canvas, "mousedown", 1);
+		setTimeout(function() {
+			_dispatchMouseEvent(Renderer.canvas, "mouseup", 1);
+		}, 100);
+	}, 100);
+}
+var JoystickMouseCursorAdapter_default;
+var init_JoystickMouseCursorAdapter = __esmMin((() => {
+	init_Renderer();
+	init_MouseEventHandler();
+	init_gl_matrix$1();
+	init_Camera();
+	init_Controls();
+	init_JoystickInteractionService();
+	JoystickMouseCursorAdapter_default = {
+		quickCastClick,
+		moveMouseToEntity,
+		navigateDraggableItems,
+		contextMenu,
+		esc,
+		enter,
+		changeCameraZoom,
+		changeCameraAngle,
+		move,
+		leftClick,
+		rightClick
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickSelectionUI.html?raw
+var JoystickSelectionUI_default$2;
+var init_JoystickSelectionUI$2 = __esmMin((() => {
+	JoystickSelectionUI_default$2 = "<div id=\"shortcut-selection\" class=\"joystick-selection-window\">\r\n	<h3 class=\"selection-title\">Select slot for <span class=\"item-name\"></span></h3>\r\n	<div class=\"tab-container\">\r\n		<div class=\"tab-buttons\"></div>\r\n		<div class=\"shortcut-grid\"></div>\r\n	</div>\r\n	<div class=\"footer-instructions\">\r\n		Use L2/R2 to change tab, D-pad to navigate slot, A to select, Select to cancel\r\n	</div>\r\n</div>\r\n";
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickSelectionUI.css?raw
+var JoystickSelectionUI_default$1;
+var init_JoystickSelectionUI$1 = __esmMin((() => {
+	JoystickSelectionUI_default$1 = ":host {\r\n	top: 50%;\r\n	left: 50%;\r\n	transform: translate(-50%, -50%);\r\n	z-index: 10000;\r\n	display: none;\r\n}\r\n\r\n#shortcut-selection {\r\n	position: absolute;\r\n	top: 0;\r\n	left: 0;\r\n	background: rgba(0, 0, 0, 0.95);\r\n	border: 2px solid #fff;\r\n	padding: 20px;\r\n	color: white;\r\n	min-width: 780px;\r\n	box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);\r\n	border-radius: 8px;\r\n}\r\n\r\n#shortcut-selection h3 {\r\n	margin-top: 0;\r\n	margin-bottom: 10px;\r\n	text-align: center;\r\n}\r\n\r\n#shortcut-selection .tab-buttons {\r\n	display: flex;\r\n	gap: 5px;\r\n	margin-bottom: 10px;\r\n}\r\n\r\n#shortcut-selection .tab-btn {\r\n	padding: 5px 10px;\r\n	border: 1px solid #fff;\r\n	color: white;\r\n	cursor: pointer;\r\n	background: #666;\r\n	flex: 1;\r\n}\r\n\r\n#shortcut-selection .tab-btn.active {\r\n	background: #ff6600;\r\n}\r\n\r\n#shortcut-selection .shortcut-grid {\r\n	display: grid;\r\n	grid-template-columns: repeat(9, 1fr);\r\n	gap: 8px;\r\n	justify-content: center;\r\n	padding: 10px;\r\n	background: rgba(255, 255, 255, 0.05);\r\n	border-radius: 5px;\r\n}\r\n\r\n#shortcut-selection .slot-btn {\r\n	width: 75px;\r\n	height: 60px;\r\n	border: 2px solid #555;\r\n	background: #555;\r\n	display: flex;\r\n	align-items: center;\r\n	justify-content: center;\r\n	font-weight: bold;\r\n	cursor: pointer;\r\n	color: white;\r\n	transition: all 0.1s;\r\n	border-radius: 5px;\r\n	text-align: center;\r\n	line-height: 1.2;\r\n	padding: 5px;\r\n	box-sizing: border-box;\r\n}\r\n\r\n#shortcut-selection .slot-btn.empty {\r\n	background: #222;\r\n}\r\n\r\n#shortcut-selection .slot-btn.selected {\r\n	background: #ff6600;\r\n	border-color: #fff;\r\n}\r\n\r\n#shortcut-selection .footer-instructions {\r\n	margin-top: 15px;\r\n	text-align: center;\r\n	opacity: 0.8;\r\n}\r\n";
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickSelectionUI.js
+function setClickInterval() {
+	if (clickLock$1) clearTimeout(clickLock$1);
+	clickLock$1 = setTimeout(function() {
+		clickLock$1 = null;
+	}, 200);
+}
+function isLocked() {
+	return clickLock$1 !== null;
+}
+function getJoystickComboForSlot(slotIndex) {
+	return {
+		0: "L1+Y",
+		1: "L1+X",
+		2: "L1+B",
+		3: "L1+A",
+		4: "L2+Y",
+		5: "L2+X",
+		6: "L2+B",
+		7: "L2+A",
+		8: "L1+R1+Y",
+		9: "R1+Y",
+		10: "R1+X",
+		11: "R1+B",
+		12: "R1+A",
+		13: "R2+Y",
+		14: "R2+X",
+		15: "R2+B",
+		16: "R2+A",
+		17: "L1+R1+X",
+		18: "L1+Y (Set2)",
+		19: "L1+X (Set2)",
+		20: "L1+B (Set2)",
+		21: "L1+A (Set2)",
+		22: "L2+Y (Set2)",
+		23: "L2+X (Set2)",
+		24: "L2+B (Set2)",
+		25: "L2+A (Set2)",
+		26: "L1+R1+B",
+		27: "R1+Y (Set2)",
+		28: "R1+X (Set2)",
+		29: "R1+B (Set2)",
+		30: "R1+A (Set2)",
+		31: "R2+Y (Set2)",
+		32: "R2+X (Set2)",
+		33: "R2+B (Set2)",
+		34: "R2+A (Set2)",
+		35: "L1+R1+A"
+	}[slotIndex];
+}
+function updateGrid() {
+	const grid = JoystickSelectionUI.getRoot().querySelector(".shortcut-grid");
+	if (!grid) return;
+	grid.innerHTML = "";
+	const startIdx = currentTab * 9;
+	for (let i = 0; i < 9; i++) {
+		const globalIndex = startIdx + i;
+		const slot = ShortCut_default.getList()[globalIndex];
+		const isEmpty = !slot || !slot.isSkill && !slot.ID;
+		const displayText = getJoystickComboForSlot(globalIndex) || (i + 1).toString();
+		const slotDiv = document.createElement("div");
+		slotDiv.className = "slot-btn";
+		slotDiv.dataset.index = i;
+		slotDiv.textContent = displayText;
+		if (isEmpty) slotDiv.classList.add("empty");
+		grid.appendChild(slotDiv);
+	}
+	updateSelection();
+}
+function updateSelection() {
+	const grid = JoystickSelectionUI.getRoot().querySelector(".shortcut-grid");
+	if (!grid) return;
+	grid.querySelectorAll(".slot-btn").forEach((el) => el.classList.remove("selected"));
+	const selected = grid.querySelector(`.slot-btn[data-index="${slotInTab}"]`);
+	if (selected) selected.classList.add("selected");
+}
+function updateTabButtons() {
+	const tabButtons = JoystickSelectionUI.getRoot().querySelector(".tab-buttons");
+	if (!tabButtons) return;
+	tabButtons.querySelectorAll(".tab-btn").forEach((el) => el.classList.remove("active"));
+	const active = tabButtons.querySelector(`.tab-btn[data-tab="${currentTab}"]`);
+	if (active) active.classList.add("active");
+}
+function createTabButtons() {
+	const tabButtons = JoystickSelectionUI.getRoot().querySelector(".tab-buttons");
+	if (!tabButtons) return;
+	tabButtons.innerHTML = "";
+	for (let t = 0; t < 4; t++) {
+		const tabBtn = document.createElement("button");
+		tabBtn.className = "tab-btn";
+		tabBtn.dataset.tab = t;
+		tabBtn.textContent = `Tab ${t + 1}`;
+		tabButtons.appendChild(tabBtn);
+	}
+}
+function selectSlot() {
+	if (!itemData) return;
+	const row = currentTab;
+	const pos = row * 9 + slotInTab;
+	ShortCut_default.removeElement(itemData.isSkill, itemData.ID, row, itemData.value);
+	ShortCut_default.addElement(pos, itemData.isSkill, itemData.ID, itemData.value);
+	ShortCut_default.onChange(pos, itemData.isSkill, itemData.ID, itemData.value);
+	JoystickSelectionUI.hideSelection();
+}
+var JoystickSelectionUI, currentTab, slotInTab, itemData, clickLock$1, JoystickSelectionUI_default;
+var init_JoystickSelectionUI = __esmMin((() => {
+	init_GUIComponent();
+	init_UIManager();
+	init_ShortCut();
+	init_JoystickSelectionUI$2();
+	init_JoystickSelectionUI$1();
+	JoystickSelectionUI = new GUIComponent("JoystickSelectionUI", JoystickSelectionUI_default$1);
+	JoystickSelectionUI.render = () => JoystickSelectionUI_default$2;
+	currentTab = 0;
+	slotInTab = 0;
+	itemData = null;
+	clickLock$1 = null;
+	/**
+	* Main input handler
+	* as expected by JoystickButtonInput.js
+	*/
+	JoystickSelectionUI.handleGamepadInput = function handleGamepadInput(buttons) {
+		if (isLocked()) return true;
+		if (buttons[0] !== "unpressed") {
+			setClickInterval();
+			selectSlot();
+			return true;
+		}
+		if (buttons[8] !== "unpressed") {
+			setClickInterval();
+			JoystickSelectionUI.hideSelection();
+			return true;
+		}
+		if (buttons[6] !== "unpressed") {
+			setClickInterval();
+			if (currentTab > 0) {
+				currentTab--;
+				slotInTab = 0;
+				updateGrid();
+				updateTabButtons();
+			}
+			return true;
+		}
+		if (buttons[7] !== "unpressed") {
+			setClickInterval();
+			if (currentTab < 3) {
+				currentTab++;
+				slotInTab = 0;
+				updateGrid();
+				updateTabButtons();
+			}
+			return true;
+		}
+		if (buttons[12] !== "unpressed") {
+			setClickInterval();
+			if (slotInTab >= 3) {
+				slotInTab -= 3;
+				updateSelection();
+			}
+			return true;
+		}
+		if (buttons[13] !== "unpressed") {
+			setClickInterval();
+			if (slotInTab < 6) {
+				slotInTab += 3;
+				updateSelection();
+			}
+			return true;
+		}
+		if (buttons[14] !== "unpressed") {
+			setClickInterval();
+			if (slotInTab > 0) {
+				slotInTab--;
+				updateSelection();
+			}
+			return true;
+		}
+		if (buttons[15] !== "unpressed") {
+			setClickInterval();
+			if (slotInTab < 8) {
+				slotInTab++;
+				updateSelection();
+			}
+			return true;
+		}
+		return false;
+	};
+	JoystickSelectionUI.init = function() {
+		createTabButtons();
+		this._host.style.position = "fixed";
+		this._host.style.display = "none";
+	};
+	JoystickSelectionUI.showSelection = function(data) {
+		itemData = data;
+		currentTab = 0;
+		slotInTab = 0;
+		updateGrid();
+		updateTabButtons();
+		this.focus();
+		this._host.style.display = "block";
+		this._fixPositionOverflow();
+	};
+	JoystickSelectionUI.hideSelection = function() {
+		this._host.style.display = "none";
+		itemData = null;
+	};
+	JoystickSelectionUI.active = function() {
+		return this._host && this._host.style.display !== "none";
+	};
+	JoystickSelectionUI_default = UIManager.addComponent(JoystickSelectionUI);
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickInteractionService.js
+var JoystickInteractionService_default;
+var init_JoystickInteractionService = __esmMin((() => {
+	init_ShortCut();
+	init_Inventory();
+	init_ItemType();
+	init_JoystickCharacterControl();
+	init_JoystickTargetService();
+	init_JoystickMouseCursorAdapter();
+	init_Controls();
+	init_JoystickSelectionUI();
+	init_JoystickInputService();
+	init_DBManager();
+	init_SkillInfo();
+	init_JoystickShortcutMapper();
+	JoystickInteractionService_default = {
+		prepare: function() {},
+		dispose: function() {},
+		cancelQuick: false,
+		executeShortcut: function(index, group) {
+			const shortcut = ShortCut_default.getList()[index];
+			if (!shortcut) return;
+			if (!shortcut.isSkill) {
+				const item = InventoryController.getUI().getItemById(shortcut.ID);
+				if (!item || item.count === 0) return;
+			} else if (Controls_default.attackTargetMode) {
+				const targetEntity = JoystickTargetService_default.getEntity();
+				if (targetEntity) JoystickMouseCursorAdapter_default.moveMouseToEntity(targetEntity);
+			}
+			ShortCut_default.onShortCut({ cmd: "EXECUTE" + index });
+			if (Controls_default.joyQuick === 2) JoystickMouseCursorAdapter_default.quickCastClick();
+			else if (Controls_default.joyQuick === 1) {
+				this.cancelQuick = false;
+				const waitforRelease = () => {
+					setTimeout(() => {
+						const buttons = JoystickInputService_default.buttonStates;
+						if (JoystickShortcutMapper_default.getGroup(buttons) !== group) JoystickMouseCursorAdapter_default.quickCastClick();
+						else if (!this.cancelQuick) waitforRelease();
+					}, 50);
+				};
+				waitforRelease();
+			}
+		},
+		openSelectionWindow: function(draggableElement) {
+			const index = parseInt(draggableElement.getAttribute("data-index"), 10);
+			const isSkill = draggableElement.closest(".skill");
+			let itemData;
+			if (!isSkill) {
+				const item = InventoryController.getUI().getItemByIndex(index);
+				if (item) {
+					if (item.type === ItemType_default.UNKNOWN || item.type === ItemType_default.ETC || item.type === ItemType_default.CARD || item.type === ItemType_default.PETEGG || item.type === ItemType_default.PETARMOR) return false;
+					itemData = {
+						isSkill: false,
+						ID: item.ITID,
+						value: item.count,
+						name: DB.getItemName(item)
+					};
+				}
+			} else {
+				const skill = ShortCut_default.getSkillById(index);
+				if (skill) itemData = {
+					isSkill: true,
+					ID: skill.SKID,
+					value: skill.selectedLevel ? skill.selectedLevel : skill.level,
+					name: SkillInfo[skill.SKID].SkillName
+				};
+			}
+			if (itemData) {
+				JoystickSelectionUI_default.showSelection(itemData);
+				return true;
+			}
+			return false;
+		},
+		leftClick: function(click) {
+			JoystickMouseCursorAdapter_default.leftClick(click);
+		},
+		rightClick: function(holding) {
+			JoystickMouseCursorAdapter_default.rightClick(holding);
+		},
+		pickUpItem: function() {
+			JoystickCharacterControl_default.pickUp();
+		},
+		attackTargeted: function() {
+			JoystickCharacterControl_default.attack();
+		},
+		moveCursor: function(dx, dy) {
+			JoystickMouseCursorAdapter_default.move(dx, dy);
+		},
+		cameraZoom: function(zoom) {
+			JoystickMouseCursorAdapter_default.changeCameraZoom(zoom);
+		},
+		cameraAngle: function(angle) {
+			JoystickMouseCursorAdapter_default.changeCameraAngle(angle);
+		},
+		escape: function() {
+			JoystickMouseCursorAdapter_default.esc();
+		},
+		enter: function() {
+			JoystickMouseCursorAdapter_default.enter();
+		},
+		showinfo: function() {
+			return JoystickMouseCursorAdapter_default.contextMenu();
+		},
+		navigateDpad: function(direction) {
+			return JoystickMouseCursorAdapter_default.navigateDraggableItems(direction);
+		},
+		moveCharacter: function(x, y) {
+			JoystickCharacterControl_default.move(x, y);
+		}
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickButtonInput.js
+function setClickLock() {
+	clickLock = true;
+	setTimeout(function() {
+		clickLock = false;
+	}, lockTimeout);
+}
+var clickLock, lockTimeout, ButtonInput;
+var init_JoystickButtonInput = __esmMin((() => {
+	init_JoystickShortcutMapper();
+	init_JoystickInteractionService();
+	init_JoystickSetManager();
+	init_JoystickUIRenderer();
+	init_JoystickSelectionUI();
+	clickLock = false;
+	lockTimeout = 200;
+	ButtonInput = {
+		update: function(buttons) {
+			if (clickLock) return false;
+			if (JoystickSelectionUI_default.active()) {
+				JoystickSelectionUI_default.handleGamepadInput(buttons);
+				return false;
+			}
+			let pressed = false;
+			JoystickUIRenderer_default.updateVisuals(buttons);
+			pressed |= this._handleSpecial(buttons);
+			pressed |= this._handleSetChange(buttons);
+			if (!pressed) {
+				pressed |= this._handleWorldActions(buttons);
+				pressed |= this._handleShortcuts(buttons);
+			}
+			return pressed;
+		},
+		_handleWorldActions: function(btn) {
+			let pressed = false;
+			if (JoystickShortcutMapper_default.getGroup(btn) !== "") return false;
+			if (btn[0] !== "unpressed") {
+				JoystickInteractionService_default.leftClick(btn[0] === "holding");
+				pressed = true;
+			}
+			if (btn[1] !== "unpressed") {
+				JoystickInteractionService_default.rightClick(btn[1] === "holding");
+				pressed = true;
+			}
+			if (btn[2] !== "unpressed") {
+				JoystickInteractionService_default.attackTargeted();
+				pressed = true;
+			}
+			if (btn[3] !== "unpressed") {
+				JoystickInteractionService_default.pickUpItem();
+				pressed = true;
+			}
+			if (pressed) setClickLock();
+			return pressed;
+		},
+		_handleSetChange: function(btn) {
+			const l2 = btn[6] === "holding";
+			const r2 = btn[7] === "holding";
+			if (l2 && r2) {
+				JoystickSetManager_default.toggle();
+				JoystickUIRenderer_default.updateSetIndicator();
+				JoystickUIRenderer_default.sync();
+				setClickLock();
+				return true;
+			}
+			return false;
+		},
+		_handleSpecial: function(buttons) {
+			let pressed = false;
+			if (buttons[8] === "holding") {
+				if (buttons[12] !== "unpressed") {
+					JoystickInteractionService_default.cameraZoom(-2);
+					pressed = true;
+				} else if (buttons[13] !== "unpressed") {
+					JoystickInteractionService_default.cameraZoom(2);
+					pressed = true;
+				} else if (buttons[14] !== "unpressed") {
+					JoystickInteractionService_default.cameraAngle(-5);
+					pressed = true;
+				} else if (buttons[15] !== "unpressed") {
+					JoystickInteractionService_default.cameraAngle(5);
+					pressed = true;
+				} else if (buttons[9] !== "unpressed") {
+					JoystickInteractionService_default.escape();
+					pressed = true;
+				} else pressed = JoystickInteractionService_default.showinfo();
+				if (pressed) {
+					setClickLock();
+					return pressed;
+				}
+			}
+			if (buttons[12] !== "unpressed") {
+				JoystickInteractionService_default.navigateDpad("up");
+				pressed = true;
+			} else if (buttons[13] !== "unpressed") {
+				JoystickInteractionService_default.navigateDpad("down");
+				pressed = true;
+			} else if (buttons[14] !== "unpressed") {
+				JoystickInteractionService_default.navigateDpad("left");
+				pressed = true;
+			} else if (buttons[15] !== "unpressed") {
+				JoystickInteractionService_default.navigateDpad("right");
+				pressed = true;
+			} else if (buttons[9] !== "unpressed") {
+				JoystickInteractionService_default.enter();
+				pressed = true;
+			}
+			if (pressed) setClickLock();
+			return pressed;
+		},
+		_handleShortcuts: function(btn) {
+			const idx = JoystickShortcutMapper_default.getShortcutIndex(btn);
+			if (idx !== -1) {
+				JoystickInteractionService_default.executeShortcut(idx, JoystickShortcutMapper_default.getGroup(btn));
+				setClickLock();
+				return true;
+			}
+			return false;
+		}
+	};
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickAxisInput.js
+var JoystickAxisInput_default;
+var init_JoystickAxisInput = __esmMin((() => {
+	init_JoystickInteractionService();
+	init_Controls();
+	init_JoystickUIRenderer();
+	JoystickAxisInput_default = { update: function(axes) {
+		let active = false;
+		let lx = axes[0];
+		let ly = axes[1];
+		if (Controls_default.joyReverseStick && axes.length >= 4) {
+			lx = axes[2];
+			ly = axes[3];
+		}
+		if (Math.abs(lx) > Controls_default.joyDeadline || Math.abs(ly) > Controls_default.joyDeadline) {
+			JoystickInteractionService_default.moveCharacter(lx, -ly);
+			JoystickInteractionService_default.cancelQuick = true;
+			active = true;
+		}
+		if (axes.length >= 4) {
+			let rx = axes[2];
+			let ry = axes[3];
+			if (Controls_default.joyReverseStick) {
+				rx = axes[0];
+				ry = axes[1];
+			}
+			if (Math.abs(rx) > Controls_default.joyDeadline || Math.abs(ry) > Controls_default.joyDeadline) {
+				JoystickInteractionService_default.moveCursor(rx, ry);
+				active = true;
+			}
+		}
+		if (active) JoystickUIRenderer_default.show();
+		return active;
+	} };
+}));
+//#endregion
+//#region src/UI/Components/JoystickUI/JoystickInputService.js
+var hideTimeout, hideTimeoutHandle, JoystickInputService_default;
+var init_JoystickInputService = __esmMin((() => {
+	init_JoystickButtonInput();
+	init_JoystickAxisInput();
+	init_JoystickUIRenderer();
+	init_Controls();
+	hideTimeout = false;
+	hideTimeoutHandle = null;
+	JoystickInputService_default = {
+		active: false,
+		buttonStates: {},
+		_listening: false,
+		prepare: function() {
+			if (this._listening) return;
+			this._boundOnConnect = this._onConnect.bind(this);
+			this._boundOnDisconnect = this._onDisconnect.bind(this);
+			window.addEventListener("gamepadconnected", this._boundOnConnect);
+			window.addEventListener("gamepaddisconnected", this._boundOnDisconnect);
+			this._listening = true;
+		},
+		dispose: function() {
+			window.removeEventListener("gamepadconnected", this._boundOnConnect);
+			window.removeEventListener("gamepaddisconnected", this._boundOnDisconnect);
+			this._listening = false;
+			if (hideTimeoutHandle) {
+				clearTimeout(hideTimeoutHandle);
+				hideTimeoutHandle = null;
+			}
+			hideTimeout = false;
+			this.active = false;
+			this.buttonStates = {};
+		},
+		getStates: function(gp) {
+			if (!gp) return null;
+			const states = {
+				buttons: [],
+				axes: []
+			};
+			const self = this;
+			gp.buttons.forEach(function(btn, index) {
+				const isPressed = btn.pressed;
+				const prevState = self.buttonStates[index] || "unpressed";
+				let newState = "unpressed";
+				if (isPressed) newState = prevState === "unpressed" ? "pressed" : "holding";
+				self.buttonStates[index] = newState;
+				states.buttons[index] = newState;
+			});
+			gp.axes.forEach(function(axis, index) {
+				states.axes[index] = Math.abs(axis) > Controls_default.joyDeadline ? axis : 0;
+			});
+			return states;
+		},
+		update: function() {
+			const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+			let activeGamepad = null;
+			for (let i = 0; i < gamepads.length; i++) if (gamepads[i]) {
+				activeGamepad = gamepads[i];
+				break;
+			}
+			if (!activeGamepad) {
+				if (this.active) {
+					this.active = false;
+					JoystickUIRenderer_default.hide();
+				}
+				return false;
+			}
+			const states = this.getStates(activeGamepad);
+			let anyActivity = false;
+			if (!states) {
+				this.active = false;
+				return false;
+			}
+			const buttonsActive = ButtonInput.update(states.buttons);
+			const axisActive = JoystickAxisInput_default.update(states.axes);
+			if (buttonsActive || axisActive) anyActivity = true;
+			if (anyActivity && !this.active) {
+				JoystickUIRenderer_default.show();
+				this.active = true;
+			}
+			if (!anyActivity && this.active && !hideTimeout) {
+				hideTimeout = true;
+				const self = this;
+				this.active = false;
+				hideTimeoutHandle = setTimeout(function() {
+					hideTimeout = false;
+					hideTimeoutHandle = null;
+					if (self.active === false) JoystickUIRenderer_default.hide();
+				}, 3e4);
+			} else if (!hideTimeout) this.active = true;
+			return true;
+		},
+		_onConnect: function() {
+			this.active = true;
+			JoystickUIRenderer_default.show();
+		},
+		_onDisconnect: function() {
+			this.active = false;
+			this.buttonStates = {};
+			JoystickUIRenderer_default.hide();
 		}
 	};
 }));
@@ -263767,7 +259276,6 @@ var init_JoystickCursorMotion = __esmMin((() => {
 var timeoutHandle, POLL_RATE_ACTIVE, POLL_RATE_IDLE, JoystickPollingLoop_default;
 var init_JoystickPollingLoop = __esmMin((() => {
 	init_JoystickInputService();
-	init_JoystickCursorMotion();
 	timeoutHandle = null;
 	POLL_RATE_ACTIVE = 100;
 	POLL_RATE_IDLE = 1e3;
@@ -263777,9 +259285,7 @@ var init_JoystickPollingLoop = __esmMin((() => {
 			this.run();
 		},
 		run: function() {
-			const isConnected = JoystickInputService_default.update();
-			if (isConnected) JoystickCursorMotion_default.wake();
-			const nextDelay = isConnected ? POLL_RATE_ACTIVE : POLL_RATE_IDLE;
+			const nextDelay = JoystickInputService_default.update() ? POLL_RATE_ACTIVE : POLL_RATE_IDLE;
 			const self = this;
 			timeoutHandle = setTimeout(function() {
 				self.run();
@@ -263798,30 +259304,23 @@ var init_JoystickPollingLoop = __esmMin((() => {
 var JoystickModule_default;
 var init_JoystickModule = __esmMin((() => {
 	init_JoystickPollingLoop();
-	init_JoystickCursorMotion();
 	init_JoystickInputService();
 	init_JoystickInteractionService();
 	init_JoystickShortcutMapper();
 	init_JoystickUIRenderer();
-	init_JoystickEmoteGrid();
-	init_JoystickTargetCategory();
 	JoystickModule_default = {
 		prepare: function() {
 			JoystickShortcutMapper_default.prepare();
 			JoystickInputService_default.prepare();
 			JoystickInteractionService_default.prepare();
 			JoystickPollingLoop_default.start();
-			JoystickCursorMotion_default.start();
 			JoystickUIRenderer_default.hide();
 		},
 		dispose: function() {
 			JoystickPollingLoop_default.stop();
-			JoystickCursorMotion_default.stop();
 			JoystickInteractionService_default.dispose();
 			JoystickInputService_default.dispose();
 			JoystickUIRenderer_default.dispose();
-			JoystickEmoteGrid_default.dispose();
-			JoystickTargetCategory_default.dispose();
 		}
 	};
 }));
@@ -263829,13 +259328,13 @@ var init_JoystickModule = __esmMin((() => {
 //#region src/UI/Components/JoystickUI/JoystickUI.html?raw
 var JoystickUI_default$2;
 var init_JoystickUI$2 = __esmMin((() => {
-	JoystickUI_default$2 = "<div id=\"JoystickUI\">\r\n	<div class=\"set-indicator\">\r\n		<span class=\"set-btn active\">Set 1</span>\r\n		<span class=\"set-btn\">Set 2</span>\r\n		<span class=\"stick-mode\" title=\"Right stick mode (tap RS click to switch)\"></span>\r\n		<span class=\"target-category\" title=\"What the pad targets (D-pad up / down to switch)\"></span>\r\n	</div>\r\n\r\n	<div class=\"hotkey-bar\">\r\n		<div class=\"group-container\" data-group=\"L1\">\r\n			<div class=\"group-header\">L1</div>\r\n			<div class=\"cross-layout\">\r\n				<div class=\"slot top\">\r\n					<span class=\"key-label\">Y</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot left\">\r\n					<span class=\"key-label\">X</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot right\">\r\n					<span class=\"key-label\">B</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot bottom\">\r\n					<span class=\"key-label\">A</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n\r\n		<div class=\"group-container\" data-group=\"L2\">\r\n			<div class=\"group-header\">L2</div>\r\n			<div class=\"cross-layout\">\r\n				<div class=\"slot top\">\r\n					<span class=\"key-label\">Y</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot left\">\r\n					<span class=\"key-label\">X</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot right\">\r\n					<span class=\"key-label\">B</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot bottom\">\r\n					<span class=\"key-label\">A</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n\r\n		<div class=\"group-container center-group\" data-group=\"L1R1\">\r\n			<div class=\"group-header\">L1+R1</div>\r\n			<div class=\"cross-layout\">\r\n				<div class=\"slot top\">\r\n					<span class=\"key-label\">Y</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot left\">\r\n					<span class=\"key-label\">X</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot right\">\r\n					<span class=\"key-label\">B</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot bottom\">\r\n					<span class=\"key-label\">A</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n\r\n		<div class=\"group-container\" data-group=\"R2\">\r\n			<div class=\"group-header\">R2</div>\r\n			<div class=\"cross-layout\">\r\n				<div class=\"slot top\">\r\n					<span class=\"key-label\">Y</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot left\">\r\n					<span class=\"key-label\">X</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot right\">\r\n					<span class=\"key-label\">B</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot bottom\">\r\n					<span class=\"key-label\">A</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n\r\n		<div class=\"group-container\" data-group=\"R1\">\r\n			<div class=\"group-header\">R1</div>\r\n			<div class=\"cross-layout\">\r\n				<div class=\"slot top\">\r\n					<span class=\"key-label\">Y</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot left\">\r\n					<span class=\"key-label\">X</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot right\">\r\n					<span class=\"key-label\">B</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot bottom\">\r\n					<span class=\"key-label\">A</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
+	JoystickUI_default$2 = "<div id=\"JoystickUI\">\r\n	<div class=\"set-indicator\">\r\n		<span class=\"set-btn active\">Set 1</span>\r\n		<span class=\"set-btn\">Set 2</span>\r\n	</div>\r\n\r\n	<div class=\"hotkey-bar\">\r\n		<div class=\"group-container\" data-group=\"L1\">\r\n			<div class=\"group-header\">L1</div>\r\n			<div class=\"cross-layout\">\r\n				<div class=\"slot top\">\r\n					<span class=\"key-label\">Y</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot left\">\r\n					<span class=\"key-label\">X</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot right\">\r\n					<span class=\"key-label\">B</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot bottom\">\r\n					<span class=\"key-label\">A</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n\r\n		<div class=\"group-container\" data-group=\"L2\">\r\n			<div class=\"group-header\">L2</div>\r\n			<div class=\"cross-layout\">\r\n				<div class=\"slot top\">\r\n					<span class=\"key-label\">Y</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot left\">\r\n					<span class=\"key-label\">X</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot right\">\r\n					<span class=\"key-label\">B</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot bottom\">\r\n					<span class=\"key-label\">A</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n\r\n		<div class=\"group-container center-group\" data-group=\"L1R1\">\r\n			<div class=\"group-header\">L1+R1</div>\r\n			<div class=\"cross-layout\">\r\n				<div class=\"slot top\">\r\n					<span class=\"key-label\">Y</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot left\">\r\n					<span class=\"key-label\">X</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot right\">\r\n					<span class=\"key-label\">B</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot bottom\">\r\n					<span class=\"key-label\">A</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n\r\n		<div class=\"group-container\" data-group=\"R2\">\r\n			<div class=\"group-header\">R2</div>\r\n			<div class=\"cross-layout\">\r\n				<div class=\"slot top\">\r\n					<span class=\"key-label\">Y</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot left\">\r\n					<span class=\"key-label\">X</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot right\">\r\n					<span class=\"key-label\">B</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot bottom\">\r\n					<span class=\"key-label\">A</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n\r\n		<div class=\"group-container\" data-group=\"R1\">\r\n			<div class=\"group-header\">R1</div>\r\n			<div class=\"cross-layout\">\r\n				<div class=\"slot top\">\r\n					<span class=\"key-label\">Y</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot left\">\r\n					<span class=\"key-label\">X</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot right\">\r\n					<span class=\"key-label\">B</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n				<div class=\"slot bottom\">\r\n					<span class=\"key-label\">A</span>\r\n					<div class=\"icon\" style=\"display: none\">\r\n						<div class=\"img\"></div>\r\n						<div class=\"amount\"></div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n		</div>\r\n	</div>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/JoystickUI/JoystickUI.css?raw
 var JoystickUI_default$1;
 var init_JoystickUI$1 = __esmMin((() => {
-	JoystickUI_default$1 = ":host {\r\n	position: absolute;\r\n	bottom: 20px;\r\n	left: 50%;\r\n	transform: translateX(-50%);\r\n	z-index: 1000;\r\n	pointer-events: none;\r\n}\r\n\r\n#JoystickUI {\r\n	display: flex;\r\n	flex-direction: column;\r\n	align-items: center;\r\n}\r\n\r\n#JoystickUI .set-indicator {\r\n	margin-bottom: 5px;\r\n	background: rgba(0, 0, 0, 0.5);\r\n	border-radius: 4px;\r\n	padding: 2px;\r\n	pointer-events: auto;\r\n}\r\n\r\n#JoystickUI .set-btn {\r\n	display: inline-block;\r\n	padding: 2px 10px;\r\n	color: #ccc;\r\n	font-family: sans-serif;\r\n	border-radius: 3px;\r\n	cursor: pointer;\r\n}\r\n\r\n#JoystickUI .stick-mode,\r\n#JoystickUI .target-category {\r\n	display: inline-block;\r\n	margin-left: 6px;\r\n	padding: 2px 8px;\r\n	color: #ccc;\r\n	font-family: sans-serif;\r\n	border-left: 1px solid rgba(255, 255, 255, 0.25);\r\n}\r\n\r\n#JoystickUI .stick-mode.aim {\r\n	color: #ffd740;\r\n	font-weight: bold;\r\n}\r\n\r\n#JoystickUI .set-btn.active {\r\n	background-color: #d32f2f;\r\n	color: white;\r\n	font-weight: bold;\r\n}\r\n\r\n#JoystickUI .hotkey-bar {\r\n	display: flex;\r\n	gap: 4px;\r\n	align-items: flex-end;\r\n}\r\n\r\n#JoystickUI .group-container {\r\n	background: linear-gradient(to bottom, rgba(60, 60, 60, 0.9), rgba(30, 30, 30, 0.9));\r\n	border: 1px solid #555;\r\n	border-radius: 6px;\r\n	width: 110px;\r\n	height: 100px;\r\n	position: relative;\r\n	pointer-events: auto;\r\n	box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);\r\n}\r\n\r\n#JoystickUI .group-header {\r\n	background: rgba(255, 255, 255, 0.1);\r\n	color: #e0e0e0;\r\n	font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;\r\n	/* Opt out of Common.css's font-size-adjust: keep Segoe UI's native x-height. Scoped to this\r\n	   header only — the .set-btn above uses generic sans-serif and stays normalized. */\r\n	font-size-adjust: none;\r\n	font-size: 14px;\r\n	font-weight: bold;\r\n	text-align: center;\r\n	padding: 2px 0;\r\n	border-bottom: 1px solid #555;\r\n	text-shadow: 1px 1px 2px black;\r\n}\r\n\r\n#JoystickUI .cross-layout {\r\n	position: relative;\r\n	width: 100%;\r\n	height: 75px;\r\n}\r\n\r\n#JoystickUI .slot {\r\n	position: absolute;\r\n	width: 32px;\r\n	height: 32px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	border: 1px solid #777;\r\n	border-radius: 3px;\r\n	display: flex;\r\n	justify-content: center;\r\n	align-items: center;\r\n	box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.8);\r\n	transition: background 0.2s;\r\n}\r\n\r\n#JoystickUI .slot:active {\r\n	background-color: rgba(144, 238, 144, 0.3);\r\n	border-color: #90ee90;\r\n}\r\n\r\n#JoystickUI .slot.top {\r\n	top: 2px;\r\n	left: 50%;\r\n	transform: translateX(-60%);\r\n}\r\n\r\n#JoystickUI .slot.bottom {\r\n	bottom: 2px;\r\n	left: 50%;\r\n	transform: translateX(-60%);\r\n}\r\n\r\n#JoystickUI .slot.left {\r\n	top: 50%;\r\n	left: 2px;\r\n	transform: translateY(-60%);\r\n}\r\n\r\n#JoystickUI .slot.right {\r\n	top: 50%;\r\n	right: 4px;\r\n	transform: translateY(-60%);\r\n}\r\n\r\n#JoystickUI .key-label {\r\n	position: absolute;\r\n	top: 1px;\r\n	left: 3px;\r\n	font-weight: bold;\r\n	color: #fff;\r\n	text-shadow: 1px 1px 0 #000;\r\n	z-index: 2;\r\n	pointer-events: none;\r\n}\r\n\r\n#JoystickUI .group-container.active {\r\n	border-color: #00ff00;\r\n	background: linear-gradient(to bottom, rgba(80, 100, 80, 0.95), rgba(40, 60, 40, 0.95));\r\n	box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);\r\n	transform: translateY(-2px);\r\n	z-index: 10;\r\n}\r\n\r\n#JoystickUI .icon {\r\n	position: relative;\r\n}\r\n\r\n#JoystickUI .icon .img {\r\n	width: 24px;\r\n	height: 24px;\r\n	background-repeat: no-repeat;\r\n	border: none;\r\n	background-color: transparent;\r\n}\r\n\r\n#JoystickUI .icon .name {\r\n	display: none;\r\n	z-index: 1;\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n}\r\n\r\n#JoystickUI .icon:hover .name {\r\n	display: block;\r\n}\r\n\r\n#JoystickUI .icon.hide .name {\r\n	display: none;\r\n}\r\n\r\n#JoystickUI .icon .amount {\r\n	position: absolute;\r\n	right: 1px;\r\n	top: 20px;\r\n	text-shadow: 1px 1px 0px white;\r\n	text-align: right;\r\n	font-weight: bold;\r\n}\r\n\r\n#JoystickUI .target-category.support {\r\n	color: #9be29e;\r\n}\r\n";
+	JoystickUI_default$1 = ":host {\r\n	position: absolute;\r\n	bottom: 20px;\r\n	left: 50%;\r\n	transform: translateX(-50%);\r\n	z-index: 1000;\r\n	pointer-events: none;\r\n}\r\n\r\n#JoystickUI {\r\n	display: flex;\r\n	flex-direction: column;\r\n	align-items: center;\r\n}\r\n\r\n#JoystickUI .set-indicator {\r\n	margin-bottom: 5px;\r\n	background: rgba(0, 0, 0, 0.5);\r\n	border-radius: 4px;\r\n	padding: 2px;\r\n	pointer-events: auto;\r\n}\r\n\r\n#JoystickUI .set-btn {\r\n	display: inline-block;\r\n	padding: 2px 10px;\r\n	color: #ccc;\r\n	font-family: sans-serif;\r\n	border-radius: 3px;\r\n	cursor: pointer;\r\n}\r\n\r\n#JoystickUI .set-btn.active {\r\n	background-color: #d32f2f;\r\n	color: white;\r\n	font-weight: bold;\r\n}\r\n\r\n#JoystickUI .hotkey-bar {\r\n	display: flex;\r\n	gap: 4px;\r\n	align-items: flex-end;\r\n}\r\n\r\n#JoystickUI .group-container {\r\n	background: linear-gradient(to bottom, rgba(60, 60, 60, 0.9), rgba(30, 30, 30, 0.9));\r\n	border: 1px solid #555;\r\n	border-radius: 6px;\r\n	width: 110px;\r\n	height: 100px;\r\n	position: relative;\r\n	pointer-events: auto;\r\n	box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);\r\n}\r\n\r\n#JoystickUI .group-header {\r\n	background: rgba(255, 255, 255, 0.1);\r\n	color: #e0e0e0;\r\n	font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;\r\n	/* Opt out of Common.css's font-size-adjust: keep Segoe UI's native x-height. Scoped to this\r\n	   header only — the .set-btn above uses generic sans-serif and stays normalized. */\r\n	font-size-adjust: none;\r\n	font-size: 14px;\r\n	font-weight: bold;\r\n	text-align: center;\r\n	padding: 2px 0;\r\n	border-bottom: 1px solid #555;\r\n	text-shadow: 1px 1px 2px black;\r\n}\r\n\r\n#JoystickUI .cross-layout {\r\n	position: relative;\r\n	width: 100%;\r\n	height: 75px;\r\n}\r\n\r\n#JoystickUI .slot {\r\n	position: absolute;\r\n	width: 32px;\r\n	height: 32px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	border: 1px solid #777;\r\n	border-radius: 3px;\r\n	display: flex;\r\n	justify-content: center;\r\n	align-items: center;\r\n	box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.8);\r\n	transition: background 0.2s;\r\n}\r\n\r\n#JoystickUI .slot:active {\r\n	background-color: rgba(144, 238, 144, 0.3);\r\n	border-color: #90ee90;\r\n}\r\n\r\n#JoystickUI .slot.top {\r\n	top: 2px;\r\n	left: 50%;\r\n	transform: translateX(-60%);\r\n}\r\n\r\n#JoystickUI .slot.bottom {\r\n	bottom: 2px;\r\n	left: 50%;\r\n	transform: translateX(-60%);\r\n}\r\n\r\n#JoystickUI .slot.left {\r\n	top: 50%;\r\n	left: 2px;\r\n	transform: translateY(-60%);\r\n}\r\n\r\n#JoystickUI .slot.right {\r\n	top: 50%;\r\n	right: 4px;\r\n	transform: translateY(-60%);\r\n}\r\n\r\n#JoystickUI .key-label {\r\n	position: absolute;\r\n	top: 1px;\r\n	left: 3px;\r\n	font-weight: bold;\r\n	color: #fff;\r\n	text-shadow: 1px 1px 0 #000;\r\n	z-index: 2;\r\n	pointer-events: none;\r\n}\r\n\r\n#JoystickUI .group-container.active {\r\n	border-color: #00ff00;\r\n	background: linear-gradient(to bottom, rgba(80, 100, 80, 0.95), rgba(40, 60, 40, 0.95));\r\n	box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);\r\n	transform: translateY(-2px);\r\n	z-index: 10;\r\n}\r\n\r\n#JoystickUI .icon {\r\n	position: relative;\r\n}\r\n\r\n#JoystickUI .icon .img {\r\n	width: 24px;\r\n	height: 24px;\r\n	background-repeat: no-repeat;\r\n	border: none;\r\n	background-color: transparent;\r\n}\r\n\r\n#JoystickUI .icon .name {\r\n	display: none;\r\n	z-index: 1;\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n}\r\n\r\n#JoystickUI .icon:hover .name {\r\n	display: block;\r\n}\r\n\r\n#JoystickUI .icon.hide .name {\r\n	display: none;\r\n}\r\n\r\n#JoystickUI .icon .amount {\r\n	position: absolute;\r\n	right: 1px;\r\n	top: 20px;\r\n	text-shadow: 1px 1px 0px white;\r\n	text-align: right;\r\n	font-weight: bold;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/JoystickUI/JoystickUI.js
@@ -263883,7 +259382,7 @@ var init_BloomUpsampling = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/Shaders/Bloom.js
-var _programs, _buffer$14, _internalFbo, _downsampleFactor, _downsampleFactorPerformance, Bloom;
+var _programs, _buffer$13, _internalFbo, _downsampleFactor, _downsampleFactorPerformance, Bloom;
 var init_Bloom = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
@@ -263902,7 +259401,7 @@ var init_Bloom = __esmMin((() => {
 		* @param {WebGLFramebuffer} outputFbo - Destination (Screen or next effect)
 		*/
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$14 || !_programs.prefilter || !Bloom.isActive()) return;
+			if (!_buffer$13 || !_programs.prefilter || !Bloom.isActive()) return;
 			const scale = GraphicsSettings.performanceMode ? .75 : 1;
 			const scaledWidth = Math.floor(gl.canvas.width * scale);
 			const scaledHeight = Math.floor(gl.canvas.height * scale);
@@ -263917,7 +259416,7 @@ var init_Bloom = __esmMin((() => {
 			gl.uniform1f(_programs.prefilter.uniform.uBloomSoftKnee, .45);
 			const boxsampleFactor = 4;
 			gl.uniform2f(_programs.prefilter.uniform.uTexelSize, 1 / _internalFbo.width * boxsampleFactor, 1 / _internalFbo.height * boxsampleFactor);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$14);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$13);
 			let posLoc = _programs.prefilter.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
 			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
@@ -263970,8 +259469,8 @@ var init_Bloom = __esmMin((() => {
 				1,
 				1
 			]);
-			_buffer$14 = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$14);
+			_buffer$13 = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$13);
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 			this.recreateFbo(gl, gl.canvas.width, gl.canvas.height);
 		}
@@ -263992,8 +259491,8 @@ var init_Bloom = __esmMin((() => {
 		/** Clears memory references */
 		static clean(gl) {
 			_programs = {};
-			if (_buffer$14) gl.deleteBuffer(_buffer$14);
-			_buffer$14 = null;
+			if (_buffer$13) gl.deleteBuffer(_buffer$13);
+			_buffer$13 = null;
 			if (_internalFbo) {
 				if (gl.isTexture(_internalFbo.texture)) gl.deleteTexture(_internalFbo.texture);
 				if (gl.isRenderbuffer(_internalFbo.rbo)) gl.deleteRenderbuffer(_internalFbo.rbo);
@@ -264011,7 +259510,7 @@ var init_GaussianBlur$1 = __esmMin((() => {
 }));
 //#endregion
 //#region src/Renderer/Effects/Shaders/GaussianBlur.js
-var _program$16, _buffer$13, GaussianBlur;
+var _program$15, _buffer$12, GaussianBlur;
 var init_GaussianBlur = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
@@ -264026,86 +259525,15 @@ var init_GaussianBlur = __esmMin((() => {
 		* @param {WebGLFramebuffer} outputFbo - Target buffer
 		*/
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$13 || !_program$16 || !GaussianBlur.isActive()) return;
-			PostProcess.beforeRenderPass(gl, outputFbo);
-			gl.useProgram(_program$16);
-			const focusRadius = GraphicsSettings.blurArea / 100;
-			const focusFalloff = .5;
-			gl.uniform1f(_program$16.uniform.uFocusRadius, focusRadius);
-			gl.uniform1f(_program$16.uniform.uFocusFalloff, focusFalloff);
-			const boxsampleFactor = GraphicsSettings.blurIntensity;
-			gl.uniform2f(_program$16.uniform.uTexelSize, 1 / gl.canvas.width * boxsampleFactor, 1 / gl.canvas.height * boxsampleFactor);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$13);
-			const posLoc = _program$16.attribute.aPosition;
-			gl.enableVertexAttribArray(posLoc);
-			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
-			gl.activeTexture(gl.TEXTURE0);
-			gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-			gl.uniform1i(_program$16.uniform.uTexture, 0);
-			gl.drawArrays(gl.TRIANGLES, 0, 6);
-			PostProcess.afterRenderPass(gl);
-		}
-		static init(gl) {
-			if (!gl) return;
-			try {
-				_program$16 = WebGL_default.createShaderProgram(gl, Common_default, GaussianBlur_default);
-			} catch (e) {
-				console.error("Error compiling Lens Blur shader.", e);
-				return;
-			}
-			const quadVertices = new Float32Array([
-				-1,
-				-1,
-				1,
-				-1,
-				-1,
-				1,
-				-1,
-				1,
-				1,
-				-1,
-				1,
-				1
-			]);
-			_buffer$13 = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$13);
-			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
-		}
-		static isActive() {
-			return GraphicsSettings.blur;
-		}
-		static program() {
-			return _program$16;
-		}
-		static clean(gl) {
-			if (_buffer$13) gl.deleteBuffer(_buffer$13);
-			_program$16 = _buffer$13 = null;
-		}
-	};
-}));
-//#endregion
-//#region src/Renderer/Effects/Shaders/GLSL/CAS.fs?raw
-var CAS_default;
-var init_CAS$1 = __esmMin((() => {
-	CAS_default = "#version 300 es \r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uContrast;  \r\nuniform float uSharpening;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    // Sampling 3x3  \r\n    //  a b c  \r\n    //  d(e)f  \r\n    //  g h i  \r\n      \r\n    vec3 a = texture(uTexture, vUv + vec2(-uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 b = texture(uTexture, vUv + vec2(0.0, -uTexelSize.y)).rgb;  \r\n    vec3 c = texture(uTexture, vUv + vec2(uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 d = texture(uTexture, vUv + vec2(-uTexelSize.x, 0.0)).rgb;  \r\n    vec3 e = texture(uTexture, vUv).rgb;  \r\n    vec3 f = texture(uTexture, vUv + vec2(uTexelSize.x, 0.0)).rgb;  \r\n    vec3 g = texture(uTexture, vUv + vec2(-uTexelSize.x, uTexelSize.y)).rgb;  \r\n    vec3 h = texture(uTexture, vUv + vec2(0.0, uTexelSize.y)).rgb;  \r\n    vec3 i = texture(uTexture, vUv + vec2(uTexelSize.x, uTexelSize.y)).rgb;  \r\n\r\n    // Soft min e max \r\n    vec3 mnRGB = min(min(min(d, e), min(f, b)), h);  \r\n    vec3 mnRGB2 = min(mnRGB, min(min(a, c), min(g, i)));  \r\n    mnRGB += mnRGB2;  \r\n\r\n    vec3 mxRGB = max(max(max(d, e), max(f, b)), h);  \r\n    vec3 mxRGB2 = max(mxRGB, max(max(a, c), max(g, i)));  \r\n    mxRGB += mxRGB2;  \r\n\r\n    vec3 rcpMRGB = 1.0 / mxRGB;  \r\n    vec3 ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) * rcpMRGB, 0.0, 1.0);  \r\n\r\n    ampRGB = inversesqrt(ampRGB);  \r\n\r\n    float peak = -3.0 * uContrast + 8.0;  \r\n    vec3 wRGB = -1.0 / (ampRGB * peak);  \r\n    vec3 rcpWeightRGB = 1.0 / (4.0 * wRGB + 1.0);  \r\n\r\n    // Cross Filter \r\n    //  0 w 0  \r\n    //  w 1 w  \r\n    //  0 w 0  \r\n    vec3 window = (b + d) + (f + h);  \r\n    vec3 outColor = clamp((window * wRGB + e) * rcpWeightRGB, 0.0, 1.0);  \r\n\r\n    // Blend \r\n    fragColor = vec4(mix(e, outColor, uSharpening), 1.0);  \r\n}";
-}));
-//#endregion
-//#region src/Renderer/Effects/Shaders/CAS.js
-var _program$15, _buffer$12, CAS;
-var init_CAS = __esmMin((() => {
-	init_Graphics();
-	init_WebGL();
-	init_PostProcess();
-	init_Common();
-	init_CAS$1();
-	CAS = class CAS {
-		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$12 || !_program$15 || !CAS.isActive()) return;
+			if (!_buffer$12 || !_program$15 || !GaussianBlur.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
 			gl.useProgram(_program$15);
-			gl.uniform1f(_program$15.uniform.uContrast, GraphicsSettings.casContrast || 0);
-			gl.uniform1f(_program$15.uniform.uSharpening, GraphicsSettings.casSharpening || 1);
-			gl.uniform2f(_program$15.uniform.uTexelSize, 1 / gl.canvas.width, 1 / gl.canvas.height);
+			const focusRadius = GraphicsSettings.blurArea / 100;
+			const focusFalloff = .5;
+			gl.uniform1f(_program$15.uniform.uFocusRadius, focusRadius);
+			gl.uniform1f(_program$15.uniform.uFocusFalloff, focusFalloff);
+			const boxsampleFactor = GraphicsSettings.blurIntensity;
+			gl.uniform2f(_program$15.uniform.uTexelSize, 1 / gl.canvas.width * boxsampleFactor, 1 / gl.canvas.height * boxsampleFactor);
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$12);
 			const posLoc = _program$15.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
@@ -264119,9 +259547,9 @@ var init_CAS = __esmMin((() => {
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$15 = WebGL_default.createShaderProgram(gl, Common_default, CAS_default);
+				_program$15 = WebGL_default.createShaderProgram(gl, Common_default, GaussianBlur_default);
 			} catch (e) {
-				console.error("Error compiling CAS shader.", e);
+				console.error("Error compiling Lens Blur shader.", e);
 				return;
 			}
 			const quadVertices = new Float32Array([
@@ -264143,7 +259571,7 @@ var init_CAS = __esmMin((() => {
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
 		static isActive() {
-			return GraphicsSettings.casEnabled;
+			return GraphicsSettings.blur;
 		}
 		static program() {
 			return _program$15;
@@ -264155,28 +259583,27 @@ var init_CAS = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/GLSL/FXAA.fs?raw
-var FXAA_default;
-var init_FXAA$1 = __esmMin((() => {
-	FXAA_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uSubpix;  \r\nuniform float uEdgeThreshold;  \r\nuniform float uEdgeThresholdMin;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nfloat luminance(vec3 rgb) {  \r\n    return dot(rgb, vec3(0.299, 0.587, 0.114));  \r\n}  \r\n\r\nvoid main() {  \r\n    vec3 rgbM = texture(uTexture, vUv).rgb;  \r\n      \r\n    vec3 rgbNW = texture(uTexture, vUv + vec2(-uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 rgbNE = texture(uTexture, vUv + vec2(uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 rgbSW = texture(uTexture, vUv + vec2(-uTexelSize.x, uTexelSize.y)).rgb;  \r\n    vec3 rgbSE = texture(uTexture, vUv + vec2(uTexelSize.x, uTexelSize.y)).rgb;  \r\n\r\n    float lumaM = luminance(rgbM);  \r\n    float lumaNW = luminance(rgbNW);  \r\n    float lumaNE = luminance(rgbNE);  \r\n    float lumaSW = luminance(rgbSW);  \r\n    float lumaSE = luminance(rgbSE);  \r\n\r\n    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));  \r\n    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));  \r\n\r\n    float lumaRange = lumaMax - lumaMin;  \r\n    if(lumaRange < max(uEdgeThresholdMin, lumaMax * uEdgeThreshold)) {  \r\n        fragColor = vec4(rgbM, 1.0);  \r\n        return;  \r\n    }  \r\n\r\n    vec2 dir;  \r\n    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));  \r\n    dir.y = ((lumaNW + lumaSW) - (lumaNE + lumaSE));  \r\n\r\n    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.03125, 0.0078125);  \r\n    float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);  \r\n    dir = min(vec2(8.0), max(vec2(-8.0), dir * rcpDirMin)) * uTexelSize;  \r\n\r\n    vec3 rgbA = 0.5 * (  \r\n        texture(uTexture, vUv + dir * (1.0/3.0 - 0.5)).rgb +  \r\n        texture(uTexture, vUv + dir * (2.0/3.0 - 0.5)).rgb);  \r\n    vec3 rgbB = rgbA * 0.5 + 0.25 * (  \r\n        texture(uTexture, vUv + dir * -0.5).rgb +  \r\n        texture(uTexture, vUv + dir * 0.5).rgb);  \r\n\r\n    float lumaB = luminance(rgbB);  \r\n    if((lumaB < lumaMin) || (lumaB > lumaMax)) {  \r\n        fragColor = vec4(rgbA, 1.0);  \r\n    } else {  \r\n        fragColor = vec4(rgbB, 1.0);  \r\n    }  \r\n}";
+//#region src/Renderer/Effects/Shaders/GLSL/CAS.fs?raw
+var CAS_default;
+var init_CAS$1 = __esmMin((() => {
+	CAS_default = "#version 300 es \r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uContrast;  \r\nuniform float uSharpening;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    // Sampling 3x3  \r\n    //  a b c  \r\n    //  d(e)f  \r\n    //  g h i  \r\n      \r\n    vec3 a = texture(uTexture, vUv + vec2(-uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 b = texture(uTexture, vUv + vec2(0.0, -uTexelSize.y)).rgb;  \r\n    vec3 c = texture(uTexture, vUv + vec2(uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 d = texture(uTexture, vUv + vec2(-uTexelSize.x, 0.0)).rgb;  \r\n    vec3 e = texture(uTexture, vUv).rgb;  \r\n    vec3 f = texture(uTexture, vUv + vec2(uTexelSize.x, 0.0)).rgb;  \r\n    vec3 g = texture(uTexture, vUv + vec2(-uTexelSize.x, uTexelSize.y)).rgb;  \r\n    vec3 h = texture(uTexture, vUv + vec2(0.0, uTexelSize.y)).rgb;  \r\n    vec3 i = texture(uTexture, vUv + vec2(uTexelSize.x, uTexelSize.y)).rgb;  \r\n\r\n    // Soft min e max \r\n    vec3 mnRGB = min(min(min(d, e), min(f, b)), h);  \r\n    vec3 mnRGB2 = min(mnRGB, min(min(a, c), min(g, i)));  \r\n    mnRGB += mnRGB2;  \r\n\r\n    vec3 mxRGB = max(max(max(d, e), max(f, b)), h);  \r\n    vec3 mxRGB2 = max(mxRGB, max(max(a, c), max(g, i)));  \r\n    mxRGB += mxRGB2;  \r\n\r\n    vec3 rcpMRGB = 1.0 / mxRGB;  \r\n    vec3 ampRGB = clamp(min(mnRGB, 2.0 - mxRGB) * rcpMRGB, 0.0, 1.0);  \r\n\r\n    ampRGB = inversesqrt(ampRGB);  \r\n\r\n    float peak = -3.0 * uContrast + 8.0;  \r\n    vec3 wRGB = -1.0 / (ampRGB * peak);  \r\n    vec3 rcpWeightRGB = 1.0 / (4.0 * wRGB + 1.0);  \r\n\r\n    // Cross Filter \r\n    //  0 w 0  \r\n    //  w 1 w  \r\n    //  0 w 0  \r\n    vec3 window = (b + d) + (f + h);  \r\n    vec3 outColor = clamp((window * wRGB + e) * rcpWeightRGB, 0.0, 1.0);  \r\n\r\n    // Blend \r\n    fragColor = vec4(mix(e, outColor, uSharpening), 1.0);  \r\n}";
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/FXAA.js
-var _program$14, _buffer$11, FXAA;
-var init_FXAA = __esmMin((() => {
+//#region src/Renderer/Effects/Shaders/CAS.js
+var _program$14, _buffer$11, CAS;
+var init_CAS = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
 	init_PostProcess();
 	init_Common();
-	init_FXAA$1();
-	FXAA = class FXAA {
+	init_CAS$1();
+	CAS = class CAS {
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$11 || !_program$14 || !FXAA.isActive()) return;
+			if (!_buffer$11 || !_program$14 || !CAS.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
 			gl.useProgram(_program$14);
-			gl.uniform1f(_program$14.uniform.uSubpix, GraphicsSettings.fxaaSubpix || .25);
-			gl.uniform1f(_program$14.uniform.uEdgeThreshold, GraphicsSettings.fxaaEdgeThreshold || .125);
-			gl.uniform1f(_program$14.uniform.uEdgeThresholdMin, 0);
+			gl.uniform1f(_program$14.uniform.uContrast, GraphicsSettings.casContrast || 0);
+			gl.uniform1f(_program$14.uniform.uSharpening, GraphicsSettings.casSharpening || 1);
 			gl.uniform2f(_program$14.uniform.uTexelSize, 1 / gl.canvas.width, 1 / gl.canvas.height);
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$11);
 			const posLoc = _program$14.attribute.aPosition;
@@ -264191,9 +259618,9 @@ var init_FXAA = __esmMin((() => {
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$14 = WebGL_default.createShaderProgram(gl, Common_default, FXAA_default);
+				_program$14 = WebGL_default.createShaderProgram(gl, Common_default, CAS_default);
 			} catch (e) {
-				console.error("Error compiling FXAA shader.", e);
+				console.error("Error compiling CAS shader.", e);
 				return;
 			}
 			const quadVertices = new Float32Array([
@@ -264215,7 +259642,7 @@ var init_FXAA = __esmMin((() => {
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
 		static isActive() {
-			return GraphicsSettings.fxaaEnabled;
+			return GraphicsSettings.casEnabled;
 		}
 		static program() {
 			return _program$14;
@@ -264227,27 +259654,29 @@ var init_FXAA = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/GLSL/Vibrance.fs?raw
-var Vibrance_default;
-var init_Vibrance$1 = __esmMin((() => {
-	Vibrance_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uVibrance;  \r\nuniform vec3 uVibranceRGBBalance;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    vec3 color = texture(uTexture, vUv).rgb;  \r\n      \r\n    // (Rec. 709)  \r\n    vec3 coefLuma = vec3(0.212656, 0.715158, 0.072186);  \r\n    float luma = dot(coefLuma, color);  \r\n\r\n    float max_color = max(color.r, max(color.g, color.b));  \r\n    float min_color = min(color.r, min(color.g, color.b));  \r\n    float color_saturation = max_color - min_color;  \r\n\r\n    vec3 coeffVibrance = uVibranceRGBBalance * uVibrance;  \r\n\r\n    float strength = 1.0 + (coeffVibrance.r * (1.0 - (sign(coeffVibrance.r) * color_saturation)));  \r\n    color.r = mix(luma, color.r, strength);  \r\n      \r\n    strength = 1.0 + (coeffVibrance.g * (1.0 - (sign(coeffVibrance.g) * color_saturation)));  \r\n    color.g = mix(luma, color.g, strength);  \r\n      \r\n    strength = 1.0 + (coeffVibrance.b * (1.0 - (sign(coeffVibrance.b) * color_saturation)));  \r\n    color.b = mix(luma, color.b, strength);  \r\n\r\n    fragColor = vec4(color, 1.0);  \r\n} ";
+//#region src/Renderer/Effects/Shaders/GLSL/FXAA.fs?raw
+var FXAA_default;
+var init_FXAA$1 = __esmMin((() => {
+	FXAA_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uSubpix;  \r\nuniform float uEdgeThreshold;  \r\nuniform float uEdgeThresholdMin;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nfloat luminance(vec3 rgb) {  \r\n    return dot(rgb, vec3(0.299, 0.587, 0.114));  \r\n}  \r\n\r\nvoid main() {  \r\n    vec3 rgbM = texture(uTexture, vUv).rgb;  \r\n      \r\n    vec3 rgbNW = texture(uTexture, vUv + vec2(-uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 rgbNE = texture(uTexture, vUv + vec2(uTexelSize.x, -uTexelSize.y)).rgb;  \r\n    vec3 rgbSW = texture(uTexture, vUv + vec2(-uTexelSize.x, uTexelSize.y)).rgb;  \r\n    vec3 rgbSE = texture(uTexture, vUv + vec2(uTexelSize.x, uTexelSize.y)).rgb;  \r\n\r\n    float lumaM = luminance(rgbM);  \r\n    float lumaNW = luminance(rgbNW);  \r\n    float lumaNE = luminance(rgbNE);  \r\n    float lumaSW = luminance(rgbSW);  \r\n    float lumaSE = luminance(rgbSE);  \r\n\r\n    float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));  \r\n    float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));  \r\n\r\n    float lumaRange = lumaMax - lumaMin;  \r\n    if(lumaRange < max(uEdgeThresholdMin, lumaMax * uEdgeThreshold)) {  \r\n        fragColor = vec4(rgbM, 1.0);  \r\n        return;  \r\n    }  \r\n\r\n    vec2 dir;  \r\n    dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));  \r\n    dir.y = ((lumaNW + lumaSW) - (lumaNE + lumaSE));  \r\n\r\n    float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * 0.03125, 0.0078125);  \r\n    float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);  \r\n    dir = min(vec2(8.0), max(vec2(-8.0), dir * rcpDirMin)) * uTexelSize;  \r\n\r\n    vec3 rgbA = 0.5 * (  \r\n        texture(uTexture, vUv + dir * (1.0/3.0 - 0.5)).rgb +  \r\n        texture(uTexture, vUv + dir * (2.0/3.0 - 0.5)).rgb);  \r\n    vec3 rgbB = rgbA * 0.5 + 0.25 * (  \r\n        texture(uTexture, vUv + dir * -0.5).rgb +  \r\n        texture(uTexture, vUv + dir * 0.5).rgb);  \r\n\r\n    float lumaB = luminance(rgbB);  \r\n    if((lumaB < lumaMin) || (lumaB > lumaMax)) {  \r\n        fragColor = vec4(rgbA, 1.0);  \r\n    } else {  \r\n        fragColor = vec4(rgbB, 1.0);  \r\n    }  \r\n}";
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/Vibrance.js
-var _program$13, _buffer$10, Vibrance;
-var init_Vibrance = __esmMin((() => {
+//#region src/Renderer/Effects/Shaders/FXAA.js
+var _program$13, _buffer$10, FXAA;
+var init_FXAA = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
 	init_PostProcess();
 	init_Common();
-	init_Vibrance$1();
-	Vibrance = class Vibrance {
+	init_FXAA$1();
+	FXAA = class FXAA {
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$10 || !_program$13 || !Vibrance.isActive()) return;
+			if (!_buffer$10 || !_program$13 || !FXAA.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
 			gl.useProgram(_program$13);
-			gl.uniform1f(_program$13.uniform.uVibrance, GraphicsSettings.vibrance || .15);
-			gl.uniform3f(_program$13.uniform.uVibranceRGBBalance, 1, 1, 1);
+			gl.uniform1f(_program$13.uniform.uSubpix, GraphicsSettings.fxaaSubpix || .25);
+			gl.uniform1f(_program$13.uniform.uEdgeThreshold, GraphicsSettings.fxaaEdgeThreshold || .125);
+			gl.uniform1f(_program$13.uniform.uEdgeThresholdMin, 0);
+			gl.uniform2f(_program$13.uniform.uTexelSize, 1 / gl.canvas.width, 1 / gl.canvas.height);
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$10);
 			const posLoc = _program$13.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
@@ -264261,9 +259690,9 @@ var init_Vibrance = __esmMin((() => {
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$13 = WebGL_default.createShaderProgram(gl, Common_default, Vibrance_default);
+				_program$13 = WebGL_default.createShaderProgram(gl, Common_default, FXAA_default);
 			} catch (e) {
-				console.error("Error compiling Vibrance shader.", e);
+				console.error("Error compiling FXAA shader.", e);
 				return;
 			}
 			const quadVertices = new Float32Array([
@@ -264285,7 +259714,7 @@ var init_Vibrance = __esmMin((() => {
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
 		static isActive() {
-			return GraphicsSettings.vibranceEnabled;
+			return GraphicsSettings.fxaaEnabled;
 		}
 		static program() {
 			return _program$13;
@@ -264297,28 +259726,27 @@ var init_Vibrance = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/GLSL/Cartoon.fs?raw
-var Cartoon_default;
-var init_Cartoon$1 = __esmMin((() => {
-	Cartoon_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uPower;  \r\nuniform float uEdgeSlope;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    vec3 color = texture(uTexture, vUv).rgb;  \r\n\r\n    const vec3 coefLuma = vec3(0.2126, 0.7152, 0.0722);  \r\n\r\n    float diff1 = dot(coefLuma, texture(uTexture, vUv + uTexelSize).rgb);  \r\n    diff1 = dot(vec4(coefLuma, -1.0), vec4(texture(uTexture, vUv - uTexelSize).rgb, diff1));  \r\n      \r\n    float diff2 = dot(coefLuma, texture(uTexture, vUv + uTexelSize * vec2(1, -1)).rgb);  \r\n    diff2 = dot(vec4(coefLuma, -1.0), vec4(texture(uTexture, vUv + uTexelSize * vec2(-1, 1)).rgb, diff2));  \r\n\r\n    float edge = dot(vec2(diff1, diff2), vec2(diff1, diff2));  \r\n\r\n    vec3 result = clamp(pow(abs(edge), uEdgeSlope) * -uPower + color, 0.0, 1.0);  \r\n    fragColor = vec4(result, 1.0);  \r\n}";
+//#region src/Renderer/Effects/Shaders/GLSL/Vibrance.fs?raw
+var Vibrance_default;
+var init_Vibrance$1 = __esmMin((() => {
+	Vibrance_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uVibrance;  \r\nuniform vec3 uVibranceRGBBalance;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    vec3 color = texture(uTexture, vUv).rgb;  \r\n      \r\n    // (Rec. 709)  \r\n    vec3 coefLuma = vec3(0.212656, 0.715158, 0.072186);  \r\n    float luma = dot(coefLuma, color);  \r\n\r\n    float max_color = max(color.r, max(color.g, color.b));  \r\n    float min_color = min(color.r, min(color.g, color.b));  \r\n    float color_saturation = max_color - min_color;  \r\n\r\n    vec3 coeffVibrance = uVibranceRGBBalance * uVibrance;  \r\n\r\n    float strength = 1.0 + (coeffVibrance.r * (1.0 - (sign(coeffVibrance.r) * color_saturation)));  \r\n    color.r = mix(luma, color.r, strength);  \r\n      \r\n    strength = 1.0 + (coeffVibrance.g * (1.0 - (sign(coeffVibrance.g) * color_saturation)));  \r\n    color.g = mix(luma, color.g, strength);  \r\n      \r\n    strength = 1.0 + (coeffVibrance.b * (1.0 - (sign(coeffVibrance.b) * color_saturation)));  \r\n    color.b = mix(luma, color.b, strength);  \r\n\r\n    fragColor = vec4(color, 1.0);  \r\n} ";
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/Cartoon.js
-var _program$12, _buffer$9, Cartoon;
-var init_Cartoon = __esmMin((() => {
+//#region src/Renderer/Effects/Shaders/Vibrance.js
+var _program$12, _buffer$9, Vibrance;
+var init_Vibrance = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
 	init_PostProcess();
 	init_Common();
-	init_Cartoon$1();
-	Cartoon = class Cartoon {
+	init_Vibrance$1();
+	Vibrance = class Vibrance {
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$9 || !_program$12 || !Cartoon.isActive()) return;
+			if (!_buffer$9 || !_program$12 || !Vibrance.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
 			gl.useProgram(_program$12);
-			gl.uniform1f(_program$12.uniform.uPower, GraphicsSettings.cartoonPower || 1.5);
-			gl.uniform1f(_program$12.uniform.uEdgeSlope, GraphicsSettings.cartoonEdgeSlope || 1.5);
-			gl.uniform2f(_program$12.uniform.uTexelSize, 1 / gl.canvas.width, 1 / gl.canvas.height);
+			gl.uniform1f(_program$12.uniform.uVibrance, GraphicsSettings.vibrance || .15);
+			gl.uniform3f(_program$12.uniform.uVibranceRGBBalance, 1, 1, 1);
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$9);
 			const posLoc = _program$12.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
@@ -264332,9 +259760,9 @@ var init_Cartoon = __esmMin((() => {
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$12 = WebGL_default.createShaderProgram(gl, Common_default, Cartoon_default);
+				_program$12 = WebGL_default.createShaderProgram(gl, Common_default, Vibrance_default);
 			} catch (e) {
-				console.error("Error compiling Cartoon shader.", e);
+				console.error("Error compiling Vibrance shader.", e);
 				return;
 			}
 			const quadVertices = new Float32Array([
@@ -264356,7 +259784,7 @@ var init_Cartoon = __esmMin((() => {
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
 		static isActive() {
-			return GraphicsSettings.cartoonEnabled;
+			return GraphicsSettings.vibranceEnabled;
 		}
 		static program() {
 			return _program$12;
@@ -264368,52 +259796,44 @@ var init_Cartoon = __esmMin((() => {
 	};
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/GLSL/CommonUpsampling.fs?raw
-var CommonUpsampling_default;
-var init_CommonUpsampling = __esmMin((() => {
-	CommonUpsampling_default = "#version 300 es\r\nprecision mediump float;\r\nuniform sampler2D uSceneTexture;\r\n\r\nin vec2 vUv;\r\nout vec4 fragColor;\r\n\r\nvoid main() {\r\n	vec3 original = texture(uSceneTexture, vUv).rgb; \r\n	fragColor = vec4(original, 1.0);\r\n}";
+//#region src/Renderer/Effects/Shaders/GLSL/Cartoon.fs?raw
+var Cartoon_default;
+var init_Cartoon$1 = __esmMin((() => {
+	Cartoon_default = "#version 300 es\r\nprecision mediump float;  \r\n\r\nuniform sampler2D uTexture;  \r\nuniform float uPower;  \r\nuniform float uEdgeSlope;  \r\nuniform vec2 uTexelSize;  \r\n\r\nin vec2 vUv;  \r\nout vec4 fragColor;  \r\n\r\nvoid main() {  \r\n    vec3 color = texture(uTexture, vUv).rgb;  \r\n\r\n    const vec3 coefLuma = vec3(0.2126, 0.7152, 0.0722);  \r\n\r\n    float diff1 = dot(coefLuma, texture(uTexture, vUv + uTexelSize).rgb);  \r\n    diff1 = dot(vec4(coefLuma, -1.0), vec4(texture(uTexture, vUv - uTexelSize).rgb, diff1));  \r\n      \r\n    float diff2 = dot(coefLuma, texture(uTexture, vUv + uTexelSize * vec2(1, -1)).rgb);  \r\n    diff2 = dot(vec4(coefLuma, -1.0), vec4(texture(uTexture, vUv + uTexelSize * vec2(-1, 1)).rgb, diff2));  \r\n\r\n    float edge = dot(vec2(diff1, diff2), vec2(diff1, diff2));  \r\n\r\n    vec3 result = clamp(pow(abs(edge), uEdgeSlope) * -uPower + color, 0.0, 1.0);  \r\n    fragColor = vec4(result, 1.0);  \r\n}";
 }));
 //#endregion
-//#region src/Renderer/Effects/Shaders/Upsampling.js
-var _program$11, _buffer$8, Upsampling;
-var init_Upsampling = __esmMin((() => {
+//#region src/Renderer/Effects/Shaders/Cartoon.js
+var _program$11, _buffer$8, Cartoon;
+var init_Cartoon = __esmMin((() => {
 	init_Graphics();
 	init_WebGL();
 	init_PostProcess();
 	init_Common();
-	init_CommonUpsampling();
-	Upsampling = class Upsampling {
-		/**
-		* Renders the Upsampling effect
-		* @param {WebGLRenderingContext} gl - WebGL Context
-		* @param {WebGLTexture} inputTexture - Low resolution scene texture
-		* @param {WebGLFramebuffer} outputFramebuffer - Destination (Screen or next effect)
-		*/
+	init_Cartoon$1();
+	Cartoon = class Cartoon {
 		static render(gl, inputTexture, outputFbo) {
-			if (!_buffer$8 || !_program$11 || !Upsampling.isActive()) return;
+			if (!_buffer$8 || !_program$11 || !Cartoon.isActive()) return;
 			PostProcess.beforeRenderPass(gl, outputFbo);
 			gl.useProgram(_program$11);
+			gl.uniform1f(_program$11.uniform.uPower, GraphicsSettings.cartoonPower || 1.5);
+			gl.uniform1f(_program$11.uniform.uEdgeSlope, GraphicsSettings.cartoonEdgeSlope || 1.5);
+			gl.uniform2f(_program$11.uniform.uTexelSize, 1 / gl.canvas.width, 1 / gl.canvas.height);
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$8);
 			const posLoc = _program$11.attribute.aPosition;
 			gl.enableVertexAttribArray(posLoc);
 			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 			gl.activeTexture(gl.TEXTURE0);
 			gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-			gl.uniform1i(_program$11.uniform.uSceneTexture, 0);
+			gl.uniform1i(_program$11.uniform.uTexture, 0);
 			gl.drawArrays(gl.TRIANGLES, 0, 6);
 			PostProcess.afterRenderPass(gl);
 		}
-		/**
-		* Initializes shaders and buffers
-		*/
 		static init(gl) {
 			if (!gl) return;
 			try {
-				_program$11 = WebGL_default.createShaderProgram(gl, Common_default, CommonUpsampling_default);
+				_program$11 = WebGL_default.createShaderProgram(gl, Common_default, Cartoon_default);
 			} catch (e) {
-				console.error("Error compiling Upsampling shader.", e);
+				console.error("Error compiling Cartoon shader.", e);
 				return;
 			}
 			const quadVertices = new Float32Array([
@@ -264434,19 +259854,98 @@ var init_Upsampling = __esmMin((() => {
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$8);
 			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
 		}
+		static isActive() {
+			return GraphicsSettings.cartoonEnabled;
+		}
+		static program() {
+			return _program$11;
+		}
+		static clean(gl) {
+			if (_buffer$8) gl.deleteBuffer(_buffer$8);
+			_program$11 = _buffer$8 = null;
+		}
+	};
+}));
+//#endregion
+//#region src/Renderer/Effects/Shaders/GLSL/CommonUpsampling.fs?raw
+var CommonUpsampling_default;
+var init_CommonUpsampling = __esmMin((() => {
+	CommonUpsampling_default = "#version 300 es\r\nprecision mediump float;\r\nuniform sampler2D uSceneTexture;\r\n\r\nin vec2 vUv;\r\nout vec4 fragColor;\r\n\r\nvoid main() {\r\n	vec3 original = texture(uSceneTexture, vUv).rgb; \r\n	fragColor = vec4(original, 1.0);\r\n}";
+}));
+//#endregion
+//#region src/Renderer/Effects/Shaders/Upsampling.js
+var _program$10, _buffer$7, Upsampling;
+var init_Upsampling = __esmMin((() => {
+	init_Graphics();
+	init_WebGL();
+	init_PostProcess();
+	init_Common();
+	init_CommonUpsampling();
+	Upsampling = class Upsampling {
+		/**
+		* Renders the Upsampling effect
+		* @param {WebGLRenderingContext} gl - WebGL Context
+		* @param {WebGLTexture} inputTexture - Low resolution scene texture
+		* @param {WebGLFramebuffer} outputFramebuffer - Destination (Screen or next effect)
+		*/
+		static render(gl, inputTexture, outputFbo) {
+			if (!_buffer$7 || !_program$10 || !Upsampling.isActive()) return;
+			PostProcess.beforeRenderPass(gl, outputFbo);
+			gl.useProgram(_program$10);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$7);
+			const posLoc = _program$10.attribute.aPosition;
+			gl.enableVertexAttribArray(posLoc);
+			gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+			gl.activeTexture(gl.TEXTURE0);
+			gl.bindTexture(gl.TEXTURE_2D, inputTexture);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+			gl.uniform1i(_program$10.uniform.uSceneTexture, 0);
+			gl.drawArrays(gl.TRIANGLES, 0, 6);
+			PostProcess.afterRenderPass(gl);
+		}
+		/**
+		* Initializes shaders and buffers
+		*/
+		static init(gl) {
+			if (!gl) return;
+			try {
+				_program$10 = WebGL_default.createShaderProgram(gl, Common_default, CommonUpsampling_default);
+			} catch (e) {
+				console.error("Error compiling Upsampling shader.", e);
+				return;
+			}
+			const quadVertices = new Float32Array([
+				-1,
+				-1,
+				1,
+				-1,
+				-1,
+				1,
+				-1,
+				1,
+				1,
+				-1,
+				1,
+				1
+			]);
+			_buffer$7 = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$7);
+			gl.bufferData(gl.ARRAY_BUFFER, quadVertices, gl.STATIC_DRAW);
+		}
 		/** @returns {boolean} always false here */
 		static isActive() {
 			return GraphicsSettings.performanceMode;
 		}
 		/** @returns {WebGLProgram} The loaded shader program (returning one for validation check) */
 		static program() {
-			return _program$11;
+			return _program$10;
 		}
 		/** Clears memory references */
 		static clean(gl) {
-			_program$11 = null;
-			if (_buffer$8) gl.deleteBuffer(_buffer$8);
-			_buffer$8 = null;
+			_program$10 = null;
+			if (_buffer$7) gl.deleteBuffer(_buffer$7);
+			_buffer$7 = null;
 		}
 	};
 }));
@@ -264476,7 +259975,6 @@ function onWorldComplete(data) {
 	this.water = data.water;
 	this.sounds = data.sound;
 	this.effects = data.effect;
-	this.lights = data.lights || [];
 	this.diffuse = new Float32Array(this.light.diffuse);
 	this.light.env = new Float32Array([
 		1 - (1 - this.light.diffuse[0]) * (1 - this.light.ambient[0]),
@@ -264498,34 +259996,6 @@ function onWorldComplete(data) {
 	this.light.direction[1] = -dirVec[1];
 	this.light.direction[2] = -dirVec[2];
 }
-function hookContext(gl, modelView, projection, normalMat, fog, light, tick) {
-	const ctx = _hookContext;
-	ctx.gl = gl;
-	ctx.modelView = modelView;
-	ctx.projection = projection;
-	ctx.normalMat = normalMat;
-	ctx.fog = fog;
-	ctx.light = light;
-	ctx.tick = tick;
-	ctx.lightmap = Map_default.lightmap;
-	ctx.player = SessionStorage_default.Entity ? SessionStorage_default.Entity.position : null;
-	if (!ctx.drawScene) {
-		ctx.drawScene = (view, proj) => {
-			const depthTest = gl.isEnabled(gl.DEPTH_TEST);
-			gl.enable(gl.DEPTH_TEST);
-			gl.depthMask(true);
-			Sky_default.render(gl, view, proj, ctx.fog, ctx.tick);
-			Ground_default.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light);
-			Models_default.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light);
-			AnimatedModels_default.render(gl, view, proj, ctx.normalMat, ctx.fog, ctx.light, ctx.tick);
-			if (!depthTest) gl.disable(gl.DEPTH_TEST);
-		};
-		ctx.drawModelsDepth = (program) => Models_default.renderDepth(gl, program);
-		ctx.restoreTarget = () => PostProcess.prepare(gl);
-		ctx.createProgram = (vertex, fragment) => WebGL_default.createShaderProgram(gl, vertex, fragment);
-	}
-	return ctx;
-}
 /**
 * Received ground data from Thread
 */
@@ -264535,40 +260005,6 @@ function onGroundComplete(data) {
 	this.water.vertCount = data.waterVertCount;
 	Ground_default.init(gl, data);
 	Water_default.init(gl, this.water);
-	const asFloat = (value) => new Float32Array(Int32Array.of(value).buffer)[0];
-	this.lights.forEach((light) => {
-		light.world = [
-			light.pos[0] + data.width,
-			light.pos[1],
-			light.pos[2] + data.height
-		];
-		const color = light.color.map((v) => Math.abs(v) > 65535 ? asFloat(v) : v);
-		const scale = Math.max(color[0], color[1], color[2]) > 1 ? 255 : 1;
-		light.rgb = color.map((v) => Math.min(Math.max(v / scale, 0), 1));
-		light.radius = light.range * .2;
-	});
-	MapHooks_default.mapReady(gl, {
-		name: stripMapExtension(this.currentMap),
-		width: data.width,
-		height: data.height,
-		cellTexture: data.cellTexture,
-		cellHeights: data.cellHeights,
-		cellUv: data.cellUv,
-		cellAtlas: data.cellAtlas,
-		cellLight: data.cellLight,
-		textureNames: data.textureNames || [],
-		textureUrls: Array.isArray(data.textures) ? data.textures.slice() : [],
-		groundTextures: () => Ground_default.textures(),
-		water: () => Water_default.state(),
-		lights: this.lights,
-		altitude: {
-			TYPE: Altitude.TYPE,
-			width: () => Altitude.width,
-			height: () => Altitude.height,
-			cellType: (x, y) => Altitude.getCellType(x, y),
-			cellHeight: (x, y) => Altitude.getCellHeight(x, y)
-		}
-	});
 	this.sounds.forEach((sound) => {
 		const tmp = -sound.pos[1];
 		sound.pos[0] += data.width;
@@ -264618,7 +260054,6 @@ function registerPostProcessModules(gl) {
 	if (WebGL_default.detectBadWebGL(gl)) GraphicsSettings.bloom = false;
 	else PostProcess.register(Bloom, gl);
 	PostProcess.register(GaussianBlur, gl);
-	PostProcess.registerExternal(gl);
 	PostProcess.register(FXAA, gl);
 	PostProcess.register(CAS, gl);
 	PostProcess.register(Cartoon, gl);
@@ -264637,7 +260072,7 @@ function onMapComplete(success, error) {
 		UIManager.showErrorBox(error).ui.css("zIndex", 1e3);
 		return;
 	}
-	BGM.play(customMapBgm(Configs.get("customMaps"), worldResource) || mapInfo && mapInfo.mp3 || "01.mp3");
+	BGM.play(mapInfo && mapInfo.mp3 || "01.mp3");
 	this.fog.exist = !!(mapInfo && mapInfo.fog);
 	if (this.fog.exist) {
 		this.fog.near = mapInfo.fog.near * 240;
@@ -264648,7 +260083,6 @@ function onMapComplete(success, error) {
 	Renderer.init();
 	const gl = Renderer.getContext();
 	SpriteRenderer.init(gl);
-	addCustomMapWeather(Weather, Configs.get("customMaps"));
 	Sky_default.init(gl, worldResource);
 	Damage.init(gl);
 	EffectManager.init(gl);
@@ -264665,7 +260099,7 @@ function onMapComplete(success, error) {
 		Mouse.intersect = true;
 	});
 }
-var mat4$13, _pos$6, MapRenderer, _hookContext;
+var mat4$13, _pos$6, MapRenderer;
 var init_MapRenderer = __esmMin((() => {
 	init_Thread();
 	init_SoundManager();
@@ -264683,7 +260117,6 @@ var init_MapRenderer = __esmMin((() => {
 	init_GridSelector();
 	init_Ground();
 	init_Altitude();
-	init_MapHooks();
 	init_Water();
 	init_Models();
 	init_AnimatedModels();
@@ -264696,9 +260129,6 @@ var init_MapRenderer = __esmMin((() => {
 	init_SignboardManager();
 	init_ScreenEffectManager();
 	init_Sky();
-	init_WeatherEffect();
-	init_CustomMaps();
-	init_Configs();
 	init_Damage();
 	init_Graphics();
 	init_Map();
@@ -264735,7 +260165,6 @@ var init_MapRenderer = __esmMin((() => {
 		* @var {array} Sounds object list
 		*/
 		static sounds = null;
-		static lights = [];
 		/**
 		* @var {array} Effects object list
 		*/
@@ -264787,10 +260216,8 @@ var init_MapRenderer = __esmMin((() => {
 					Thread.hook("MAP_ALTITUDE", onAltitudeComplete.bind(MapRenderer));
 					Thread.hook("MAP_MODELS", onModelsComplete.bind(MapRenderer));
 					Thread.hook("MAP_ANIMATED_MODEL", onAnimatedModelComplete.bind(MapRenderer));
-					Thread.hook("MAP_REPLACED_MODELS", (models) => MapHooks_default.modelsReady(Renderer.getContext(), models));
 					MapRenderer.free();
 					Renderer.remove();
-					Thread.send("MAP_REPLACE_MODELS", MapHooks_default.modelNames());
 					Thread.send("LOAD_MAP", filename, onMapComplete.bind(MapRenderer));
 				});
 				return;
@@ -264818,7 +260245,6 @@ var init_MapRenderer = __esmMin((() => {
 			GridSelector_default.free(gl);
 			Sounds_default.free();
 			Effects_default.free();
-			MapHooks_default.mapFree(gl);
 			Ground_default.free(gl);
 			Water_default.free(gl);
 			Models_default.free(gl);
@@ -264835,7 +260261,6 @@ var init_MapRenderer = __esmMin((() => {
 			this.light = null;
 			this.water = null;
 			this.sounds = null;
-			this.lights = [];
 			this.effects = null;
 		}
 		/**
@@ -264848,7 +260273,7 @@ var init_MapRenderer = __esmMin((() => {
 			PostProcess.prepare(gl);
 			const fog = MapRenderer.fog;
 			fog.use = Map_default.fog;
-			const light = MapHooks_default.light(MapRenderer.light);
+			const light = MapRenderer.light;
 			let x, y;
 			Mouse.world.x = -1;
 			Mouse.world.y = -1;
@@ -264857,10 +260282,7 @@ var init_MapRenderer = __esmMin((() => {
 			const modelView = Camera.modelView;
 			const projection = Camera.projection;
 			const normalMat = Camera.normalMat;
-			const hooks = hookContext(gl, modelView, projection, normalMat, fog, light, tick);
-			MapHooks_default.stage("begin", hooks);
 			Ground_default.render(gl, modelView, projection, normalMat, fog, light);
-			MapHooks_default.stage("ground", hooks);
 			Effects_default.spam(SessionStorage_default.Entity.position, tick);
 			if (Mouse.intersect && Altitude.intersect(modelView, projection, _pos$6)) {
 				x = _pos$6[0];
@@ -264888,13 +260310,11 @@ var init_MapRenderer = __esmMin((() => {
 			Models_default.render(gl, modelView, projection, normalMat, fog, light);
 			AnimatedModels_default.render(gl, modelView, projection, normalMat, fog, light, tick);
 			GR2ModelRenderer_default.render(gl, modelView, projection, normalMat, fog, light, tick);
-			MapHooks_default.stage("models", hooks);
 			ScreenEffectManager.render(gl, modelView, projection, fog, tick, true);
 			EffectManager.render(gl, modelView, projection, fog, tick, true);
 			EntityManager.render(gl, modelView, projection, fog, false);
 			EntityManager.renderWaterDepth(gl, modelView, projection, fog);
-			if (MapHooks_default.replaces("water")) MapHooks_default.stage("water", hooks);
-			else Water_default.render(gl, modelView, projection, fog, light, tick);
+			Water_default.render(gl, modelView, projection, fog, light, tick);
 			Models_default.renderFaded(gl, modelView, projection, normalMat, fog, light);
 			AnimatedModels_default.renderFaded(gl, modelView, projection, normalMat, fog, light);
 			EffectManager.render(gl, modelView, projection, fog, tick, false);
@@ -264908,16 +260328,6 @@ var init_MapRenderer = __esmMin((() => {
 				EntityManager.setOverEntity(entity);
 			}
 			MemoryManager.clean(gl, tick);
-			MapHooks_default.stage("end", hooks);
-			PostProcess.scene = {
-				modelView,
-				projection,
-				light,
-				lights: MapRenderer.lights,
-				tick,
-				near: 1,
-				far: 1e3
-			};
 			PostProcess.render(gl);
 		}
 		/**
@@ -264925,7 +260335,6 @@ var init_MapRenderer = __esmMin((() => {
 		*/
 		static onLoad() {}
 	};
-	_hookContext = {};
 }));
 //#endregion
 //#region src/Renderer/Camera.js
@@ -266457,56 +261866,8 @@ var init_SwirlingAura$1 = __esmMin((() => {
 	SwirlingAura_default = "#version 300 es\r\nprecision highp float;\r\n\r\nin vec2 vTextureCoord;\r\nout vec4 fragColor;\r\n\r\nuniform sampler2D uDiffuse;\r\nuniform vec4 uColor;\r\n\r\nuniform bool  uFogUse;\r\nuniform float uFogNear;\r\nuniform float uFogFar;\r\nuniform vec3  uFogColor;\r\n\r\nvoid main(void) {\r\n	vec4 texColor = texture(uDiffuse, vTextureCoord);\r\n\r\n	if (texColor.a < 0.01) {\r\n		discard;\r\n	}\r\n\r\n	// Discard near-black pixels\r\n	if (texColor.r < 0.01 && texColor.g < 0.01 && texColor.b < 0.01) {\r\n		discard;\r\n	}\r\n\r\n	fragColor = texColor * uColor;\r\n\r\n	if (uFogUse) {\r\n		float depth = gl_FragCoord.z / gl_FragCoord.w;\r\n		float fogFactor = smoothstep(uFogNear, uFogFar, depth);\r\n		fragColor = mix(fragColor, vec4(uFogColor, fragColor.w), fogFactor);\r\n	}\r\n}";
 }));
 //#endregion
-//#region src/Renderer/Effects/AuraBlend.js
-/**
-* Renderer/Effects/AuraBlend.js
-*
-* Colour and blending for the aura effects, shared by the level-99 aura's
-* three parts and the high-level aura (MaxLevelAura).
-*
-* The auras add light (SRC_ALPHA, ONE), which can make any colour but black:
-* black added is nothing. A dark colour (AuraTiers.auraColor marks it) is
-* drawn by darkening what is behind instead, by how bright the texture is.
-*
-* This file is part of ROBrowser, (http://www.robrowser.com/).
-*/
-/**
-* The colour to give the shader's uColor for `color`.
-*
-* @param {{r: number, g: number, b: number, dark: boolean}} color
-* @param {number} alpha
-* @return {number[]} r, g, b, a
-*/
-function auraUniform(color, alpha) {
-	return color.dark ? [
-		1,
-		1,
-		1,
-		alpha
-	] : [
-		color.r,
-		color.g,
-		color.b,
-		alpha
-	];
-}
-/**
-* Switch to the blending `color` needs before drawing it. A no-op for every
-* colour but a dark one.
-*/
-function beginAuraBlend(gl, color) {
-	if (color && color.dark) gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
-}
-/**
-* Put back the additive blending the auras share, after beginAuraBlend.
-*/
-function endAuraBlend(gl, color) {
-	if (color && color.dark) gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-}
-var init_AuraBlend = __esmMin((() => {}));
-//#endregion
 //#region src/Renderer/Effects/SwirlingAura.js
-var mat4$10, _program$10, _modelMatrix, E_DIVISION, FULL_DISPLAY_ANGLE, DEG_TO_RAD$2, SwirlingAura;
+var mat4$10, _program$9, _modelMatrix, E_DIVISION, FULL_DISPLAY_ANGLE, DEG_TO_RAD$1, SwirlingAura;
 var init_SwirlingAura = __esmMin((() => {
 	init_SwirlingAura$2();
 	init_SwirlingAura$1();
@@ -266515,17 +261876,13 @@ var init_SwirlingAura = __esmMin((() => {
 	init_Client();
 	init_Altitude();
 	init_SpriteRenderer();
-	init_AuraBlend();
 	mat4$10 = gl_matrix_default.mat4;
 	_modelMatrix = mat4$10.create();
 	E_DIVISION = 21;
 	FULL_DISPLAY_ANGLE = 315;
-	DEG_TO_RAD$2 = Math.PI / 180;
+	DEG_TO_RAD$1 = Math.PI / 180;
 	SwirlingAura = class {
-		/**
-		* @param {object} color optional tint from AuraTiers.auraColor, over the blue or green
-		*/
-		constructor(position, textureName, tick, sizeType, color) {
+		constructor(position, textureName, tick, sizeType) {
 			this.position = position;
 			this.textureName = textureName;
 			this.tick = tick;
@@ -266541,7 +261898,6 @@ var init_SwirlingAura = __esmMin((() => {
 				g: 100 / 255,
 				b: 1
 			};
-			if (color) this.color = color;
 			this.alphaB = 120 / 255;
 			const INNER_CIRCLE_SCALE = .6;
 			this.bands = [];
@@ -266551,7 +261907,7 @@ var init_SwirlingAura = __esmMin((() => {
 				rotStart: ec * 90,
 				maxHeight: (15 - 2 * ec) * GAME_TO_WORLD,
 				distance: (3.9 + .2 * ec) * GAME_TO_WORLD * INNER_CIRCLE_SCALE,
-				riseAngle: (55 - 5 * ec) * DEG_TO_RAD$2,
+				riseAngle: (55 - 5 * ec) * DEG_TO_RAD$1,
 				spinSpeed: ec + 3,
 				height: new Float32Array(E_DIVISION)
 			});
@@ -266569,11 +261925,11 @@ var init_SwirlingAura = __esmMin((() => {
 			const middle = 10;
 			const step = 9;
 			for (let i = 0; i < E_DIVISION; i++) {
-				const sinLimit = (90 + (i - middle) * step) * DEG_TO_RAD$2;
+				const sinLimit = (90 + (i - middle) * step) * DEG_TO_RAD$1;
 				const sinLimitValue = Math.sin(sinLimit);
 				const maxPossible = band.maxHeight * sinLimitValue;
 				if (process <= 90) {
-					const sinProcess = Math.sin(process * DEG_TO_RAD$2);
+					const sinProcess = Math.sin(process * DEG_TO_RAD$1);
 					band.height[i] = Math.max(0, Math.min(band.maxHeight * sinLimitValue * sinProcess, maxPossible));
 				} else band.height[i] = maxPossible;
 			}
@@ -266587,7 +261943,7 @@ var init_SwirlingAura = __esmMin((() => {
 			const sinRise = Math.sin(band.riseAngle);
 			let offset = 0;
 			for (let k = 0; k < E_DIVISION; k++) {
-				const angle = (band.rotStart + k * this.basicAngle) * DEG_TO_RAD$2;
+				const angle = (band.rotStart + k * this.basicAngle) * DEG_TO_RAD$1;
 				const cosAngle = Math.cos(angle);
 				const sinAngle = Math.sin(angle);
 				const baseX = band.distance * cosAngle;
@@ -266666,8 +262022,8 @@ var init_SwirlingAura = __esmMin((() => {
 		* Render all three bands
 		*/
 		render(gl, tick) {
-			const uniform = _program$10.uniform;
-			const attribute = _program$10.attribute;
+			const uniform = _program$9.uniform;
+			const attribute = _program$9.attribute;
 			const groundZ = Altitude.getCellHeight(this.position[0], this.position[1]);
 			mat4$10.identity(_modelMatrix);
 			mat4$10.translate(_modelMatrix, _modelMatrix, [
@@ -266681,7 +262037,6 @@ var init_SwirlingAura = __esmMin((() => {
 			gl.enableVertexAttribArray(attribute.aTextureCoord);
 			const self = this;
 			const process = (tick - this.tick) / 25;
-			beginAuraBlend(gl, this.color);
 			SpriteRenderer.runWithDepth(true, false, false, function() {
 				for (let ec = 0; ec < self.bands.length; ec++) {
 					const band = self.bands[ec];
@@ -266693,19 +262048,18 @@ var init_SwirlingAura = __esmMin((() => {
 					gl.bufferSubData(gl.ARRAY_BUFFER, 0, self.vertices);
 					gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 20, 0);
 					gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 20, 12);
-					gl.uniform4f(uniform.uColor, ...auraUniform(self.color, self.alphaB));
+					gl.uniform4f(uniform.uColor, self.color.r, self.color.g, self.color.b, self.alphaB);
 					gl.uniform1f(uniform.uZIndex, .01 + ec * .001);
 					gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, self.indexBuffer);
 					gl.drawElements(gl.TRIANGLES, self.indexCount, gl.UNSIGNED_SHORT, 0);
 				}
 			});
-			endAuraBlend(gl, this.color);
 		}
 		/**
 		* Initialize static resources
 		*/
 		static init(gl) {
-			_program$10 = WebGL_default.createShaderProgram(gl, SwirlingAura_default$1, SwirlingAura_default);
+			_program$9 = WebGL_default.createShaderProgram(gl, SwirlingAura_default$1, SwirlingAura_default);
 			this.ready = true;
 			this.renderBeforeEntities = true;
 		}
@@ -266713,9 +262067,9 @@ var init_SwirlingAura = __esmMin((() => {
 		* Free static resources
 		*/
 		static free(gl) {
-			if (_program$10) {
-				gl.deleteProgram(_program$10);
-				_program$10 = null;
+			if (_program$9) {
+				gl.deleteProgram(_program$9);
+				_program$9 = null;
 			}
 			this.ready = false;
 		}
@@ -266723,9 +262077,9 @@ var init_SwirlingAura = __esmMin((() => {
 		* Before render setup
 		*/
 		static beforeRender(gl, modelView, projection, fog, tick) {
-			const uniform = _program$10.uniform;
+			const uniform = _program$9.uniform;
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-			gl.useProgram(_program$10);
+			gl.useProgram(_program$9);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -266740,8 +262094,8 @@ var init_SwirlingAura = __esmMin((() => {
 		*/
 		static afterRender(gl) {
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-			gl.disableVertexAttribArray(_program$10.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$10.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$9.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$9.attribute.aTextureCoord);
 		}
 	};
 }));
@@ -266816,7 +262170,7 @@ function calculateSize(self, aura, auraAngle, i) {
 	const endY = sin * (aura[i].distance * .8 + riseFactor);
 	return [Math.abs(endX - startX), Math.abs(endY - startY)];
 }
-var _program$9, _buffer$7, GroundAura;
+var _program$8, _buffer$6, GroundAura;
 var init_GroundAura = __esmMin((() => {
 	init_GroundAura$2();
 	init_GroundAura$1();
@@ -266824,18 +262178,8 @@ var init_GroundAura = __esmMin((() => {
 	init_Client();
 	init_Altitude();
 	init_SpriteRenderer();
-	init_AuraBlend();
 	GroundAura = class {
-		/**
-		* @param {object} color optional tint from AuraTiers.auraColor; white when left out
-		*/
-		constructor(position, size, distance, textureName, tick, color) {
-			this.color = color || {
-				r: 1,
-				g: 1,
-				b: 1,
-				dark: false
-			};
+		constructor(position, size, distance, textureName, tick) {
 			this.position = position;
 			this.textureName = textureName;
 			this.tick = tick;
@@ -266881,7 +262225,7 @@ var init_GroundAura = __esmMin((() => {
 			this.ready = false;
 		}
 		render(gl, tick) {
-			const uniform = _program$9.uniform;
+			const uniform = _program$8.uniform;
 			gl.bindTexture(gl.TEXTURE_2D, this.texture);
 			const RAG_TICK_MS = 25;
 			const dt = Math.min(tick - (this._lastTick || tick), 250);
@@ -266915,28 +262259,26 @@ var init_GroundAura = __esmMin((() => {
 			];
 			gl.uniform3fv(uniform.uWorldPosition, worldPos);
 			const self = this;
-			beginAuraBlend(gl, this.color);
 			SpriteRenderer.runWithDepth(true, false, false, function() {
 				for (let i = 0; i < self.aura.length; i++) {
 					if (!self.aura[i].life) continue;
 					const auraAngle = i * 23;
 					gl.uniform2f(uniform.uSize, self.aura[i].size[0], self.aura[i].size[1]);
 					gl.uniform1f(uniform.uAngle, auraAngle * Math.PI / 180);
-					gl.uniform4f(uniform.uColor, ...auraUniform(self.color, .8));
+					gl.uniform4f(uniform.uColor, 1, 1, 1, .8);
 					gl.uniform1f(uniform.uZIndex, 1 + i);
 					gl.drawArrays(gl.TRIANGLES, 0, 6);
 				}
 			});
-			endAuraBlend(gl, this.color);
 		}
 		/**
 		* Initialize static resources
 		*/
 		static init(gl) {
-			_program$9 = WebGL_default.createShaderProgram(gl, GroundAura_default$1, GroundAura_default);
+			_program$8 = WebGL_default.createShaderProgram(gl, GroundAura_default$1, GroundAura_default);
 			const vertices = generateGroundQuad();
-			_buffer$7 = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$7);
+			_buffer$6 = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$6);
 			gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
 			this.ready = true;
 			this.renderBeforeEntities = true;
@@ -266945,13 +262287,13 @@ var init_GroundAura = __esmMin((() => {
 		* Free static resources
 		*/
 		static free(gl) {
-			if (_program$9) {
-				gl.deleteProgram(_program$9);
-				_program$9 = null;
+			if (_program$8) {
+				gl.deleteProgram(_program$8);
+				_program$8 = null;
 			}
-			if (_buffer$7) {
-				gl.deleteBuffer(_buffer$7);
-				_buffer$7 = null;
+			if (_buffer$6) {
+				gl.deleteBuffer(_buffer$6);
+				_buffer$6 = null;
 			}
 			this.ready = false;
 		}
@@ -266959,10 +262301,10 @@ var init_GroundAura = __esmMin((() => {
 		* Before render setup
 		*/
 		static beforeRender(gl, modelView, projection, fog, tick) {
-			const uniform = _program$9.uniform;
-			const attribute = _program$9.attribute;
+			const uniform = _program$8.uniform;
+			const attribute = _program$8.attribute;
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-			gl.useProgram(_program$9);
+			gl.useProgram(_program$8);
 			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
 			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
 			gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
@@ -266971,7 +262313,7 @@ var init_GroundAura = __esmMin((() => {
 			gl.uniform3fv(uniform.uFogColor, fog.color);
 			gl.activeTexture(gl.TEXTURE0);
 			gl.uniform1i(uniform.uDiffuse, 0);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$7);
+			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$6);
 			gl.enableVertexAttribArray(attribute.aPosition);
 			gl.enableVertexAttribArray(attribute.aTextureCoord);
 			gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 20, 0);
@@ -266982,8 +262324,8 @@ var init_GroundAura = __esmMin((() => {
 		*/
 		static afterRender(gl) {
 			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-			gl.disableVertexAttribArray(_program$9.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$9.attribute.aTextureCoord);
+			gl.disableVertexAttribArray(_program$8.attribute.aPosition);
+			gl.disableVertexAttribArray(_program$8.attribute.aTextureCoord);
 		}
 	};
 }));
@@ -267053,7 +262395,7 @@ function createAnchor(isGhost, seedMaxUnits) {
 		z: 0
 	};
 }
-var DEG_TO_RAD$1, GAME_TO_WORLD, NUM_COLUMNS, ANCHORS_PER_COL, BASE_LIFT$1, REF_RADIUS, REF_SPEED, REF_DRIFT_K, REF_SEED_MAX, REF_RESET_Y, REF_ALPHA_OFFSET, REF_ALPHA_GAIN, ANCHOR_SIGNS, ANCHOR_PHASE_OFFSETS, debugConfig, _program$8, _buffer$6, BILLBOARD_CORNERS, Level99Bubble;
+var DEG_TO_RAD, GAME_TO_WORLD, NUM_COLUMNS, ANCHORS_PER_COL, BASE_LIFT, REF_RADIUS, REF_SPEED, REF_DRIFT_K, REF_SEED_MAX, REF_RESET_Y, REF_ALPHA_OFFSET, REF_ALPHA_GAIN, ANCHOR_SIGNS, ANCHOR_PHASE_OFFSETS, debugConfig, _program$7, _buffer$5, BILLBOARD_CORNERS, Level99Bubble;
 var init_Level99Bubble = __esmMin((() => {
 	init_Level99Bubble$2();
 	init_Level99Bubble$1();
@@ -267062,12 +262404,11 @@ var init_Level99Bubble = __esmMin((() => {
 	init_Camera();
 	init_Altitude();
 	init_SpriteRenderer();
-	init_AuraBlend();
-	DEG_TO_RAD$1 = Math.PI / 180;
+	DEG_TO_RAD = Math.PI / 180;
 	GAME_TO_WORLD = .1 * 2.2;
 	NUM_COLUMNS = 4;
 	ANCHORS_PER_COL = 4;
-	BASE_LIFT$1 = .05;
+	BASE_LIFT = .05;
 	REF_RADIUS = 2.4;
 	REF_SPEED = .15;
 	REF_DRIFT_K = .15;
@@ -267143,7 +262484,7 @@ var init_Level99Bubble = __esmMin((() => {
 		}
 	];
 	Level99Bubble = class {
-		constructor(position, textureName, tick, flag1, color) {
+		constructor(position, textureName, tick, flag1) {
 			this.position = position;
 			this.textureName = textureName || "whitelight.tga";
 			this.tick = tick || 0;
@@ -267155,7 +262496,7 @@ var init_Level99Bubble = __esmMin((() => {
 			this.seedMax = isGhost ? debugConfig.ghostSeedMax : debugConfig.seedMax;
 			this.resetY = isGhost ? -debugConfig.ghostSeedMax : REF_RESET_Y;
 			this.driftK = REF_DRIFT_K;
-			this.color = color || pickColor(this.flag1);
+			this.color = pickColor(this.flag1);
 			this.isGhost = isGhost;
 			this.passCount = this.flag1 === 1 ? 2 : 1;
 			this.columns = [];
@@ -267245,8 +262586,8 @@ var init_Level99Bubble = __esmMin((() => {
 			const signs = ANCHOR_SIGNS[anchorIndex];
 			const phaseOffsets = ANCHOR_PHASE_OFFSETS[anchorIndex];
 			if (anchor.y < 0) {
-				const phaseA = column.phases[phaseOffsets.pa] * DEG_TO_RAD$1;
-				const phaseB = column.phases[phaseOffsets.pb] * DEG_TO_RAD$1;
+				const phaseA = column.phases[phaseOffsets.pa] * DEG_TO_RAD;
+				const phaseB = column.phases[phaseOffsets.pb] * DEG_TO_RAD;
 				anchor.x += signs.kx * this.driftK * Math.sin(phaseA) * stepScale;
 				anchor.z += signs.kz * this.driftK * Math.sin(phaseB) * stepScale;
 			}
@@ -267296,17 +262637,17 @@ var init_Level99Bubble = __esmMin((() => {
 		}
 		render(gl, tick) {
 			if (!this.ready || !this.texture) return;
-			const uniform = _program$8.uniform;
+			const uniform = _program$7.uniform;
 			const groundZ = Altitude.getCellHeight(this.position[0], this.position[1]);
 			const basePos = [
 				this.position[0] + .5,
-				-groundZ - BASE_LIFT$1,
+				-groundZ - BASE_LIFT,
 				this.position[1] + .5
 			];
 			const viewPitch = Camera.angle[0];
 			const viewYaw = Camera.angle[1];
-			const beta = (360 - viewPitch + 90) % 360 * DEG_TO_RAD$1;
-			const alpha = (360 - viewYaw) % 360 * DEG_TO_RAD$1;
+			const beta = (360 - viewPitch + 90) % 360 * DEG_TO_RAD;
+			const alpha = (360 - viewYaw) % 360 * DEG_TO_RAD;
 			const sinBeta = Math.sin(beta);
 			const cosBeta = Math.cos(beta);
 			const sinAlpha = Math.sin(alpha);
@@ -267349,20 +262690,18 @@ var init_Level99Bubble = __esmMin((() => {
 					this.fillQuad(this.tmpPoints, this.quadData);
 					gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.quadData);
 					const self = this;
-					beginAuraBlend(gl, this.color);
 					SpriteRenderer.runWithDepth(true, false, false, function() {
 						for (let pass = 0; pass < self.passCount; pass++) {
-							gl.uniform4f(uniform.uColor, ...auraUniform(self.color, alphaValue));
+							gl.uniform4f(uniform.uColor, self.color.r, self.color.g, self.color.b, alphaValue);
 							gl.uniform1f(uniform.uZIndex, .01 + ec * .002 + ai * 1e-4 + pass * 5e-5);
 							gl.drawArrays(gl.TRIANGLES, 0, 6);
 						}
 					});
-					endAuraBlend(gl, this.color);
 				}
 			}
 		}
 		renderBackground(gl, basePos) {
-			const uniform = _program$8.uniform;
+			const uniform = _program$7.uniform;
 			const radius = this.baseRadius * GAME_TO_WORLD * debugConfig.bgRadiusFactor;
 			const height = this.seedMax * GAME_TO_WORLD;
 			function drawQuad(v0, v1, v2, v3) {
@@ -267492,280 +262831,6 @@ var init_Level99Bubble = __esmMin((() => {
 			gl.uniform1i(uniform.uSolidBg, 0);
 		}
 		static init(gl) {
-			_program$8 = WebGL_default.createShaderProgram(gl, Level99Bubble_default$1, Level99Bubble_default);
-			_buffer$6 = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$6);
-			gl.bufferData(gl.ARRAY_BUFFER, 120, gl.DYNAMIC_DRAW);
-			this.ready = true;
-			this.renderBeforeEntities = true;
-		}
-		static free(gl) {
-			if (_program$8) {
-				gl.deleteProgram(_program$8);
-				_program$8 = null;
-			}
-			if (_buffer$6) {
-				gl.deleteBuffer(_buffer$6);
-				_buffer$6 = null;
-			}
-			this.ready = false;
-		}
-		static beforeRender(gl, modelView, projection, fog) {
-			const uniform = _program$8.uniform;
-			const attribute = _program$8.attribute;
-			gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
-			gl.useProgram(_program$8);
-			gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
-			gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
-			gl.uniform1i(uniform.uFogUse, fog.use && fog.exist);
-			gl.uniform1f(uniform.uFogNear, fog.near);
-			gl.uniform1f(uniform.uFogFar, fog.far);
-			gl.uniform3fv(uniform.uFogColor, fog.color);
-			gl.activeTexture(gl.TEXTURE0);
-			gl.uniform1i(uniform.uDiffuse, 0);
-			gl.uniform1i(uniform.uSolidBg, 0);
-			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$6);
-			gl.enableVertexAttribArray(attribute.aPosition);
-			gl.enableVertexAttribArray(attribute.aTextureCoord);
-			gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 20, 0);
-			gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 20, 12);
-		}
-		static afterRender(gl) {
-			gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-			gl.disableVertexAttribArray(_program$8.attribute.aPosition);
-			gl.disableVertexAttribArray(_program$8.attribute.aTextureCoord);
-		}
-	};
-}));
-//#endregion
-//#region src/Renderer/Effects/MaxLevelAura.js
-function loadTexture$1(gl, name) {
-	if (_textures$1.has(name)) return;
-	_textures$1.set(name, null);
-	Client.loadFile(`data/texture/effect/${name}`, (buffer) => {
-		WebGL_default.texture(gl, buffer, (texture) => {
-			_textures$1.set(name, texture);
-		});
-	});
-}
-function bubbleName(frame) {
-	return `w_bubble${String(frame + 1).padStart(2, "0")}.tga`;
-}
-var DEG_TO_RAD, BASE_LIFT, BUBBLE_FRAMES, FRAME_MS, RINGS, GROUND_RINGS, CORNERS, _program$7, _buffer$5, _textures$1, MaxLevelAura;
-var init_MaxLevelAura = __esmMin((() => {
-	init_Level99Bubble$2();
-	init_Level99Bubble$1();
-	init_WebGL();
-	init_Client();
-	init_Altitude();
-	init_SpriteRenderer();
-	init_AuraBlend();
-	DEG_TO_RAD = Math.PI / 180;
-	BASE_LIFT = .05;
-	BUBBLE_FRAMES = 27;
-	FRAME_MS = 55;
-	RINGS = [
-		{
-			count: 18,
-			radius: .95,
-			height: 2.6,
-			spin: 30
-		},
-		{
-			count: 18,
-			radius: 1.3,
-			height: 2,
-			spin: -24
-		},
-		{
-			count: 18,
-			radius: 1.65,
-			height: 1.4,
-			spin: 18
-		}
-	];
-	GROUND_RINGS = [{
-		texture: "cir0002.tga",
-		size: 6.4,
-		spin: 40
-	}, {
-		texture: "emp shock.tga",
-		size: 5,
-		spin: -55
-	}];
-	CORNERS = [
-		{
-			x: -1,
-			y: -1
-		},
-		{
-			x: 1,
-			y: -1
-		},
-		{
-			x: 1,
-			y: 1
-		},
-		{
-			x: -1,
-			y: 1
-		}
-	];
-	_textures$1 = /* @__PURE__ */ new Map();
-	MaxLevelAura = class {
-		/**
-		* @param {vec3} position entity position (kept by reference, so it follows)
-		* @param {string} part 'bubbles' (the main effect) or 'rings' (the _SUB effect)
-		* @param {{r: number, g: number, b: number, dark: boolean}} color the tier's tint, from AuraTiers
-		* @param {number} tick start tick
-		*/
-		constructor(position, part, color, tick) {
-			this.position = position;
-			this.part = part === "rings" ? "rings" : "bubbles";
-			this.color = color || {
-				r: 1,
-				g: 1,
-				b: 1,
-				dark: false
-			};
-			this.startTick = tick || 0;
-			this.quadData = /* @__PURE__ */ new Float32Array(30);
-			this.points = [
-				[
-					0,
-					0,
-					0
-				],
-				[
-					0,
-					0,
-					0
-				],
-				[
-					0,
-					0,
-					0
-				],
-				[
-					0,
-					0,
-					0
-				]
-			];
-		}
-		init(gl) {
-			if (this.part === "rings") GROUND_RINGS.forEach((r) => loadTexture$1(gl, r.texture));
-			else for (let i = 0; i < BUBBLE_FRAMES; i++) loadTexture$1(gl, bubbleName(i));
-			this.ready = true;
-		}
-		free() {
-			this.ready = false;
-		}
-		/**
-		* Two triangles from four corners, with the texture across them.
-		*/
-		fillQuad(points) {
-			const q = this.quadData;
-			const order = [
-				0,
-				1,
-				2,
-				2,
-				3,
-				0
-			];
-			const uv = [
-				[0, 0],
-				[1, 0],
-				[1, 1],
-				[0, 1]
-			];
-			for (let v = 0; v < 6; v++) {
-				const p = points[order[v]];
-				q[v * 5] = p[0];
-				q[v * 5 + 1] = p[1];
-				q[v * 5 + 2] = p[2];
-				q[v * 5 + 3] = uv[order[v]][0];
-				q[v * 5 + 4] = uv[order[v]][1];
-			}
-		}
-		draw(gl, texture, alpha, zIndex) {
-			if (!texture) return;
-			const uniform = _program$7.uniform;
-			gl.bindTexture(gl.TEXTURE_2D, texture);
-			gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.quadData);
-			gl.uniform4f(uniform.uColor, ...auraUniform(this.color, alpha));
-			gl.uniform1f(uniform.uZIndex, zIndex);
-			gl.drawArrays(gl.TRIANGLES, 0, 6);
-		}
-		render(gl, tick) {
-			if (!this.ready) return;
-			const elapsed = Math.max(0, tick - this.startTick);
-			const groundZ = Altitude.getCellHeight(this.position[0], this.position[1]);
-			const base = [
-				this.position[0] + .5,
-				-groundZ - BASE_LIFT,
-				this.position[1] + .5
-			];
-			const self = this;
-			beginAuraBlend(gl, this.color);
-			SpriteRenderer.runWithDepth(true, false, false, function() {
-				if (self.part === "rings") self.renderRings(gl, base, elapsed);
-				else self.renderBubbles(gl, base, elapsed);
-			});
-			endAuraBlend(gl, this.color);
-		}
-		renderRings(gl, base, elapsed) {
-			for (let i = 0; i < GROUND_RINGS.length; i++) {
-				const ring = GROUND_RINGS[i];
-				const angle = (elapsed / 1e3 * ring.spin + i * 45) * DEG_TO_RAD;
-				const half = ring.size / 2;
-				const cos = Math.cos(angle) * half;
-				const sin = Math.sin(angle) * half;
-				for (let k = 0; k < 4; k++) {
-					const x = CORNERS[k].x;
-					const z = CORNERS[k].y;
-					this.points[k][0] = base[0] + x * cos - z * sin;
-					this.points[k][1] = base[1] - .01 * (i + 1);
-					this.points[k][2] = base[2] + x * sin + z * cos;
-				}
-				this.fillQuad(this.points);
-				this.draw(gl, _textures$1.get(ring.texture), 1, .002 * (i + 1));
-			}
-		}
-		renderBubbles(gl, base, elapsed) {
-			const frame = Math.floor(elapsed / FRAME_MS);
-			for (let r = 0; r < RINGS.length; r++) {
-				const ring = RINGS[r];
-				const turn = elapsed / 1e3 * ring.spin * DEG_TO_RAD;
-				const step = Math.PI * 2 / ring.count;
-				const top = base[1] - ring.height * (.9 + .1 * Math.sin(elapsed / 400 + r));
-				for (let b = 0; b < ring.count; b++) {
-					const a0 = turn + b * step;
-					const a1 = a0 + step;
-					const x0 = base[0] + Math.cos(a0) * ring.radius;
-					const z0 = base[2] + Math.sin(a0) * ring.radius;
-					const x1 = base[0] + Math.cos(a1) * ring.radius;
-					const z1 = base[2] + Math.sin(a1) * ring.radius;
-					this.points[0][0] = x0;
-					this.points[0][1] = top;
-					this.points[0][2] = z0;
-					this.points[1][0] = x1;
-					this.points[1][1] = top;
-					this.points[1][2] = z1;
-					this.points[2][0] = x1;
-					this.points[2][1] = base[1];
-					this.points[2][2] = z1;
-					this.points[3][0] = x0;
-					this.points[3][1] = base[1];
-					this.points[3][2] = z0;
-					this.fillQuad(this.points);
-					const texture = _textures$1.get(bubbleName((frame + b * 3 + r * 9) % BUBBLE_FRAMES));
-					this.draw(gl, texture, .55, .01 + r * .002 + b * 1e-4);
-				}
-			}
-		}
-		static init(gl) {
 			_program$7 = WebGL_default.createShaderProgram(gl, Level99Bubble_default$1, Level99Bubble_default);
 			_buffer$5 = gl.createBuffer();
 			gl.bindBuffer(gl.ARRAY_BUFFER, _buffer$5);
@@ -267782,8 +262847,6 @@ var init_MaxLevelAura = __esmMin((() => {
 				gl.deleteBuffer(_buffer$5);
 				_buffer$5 = null;
 			}
-			for (const texture of _textures$1.values()) if (texture) gl.deleteTexture(texture);
-			_textures$1.clear();
 			this.ready = false;
 		}
 		static beforeRender(gl, modelView, projection, fog) {
@@ -267812,253 +262875,6 @@ var init_MaxLevelAura = __esmMin((() => {
 			gl.disableVertexAttribArray(_program$7.attribute.aTextureCoord);
 		}
 	};
-}));
-//#endregion
-//#region src/DB/Effects/AuraTiers.js
-/** Transcendent second jobs: Lord Knight (4008) to Paladin riding (4022). */
-function isTranscendentSecond(job) {
-	return job >= 4008 && job <= 4022;
-}
-/** Fourth jobs: Dragon Knight (4252) to Imperial Guard 2 (4281), and Sky Emperor (4302) to Sky Emperor 2 (4316). */
-function isFourthJob(job) {
-	return job >= 4252 && job <= 4281 || job >= 4302 && job <= 4316;
-}
-/**
-* The aura settings: the defaults with the server's `aura` config over them.
-*
-* @param {object} server the server's `aura` config, or undefined
-*/
-function auraSettings(server) {
-	return Object.assign({}, DEFAULTS, server && typeof server === "object" ? server : {});
-}
-/**
-* The tier a character wears: 99, 150, 185 or 'fourth', or null for none.
-*
-* @param {number} level base level
-* @param {number} job job id
-* @param {object} settings from auraSettings
-* @return {number|string|null}
-*/
-function auraTier(level, job, settings) {
-	if (!(level >= settings.defaultLv)) return null;
-	if (isFourthJob(job) && level >= settings.fourthLv) return "fourth";
-	if (level >= settings.lv160) return 185;
-	if (level >= settings.lv150) return 150;
-	if (settings.upperJob && isTranscendentSecond(job)) return 185;
-	return 99;
-}
-/**
-* A 0-255 RGB list as the colour the aura effects take, or null for none or
-* one that is not three numbers. Black (or near it) cannot be drawn by adding
-* light, so it is marked `dark`, and the effects darken instead.
-*
-* @param {Array} rgb [r, g, b], 0-255
-* @return {{r: number, g: number, b: number, dark: boolean}|null}
-*/
-function auraColor(rgb) {
-	if (!Array.isArray(rgb) || rgb.length !== 3 || !rgb.every((c) => typeof c === "number" && Number.isFinite(c))) return null;
-	const [r, g, b] = rgb.map((c) => Math.min(255, Math.max(0, c)) / 255);
-	return {
-		r,
-		g,
-		b,
-		dark: r + g + b < .15
-	};
-}
-/**
-* The colour a tier is drawn in: the server's for that tier, else its `color`
-* for all, else the tier's own. Null for the 99 aura with nothing set, which
-* keeps its own blue.
-*
-* @param {number|string} tier from auraTier
-* @param {object} settings from auraSettings
-*/
-function tierColor(tier, settings) {
-	return auraColor(settings.colors && typeof settings.colors === "object" ? settings.colors[tier] : void 0) || auraColor(settings.color) || auraColor(TIER_COLORS[tier]);
-}
-var TIER_EFFECTS, ALL_TIER_EFFECTS, TIER_COLORS, NAMED_COLORS, DEFAULTS;
-var init_AuraTiers = __esmMin((() => {
-	TIER_EFFECTS = {
-		99: {
-			full: [
-				200,
-				201,
-				202
-			],
-			simple: [202]
-		},
-		150: {
-			full: [978, 979],
-			simple: [979]
-		},
-		185: {
-			full: [1226, 1227],
-			simple: [1227]
-		},
-		fourth: {
-			full: [2275, 2276],
-			simple: [2276]
-		}
-	};
-	ALL_TIER_EFFECTS = [...new Set(Object.values(TIER_EFFECTS).flatMap((t) => t.full))];
-	TIER_COLORS = {
-		150: [
-			90,
-			140,
-			255
-		],
-		160: [
-			255,
-			220,
-			70
-		],
-		185: [
-			255,
-			80,
-			150
-		],
-		fourth: [
-			255,
-			155,
-			0
-		]
-	};
-	NAMED_COLORS = {
-		red: [
-			255,
-			40,
-			40
-		],
-		ultramarine: [
-			40,
-			70,
-			255
-		],
-		cyan: [
-			0,
-			225,
-			255
-		],
-		lime: [
-			140,
-			255,
-			40
-		],
-		violet: [
-			160,
-			60,
-			255
-		],
-		lilac: [
-			215,
-			150,
-			255
-		],
-		sun_orange: [
-			255,
-			140,
-			0
-		],
-		deep_pink: [
-			255,
-			30,
-			140
-		],
-		black: [
-			0,
-			0,
-			0
-		],
-		white: [
-			255,
-			255,
-			255
-		]
-	};
-	DEFAULTS = {
-		defaultLv: 99,
-		lv150: 150,
-		lv160: 160,
-		fourthLv: 250,
-		upperJob: true
-	};
-}));
-//#endregion
-//#region src/DB/Effects/LevelAuraEffects.js
-/**
-* One part of the high-level aura: 'bubbles' for a main effect, 'rings' for a
-* _SUB one.
-*/
-function maxPart(part, rgb) {
-	return {
-		type: "FUNC",
-		attachedEntity: true,
-		func: function(Params) {
-			this.add(new MaxLevelAura(Params.Init.ownerEntity.position, part, Params.Init.auraColor || auraColor(rgb), Params.Inst.startTick), Params);
-		}
-	};
-}
-/** The level-99 aura's three parts (EF_LEVEL99, _2 and _3), in one colour. */
-function classic(rgb) {
-	const color = (Params) => Params.Init.auraColor || auraColor(rgb);
-	return [
-		{
-			type: "FUNC",
-			attachedEntity: true,
-			func: function(Params) {
-				this.add(new SwirlingAura(Params.Init.ownerEntity.position, "ring_blue.tga", Params.Inst.startTick, void 0, color(Params)), Params);
-			}
-		},
-		{
-			type: "FUNC",
-			attachedEntity: true,
-			func: function(Params) {
-				this.add(new GroundAura(Params.Init.ownerEntity.position, 100, 15, "pikapika2.bmp", Params.Inst.startTick, color(Params)), Params);
-			}
-		},
-		{
-			type: "FUNC",
-			attachedEntity: true,
-			func: function(Params) {
-				this.add(new Level99Bubble(Params.Init.ownerEntity.position, "whitelight.tga", Params.Inst.startTick, 1, color(Params)), Params);
-			}
-		}
-	];
-}
-var COLOR_ORDER, table;
-var init_LevelAuraEffects = __esmMin((() => {
-	init_MaxLevelAura();
-	init_SwirlingAura();
-	init_GroundAura();
-	init_Level99Bubble();
-	init_AuraTiers();
-	COLOR_ORDER = [
-		"red",
-		"ultramarine",
-		"cyan",
-		"lime",
-		"violet",
-		"lilac",
-		"sun_orange",
-		"deep_pink",
-		"black",
-		"white"
-	];
-	table = {
-		881: [maxPart("bubbles", TIER_COLORS[150]), maxPart("rings", TIER_COLORS[150])],
-		978: [maxPart("bubbles", TIER_COLORS[150])],
-		979: [maxPart("rings", TIER_COLORS[150])],
-		1022: [maxPart("bubbles", TIER_COLORS[160])],
-		1023: [maxPart("rings", TIER_COLORS[160])],
-		1226: [maxPart("bubbles", TIER_COLORS[185])],
-		1227: [maxPart("rings", TIER_COLORS[185])],
-		2275: [maxPart("bubbles", TIER_COLORS.fourth)],
-		2276: [maxPart("rings", TIER_COLORS.fourth)]
-	};
-	COLOR_ORDER.forEach((name, i) => {
-		table[1164 + i] = classic(NAMED_COLORS[name]);
-		table[1174 + i] = [maxPart("bubbles", NAMED_COLORS[name]), maxPart("rings", NAMED_COLORS[name])];
-	});
 }));
 //#endregion
 //#region src/Renderer/Effects/Tiles.vs?raw
@@ -269889,7 +264705,6 @@ var init_EffectTable = __esmMin((() => {
 	init_SwirlingAura();
 	init_GroundAura();
 	init_Level99Bubble();
-	init_LevelAuraEffects();
 	init_Songs();
 	init_SoundManager();
 	init_Events();
@@ -273083,14 +267898,14 @@ var init_EffectTable = __esmMin((() => {
 			type: "FUNC",
 			attachedEntity: true,
 			func: function(Params) {
-				this.add(new SwirlingAura(Params.Init.ownerEntity.position, "ring_blue.tga", Params.Inst.startTick, void 0, Params.Init.auraColor), Params);
+				this.add(new SwirlingAura(Params.Init.ownerEntity.position, "ring_blue.tga", Params.Inst.startTick), Params);
 			}
 		}],
 		201: [{
 			type: "FUNC",
 			attachedEntity: true,
 			func: function(Params) {
-				this.add(new GroundAura(Params.Init.ownerEntity.position, 100, 15, "pikapika2.bmp", Params.Inst.startTick, Params.Init.auraColor), Params);
+				this.add(new GroundAura(Params.Init.ownerEntity.position, 100, 15, "pikapika2.bmp", Params.Inst.startTick), Params);
 			}
 		}],
 		202: [{
@@ -273100,7 +267915,7 @@ var init_EffectTable = __esmMin((() => {
 				let flag1 = 1;
 				if (typeof Params.effect.flag1 !== "undefined") flag1 = Params.effect.flag1;
 				else if (Params.Inst && typeof Params.Inst.flag1 !== "undefined") flag1 = Params.Inst.flag1;
-				this.add(new Level99Bubble(Params.Init.ownerEntity.position, "whitelight.tga", Params.Inst.startTick, flag1, Params.Init.auraColor), Params);
+				this.add(new Level99Bubble(Params.Init.ownerEntity.position, "whitelight.tga", Params.Inst.startTick, flag1), Params);
 			}
 		}],
 		203: [
@@ -278969,26 +273784,10 @@ var init_EffectTable = __esmMin((() => {
 			min: "sky_emperor/ske_all_in_the_sky/min_ske_all_in_the_sky",
 			wav: "effect/sky_emperor/ske_all_in_the_sky"
 		}],
-		ef_ske_enchanting_sky: [
-			{
-				wav: "effect/sky_emperor/ske_enchanting_sky",
-				attachedEntity: true
-			},
-			{
-				type: "STR",
-				file: "sky_emperor/ske_enchanting_sky/ske_enchanting_sky_00",
-				texturePath: "sky_emperor/ske_enchanting_sky/",
-				min: "sky_emperor/ske_enchanting_sky/min_ske_enchanting_sky_00",
-				attachedEntity: true
-			},
-			{
-				type: "STR",
-				file: "sky_emperor/ske_enchanting_sky/ske_enchanting_sky_01",
-				texturePath: "sky_emperor/ske_enchanting_sky/",
-				min: "sky_emperor/ske_enchanting_sky/min_ske_enchanting_sky_01",
-				attachedEntity: true
-			}
-		],
+		ef_ske_enchanting_sky: [{
+			wav: "effect/sky_emperor/ske_enchanting_sky",
+			attachedEntity: true
+		}],
 		ef_ske_sky_sun: [{
 			type: "STR",
 			file: "sky_emperor/ske_sky_sun/sky_sun/sky_sun",
@@ -281317,26 +276116,10 @@ var init_EffectTable = __esmMin((() => {
 			min: "shinkiro_shiranui/ss_hitouakumu/hitouakumu/min_hitouakumu",
 			wav: "effect/shinkiro_shiranui/ss_hitouakumu"
 		}],
-		ef_ss_ankokuryuuakumu: [
-			{
-				wav: "effect/shinkiro_shiranui/ss_ankokuryuuakumu",
-				attachedEntity: true
-			},
-			{
-				type: "STR",
-				file: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/ankokuryuuakumu_00",
-				texturePath: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/",
-				min: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_00/min_ankokuryuuakumu_00",
-				attachedEntity: true
-			},
-			{
-				type: "STR",
-				file: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/ankokuryuuakumu_01",
-				texturePath: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/",
-				min: "shinkiro_shiranui/ss_ankokuryuuakumu/ankokuryuuakumu_01/min_ankokuryuuakumu_01",
-				attachedEntity: true
-			}
-		],
+		ef_ss_ankokuryuuakumu: [{
+			wav: "effect/shinkiro_shiranui/ss_ankokuryuuakumu",
+			attachedEntity: true
+		}],
 		ef_ss_four_charm: [{
 			type: "STR",
 			file: "shinkiro_shiranui/ss_four_charm/four_charm_ice/four_charm_ice",
@@ -286239,19 +281022,6 @@ var init_EffectTable = __esmMin((() => {
 			texturePath: "night_watch/nw_mission_bombard/mission_bombard/",
 			min: "night_watch/nw_mission_bombard/mission_bombard/min_mission_bombard_hit"
 		}],
-		ef_nw_hasty_fire_in_the_hole: [{
-			type: "STR",
-			file: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/hasty_fire_in_the_hole_5x5",
-			texturePath: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/",
-			min: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole/min_hasty_fire_in_the_hole_5x5",
-			wav: "effect/night_watch/nw_hasty_fire_in_the_hole_0"
-		}, {
-			type: "STR",
-			file: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/hasty_fire_in_the_hole_5x5",
-			texturePath: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/",
-			min: "night_watch/nw_hasty_fire_in_the_hole/hasty_fire_in_the_hole_bottom/min_hasty_fire_in_the_hole_5x5",
-			renderBeforeEntities: true
-		}],
 		ef_nw_wild_shot: [{
 			type: "STR",
 			file: "night_watch/nw_wild_shot/wild_shot/wild_shot",
@@ -287338,8 +282108,7 @@ var init_EffectTable = __esmMin((() => {
 			file: "help_angel/help_angel_bottom/help_angel_bottom",
 			texturePath: "help_angel/help_angel_bottom/",
 			renderBeforeEntities: true
-		}],
-		...table
+		}]
 	};
 }));
 //#endregion
@@ -307576,17 +302345,14 @@ function loadItemInfo(filename, callback, onEnd) {
 		try {
 			console.log("Loading file \"" + filename + "\"...");
 			const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
-			const utf8 = isUtf8Table(buffer);
-			const displayText = (bytes) => utf8 ? userStringDecoder.decode(bytes, "utf-8") : userStringDecoder.decode(bytes, userCharpage);
-			const resourceText = (bytes) => utf8 ? userStringDecoder.decode(utf8ResourceBytes(bytes)) : userStringDecoder.decode(bytes);
 			const ctx = lua.ctx;
 			ctx.AddItem = (ItemID, unidentifiedDisplayName, unidentifiedResourceName, identifiedDisplayName, identifiedResourceName, slotCount, ClassNum) => {
 				ItemTable_default[ItemID] = {
 					...typeof ItemTable_default[ItemID] === "object" && ItemTable_default[ItemID],
-					unidentifiedDisplayName: displayText(unidentifiedDisplayName),
-					unidentifiedResourceName: resourceText(unidentifiedResourceName),
-					identifiedDisplayName: displayText(identifiedDisplayName),
-					identifiedResourceName: resourceText(identifiedResourceName),
+					unidentifiedDisplayName: userStringDecoder.decode(unidentifiedDisplayName, userCharpage),
+					unidentifiedResourceName: userStringDecoder.decode(unidentifiedResourceName),
+					identifiedDisplayName: userStringDecoder.decode(identifiedDisplayName, userCharpage),
+					identifiedResourceName: userStringDecoder.decode(identifiedResourceName),
 					unidentifiedDescriptionName: [],
 					identifiedDescriptionName: [],
 					EffectID: null,
@@ -307598,11 +302364,11 @@ function loadItemInfo(filename, callback, onEnd) {
 				return 1;
 			};
 			ctx.AddItemUnidentifiedDesc = (ItemID, v) => {
-				ItemTable_default[ItemID].unidentifiedDescriptionName.push(displayText(v));
+				ItemTable_default[ItemID].unidentifiedDescriptionName.push(userStringDecoder.decode(v, userCharpage));
 				return 1;
 			};
 			ctx.AddItemIdentifiedDesc = (ItemID, v) => {
-				ItemTable_default[ItemID].identifiedDescriptionName.push(displayText(v));
+				ItemTable_default[ItemID].identifiedDescriptionName.push(userStringDecoder.decode(v, userCharpage));
 				return 1;
 			};
 			ctx.AddItemEffectInfo = (ItemID, EffectID) => {
@@ -307617,65 +302383,46 @@ function loadItemInfo(filename, callback, onEnd) {
 				ItemTable_default[ItemID].PackageID = PackageID;
 				return 1;
 			};
-			lua.doStringSync("tbl = {} tbl_custom = {} tbl_override = {}");
 			lua.mountFile(filename, buffer);
 			await lua.doFile(filename);
 			lua.doStringSync(`
-						function item_is_described(DESC)
-							if type(DESC) ~= "table" then
-								return false
-							end
-							if type(DESC.identifiedDescriptionName) == "table" and #DESC.identifiedDescriptionName > 0 then
-								return true
-							end
-							return type(DESC.identifiedDisplayName) == "string" and DESC.identifiedDisplayName ~= ""
-						end
 						function main_item()
-							_processedItems = _processedItems or {}
-							-- tbl_custom and tbl_override are the custom item tables official
-							-- clients and translations write (itemInfo_C.lua). An override
-							-- is read first so it wins over the entry it replaces.
-							local sources = { tbl_override, tbl, tbl_custom }
-							for s = 1, 3 do
-								local source = sources[s]
-								if type(source) == "table" then
-									for ItemID, DESC in pairs(source) do
-										if not _processedItems[ItemID] and item_is_described(DESC) then
-											_processedItems[ItemID] = true
-											result, msg = AddItem(ItemID, DESC.unidentifiedDisplayName or "", DESC.unidentifiedResourceName or "", DESC.identifiedDisplayName or "", DESC.identifiedResourceName or "", DESC.slotCount, DESC.ClassNum)
-											if not result then
-												return false, msg
-											end
-											for k, v in pairs(DESC.unidentifiedDescriptionName or {}) do
-												result, msg = AddItemUnidentifiedDesc(ItemID, v)
-												if not result then
-													return false, msg
-												end
-											end
-											for k, v in pairs(DESC.identifiedDescriptionName or {}) do
-												result, msg = AddItemIdentifiedDesc(ItemID, v)
-												if not result then
-													return false, msg
-												end
-											end
-											if nil ~= DESC.EffectID then
-												result, msg = AddItemEffectInfo(ItemID, DESC.EffectID)
-												if not result then
-													return false, msg
-												end
-											end
-											if nil ~= DESC.costume then
-												result, msg = AddItemIsCostume(ItemID, DESC.costume)
-												if not result then
-													return false, msg
-												end
-											end
-											if nil ~= DESC.PackageID then
-												result, msg = AddItemPackageID(ItemID, DESC.PackageID)
-												if not result then
-													return false, msg
-												end
-											end
+							_processedItems = _processedItems or {} 
+							for ItemID, DESC in pairs(tbl) do
+								if not _processedItems[ItemID] and #DESC.identifiedDescriptionName > 0 then
+									_processedItems[ItemID] = true 
+									result, msg = AddItem(ItemID, DESC.unidentifiedDisplayName, DESC.unidentifiedResourceName, DESC.identifiedDisplayName, DESC.identifiedResourceName, DESC.slotCount, DESC.ClassNum)
+									if not result then
+										return false, msg
+									end
+									for k, v in pairs(DESC.unidentifiedDescriptionName) do
+										result, msg = AddItemUnidentifiedDesc(ItemID, v)
+										if not result then
+											return false, msg
+										end
+									end
+									for k, v in pairs(DESC.identifiedDescriptionName) do
+										result, msg = AddItemIdentifiedDesc(ItemID, v)
+										if not result then
+											return false, msg
+										end
+									end
+									if nil ~= DESC.EffectID then
+										result, msg = AddItemEffectInfo(ItemID, DESC.EffectID)
+										if not result then
+											return false, msg
+										end
+									end
+									if nil ~= DESC.costume then
+										result, msg = AddItemIsCostume(ItemID, DESC.costume)
+										if not result then
+											return false, msg
+										end
+									end
+									if nil ~= DESC.PackageID then
+										result, msg = AddItemPackageID(ItemID, DESC.PackageID)
+										if not result then
+											return false, msg
 										end
 									end
 								end
@@ -307694,41 +302441,6 @@ function loadItemInfo(filename, callback, onEnd) {
 	}).catch((error) => {
 		if (typeof onEnd === "function") onEnd(false);
 	});
-}
-/**
-* Whether an item table is UTF-8 text with something beyond ASCII in it.
-*
-* @param {Uint8Array} bytes
-* @returns {boolean}
-*/
-function isUtf8Table(bytes) {
-	if (!bytes.some((b) => b > 127)) return false;
-	try {
-		new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-		return true;
-	} catch (e) {
-		return false;
-	}
-}
-/**
-* The bytes a resource name from a UTF-8 item table stands for.
-*
-* Resource names become file paths, and the client's files are named in its
-* codepage read one byte to a character. So Hangul is put back into CP949, and
-* a character below U+0100 -- a name already spelled the way paths appear on
-* disk, as in `»¡°£Æ÷¼Ç` -- is the byte it already represents.
-*
-* @param {Uint8Array} bytes - UTF-8 encoded resource name
-* @returns {Uint8Array}
-*/
-function utf8ResourceBytes(bytes) {
-	const out = [];
-	for (const ch of userStringDecoder.decode(bytes, "utf-8")) {
-		const code = ch.codePointAt(0);
-		if (code < 256) out.push(code);
-		else out.push(...userStringDecoder.encode(ch, "windows-949"));
-	}
-	return Uint8Array.from(out);
 }
 /**
 * load lapineddukddakbox.lub to array
@@ -308465,7 +303177,6 @@ function loadHatEffectInfo(onEnd) {
 			await LoadHatEffectInfo();
 		} catch (e) {
 			console.error("[HatEffect] ID load error", e);
-			if (typeof onEnd === "function") onEnd();
 			return;
 		} finally {
 			lua.unmountFile("hateffectids.lub");
@@ -308488,7 +303199,7 @@ function loadSignBoardData(filename, callback, onEnd) {
 			const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
 			const ctx = lua.ctx;
 			ctx.AddSignBoardData = (key, translation) => {
-				const decoded_key = key && key.length > 1 ? userStringDecoder.decode(key, userCharpage) : null;
+				const decoded_key = key && key.length > 1 ? userStringDecoder.decode(key) : null;
 				const decoded_translation = translation && translation.length > 1 ? userStringDecoder.decode(translation) : null;
 				SignBoardTranslatedTable[decoded_key] = decoded_translation;
 				return 1;
@@ -308547,7 +303258,6 @@ function loadSignBoardList(filename, callback, onEnd) {
 				return 1;
 			};
 			lua.mountFile("SignBoardList.lub", buffer);
-			lua.doStringSync("SignBoardList = nil");
 			await lua.doFile("SignBoardList.lub");
 			lua.doStringSync(`
 						function main_SignBoardList()
@@ -308568,7 +303278,7 @@ function loadSignBoardList(filename, callback, onEnd) {
 						end
                         main_SignBoardList()
 					`);
-			mergeSignboards(signBoardList, SignBoardTable);
+			SignBoardTable = preprocessSignboardData(signBoardList);
 		} catch (error) {
 			console.error("[loadSignBoardList] Error: ", error);
 		} finally {
@@ -308576,6 +303286,22 @@ function loadSignBoardList(filename, callback, onEnd) {
 			onEnd();
 		}
 	}, onEnd);
+}
+/**
+* Preprocesses an array of signboard objects and organizes them into a nested dictionary.
+*
+* @param {Array} signboardArray - The array of signboard objects.
+* @return {Object} The nested dictionary containing the preprocessed signboard data.
+*/
+function preprocessSignboardData(signboardArray) {
+	const signboardDict = {};
+	for (const signboard of signboardArray) {
+		const { mapname, x, y } = signboard;
+		if (!signboardDict[mapname]) signboardDict[mapname] = {};
+		if (!signboardDict[mapname][x]) signboardDict[mapname][x] = {};
+		signboardDict[mapname][x][y] = signboard;
+	}
+	return signboardDict;
 }
 /**
 * Load weapontable.lub to WeaponTable and WeaponHitSoundTable
@@ -308702,10 +303428,6 @@ function loadSkillInfoList(filename, callback, onEnd) {
 				SkillInfo[skillId]._NeedSkillList.push([requiredSkillId, requiredLevel]);
 				return 1;
 			};
-			ctx.AddJobSkillRequirementList = (skillId, jobId) => {
-				if (!SkillInfo[skillId].NeedSkillList[jobId]) SkillInfo[skillId].NeedSkillList[jobId] = [];
-				return 1;
-			};
 			ctx.AddJobSkillRequirement = (skillId, jobId, requiredSkillId, requiredLevel) => {
 				if (!SkillInfo[skillId].NeedSkillList[jobId]) SkillInfo[skillId].NeedSkillList[jobId] = [];
 				SkillInfo[skillId].NeedSkillList[jobId].push([requiredSkillId, requiredLevel]);
@@ -308757,7 +303479,6 @@ function loadSkillInfoList(filename, callback, onEnd) {
 								if skillData.NeedSkillList then  
 									for jobId, reqList in pairs(skillData.NeedSkillList) do  
 										if reqList then  
-											AddJobSkillRequirementList(skillId, jobId)
 											for _, req in ipairs(reqList) do  
 												if req[1] and req[2] then  
 													AddJobSkillRequirement(skillId, jobId, req[1], req[2])  
@@ -309055,69 +303776,9 @@ function loadStateIconInfo(basePath, callback, onEnd) {
 	}
 	loadNext(0);
 }
-/**
-* customLuaTables: tables a mod adds rows to, instead of replacing the whole
-* file. `Configs.get('customLuaTables')` is an object of lists:
-*
-*   accessory: [[idfile, namefile], ...]   headgear looks   (accessoryid / accname)
-*   robe:      [[idfile, namefile], ...]   garment looks    (spriterobeid / spriterobename)
-*   monster:   [[idfile, namefile], ...]   monster sprites  (npcidentity / jobname)
-*   weapon:    [file, ...]                 weapon looks     (weapontable)
-*
-* Each is loaded after the base table, in order, and merged over it by id --
-* the counterpart of customItemInfo and customQuestInfo for the view tables.
-*
-* @param {string} key
-* @return {Array}
-*/
-function customLuaTables(key) {
-	const all = Configs.get("customLuaTables", {});
-	const list = all && typeof all === "object" ? all[key] : null;
-	return Array.isArray(list) ? list : [];
-}
-/**
-* loadLuaTable, then each customLuaTables[key] pair after it.
-*
-* A mod's rows must land after the base's, or the base would overwrite them,
-* so each table starts when the one before it has been parsed or has failed.
-* `onEnd` waits for the whole chain: loadLuaTable on its own calls onEnd as
-* soon as it has *started*, which let the game place the player before a
-* mod's headgear row existed -- the look was looked up, not found, and never
-* shown. A table that fails says so in the console and the chain goes on.
-*/
-function loadLuaTableWithCustom(file_list, table_name, key, callback, onEnd, contextFunc, isResourceTable = false) {
-	const custom = customLuaTables(key);
-	const next = (index) => {
-		if (index >= custom.length) {
-			onEnd.call();
-			return;
-		}
-		const advance = once(() => next(index + 1));
-		loadLuaTable(custom[index], table_name, function(json) {
-			callback.call(null, json);
-			advance();
-		}, function() {}, null, isResourceTable, advance);
-	};
-	const start = once(() => next(0));
-	loadLuaTable(file_list, table_name, function(json) {
-		callback.call(null, json);
-		start();
-	}, function() {}, contextFunc, isResourceTable, start);
-}
-/** fn, callable once; later calls do nothing. */
-function once(fn) {
-	let called = false;
-	return (...args) => {
-		if (!called) {
-			called = true;
-			fn(...args);
-		}
-	};
-}
-function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isResourceTable = false, onError = null) {
+function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc) {
 	const id_filename = file_list[0];
 	const value_table_filename = file_list[1];
-	const fail = typeof onError === "function" ? onError : function() {};
 	try {
 		console.log("Loading file \"" + id_filename + "\"...");
 		Client.loadFile(id_filename, async function(file) {
@@ -309128,9 +303789,8 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 				loadValueTable();
 			} catch (hException) {
 				console.error(`(${id_filename}) error: `, hException);
-				fail(hException);
 			}
-		}, () => fail(/* @__PURE__ */ new Error(`${id_filename} not found`)));
+		});
 		function loadValueTable() {
 			console.log("Loading file \"" + value_table_filename + "\"...");
 			Client.loadFile(value_table_filename, async function(file) {
@@ -309141,15 +303801,14 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 					parseTable();
 				} catch (hException) {
 					console.error(`(${value_table_filename}) error: `, hException);
-					fail(hException);
 				}
-			}, () => fail(/* @__PURE__ */ new Error(`${value_table_filename} not found`)));
+			});
 		}
 		function parseTable() {
 			const table = {};
 			const ctx = lua.ctx;
 			ctx.addKeyAndValueToTable = (key, value) => {
-				table[key] = userStringDecoder.decode(value, isResourceTable ? null : userCharpage);
+				table[key] = userStringDecoder.decode(value, userCharpage);
 				return 1;
 			};
 			ctx.addKeyAndMoreValuesToTable = (key, value) => {
@@ -309182,7 +303841,6 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 		}
 	} catch (e) {
 		console.error("error: ", e);
-		fail(e);
 	} finally {
 		onEnd.call();
 	}
@@ -309263,10 +303921,6 @@ function loadLuaValue(file_path, variable_name, callback, onEnd) {
 			} finally {
 				if (onEnd) onEnd.call();
 			}
-		}, function() {
-			console.error(`(${file_path}) could not be read; skipping`);
-			callback.call(null, null);
-			if (onEnd) onEnd.call();
 		});
 	} catch (e) {
 		console.error("error: ", e);
@@ -309569,7 +304223,6 @@ var init_DBManager = __esmMin((() => {
 	init_BabyTable();
 	init_HairIndexTable();
 	init_MonsterTable();
-	init_BodyFallbackTable();
 	init_MonsterNameTable();
 	init_PetIllustration();
 	init_PetAction();
@@ -309601,7 +304254,6 @@ var init_DBManager = __esmMin((() => {
 	init_PetFriendlyState();
 	init_PetMessageConst();
 	init_MapTable();
-	init_SignboardMerge();
 	init_NetworkManager();
 	init_PacketStructure();
 	init_PacketVerManager();
@@ -309708,11 +304360,9 @@ var init_DBManager = __esmMin((() => {
 				(MapTable[key] || (MapTable[key] = {})).name = val;
 			}, onLoad(), true);
 			const loadmsg = onLoad();
-			const readMsgString = (_index, val) => {
+			loadTable("data/msgstringtable.txt", "#", 1, (_index, val) => {
 				MsgStringTable[_index] = val;
-			};
-			const loadMsgStringCSV = () => loadCSV("data/msgstringtable.csv", MsgStringTable, 0, 1, loadmsg);
-			loadTable("data/msgstringtable.txt", "#", 1, readMsgString, () => MsgStringTable.length ? loadMsgStringCSV() : loadTable("data/msgstringtablel.txt", "#", 1, readMsgString, loadMsgStringCSV, true), true);
+			}, () => loadCSV("data/msgstringtable.csv", MsgStringTable, 0, 1, loadmsg), true);
 			loadTable("data/resnametable.txt", "#", 2, function(_index, key, val) {
 				DB.mapalias[key] = val;
 			}, onLoad());
@@ -309747,30 +304397,27 @@ var init_DBManager = __esmMin((() => {
 					iteminfoNames = iteminfoNames.concat(getSystemAliases("System/itemInfo.lub"));
 					tryLoadLuaAliases(loadItemInfo, iteminfoNames, null, onLoad());
 				}
-				loadLuaTableWithCustom([DB.LUA_PATH + "datainfo/accessoryid.lub", DB.LUA_PATH + "datainfo/accname.lub"], "AccNameTable", "accessory", function(json) {
+				loadLuaTable([DB.LUA_PATH + "datainfo/accessoryid.lub", DB.LUA_PATH + "datainfo/accname.lub"], "AccNameTable", function(json) {
 					Object.assign(HatTable_default, json);
-				}, onLoad(), null, true);
-				loadLuaTableWithCustom([DB.LUA_PATH + "datainfo/spriterobeid.lub", DB.LUA_PATH + "datainfo/spriterobename.lub"], "RobeNameTable", "robe", function(json) {
+				}, onLoad());
+				loadLuaTable([DB.LUA_PATH + "datainfo/spriterobeid.lub", DB.LUA_PATH + "datainfo/spriterobename.lub"], "RobeNameTable", function(json) {
 					Object.assign(RobeTable_default, json);
-				}, onLoad(), null, true);
-				if (PacketVerManager_default.value >= 20141008) loadLuaTableWithCustom([DB.LUA_PATH + "datainfo/npcidentity.lub", DB.LUA_PATH + "datainfo/jobname.lub"], "JobNameTable", "monster", function(json) {
+				}, onLoad());
+				if (PacketVerManager_default.value >= 20141008) loadLuaTable([DB.LUA_PATH + "datainfo/npcidentity.lub", DB.LUA_PATH + "datainfo/jobname.lub"], "JobNameTable", function(json) {
 					Object.assign(MonsterTable_default, json);
 				}, onLoad(), function() {
 					loadPetInfo(DB.LUA_PATH + "datainfo/petinfo.lub", null, function() {
 						tryLoadLuaAliases(loadPetEvolution, getSystemAliases("System/PetEvolutionCln.lub"), null, onLoad());
 					});
-				}, true);
-				else loadLuaTableWithCustom([DB.LUA_PATH + "datainfo/npcidentity.lub", DB.LUA_PATH + "datainfo/jobname.lub"], "JobNameTable", "monster", function(json) {
+				});
+				else loadLuaTable([DB.LUA_PATH + "datainfo/npcidentity.lub", DB.LUA_PATH + "datainfo/jobname.lub"], "JobNameTable", function(json) {
 					Object.assign(MonsterTable_default, json);
-				}, onLoad(), null, true);
+				}, onLoad());
 				loadLuaTable([DB.LUA_PATH + "datainfo/enumvar.lub", DB.LUA_PATH + "datainfo/addrandomoptionnametable.lub"], "NameTable_VAR", function(json) {
 					Object.assign(ItemRandomOptionTable_default, json);
 				}, onLoad());
 				loadItemDBTable(DB.LUA_PATH + "ItemDBNameTbl.lub", null, onLoad());
-				const onWeaponEnd = onLoad();
-				const customWeapons = customLuaTables("weapon");
-				const loadCustomWeapon = (index = 0) => index < customWeapons.length ? loadWeaponTable(customWeapons[index], null, () => loadCustomWeapon(index + 1)) : onWeaponEnd();
-				loadWeaponTable(DB.LUA_PATH + "datainfo/weapontable.lub", null, () => loadCustomWeapon());
+				loadWeaponTable(DB.LUA_PATH + "datainfo/weapontable.lub", null, onLoad());
 				if (PacketVerManager_default.value >= 20170208) loadTitleTable(DB.LUA_PATH + "datainfo/titletable.lub", null, onLoad());
 				const onSkillEnd = onLoad();
 				loadLuaValue(DB.LUA_PATH + "skillinfoz/skillid.lub", "SKID", (json) => {
@@ -309830,16 +304477,13 @@ var init_DBManager = __esmMin((() => {
 					updateMapTable();
 				}, onLoad());
 				const onSignBoardEnd = onLoad();
-				const customSignBoardList = Configs.get("customSignBoardList", []);
-				SignBoardTable = {};
-				const loadCustomSignBoardList = (index = 0) => index < customSignBoardList.length ? loadSignBoardList(customSignBoardList[index], null, () => loadCustomSignBoardList(index + 1)) : loadSignBoardData("SystemEN/Sign_Data.lub", null, onSignBoardEnd);
-				loadSignBoardList(DB.LUA_PATH + "SignBoardList.lub", null, () => loadCustomSignBoardList());
+				loadSignBoardList(DB.LUA_PATH + "SignBoardList.lub", null, () => {
+					loadSignBoardData("SystemEN/Sign_Data.lub", null, onSignBoardEnd);
+				});
 				if (Configs.get("enableCheckAttendance") && PacketVerManager_default.value >= 20180307) loadAttendanceFile("System/CheckAttendance.lub", null, onLoad());
 				const onQuestEnd = onLoad();
-				const customQuestInfo = Configs.get("customQuestInfo", []);
-				const loadCustomQuestInfo = (index = 0) => index < customQuestInfo.length ? loadQuestInfo(customQuestInfo[index], null, () => loadCustomQuestInfo(index + 1)) : onQuestEnd();
 				tryLoadLuaAliases(loadQuestInfo, getSystemAliases("System/OngoingQuestInfoList.lub"), null, () => {
-					loadQuestInfo("SystemEN/OngoingQuests.lub", null, () => loadCustomQuestInfo());
+					loadQuestInfo("SystemEN/OngoingQuests.lub", null, onQuestEnd);
 				});
 				if (Configs.get("enableAchievements") && PacketVerManager_default.value >= 20150513) loadLuaValue("System/achievement_list.lub", "achievement_tbl", function(json) {
 					if (json) Object.assign(AchievementTable, json);
@@ -310225,31 +304869,6 @@ var init_DBManager = __esmMin((() => {
 				}
 			}
 			return "data/sprite/¸ó½ºÅÍ/" + (MonsterTable_default[id] || MonsterTable_default[1001]).toLowerCase();
-		}
-		/**
-		* Bodies to try, in order, when the one getBodyPath names fails to load.
-		*
-		* The client's data can lack a file its own tables still name (iRO 2026-09
-		* dropped 4_m_drzonda01, the Zonda teleporters). An NPC or monster is never
-		* left without a body: first the stand-ins BodyFallbackTable lists for that
-		* id, then the body getBodyPath already draws for an id it does not know
-		* (1_ETC_01 for an NPC), or for a monster the Poring a missing 3D model gets.
-		* Players, homunculi and mercenaries get none.
-		*
-		* @param {number|string} id entity
-		* @param {boolean} sex
-		* @return {Array<string>} paths without extension, never the body's own
-		*/
-		static getBodyFallbackPaths(id, sex) {
-			const own = DB.getBodyPath(id, sex);
-			if (!own || DB.isPlayer(id) || DB.isHomunculus(id) || DB.isMercenary(id) || typeof id !== "number") return [];
-			const ids = (BodyFallbackTable_default[id] || []).concat(DB.isNPC(id) ? 46 : 1002);
-			const paths = [];
-			for (const alt of ids) {
-				const path = DB.getBodyPath(alt, sex);
-				if (path && path !== own && !/\.gr2$/i.test(path) && !paths.includes(path)) paths.push(path);
-			}
-			return paths;
 		}
 		/**
 		* @return {string} path of admin clothes
@@ -310888,7 +305507,7 @@ var init_DBManager = __esmMin((() => {
 		static getWeaponPath(id, job, sex, leftid = false) {
 			if (id === 0) return null;
 			const baseClass = WeaponJobTable[job] || WeaponJobTable[0];
-			id = id >= WeaponType_default.MAX && WeaponName[id] !== void 0 ? id : DB.getWeaponType(id);
+			id = DB.getWeaponType(id);
 			if (leftid) {
 				if (leftid in ItemTable_default && "ClassNum" in ItemTable_default[leftid]) leftid = ItemTable_default[leftid].ClassNum;
 				const right = Object.keys(WeaponType_default).find((key) => WeaponType_default[key] === id);
@@ -313862,7 +308481,6 @@ var init_EntityDisplay = __esmMin((() => {
 	init_gl_matrix();
 	init_Map();
 	init_EntityOverlay();
-	init_SessionStorage();
 	vec4$3 = gl_matrix_default.vec4;
 	_pos$3 = /* @__PURE__ */ new Float32Array(4);
 	_size$3 = /* @__PURE__ */ new Float32Array(2);
@@ -314037,7 +308655,7 @@ var init_EntityDisplay = __esmMin((() => {
 		* Refreshes the display (when player uses /showname)
 		*/
 		refresh(entity) {
-			this.update(entity.objecttype === entity.constructor.TYPE_MOB ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC_ABR ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC_BIONIC ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_DISGUISED ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC ? entity.display.STYLE.NPC : entity.objecttype === entity.constructor.TYPE_NPC2 ? entity.display.STYLE.NPC : entity.objecttype === entity.constructor.TYPE_ITEM ? entity.display.STYLE.ITEM : entity.objecttype === entity.constructor.TYPE_PC && SessionStorage_default.showsAdmin(entity, "name") ? entity.display.STYLE.ADMIN : entity.display.STYLE.DEFAULT);
+			this.update(entity.objecttype === entity.constructor.TYPE_MOB ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC_ABR ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC_BIONIC ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_DISGUISED ? entity.display.STYLE.MOB : entity.objecttype === entity.constructor.TYPE_NPC ? entity.display.STYLE.NPC : entity.objecttype === entity.constructor.TYPE_NPC2 ? entity.display.STYLE.NPC : entity.objecttype === entity.constructor.TYPE_ITEM ? entity.display.STYLE.ITEM : entity.objecttype === entity.constructor.TYPE_PC && entity.isAdmin ? entity.display.STYLE.ADMIN : entity.display.STYLE.DEFAULT);
 		}
 		/**
 		* Rendering GUI
@@ -314834,34 +309452,6 @@ var init_AllMountTable = __esmMin((() => {
 //#endregion
 //#region src/Renderer/Entity/EntityView.js
 /**
-* Load the first body in `paths` whose .spr and .act both load, and call onload
-* with that path (no extension). A body missing either file moves on to the
-* next path; a late answer about a path already given up on is ignored.
-*
-* @param {Array<string>} paths - body paths without extension, in order of preference
-* @param {function} onload - called once, with the path that loaded
-* @param {object} args - Client.loadFile arguments for the .spr
-*/
-function loadBody(paths, onload, args) {
-	let index = 0;
-	const attempt = () => {
-		const current = index;
-		const path = paths[current];
-		let pending = 2;
-		const done = () => {
-			if (current === index && --pending === 0) onload(path);
-		};
-		const fail = () => {
-			if (current !== index) return;
-			index++;
-			if (index < paths.length) attempt();
-		};
-		Client.loadFile(path + ".act", done, fail);
-		if (current === index) Client.loadFile(path + ".spr", done, fail, args);
-	};
-	attempt();
-}
-/**
 * Files to display a view
 *
 * @param {optional|string} sprite path
@@ -314997,8 +309587,7 @@ function UpdateBody(job) {
 	if (this.costume) job = this.costume;
 	this.xSize = this.ySize = DB.isBaby(job) ? 4 : 5;
 	this.files.shadow.size = job in ShadowTable_default ? ShadowTable_default[job] : 1;
-	const showAdminSprite = SessionStorage_default.showsAdmin(this, "sprite") && !shouldSuppressHead.call(this);
-	let path = showAdminSprite ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex);
+	let path = this.isAdmin && !shouldSuppressHead.call(this) ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex);
 	const Entity = this.constructor;
 	if (this.objecttype === Entity.TYPE_UNKNOWN) {
 		let objecttype;
@@ -315060,18 +309649,19 @@ function UpdateBody(job) {
 		this.gr2 = null;
 		path = DB.getBodyPath(GR2_FALLBACK_JOB, this._sex);
 	} else this.gr2 = null;
-	loadBody([path].concat(showAdminSprite ? [] : DB.getBodyFallbackPaths(job, this._sex) || []), function(loaded) {
+	Client.loadFile(path + ".act");
+	Client.loadFile(path + ".spr", function() {
 		const isStaleCallback = this._transformationSeq && this._transformationSeq > transformationSeq;
 		const currentJob = getEffectiveJob.call(this);
 		if (!isStaleCallback && job === currentJob) {
-			this.files.body.spr = loaded + ".spr";
-			this.files.body.act = loaded + ".act";
+			this.files.body.spr = path + ".spr";
+			this.files.body.act = path + ".act";
 			refreshHeadState.call(this);
 		}
 		this.bodypalette = this._bodypalette;
 		this.weapon = this._weapon;
 		this.shield = this._shield;
-	}.bind(this), { to_rgba: this.objecttype !== Entity.TYPE_PC });
+	}.bind(this), null, { to_rgba: this.objecttype !== Entity.TYPE_PC });
 	if (PacketVerManager_default.value > 20141022 && this._body > 0) this.body = this._body;
 }
 /**
@@ -315212,8 +309802,8 @@ function UpdateBodyStyle(look) {
 				job = this.costume;
 			}
 		}
-		path = SessionStorage_default.showsAdmin(this, "sprite") ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex, look, cashMountCostume);
-		const styled = !SessionStorage_default.showsAdmin(this, "sprite") && PacketVerManager_default.value > 20141022 && look > 0 && look !== job && !cashMountCostume;
+		path = this.isAdmin ? DB.getAdminPath(this._sex) : DB.getBodyPath(job, this._sex, look, cashMountCostume);
+		const styled = !this.isAdmin && PacketVerManager_default.value > 20141022 && look > 0 && look !== job && !cashMountCostume;
 		this._bodyStyleJob = styled ? look : null;
 		Entity = this.constructor;
 		Client.loadFile(path + ".act");
@@ -315466,7 +310056,6 @@ var init_EntityView = __esmMin((() => {
 	init_PacketVerManager();
 	init_JobConst();
 	init_GR2ModelRenderer();
-	init_SessionStorage();
 	GR2_MODEL_ROOT = "data/model/3dmob/";
 	GR2_FALLBACK_JOB = 1002;
 	HeadParts = [
@@ -315506,11 +310095,9 @@ function estimatePathDuration(path, total, baseSpeed, startPos) {
 * the walk based on latency.
 */
 function computeWalkStartTick(nowTick, moveStartTime, pathDuration, maxClamp) {
-	if (!moveStartTime || !SessionStorage_default || !SessionStorage_default.serverTickSynced) return nowTick;
+	if (!moveStartTime || !SessionStorage_default || !SessionStorage_default.serverTick) return nowTick;
 	let elapsed = SessionStorage_default.serverTick - moveStartTime;
 	if (!isFinite(elapsed) || elapsed <= 0) return nowTick;
-	const roundTrip = SessionStorage_default.ping && SessionStorage_default.ping.value > 0 ? SessionStorage_default.ping.value : 0;
-	elapsed = Math.min(elapsed, roundTrip + LATENCY_SLACK_MS);
 	if (pathDuration && pathDuration > 0) {
 		if (elapsed > pathDuration * 4) return nowTick;
 		elapsed = Math.min(elapsed, typeof maxClamp === "number" ? maxClamp : pathDuration);
@@ -316073,6 +310660,9 @@ function distance(entity1, entity2) {
 	const y2 = entity2.position[1];
 	return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
 }
+/**
+* Initialize and export methods
+*/
 function Init$4() {
 	this.onWalkEnd = function onWalkEnd() {};
 	this._preserveDirection = false;
@@ -316088,7 +310678,7 @@ function Init$4() {
 	this.resetRoute = resetRoute;
 	this.distance = distance;
 }
-var DIRECTION$1, DIAGONAL_FACTOR, LATENCY_SLACK_MS;
+var DIRECTION$1, DIAGONAL_FACTOR;
 var init_EntityWalk = __esmMin((() => {
 	init_PathFinding();
 	init_Altitude();
@@ -316111,7 +310701,6 @@ var init_EntityWalk = __esmMin((() => {
 		]
 	];
 	DIAGONAL_FACTOR = 1.414;
-	LATENCY_SLACK_MS = 100;
 }));
 //#endregion
 //#region src/Renderer/Entity/EntityRender.js
@@ -316141,53 +310730,33 @@ function render$7(modelView, projection) {
 	this.boundingRect.y1 = -Infinity;
 	this.boundingRect.x2 = -Infinity;
 	this.boundingRect.y2 = Infinity;
-	this.waterDepthAttachments = this._waterDepthAttachments || (this._waterDepthAttachments = []);
-	this.waterDepthAttachments.length = 0;
 	if (this.effectColor[3]) {
 		this.renderEntity();
 		this.attachments.render(Date.now());
 	}
 	renderGUI(this, modelView, projection);
 }
+/**
+* Depth-only redraw of the body for entities standing in water, so the water
+* pass (drawn after entities, depth tested) covers only the submerged part.
+* Runs after every entity has been drawn, with colour writes disabled by the
+* caller, so the written depth cannot hide other sprites. Replays the exact
+* layers the colour pass drew this frame (`waterDepthFrame`), so no animation,
+* sound or trail state is touched. Only set for the non-player body pass;
+* entity types that already write depth never get a frame.
+*/
 function renderWaterDepth$1() {
 	const frame = this.waterDepthFrame;
-	const attachments = this.waterDepthAttachments;
-	if (this.hideEntity || !this.effectColor[3] || !frame && !(attachments && attachments.length)) return;
+	if (!frame || this.hideEntity || !this.effectColor[3]) return;
+	if (!Water_default.isSubmerged(this.position[0], this.position[1])) return;
 	const self = this;
-	const rect = this.boundingRect;
-	const x1 = rect.x1, y1 = rect.y1, x2 = rect.x2, y2 = rect.y2;
-	if (frame) {
-		SpriteRenderer.position.set(this.position);
-		SpriteRenderer.position[2] = SpriteRenderer.position[2] + .2;
-		SpriteRenderer.zIndex = 150;
-		SpriteRenderer.runWithDepth(true, true, false, function() {
-			for (let i = 0, count = frame.layers.length; i < count; ++i) self.renderLayer(frame.layers[i], frame.spr, frame.pal, frame.size, frame.position, "body", false);
-		});
-	}
-	if (attachments && attachments.length) {
-		const alpha = this.effectColor[3];
-		for (let a = 0; a < attachments.length; ++a) {
-			const item = attachments[a];
-			SpriteRenderer.position[0] = item.position[0];
-			SpriteRenderer.position[1] = item.position[1];
-			SpriteRenderer.position[2] = item.position[2];
-			SpriteRenderer.depth = item.depth;
-			SpriteRenderer.zIndex = item.zIndex;
-			this.effectColor[3] = item.opacity;
-			_attachmentPosition[0] = item.x;
-			_attachmentPosition[1] = item.y;
-			SpriteRenderer.runWithDepth(true, true, false, function() {
-				for (let i = 0, count = item.layers.length; i < count; ++i) self.renderLayer(item.layers[i], item.spr, item.spr, 1, _attachmentPosition, false);
-			});
-		}
-		this.effectColor[3] = alpha;
-		SpriteRenderer.depth = 0;
-	}
+	SpriteRenderer.position.set(this.position);
+	SpriteRenderer.position[2] = SpriteRenderer.position[2] + .2;
+	SpriteRenderer.zIndex = 150;
+	SpriteRenderer.runWithDepth(true, true, false, function() {
+		for (let i = 0, count = frame.layers.length; i < count; ++i) self.renderLayer(frame.layers[i], frame.spr, frame.pal, frame.size, frame.position, "body", false);
+	});
 	SpriteRenderer.zIndex = 1;
-	rect.x1 = x1;
-	rect.y1 = y1;
-	rect.x2 = x2;
-	rect.y2 = y2;
 }
 /**
 * Render second body (BL_DOUBLE_BODY + EF_MAKEBLUR)
@@ -316462,7 +311031,7 @@ function Init$3() {
 	this.waterDepthFrame = void 0;
 	this._waterDepthFrameBuffer = null;
 }
-var WALK_DIST_TO_MOTION, renderGUI, SPRITE_LIFT, calculateBoundingRect, renderEntity, _attachmentPosition, renderElement;
+var WALK_DIST_TO_MOTION, renderGUI, SPRITE_LIFT, calculateBoundingRect, renderEntity, renderElement;
 var init_EntityRender = __esmMin((() => {
 	init_gl_matrix();
 	init_Camera();
@@ -316471,6 +311040,7 @@ var init_EntityRender = __esmMin((() => {
 	init_SpriteRenderer();
 	init_Ground();
 	init_Altitude();
+	init_Water();
 	init_SessionStorage();
 	init_DBManager();
 	init_Graphics();
@@ -316732,7 +311302,6 @@ var init_EntityRender = __esmMin((() => {
 			SpriteRenderer.zIndex = 1;
 		};
 	})();
-	_attachmentPosition = /* @__PURE__ */ new Int32Array(2);
 	renderElement = (function renderElementClosure() {
 		const _position = /* @__PURE__ */ new Int32Array(2);
 		return function _renderElement(entity, files, type, position, is_main) {
@@ -316869,7 +311438,7 @@ var init_EntityRoom$1 = __esmMin((() => {
 			btn.addEventListener("dblclick", this._dblclickHandler);
 			btn.addEventListener("mousedown", this._mousedownHandler);
 		}
-		this._host.style.zIndex = "30";
+		this._host.style.zIndex = "45";
 	};
 	/**
 	* Remove data from UI
@@ -317498,7 +312067,7 @@ var init_EntityAttachments = __esmMin((() => {
 			if (attachment.uid && !attachment.stackable) this.remove(attachment.uid);
 			attachment.startTick = attachment.startTick || Renderer.tick || Date.now();
 			attachment.opacity = !isNaN(attachment.opacity) ? attachment.opacity : 1;
-			if (typeof attachment.direction !== "boolean") attachment.direction = !attachment.hasOwnProperty("frame");
+			attachment.direction = attachment.hasOwnProperty("frame") ? false : true;
 			attachment.frame = attachment.frame || 0;
 			attachment.depth = attachment.depth || 0;
 			attachment.head = attachment.head || false;
@@ -317624,7 +312193,6 @@ var init_EntityAttachments = __esmMin((() => {
 		*/
 		renderAttachment(attachment, tick) {
 			if (attachment.startTick > tick) return;
-			if (attachment.duration > 0 && tick - attachment.startTick >= attachment.duration) return true;
 			if (attachment.isStr && attachment.strEffect) {
 				const strEffect = attachment.strEffect;
 				const gl = Renderer.gl;
@@ -317679,21 +312247,6 @@ var init_EntityAttachments = __esmMin((() => {
 			}
 			const self = this;
 			const zIdx = attachment.renderBefore ? 1 : 500;
-			const recorded = this.entity.waterDepthAttachments;
-			if (recorded) recorded.push({
-				layers,
-				spr,
-				x: _position[0],
-				y: _position[1],
-				depth: SpriteRenderer.depth,
-				zIndex: zIdx,
-				opacity: attachment.opacity,
-				position: [
-					SpriteRenderer.position[0],
-					SpriteRenderer.position[1],
-					SpriteRenderer.position[2]
-				]
-			});
 			SpriteRenderer.runWithDepth(true, false, false, function() {
 				SpriteRenderer.zIndex = zIdx;
 				for (i = 0, count = layers.length; i < count; ++i) self.entity.renderLayer(layers[i], spr, spr, 1, _position, false);
@@ -317753,56 +312306,55 @@ var init_EntityAnimations = __esmMin((() => {
 function init$4() {
 	this.aura = new Aura(this);
 }
-var Aura;
+var _auraSettings, normalEffects, simpleEffects, Aura;
 var init_EntityAura = __esmMin((() => {
+	init_EffectConst();
 	init_Map();
 	init_Configs();
-	init_AuraTiers();
+	_auraSettings = { defaultLv: 99 };
+	normalEffects = [
+		EffectConst_default.EF_LEVEL99,
+		EffectConst_default.EF_LEVEL99_2,
+		EffectConst_default.EF_LEVEL99_3
+	];
+	simpleEffects = [EffectConst_default.EF_LEVEL99_3];
 	Aura = class {
 		constructor(entity) {
 			this.isLoaded = false;
 			this.entity = entity;
 			this.lastAuraState = 0;
-			this.loadedKey = null;
 		}
 		/**
 		* Show aura
 		*/
 		load(effectManager) {
 			const server = Configs.getServer();
-			/** @type {TAuraSettings} - server aura config over the defaults */
-			const settings = auraSettings(server != null ? server.aura : void 0);
-			const job = this.entity._job !== void 0 ? this.entity._job : this.entity.job;
-			const tier = Map_default.aura > 0 ? auraTier(this.entity.clevel, job, settings) : null;
-			if (tier === null || !this.entity.isVisible()) {
-				if (this.isLoaded) this.remove(effectManager);
+			/** @type {TAuraSettings} - merge server aura config with default settings */
+			const settings = server != null ? Object.assign({}, _auraSettings, server.aura) : Object.assign({}, _auraSettings);
+			if (Map_default.aura > 0 && this.entity.clevel >= settings.defaultLv) {
+				if (this.entity.isVisible()) {
+					if (this.lastAuraState !== Map_default.aura && this.isLoaded) this.remove(effectManager);
+					if (!this.isLoaded) {
+						const effects = Map_default.aura < 2 ? simpleEffects : normalEffects;
+						for (let effectIndex = 0; effectIndex < effects.length; effectIndex++) effectManager.spam({
+							ownerAID: this.entity.GID,
+							position: this.entity.position,
+							effectId: effects[effectIndex]
+						});
+						this.isLoaded = true;
+						this.lastAuraState = Map_default.aura;
+					}
+				} else this.remove(effectManager);
+			} else if (this.isLoaded) {
+				this.remove(effectManager);
 				this.lastAuraState = Map_default.aura;
-				return;
 			}
-			const color = tier === 99 && !settings.color && !(settings.colors && settings.colors[99]) ? null : tierColor(tier, settings);
-			const key = `${tier}:${Map_default.aura}:${color ? [
-				color.r,
-				color.g,
-				color.b
-			].join(",") : ""}`;
-			if (this.isLoaded && this.loadedKey === key) return;
-			if (this.isLoaded) this.remove(effectManager);
-			const effects = Map_default.aura < 2 ? TIER_EFFECTS[tier].simple : TIER_EFFECTS[tier].full;
-			for (let i = 0; i < effects.length; i++) effectManager.spam({
-				ownerAID: this.entity.GID,
-				position: this.entity.position,
-				effectId: effects[i],
-				auraColor: color || void 0
-			});
-			this.isLoaded = true;
-			this.loadedKey = key;
-			this.lastAuraState = Map_default.aura;
 		}
 		/**
 		* Hide aura
 		*/
 		remove(effectManager) {
-			effectManager.remove(null, this.entity.GID, ALL_TIER_EFFECTS);
+			effectManager.remove(null, this.entity.GID, normalEffects);
 			this.free();
 		}
 		/**
@@ -317810,7 +312362,6 @@ var init_EntityAura = __esmMin((() => {
 		*/
 		free() {
 			this.isLoaded = false;
-			this.loadedKey = null;
 		}
 	};
 }));
@@ -318837,39 +313388,6 @@ function getLowestHpEntity(sourceEntity, type) {
 	return lowestHpEntity;
 }
 /**
-* Returns entities of the given type(s) sorted by straight-line distance from
-* the source entity, closest first. Same filters as getClosestEntity: not
-* self, right type, alive, not pending removal, within view range.
-*
-* Straight-line (dx*dx + dy*dy), not PathFinding.search: running A* for
-* every nearby mob on every cycle step is too expensive, and visual
-* distance order is what the player expects when cycling targets.
-*
-* @param {entity} source entity
-* @param {number|Array<number>} entity type, or list of types, to look for
-*/
-function getEntitiesSortedByDistance(sourceEntity, type) {
-	const types = Array.isArray(type) ? type : [type];
-	const srcX = sourceEntity.position[0];
-	const srcY = sourceEntity.position[1];
-	const view_range = GraphicsSettings.performanceMode ? GraphicsSettings.viewArea : 20;
-	const viewRangeSq = view_range * view_range;
-	const candidates = [];
-	_list.forEach((entity) => {
-		if (entity.GID !== sourceEntity.GID && types.includes(entity.objecttype) && entity.action !== entity.ACTION.DIE && entity.remove_tick === 0) {
-			const dx = entity.position[0] - srcX;
-			const dy = entity.position[1] - srcY;
-			const distSq = dx * dx + dy * dy;
-			if (distSq <= viewRangeSq) candidates.push({
-				entity,
-				distSq
-			});
-		}
-	});
-	candidates.sort((a, b) => a.distSq - b.distSq);
-	return candidates.map((c) => c.entity);
-}
-/**
 * Returns the distance between two entities based on direct walkpath
 *
 * @param {entity} from entity
@@ -318936,7 +313454,6 @@ var init_EntityManager = __esmMin((() => {
 		setFocusEntity,
 		getClosestEntity,
 		getLowestHpEntity,
-		getEntitiesSortedByDistance,
 		storeLife,
 		getLife,
 		removeLife,
@@ -319353,8 +313870,6 @@ var init_Scrollbar = __esmMin((() => {
 	init_Texture();
 	init_DBManager();
 	init_Client();
-	init_UIScale();
-	init_WheelSteps();
 	ScrollBar = class ScrollBar {
 		/**
 		* @var {boolean} does the scrollbar completely loaded ?
@@ -319652,11 +314167,8 @@ var init_Scrollbar = __esmMin((() => {
 			element.addEventListener("wheel", (e) => {
 				const h = element.clientHeight;
 				if (element.scrollHeight <= h) return;
-				if (e.defaultPrevented) {
-					e.stopPropagation();
-					return;
-				}
-				element.scrollTop += WheelSteps_default.steps(e, element) * 20;
+				const delta = e.deltaY > 0 ? 1 : -1;
+				element.scrollTop += delta * 20;
 				updateThumb();
 				e.preventDefault();
 				e.stopPropagation();
@@ -319686,7 +314198,7 @@ var init_Scrollbar = __esmMin((() => {
 				const thumbHeight = thumb.clientHeight;
 				const maxScrollTop = sh - h;
 				const maxThumbTop = trackHeight - thumbHeight;
-				const deltaY = (e.clientY - startY) / UIScale_default.ofElement(thumb);
+				const deltaY = e.clientY - startY;
 				element.scrollTop = Math.max(0, Math.min(startThumbY + deltaY, maxThumbTop)) / maxThumbTop * maxScrollTop;
 				updateThumb();
 			});
@@ -319735,7 +314247,7 @@ function _ensureDeps() {
 	if (!_depsPromise) _depsPromise = _loadHeavyDeps();
 	return _depsPromise;
 }
-var _Cursor, _DB, _Client, _Renderer, _EntityManager, _ScrollBar, _depsPromise, _snapCache, MouseMode, DENIED_SELECTOR, CSS_NUMBER, _frozenBy, GUIComponent;
+var _Cursor, _DB, _Client, _Renderer, _EntityManager, _ScrollBar, _depsPromise, _snapCache, MouseMode, DENIED_SELECTOR, CSS_NUMBER, GUIComponent;
 var init_GUIComponent = __esmMin((() => {
 	init_Common$1();
 	init_MouseEventHandler();
@@ -319743,7 +314255,6 @@ var init_GUIComponent = __esmMin((() => {
 	init_SessionStorage();
 	init_Targa();
 	init_ClampToViewport();
-	init_UIScale();
 	init_preload_helper();
 	_Cursor = null;
 	_DB = null;
@@ -319770,7 +314281,6 @@ var init_GUIComponent = __esmMin((() => {
 		widows: true,
 		zoom: true
 	};
-	_frozenBy = /* @__PURE__ */ new Set();
 	GUIComponent = class GUIComponent {
 		/**
 		* @param {string} name       - Unique component name
@@ -319870,12 +314380,10 @@ var init_GUIComponent = __esmMin((() => {
 			parent.appendChild(this._host);
 			if (this.onKeyDown) this._bindKeyDown();
 			if (this.mouseMode === MouseMode.FREEZE) {
-				_frozenBy.add(this);
 				Mouse.intersect = false;
 				SessionStorage_default.FreezeUI = true;
 				_Cursor?.setType(_Cursor?.ACTION?.DEFAULT ?? 0);
 			}
-			UIScale_default.attach(this);
 			if (this.onAppend) this.onAppend();
 			this._setupScrollbars();
 			this._fixPositionOverflow();
@@ -319909,28 +314417,15 @@ var init_GUIComponent = __esmMin((() => {
 					node.dispatchEvent(new Event("x_remove"));
 				});
 				this._host.remove();
-				UIScale_default.detach(this);
 				if (this.mouseMode === MouseMode.FREEZE) {
-					_frozenBy.delete(this);
-					if (_frozenBy.size === 0) {
-						Mouse.intersect = true;
-						SessionStorage_default.FreezeUI = false;
-					}
+					Mouse.intersect = true;
+					SessionStorage_default.FreezeUI = false;
 				}
 				if (this.__scrollbarObserver) {
 					this.__scrollbarObserver.disconnect();
 					this.__scrollbarObserver = null;
 				}
 			}
-		}
-		/**
-		* The factor this window is drawn at (UI/UIScale.js); 1 unless a plugin
-		* scaled it. Screen distances divided by it are distances in the window.
-		*
-		* @return {number}
-		*/
-		get scale() {
-			return UIScale_default.of(this);
 		}
 		/**
 		* Focus the UI (bring to top of other components).
@@ -319990,7 +314485,6 @@ var init_GUIComponent = __esmMin((() => {
 			if (this.render) cloned.render = this.render;
 			cloned.mouseMode = this.mouseMode;
 			cloned.needFocus = this.needFocus;
-			cloned.scaleName = this.scaleName || this.name;
 			if (full) for (const key of Object.keys(this)) {
 				if (key === "_host" || key === "_shadow" || key === "_container" || key === "ui" || key === "__loaded" || key === "__preparing" || key === "__scrollbarObserver") continue;
 				cloned[key] = this[key];
@@ -320085,9 +314579,8 @@ var init_GUIComponent = __esmMin((() => {
 				} else if (event.which !== 1) return;
 				const x = host.offsetLeft - Mouse.screen.x;
 				const y = host.offsetTop - Mouse.screen.y;
-				const hostRect = host.getBoundingClientRect();
-				const width = hostRect.width;
-				const height = hostRect.height;
+				const width = host.offsetWidth;
+				const height = host.offsetHeight;
 				_snapCache = [];
 				if (UI_default.windowmagnet && component.manager) {
 					const hostParent = host.offsetParent;
@@ -320098,12 +314591,11 @@ var init_GUIComponent = __esmMin((() => {
 						const el = other._host || other.ui && other.ui[0];
 						if (!el) continue;
 						if (hostParent && el.offsetParent && el.offsetParent !== hostParent) continue;
-						const rect = el.getBoundingClientRect();
 						_snapCache.push({
-							left: rect.left,
-							top: rect.top,
-							right: rect.right,
-							bottom: rect.bottom
+							left: el.offsetLeft,
+							top: el.offsetTop,
+							right: el.offsetLeft + el.offsetWidth,
+							bottom: el.offsetTop + el.offsetHeight
 						});
 					}
 				}
@@ -320297,16 +314789,6 @@ var init_GUIComponent = __esmMin((() => {
 				}
 			});
 		}
-		/**
-		* Tell the window's mouse guard the pointer has left.
-		*
-		* Hiding is display:none, and a browser fires no mouseleave for an element
-		* that disappears under the pointer. A STOP-mode window hidden while hovered
-		* kept the map from taking clicks until it was shown and left again.
-		*/
-		_releaseMouse() {
-			(this.__mouseStopBlock || this._host).dispatchEvent(new Event("mouseleave"));
-		}
 		_setupMouseMode() {
 			const element = this.__mouseStopBlock || this._host;
 			if (this.mouseMode === GUIComponent.MouseMode.STOP) {
@@ -320440,10 +314922,7 @@ var init_GUIComponent = __esmMin((() => {
 				} catch (e) {
 					console.error(e.message);
 				}
-				node.classList.remove("no-texture");
 				updateBg();
-			}, () => {
-				node.classList.add("no-texture");
 			});
 			if (active) {
 				_Client?.loadFile(_DB.INTERFACE_PATH + active, (dataURI) => {
@@ -320466,6 +314945,7 @@ var init_GUIComponent = __esmMin((() => {
 					attributes: true,
 					attributeFilter: ["class"]
 				});
+				node.addEventListener("x_remove", () => observer.disconnect(), { once: true });
 				if (!node._roActiveObserver) node._roActiveObserver = observer;
 			}
 			if (hover) {
@@ -320603,17 +315083,13 @@ var init_GUIComponent = __esmMin((() => {
 				},
 				hide() {
 					host.style.display = "none";
-					component._releaseMouse();
 					return proxy;
 				},
 				toggle() {
 					if (host.style.display === "none") {
 						host.style.display = "";
 						component._fixPositionOverflow();
-					} else {
-						host.style.display = "none";
-						component._releaseMouse();
-					}
+					} else host.style.display = "none";
 					return proxy;
 				},
 				parent() {
@@ -320812,9 +315288,8 @@ function resetElementsPosition() {
 	const count = elements.length;
 	let x = 0;
 	let y = 0;
-	const height = (Renderer.height - 166) / StatusIcons.scale;
 	for (let i = 0; i < count; ++i, y += 36) {
-		if (y > height) {
+		if (y > Renderer.height - 166) {
 			y = 0;
 			x += 45;
 		}
@@ -320878,7 +315353,7 @@ function createElement(index) {
 function addElement$4(element) {
 	const root = StatusIcons.getRoot();
 	const elements = root.querySelectorAll(".state");
-	const max = Math.max(1, (Renderer.height - 166) / StatusIcons.scale / 36 | 0);
+	const max = (Renderer.height - 166) / 36 | 0;
 	const count = elements.length;
 	const x = (count / max | 0) * 45;
 	const y = count % max * 36;
@@ -320977,12 +315452,6 @@ var init_StatusIcons = __esmMin((() => {
 	*/
 	StatusIcons.onAppend = function onAppend() {
 		Renderer.render(rendering$1);
-	};
-	/**
-	* Drawn at another UI scale (UI/UIScale.js): fewer or more icons fit in a column
-	*/
-	StatusIcons.onScale = function onScale() {
-		resetElementsPosition();
 	};
 	/**
 	* Stop rendering icons
@@ -324493,45 +318962,6 @@ var init_Vending$1 = __esmMin((() => {
 	Vending_default$1 = ":host {\r\n	width: 100%;\r\n	height: 100%;\r\n	top: 0;\r\n	left: 0;\r\n}\r\n\r\n#vending {\r\n	position: absolute;\r\n	width: 100%;\r\n	height: 100%;\r\n}\r\n#vending .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n	text-shadow: 1px 1px white;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#vending .titlebar .text {\r\n	position: relative;\r\n	top: 2px;\r\n	left: 15px;\r\n	white-space: nowrap;\r\n}\r\n#vending .footer {\r\n	width: 100%;\r\n	height: 27px;\r\n	background-repeat: repeat-x;\r\n	background-color: transparent;\r\n	position: relative;\r\n	border-radius: 0px 0px 3px 3px;\r\n}\r\n#vending .resize {\r\n	position: absolute;\r\n	right: 1px;\r\n	bottom: 1px;\r\n	width: 13px;\r\n	height: 13px;\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n#vending .btn {\r\n	width: 42px;\r\n	height: 20px;\r\n	border: none;\r\n	margin: 0;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#vending .selectall {\r\n	vertical-align: 2px;\r\n	width: 10px;\r\n	height: 10px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#vending .ask_quantity {\r\n	padding-top: 7px;\r\n	padding-left: 20px;\r\n}\r\n\r\n#vending .nstore {\r\n	position: absolute;\r\n	top: 24px;\r\n	border: none;\r\n	padding-left: 2px;\r\n	outline: none;\r\n}\r\n#vending .limit {\r\n	position: absolute;\r\n	top: 8px;\r\n	border: none;\r\n	padding-left: 5px;\r\n	outline: none;\r\n}\r\n#vending input.shopname {\r\n	position: absolute;\r\n	left: 55px;\r\n	width: 310px;\r\n	border: none;\r\n	background-color: #e9e9e9;\r\n	padding-left: 2px;\r\n	outline: none;\r\n}\r\n#vending input.shopname {\r\n	top: 22px;\r\n}\r\n#vending input.limitZeny {\r\n	top: 6px;\r\n}\r\n#vending input.limitZeny {\r\n	position: absolute;\r\n	left: 120px;\r\n	width: 100px;\r\n	border: none;\r\n	background-color: #e9e9e9;\r\n	padding-left: 2px;\r\n	outline: none;\r\n}\r\n\r\n#vending .content .item-container {\r\n	width: 32px;\r\n	height: 32px;\r\n	display: block;\r\n	float: left;\r\n	clear: both;\r\n}\r\n#vending .content .damaged {\r\n	background-color: red;\r\n	background-blend-mode: luminosity;\r\n}\r\n#vending .container {\r\n	padding-left: 16px;\r\n	border-right: 1px solid #ccc;\r\n	background: white;\r\n	background-repeat: repeat-y;\r\n	padding-right: 2px;\r\n	padding-top: 5px;\r\n	padding-bottom: 5px;\r\n}\r\n#vending .container .overlay {\r\n	position: absolute;\r\n	display: none;\r\n	white-space: nowrap;\r\n	z-index: 900;\r\n	height: 15px;\r\n	line-height: 15px;\r\n	border-radius: 3px;\r\n	padding: 4px;\r\n	background: rgba(0, 0, 0, 0.7);\r\n	color: white;\r\n	text-shadow: 1px 1px black;\r\n}\r\n#vending .content {\r\n	overflow-y: auto;\r\n	width: 100%;\r\n	height: 100%;\r\n	min-height: 65px;\r\n	background-color: transparent;\r\n	background-repeat: repeat-y;\r\n}\r\n#vending .content .add_shop {\r\n	margin-top: 10px;\r\n}\r\n#vending .content .item {\r\n	display: block;\r\n	position: relative;\r\n	height: 28px;\r\n	padding-top: 4px;\r\n}\r\n#vending .content .item.selected {\r\n	background-color: #346ae180;\r\n}\r\n\r\n#vending .content.available {\r\n	width: 100%;\r\n	height: 100%;\r\n	min-height: 65px;\r\n	background-color: transparent;\r\n	background-repeat: repeat;\r\n}\r\n#vending .content.available .item {\r\n	display: block;\r\n	float: left;\r\n	width: 28px;\r\n	position: relative;\r\n	height: 28px;\r\n	padding-top: 4px;\r\n}\r\n#vending .content.available .item.selected {\r\n	background-color: transparent;\r\n}\r\n\r\n#vending .content .item .icon {\r\n	position: absolute;\r\n	top: 6px;\r\n	left: 4px;\r\n	width: 24px;\r\n	height: 24px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#vending .content .item .amount {\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	top: 18px;\r\n	left: 18px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n}\r\n#vending .content .item .amount_ {\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	top: 13px;\r\n	left: 200px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n}\r\n#vending .content .item .name {\r\n	position: absolute;\r\n	top: 13px;\r\n	left: 32px;\r\n	width: 115px;\r\n	white-space: nowrap;\r\n}\r\n#vending .content .item .price {\r\n	position: absolute;\r\n	top: 13px;\r\n	left: 260px;\r\n	white-space: nowrap;\r\n	text-align: right;\r\n}\r\n#vending .content .item .unity {\r\n	position: absolute;\r\n	top: 13px;\r\n	right: 2px;\r\n	width: 10px;\r\n}\r\n\r\n#vending .footer .total,\r\n#vending .footer .totalP,\r\n#vending .footer .cashuser {\r\n	padding-left: 10px;\r\n	padding-top: 8px;\r\n}\r\n#vending .footer .extend {\r\n	position: absolute;\r\n	right: 0px;\r\n	bottom: 1px;\r\n	width: 13px;\r\n	height: 13px;\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n#vending .InputWindow {\r\n	width: 280px;\r\n	position: absolute;\r\n	z-index: 50;\r\n}\r\n#vending .OutputWindow {\r\n	width: 400px;\r\n	position: absolute;\r\n	z-index: 50;\r\n}\r\n#vending .btn.buy,\r\n#vending .btn.sell {\r\n	position: absolute;\r\n	top: 4px;\r\n	right: 62px;\r\n}\r\n#vending .zeny {\r\n	position: absolute;\r\n	top: 8px;\r\n	left: 230px;\r\n}\r\n#vending .btn.cancel {\r\n	position: absolute;\r\n	top: 4px;\r\n	right: 15px;\r\n}\r\n#vending .zenyLabel,\r\n#vending .zenySpan,\r\n#vending .weightLabel,\r\n#vending .weightSpan {\r\n	position: absolute;\r\n	top: 10px;\r\n}\r\n#vending .zenyLabel {\r\n	left: 5px;\r\n}\r\n#vending .zenySpan {\r\n	left: 40px;\r\n}\r\n#vending .weightLabel {\r\n	left: 215px;\r\n}\r\n#vending .weightSpan {\r\n	left: 260px;\r\n}\r\n";
 }));
 //#endregion
-//#region src/UI/ItemDoubleClick.js
-/**
-* Call `handler(item, event)` when an item matching `selector` inside
-* `container` is double-clicked.
-*
-* @param {HTMLElement} container the list
-* @param {string} selector the items, e.g. '.item'
-* @param {function(HTMLElement, MouseEvent)} handler
-* @param {object} [options]
-* @param {number} [options.gap] milliseconds between the two clicks
-* @param {function(): number} [options.now] the clock, for tests
-* @return {function} removes the listener
-*/
-function onItemDoubleClick(container, selector, handler, options = {}) {
-	const gap = options.gap ?? 500;
-	const now = options.now ?? (() => performance.now());
-	let last = null;
-	const onClick = (event) => {
-		if (event.button !== 0) return;
-		const item = event.target.closest && event.target.closest(selector);
-		if (!item || !container.contains(item)) {
-			last = null;
-			return;
-		}
-		const key = item.getAttribute("data-index");
-		const time = now();
-		if (last && last.key === key && time - last.time <= gap) {
-			last = null;
-			handler(item, event);
-		} else last = {
-			key,
-			time
-		};
-	};
-	container.addEventListener("click", onClick);
-	return () => container.removeEventListener("click", onClick);
-}
-var init_ItemDoubleClick = __esmMin((() => {}));
-//#endregion
 //#region src/UI/Components/Vending/Vending.js
 function escapeHtml(text) {
 	const div = document.createElement("div");
@@ -324706,7 +319136,12 @@ function onItemFocus$1() {
 	this.classList.add("selected");
 }
 function onScroll$4(event) {
-	WheelSteps_default.scrollRows(event, this, 32);
+	let delta;
+	if (event.wheelDelta) {
+		delta = event.wheelDelta / 120;
+		if (window.opera) delta = -delta;
+	} else if (event.detail) delta = -event.detail;
+	this.scrollTop = Math.floor(this.scrollTop / 32) * 32 - delta * 32;
 	event.preventDefault();
 }
 function onDragStart$1(event) {
@@ -324795,8 +319230,6 @@ var init_Vending = __esmMin((() => {
 	init_Renderer();
 	init_Inventory();
 	init_BasicInfo();
-	init_ItemDoubleClick();
-	init_WheelSteps();
 	Vending = new GUIComponent("Vending", Vending_default$1);
 	Vending.render = () => Vending_default$2;
 	Vending.isOpen = false;
@@ -324860,7 +319293,10 @@ var init_Vending = __esmMin((() => {
 			content.addEventListener("mouseout", (e) => {
 				if (e.target.closest(".item")) onItemOut$9();
 			});
-			onItemDoubleClick(content, ".item", (item) => onItemSelected$1.call(item));
+			content.addEventListener("dblclick", (e) => {
+				const item = e.target.closest(".item");
+				if (item) onItemSelected$1.call(item);
+			});
 			content.addEventListener("mousedown", (e) => {
 				const item = e.target.closest(".item");
 				if (item) onItemFocus$1.call(item);
@@ -325162,7 +319598,13 @@ function onDrop$4(event) {
 * Block the scroll to move 32px at each move
 */
 function onScroll$3(event) {
-	WheelSteps_default.scrollRows(event, event.currentTarget, 32);
+	let delta;
+	if (event.wheelDelta) {
+		delta = event.wheelDelta / 120;
+		if (window.opera) delta = -delta;
+	} else if (event.detail) delta = -event.detail;
+	else if (event.deltaY) delta = -event.deltaY / 100;
+	event.currentTarget.scrollTop = Math.floor(event.currentTarget.scrollTop / 32) * 32 - delta * 32;
 	event.stopImmediatePropagation();
 	event.preventDefault();
 }
@@ -325243,8 +319685,6 @@ var init_VendingShop = __esmMin((() => {
 	init_VendingShop$2();
 	init_VendingShop$1();
 	init_VendingReport();
-	init_ItemDoubleClick();
-	init_WheelSteps();
 	VendingShop = new GUIComponent("VendingShop", VendingShop_default$1);
 	VendingShop.render = () => VendingShop_default$2;
 	/**
@@ -325301,7 +319741,10 @@ var init_VendingShop = __esmMin((() => {
 				const itemEl = e.target.closest(".item");
 				if (itemEl) onItemInfo$10(e, itemEl);
 			});
-			onItemDoubleClick(content, ".item", (itemEl, e) => onItemUsed(e, itemEl));
+			content.addEventListener("dblclick", (e) => {
+				const itemEl = e.target.closest(".item");
+				if (itemEl) onItemUsed(e, itemEl);
+			});
 		}
 		this.draggable(".titlebar");
 		this._host.style.display = "none";
@@ -325566,9 +320009,10 @@ function onScrollWheel(event) {
 	event.preventDefault();
 	event.stopImmediatePropagation();
 	const ROW_HEIGHT = 24;
-	const steps = WheelSteps_default.steps(event, this);
-	if (!steps) return;
-	let target = this.scrollTop + steps * ROW_HEIGHT;
+	let delta = 0;
+	if (event.wheelDelta) delta = event.wheelDelta > 0 ? 1 : -1;
+	else if (event.deltaY) delta = event.deltaY < 0 ? 1 : -1;
+	let target = this.scrollTop - delta * ROW_HEIGHT;
 	const maxScroll = this.scrollHeight - this.clientHeight;
 	target = Math.max(0, Math.min(target, maxScroll));
 	target = Math.round(target / ROW_HEIGHT) * ROW_HEIGHT;
@@ -325649,7 +320093,6 @@ var init_VendingReport = __esmMin((() => {
 	init_Elements();
 	init_VendingReport$2();
 	init_VendingReport$1();
-	init_WheelSteps();
 	VendingReport = new GUIComponent("VendingReport", VendingReport_default$1);
 	VendingReportTable = {
 		list: [],
@@ -326566,8 +321009,9 @@ var init_ShortCuts = __esmMin((() => {
 		_preferences$12.reduce = false;
 		_preferences$12.y = parseInt(this._host.style.top, 10);
 		_preferences$12.x = parseInt(this._host.style.left, 10);
-		_preferences$12.width = Math.floor((this._host.offsetWidth - 25) / 32);
-		_preferences$12.height = Math.floor((this._host.offsetHeight - 20) / 32);
+		const hostRect = this._host.getBoundingClientRect();
+		_preferences$12.width = Math.floor((hostRect.width - 25) / 32);
+		_preferences$12.height = Math.floor((hostRect.height - 20) / 32);
 		_preferences$12.magnet_top = this.magnet.TOP;
 		_preferences$12.magnet_bottom = this.magnet.BOTTOM;
 		_preferences$12.magnet_left = this.magnet.LEFT;
@@ -326755,10 +321199,10 @@ function onClickSearch() {
 	const newList = [];
 	CashShop.isSearch = true;
 	CashShop.activeCashMenu = 9;
-	if (val && CashShop.cashShopListItem.length > 0) for (const tab of CashShop.cashShopListItem.filter(Boolean)) {
-		const items = tab.items;
+	if (val && CashShop.cashShopListItem.length > 0) for (let i = 0; i < CashShop.cashShopListItem.length; ++i) {
+		const items = CashShop.cashShopListItem[i].items;
 		for (let iit = 0; iit < items.length; ++iit) {
-			items[iit].tab = tab.tabNum;
+			items[iit].tab = CashShop.cashShopListItem[i].tabNum;
 			const it = DB.getItemInfo(items[iit].itemId);
 			if (it.identifiedDisplayName) {
 				if (new RegExp(val).test(it.identifiedDisplayName.toLowerCase())) newList.push(items[iit]);
@@ -326938,7 +321382,7 @@ function onClickActionBuyItem() {
 */
 function onClickMenu(target) {
 	const root = _root$6();
-	const selectedMenu = parseInt(target.dataset.index, 10);
+	const selectedMenu = target.dataset.index.toUpperCase();
 	const searchInput = root.querySelector("#cashshop-search");
 	if (searchInput) searchInput.value = "";
 	if (selectedMenu !== CashShop.activeCashMenu) {
@@ -327222,13 +321666,6 @@ var init_CashShop$1 = __esmMin((() => {
 			});
 		}
 		container.addEventListener("dragover", stopPropagation$6);
-		const searchInput = root.querySelector(".cashshop-search");
-		if (searchInput) searchInput.addEventListener("keydown", (e) => {
-			if (e.which === KEYS.ENTER || e.key === "Enter") {
-				e.preventDefault();
-				onClickSearch();
-			}
-		});
 		const cartListItems = root.querySelector("#cart-list .items");
 		if (cartListItems && cartListItems.children.length > 0) onResetCartListCashShop();
 		CashShop.loadCashShopBanner();
@@ -327363,7 +321800,11 @@ var init_CashShop$1 = __esmMin((() => {
 						CashShop.checkCartItemLen = 0;
 						UIManager.showMessageBox("Successfully done buying items from cash shop!", "ok");
 						ChatBox_default.addText("Successfully done buying items from cash shop!", ChatBox_default.TYPE.INFO, ChatBox_default.FILTER.PUBLIC_LOG);
-						CashShop.readPoints(res.cashPoints, res.kafraPoints, CashShop.activeCashMenu);
+						const root = _root$6();
+						const cashpointSpan = root.querySelector("#cashpoint span");
+						if (cashpointSpan) cashpointSpan.textContent = res.cashPoints;
+						const cashpointFooter = root.querySelector(".cashpoint_footer");
+						if (cashpointFooter) cashpointFooter.textContent = res.cashPoints;
 						onResetCartListCashShop();
 					}
 					break;
@@ -327381,26 +321822,12 @@ var init_CashShop$1 = __esmMin((() => {
 			}
 		}
 	};
-	/**
-	* Store a tab's items by its tab number, which is also the menu's data-index
-	*
-	* rAthena sends one ZC_ACK_SCHEDULER_CASHITEM per tab that has items, skipping
-	* empty tabs, and splits a tab too big for one packet over several.
-	*
-	* @param {object} pkt - PACKET.ZC.ACK_SCHEDULER_CASHITEM
-	*/
-	CashShop.readCashShopItems = function readCashShopItems(pkt) {
-		const tab = CashShop.cashShopListItem[pkt.tabNum];
-		if (tab) {
-			tab.items = tab.items.concat(pkt.items);
-			tab.count = tab.items.length;
-			return;
-		}
-		CashShop.cashShopListItem[pkt.tabNum] = {
-			count: pkt.count,
-			items: pkt.items,
-			tabNum: pkt.tabNum
-		};
+	CashShop.readCashShopItems = function readCashShopItems(items) {
+		CashShop.cashShopListItem.push({
+			count: items.count,
+			items: items.items,
+			tabNum: items.tabNum
+		});
 	};
 	/**
 	* Load Cash Shop Components
@@ -328460,7 +322887,7 @@ function onSubmitItemDrop$1(event) {
 	} catch (_e) {
 		return;
 	}
-	if (data.type !== "item" || data.from === "Equipment") return;
+	if (data.type !== "item") return;
 	const root = _root$4();
 	if (parseInt(root.querySelector(".mat_count_submitted").textContent, 10) >= parseInt(root.querySelector(".mat_count_needed").textContent, 10)) return;
 	if (LaphineSys.submittedItems.some((submittedItem) => submittedItem.index === item.index)) return;
@@ -329028,7 +323455,7 @@ function onSubmitItemDrop(event) {
 	} catch (_e) {
 		return;
 	}
-	if (data.type !== "item" || data.from === "Equipment") return;
+	if (data.type !== "item") return;
 	if (!item) return;
 	const root = _root$3();
 	if (LaphineUpg.submittedIndex !== 0) return;
@@ -331656,7 +326083,6 @@ function onParameterChange$1(pkt) {
 			WinStatsController.getUI().update("aspd", amount);
 			break;
 		case StatusProperty_default.JOBLEVEL:
-			SessionStorage_default.Entity.joblevel = amount;
 			BasicInfoController.getUI().update("jlvl", amount);
 			Controller$4.getUI().onLevelUp();
 			break;
@@ -332988,7 +327414,6 @@ function onEntitySpam(pkt) {
 			}
 		}
 		EntityManager.add(entity);
-		if (questEffects.has(entity.GID)) attachQuestEffect(entity, questEffects.get(entity.GID));
 		const cachedLife = EntityManager.getLife(entity.GID);
 		if (cachedLife && entity.life.hp <= -1) {
 			if (cachedLife.hp !== void 0) entity.life.hp = cachedLife.hp;
@@ -333156,7 +327581,7 @@ function onEntityVanish(pkt) {
 		}
 		if (pkt.GID === SessionStorage_default.Entity.GID && pkt.type === 1) Escape_default.showDeathMenu(haveSiegfriedItem());
 		const deathDelay = pkt.type === Entity.VT.DEAD && entity.objecttype !== Entity.TYPE_PC && entity._deathSyncTick > Renderer.tick ? entity._deathSyncTick - Renderer.tick + C_DEATH_SYNC_OFFSET : 0;
-		if (pkt.type !== Entity.VT.DEAD || entity.objecttype !== Entity.TYPE_PC) EntityManager.removeGID(pkt.GID);
+		EntityManager.removeGID(pkt.GID);
 		const playDeath = () => {
 			entity.remove(pkt.type);
 		};
@@ -333531,7 +327956,7 @@ function onEntityTalk(pkt) {
 		});
 		entity.dialog.set(pkt.msg);
 		if (entity === SessionStorage_default.Entity) type |= ChatBox_default.TYPE.SELF;
-		else if (SessionStorage_default.showsAdmin(entity, "chat")) type |= ChatBox_default.TYPE.ADMIN;
+		else if (entity.isAdmin) type |= ChatBox_default.TYPE.ADMIN;
 	}
 }
 /**
@@ -333564,10 +327989,6 @@ function onEntityIdentity(pkt) {
 			const titleText = DB.getTitleString(pkt.TitleID);
 			entity.display.title_name = titleText;
 		} else entity.display.title_name = "";
-		if (PacketVerManager_default.value >= 20170208 && entity === SessionStorage_default.Entity && pkt.TitleID !== void 0) {
-			const equipment = EquipmentController.getUI();
-			if (equipment && typeof equipment.setTitle === "function") equipment.setTitle(pkt.TitleID);
-		}
 		entity.display.party_name = pkt.PName || "";
 		entity.display.guild_name = pkt.GName || "";
 		entity.display.guild_rank = pkt.RName || "";
@@ -333591,13 +328012,13 @@ function onEntityIdentity(pkt) {
 	}
 }
 function updateEntityStyle(entity) {
-	entity.display.update(entity.objecttype === Entity.TYPE_MOB ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC_ABR ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC_BIONIC ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_DISGUISED ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC ? entity.display.STYLE.NPC : entity.objecttype === Entity.TYPE_NPC2 ? entity.display.STYLE.NPC : entity.objecttype === Entity.TYPE_PC && SessionStorage_default.showsAdmin(entity, "name") ? entity.display.STYLE.ADMIN : entity.display.STYLE.DEFAULT);
+	entity.display.update(entity.objecttype === Entity.TYPE_MOB ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC_ABR ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC_BIONIC ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_DISGUISED ? entity.display.STYLE.MOB : entity.objecttype === Entity.TYPE_NPC ? entity.display.STYLE.NPC : entity.objecttype === Entity.TYPE_NPC2 ? entity.display.STYLE.NPC : entity.objecttype === Entity.TYPE_PC && entity.isAdmin ? entity.display.STYLE.ADMIN : entity.display.STYLE.DEFAULT);
 }
 function onTitleChangeAck(pkt) {
 	if (pkt.result === 0) {
 		const comp = EquipmentController.getUI();
 		if (comp && typeof comp.setTitle === "function") comp.setTitle(pkt.title_id);
-	} else ChatBox_default.addText("You cannot use that title.", ChatBox_default.TYPE.ERROR, ChatBox_default.FILTER.PUBLIC_LOG);
+	}
 }
 /**
 * Update entity's life
@@ -333643,41 +328064,34 @@ function onEntityLifeUpdateTiny(pkt) {
 */
 function onEntityQuestNotifyEffect(pkt) {
 	const entity = EntityManager.get(pkt.npcID);
-	const hide = pkt.effect === QUEST_EFFECT_NONE || PacketVerManager_default.value < 20120410 && pkt.effect === 0 && pkt.color === 0;
-	if (hide) questEffects.delete(pkt.npcID);
-	else questEffects.set(pkt.npcID, pkt.effect);
-	if (entity) attachQuestEffect(entity, hide ? QUEST_EFFECT_NONE : pkt.effect);
-	const color = hide ? void 0 : QuestMarkColors[pkt.color];
-	if (color === void 0) Controller$5.getUI().removeNpcMark(pkt.npcID);
-	else Controller$5.getUI().addNpcMark(pkt.npcID, pkt.xPos, pkt.yPos, color, Infinity);
-}
-/**
-* Draw a quest icon over an NPC's head, replacing the one it has
-*
-* @param {Entity} entity
-* @param {number} effect - e_questinfo_types, QUEST_EFFECT_NONE to remove the icon
-*/
-function attachQuestEffect(entity, effect) {
-	const emotionId = effect + 81;
-	if (effect === QUEST_EFFECT_NONE || !(emotionId in Emotions_default.indexes)) {
-		entity.attachments.remove("questinfo");
-		return;
+	let color = 0;
+	if (pkt.effect !== 9999) {
+		const emotionId = pkt.effect + 81;
+		if (entity && pkt.effect in Emotions_default.indexes) entity.attachments.add({
+			frame: Emotions_default.indexes[emotionId],
+			file: "emotion",
+			play: true,
+			head: true,
+			repeat: true,
+			depth: 5
+		});
 	}
-	entity.attachments.add({
-		uid: "questinfo",
-		frame: Emotions_default.indexes[emotionId],
-		file: "emotion",
-		play: true,
-		head: true,
-		repeat: true,
-		depth: 5
-	});
-}
-/**
-* Forget the quest icons of the map being left
-*/
-function clearQuestEffects() {
-	questEffects.clear();
+	switch (pkt.color + 1) {
+		case 1:
+			color = 16776960;
+			break;
+		case 2:
+			color = 16753920;
+			break;
+		case 3:
+			color = 57706;
+			break;
+		case 4:
+			color = 8388736;
+			break;
+		default: return;
+	}
+	Controller$5.getUI().addNpcMark(pkt.npcID, pkt.xPos, pkt.yPos, color, Infinity);
 }
 /**
 * Updating entity direction
@@ -333716,32 +328130,15 @@ function onEntityViewChange(pkt) {
 				else entity.job = pkt.value;
 				if (entity === SessionStorage_default.Entity) {
 					if (PacketVerManager_default.value >= 20200520) {
-						const previous = BasicInfoController.getUI();
-						previous.remove();
+						BasicInfoController.getUI().remove();
 						BasicInfoController.selectUIVersionWithJob(DB.getJobClass(pkt.value));
-						const ui = BasicInfoController.getUI();
-						if (ui !== previous) {
-							ui.base_exp = previous.base_exp;
-							ui.base_exp_next = previous.base_exp_next;
-							ui.job_exp = previous.job_exp;
-							ui.job_exp_next = previous.job_exp_next;
-						}
-						ui.prepare();
-						ui.update("blvl", SessionStorage_default.Entity.clevel);
-						ui.update("jlvl", SessionStorage_default.Entity.joblevel);
-						ui.update("zeny", SessionStorage_default.Entity.money);
-						ui.update("name", SessionStorage_default.Entity.display.name);
-						ui.update("bexp", ui.base_exp, ui.base_exp_next);
-						if (ui.job_exp_next > -1) ui.update("jexp", ui.job_exp, ui.job_exp_next);
-						const life = SessionStorage_default.Entity.life;
-						if (life.hp > -1 && life.hp_max > -1) ui.update("hp", life.hp, life.hp_max);
-						if (life.sp > -1 && life.sp_max > -1) ui.update("sp", life.sp, life.sp_max);
-						if (life.ap > -1 && life.ap_max > -1) ui.update("ap", life.ap, life.ap_max);
-						if (SessionStorage_default.Entity.max_weight) {
-							ui.weight_max = SessionStorage_default.Entity.max_weight;
-							ui.update("weight", SessionStorage_default.Entity.weight, ui.weight_max);
-						}
-						ui.append();
+						BasicInfoController.getUI().prepare();
+						BasicInfoController.getUI().update("blvl", SessionStorage_default.Entity.clevel);
+						BasicInfoController.getUI().update("jlvl", SessionStorage_default.Entity.joblevel);
+						BasicInfoController.getUI().update("zeny", SessionStorage_default.Entity.money);
+						BasicInfoController.getUI().update("name", SessionStorage_default.Entity.display.name);
+						BasicInfoController.getUI().update("bexp", BasicInfoController.getUI().base_exp, BasicInfoController.getUI().base_exp_next);
+						BasicInfoController.getUI().append();
 					}
 					BasicInfoController.getUI().update("job", pkt.value);
 				}
@@ -334906,7 +329303,7 @@ function EntityEngine() {
 	Network.hookPacket(PACKET.ZC.ACK_CHANGE_TITLE, onTitleChangeAck);
 	Network.hookPacket(PACKET.ZC.HAT_EFFECT, onHatEffects);
 }
-var SkillNameDisplayExclude, SkillBlueCombo, C_MULTIHIT_DELAY, C_DEATH_SYNC_OFFSET, AVG_ATTACK_SPEED, AVG_ATTACKED_SPEED, MAX_ATTACKMT, clanEmblems, questEffects, QUEST_EFFECT_NONE, QuestMarkColors;
+var SkillNameDisplayExclude, SkillBlueCombo, C_MULTIHIT_DELAY, C_DEATH_SYNC_OFFSET, AVG_ATTACK_SPEED, AVG_ATTACKED_SPEED, MAX_ATTACKMT, clanEmblems;
 var init_Entity = __esmMin((() => {
 	init_DBManager();
 	init_SkillConst();
@@ -334988,13 +329385,6 @@ var init_Entity = __esmMin((() => {
 	AVG_ATTACKED_SPEED = 288;
 	MAX_ATTACKMT = AVG_ATTACK_SPEED * 2;
 	clanEmblems = {};
-	questEffects = /* @__PURE__ */ new Map();
-	QUEST_EFFECT_NONE = 9999;
-	QuestMarkColors = {
-		1: 16776960,
-		2: 57706,
-		3: 8388736
-	};
 }));
 //#endregion
 //#region src/Renderer/ItemObject.js
@@ -335116,7 +329506,7 @@ var init_ItemObtain = __esmMin((() => {
 	*/
 	ItemObtain.onAppend = function onAppend() {
 		const el = this.getRoot().querySelector("#ItemObtain");
-		this._host.style.left = `${Renderer.width - (el ? el.getBoundingClientRect().width : 0) >> 1}px`;
+		this._host.style.left = `${Renderer.width - (el ? el.offsetWidth : 0) >> 1}px`;
 	};
 	/**
 	* Once removed from HTML, clean timer
@@ -335150,7 +329540,7 @@ var init_ItemObtain = __esmMin((() => {
 		const content = root.querySelector(".content");
 		if (content) content.innerHTML = `<img src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" class="item-${item.ITID}" width="24" height="24" /> ` + _sanitizeHtml$6(`${display} ${DB.getMessage(696).replace("%d", item.count || 1)}`);
 		const el = root.querySelector("#ItemObtain");
-		this._host.style.left = `${Renderer.width - (el ? el.getBoundingClientRect().width : 0) >> 1}px`;
+		this._host.style.left = `${Renderer.width - (el ? el.offsetWidth : 0) >> 1}px`;
 		Client.loadFile(DB.INTERFACE_PATH + "item/" + resource + ".bmp", (url) => {
 			const img = root.querySelector(`img.item-${item.ITID}`);
 			if (img) img.src = url;
@@ -335837,8 +330227,13 @@ function stopPropagation$2(event) {
 * Update scroll by block (32px)
 */
 function onScroll$2(event) {
-	WheelSteps_default.scrollRows(event, this, 32);
-	event.preventDefault();
+	let delta;
+	if (event.wheelDelta) {
+		delta = event.wheelDelta / 120;
+		if (window.opera) delta = -delta;
+	} else if (event.detail) delta = -event.detail;
+	this.scrollTop = Math.floor(this.scrollTop / 32) * 32 - delta * 32;
+	return false;
 }
 /**
 * Mouse over item, display name and informations
@@ -335874,7 +330269,6 @@ var init_ConvertItems = __esmMin((() => {
 	init_Elements();
 	init_ConvertItems$2();
 	init_ConvertItems$1();
-	init_WheelSteps();
 	_preferences$6 = Preferences.get("ConvertItems", {
 		x: 200,
 		y: 500,
@@ -336208,8 +330602,13 @@ function stopPropagation$1(event) {
 * Update scroll by block (32px)
 */
 function onScroll$1(event) {
-	WheelSteps_default.scrollRows(event, this, 32);
-	event.preventDefault();
+	let delta;
+	if (event.wheelDelta) {
+		delta = event.wheelDelta / 120;
+		if (window.opera) delta = -delta;
+	} else if (event.detail) delta = -event.detail;
+	this.scrollTop = Math.floor(this.scrollTop / 32) * 32 - delta * 32;
+	return false;
 }
 /**
 * Mouse over item, display name and informations
@@ -336245,7 +330644,6 @@ var init_ItemListWindowSelection = __esmMin((() => {
 	init_Elements();
 	init_ItemListWindowSelection$2();
 	init_ItemListWindowSelection$1();
-	init_WheelSteps();
 	_preferences$5 = Preferences.get("ItemListWindowSelection", {
 		x: 200,
 		y: 500,
@@ -336761,18 +331159,6 @@ function onRecoverPenaltyOverweight(pkt) {
 	if (SessionStorage_default.Entity) SessionStorage_default.Entity.overWeightPercent = pkt.percentage;
 }
 /**
-* Open the storage window, unless it is open already.
-*
-* The server sends SPLIT_SEND_ITEMLIST_NORMAL only when the storage holds a
-* stackable item, and SPLIT_SEND_ITEMLIST_EQUIP only when it holds equipment,
-* so either one can be the first, or the only, list to arrive. A storage of
-* nothing but equipment used to fill a window that was never built.
-*/
-function openStorage() {
-	const ui = StorageController.getUI();
-	if (!(ui.__loaded && ui.__active)) ui.append();
-}
-/**
 * Result of Inventory Expansion
 *
 * @param {object} pkt - PACKET.ZC.SPLIT_SEND_ITEMLIST_NORMAL
@@ -336786,7 +331172,7 @@ function onItemListNormal(pkt) {
 			CartItems_default.setItems(pkt.itemInfo || pkt.ItemInfo);
 			break;
 		case 2:
-			openStorage();
+			StorageController.getUI().append();
 			StorageController.getUI().setItems(pkt.itemInfo || pkt.ItemInfo);
 			break;
 		default: throw new Error("[PACKET.ZC.SPLIT_SEND_ITEMLIST_NORMAL] - Unknown invType '" + pkt.invType + "'.");
@@ -336806,7 +331192,6 @@ function onItemListEquip(pkt) {
 			CartItems_default.setItems(pkt.itemInfo || pkt.ItemInfo);
 			break;
 		case 2:
-			openStorage();
 			StorageController.getUI().setItems(pkt.itemInfo || pkt.ItemInfo);
 			break;
 		default: throw new Error("[PACKET.ZC.SPLIT_SEND_ITEMLIST_NORMAL] - Unknown invType '" + pkt.invType + "'.");
@@ -340220,7 +334605,7 @@ var init_NpcStore$2 = __esmMin((() => {
 //#region src/UI/Components/NpcStore/NpcStore.css?raw
 var NpcStore_default$1;
 var init_NpcStore$1 = __esmMin((() => {
-	NpcStore_default$1 = ":host {\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 100%;\r\n	height: 100%;\r\n}\r\n\r\n#NpcStore {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 100%;\r\n	height: 100%;\r\n}\r\n#NpcStore .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n	text-shadow: 1px 1px white;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#NpcStore .titlebar .text {\r\n	position: relative;\r\n	top: 2px;\r\n	left: 15px;\r\n	white-space: nowrap;\r\n}\r\n#NpcStore .footer {\r\n	width: 100%;\r\n	height: 27px;\r\n	background-repeat: repeat-x;\r\n	background-color: transparent;\r\n	position: relative;\r\n	border-radius: 0px 0px 3px 3px;\r\n}\r\n#NpcStore .resize {\r\n	position: absolute;\r\n	right: 1px;\r\n	bottom: 1px;\r\n	width: 13px;\r\n	height: 13px;\r\n}\r\n#NpcStore .btn {\r\n	width: 42px;\r\n	height: 20px;\r\n	margin: 0;\r\n}\r\n#NpcStore .selectall {\r\n	display: inline-block;\r\n	vertical-align: 2px;\r\n	width: 10px;\r\n	height: 10px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	cursor: pointer;\r\n}\r\n#NpcStore .ask_quantity {\r\n	padding-top: 7px;\r\n	padding-left: 20px;\r\n}\r\n\r\n#NpcStore .container {\r\n	padding-left: 16px;\r\n	border-right: 1px solid #ccc;\r\n	background: white;\r\n	background-repeat: repeat-y;\r\n	padding-right: 2px;\r\n	padding-top: 5px;\r\n	padding-bottom: 5px;\r\n}\r\n#NpcStore .content {\r\n	overflow-y: auto;\r\n	overflow-x: hidden;\r\n	width: 100%;\r\n	height: 100%;\r\n	min-height: 65px;\r\n	background-color: transparent;\r\n	background-repeat: repeat-y;\r\n	background-attachment: local;\r\n}\r\n#NpcStore .content.contentAvailable {\r\n	background-repeat: repeat;\r\n	overflow-y: unset;\r\n}\r\n#NpcStore .content .item {\r\n	display: block;\r\n	position: relative;\r\n	height: 28px;\r\n	padding-top: 4px;\r\n}\r\n\r\n#NpcStore .content .item.expanded-barter {\r\n	padding-bottom: 30px !important;\r\n}\r\n\r\n#NpcStore .content .item.selected {\r\n	background-color: #346ae180;\r\n}\r\n#NpcStore .content .item.itemAvailable {\r\n	display: block;\r\n	float: left;\r\n	width: 28px;\r\n	position: relative;\r\n	height: 28px;\r\n	padding-top: 4px;\r\n}\r\n#NpcStore .content .item.itemAvailable.selected {\r\n	background-color: transparent;\r\n}\r\n\r\n#NpcStore .content .item .icon {\r\n	position: absolute;\r\n	top: 6px;\r\n	left: 4px;\r\n	width: 24px;\r\n	height: 24px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#NpcStore .content .item .amount {\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	top: 18px;\r\n	left: 18px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n}\r\n#NpcStore .content .item .amountBuying {\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	top: 13px;\r\n	left: 160px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n	color: red;\r\n}\r\n/*\r\n * A market shop's stock can run to six digits, which does not fit over the 24px\r\n * icon, and .content clips horizontal overflow, so a number wider than the icon\r\n * would be cut off rather than spill. Give it its own right-aligned column\r\n * between the item name and the price instead, the way a buying store's\r\n * quantity already sits apart from the icon.\r\n */\r\n#NpcStore .content .item .amountStock {\r\n	top: 13px;\r\n	left: auto;\r\n	right: 76px;\r\n	text-align: right;\r\n}\r\n/*\r\n * An item name is free to overflow its box, which was harmless while nothing\r\n * sat to its right. Beside a stock column it runs under the number, so in a\r\n * market shop the name is cut to its box with an ellipsis and keeps a small\r\n * gutter. The amount comes immediately before the name in the markup.\r\n */\r\n#NpcStore .content .item .amountStock + .name {\r\n	box-sizing: border-box;\r\n	padding-right: 5px;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n}\r\n#NpcStore .content .item .name {\r\n	position: absolute;\r\n	top: 13px;\r\n	left: 32px;\r\n	width: 115px;\r\n	white-space: nowrap;\r\n}\r\n#NpcStore .content .item .price {\r\n	position: absolute;\r\n	top: 13px;\r\n	right: 16px;\r\n	white-space: nowrap;\r\n	text-align: right;\r\n}\r\n#NpcStore .content .item .unity {\r\n	position: absolute;\r\n	top: 13px;\r\n	right: 2px;\r\n	width: 10px;\r\n}\r\n\r\n#NpcStore .footer .total,\r\n#NpcStore .footer .totalP,\r\n#NpcStore .footer .cashuser {\r\n	padding-left: 10px;\r\n	padding-top: 8px;\r\n}\r\n#NpcStore .footer .total,\r\n#NpcStore .footer .totalP,\r\n#NpcStore .footer .limitZeny {\r\n	padding-left: 10px;\r\n	padding-top: 8px;\r\n}\r\n#NpcStore .InputWindow,\r\n#NpcStore .OutputWindow,\r\n#NpcStore .AvailableItemsWindow,\r\n#NpcStore .PurchaseResult {\r\n	width: 280px;\r\n	position: absolute;\r\n	z-index: 50;\r\n	pointer-events: auto;\r\n}\r\n#NpcStore .btn.buy,\r\n#NpcStore .btn.sell {\r\n	position: absolute;\r\n	top: 4px;\r\n	right: 62px;\r\n}\r\n#NpcStore .btn.ok {\r\n	position: absolute;\r\n	top: 4px;\r\n	right: 20px;\r\n}\r\n#NpcStore .btn.cancel {\r\n	position: absolute;\r\n	top: 4px;\r\n	right: 15px;\r\n}\r\n\r\n#NpcStore .content .item .nameOverlay {\r\n	position: relative;\r\n	display: none;\r\n	top: -17px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#NpcStore .content .item:hover .nameOverlay {\r\n	display: table;\r\n}\r\n#NpcStore .content .item .nameOverlay {\r\n	display: none;\r\n}\r\n\r\n#NpcStore .content .item .currency_icon {\r\n	position: absolute;\r\n	top: 6px;\r\n	left: 200px;\r\n	width: 24px;\r\n	height: 24px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#NpcStore .content .item .currency_amount {\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	top: 18px;\r\n	right: 13px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n}\r\n#NpcStore .content .item .currency_nameOverlay {\r\n	position: relative;\r\n	display: none;\r\n	top: -17px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#NpcStore .content .item:hover .currency_nameOverlay {\r\n	display: table;\r\n}\r\n#NpcStore .content .item .currency_nameOverlay {\r\n	display: none;\r\n}\r\n\r\n#NpcStore .currency_section {\r\n	display: flex;\r\n	height: 25px;\r\n	position: relative;\r\n	left: 30px;\r\n	width: 200px;\r\n}\r\n#NpcStore .currency_slot {\r\n	width: 24px;\r\n	padding-right: 15px;\r\n}\r\n#NpcStore .expanded_currency_holder {\r\n	height: 27px;\r\n	width: 30px;\r\n	position: relative;\r\n}\r\n#NpcStore .expanded_currency_icon {\r\n	height: 24px;\r\n	width: 24px;\r\n	position: relative;\r\n	left: 5px;\r\n}\r\n#NpcStore .expanded_currency_amount {\r\n	position: relative;\r\n	white-space: nowrap;\r\n	top: -10px;\r\n	left: 15px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n}\r\n#NpcStore .expanded_currency_refinelvl {\r\n	position: relative;\r\n	white-space: nowrap;\r\n	top: -43px;\r\n	left: 12px;\r\n	text-align: left;\r\n	color: white;\r\n	font-weight: 850;\r\n	-webkit-text-stroke: 1px red;\r\n}\r\n#NpcStore .expanded_price {\r\n	position: relative;\r\n	top: -10px;\r\n	left: 215px;\r\n	white-space: nowrap;\r\n	text-align: right;\r\n	width: 80px;\r\n}\r\n#NpcStore .content .item .expanded_currency_nameOverlay {\r\n	position: relative;\r\n	visibility: hidden;\r\n	opacity: 0;\r\n	top: -17px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n	transition:\r\n		opacity 0.2s ease-in-out,\r\n		visibility 0.2s ease-in-out;\r\n	pointer-events: none;\r\n	z-index: 10;\r\n}\r\n#NpcStore .content .item:hover .expanded_currency_nameOverlay {\r\n	visibility: visible;\r\n	opacity: 1;\r\n}\r\n";
+	NpcStore_default$1 = ":host {\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 100%;\r\n	height: 100%;\r\n}\r\n\r\n#NpcStore {\r\n	position: absolute;\r\n	top: 0px;\r\n	left: 0px;\r\n	width: 100%;\r\n	height: 100%;\r\n}\r\n#NpcStore .titlebar {\r\n	width: 100%;\r\n	height: 17px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	border-radius: 3px 3px 0px 0px;\r\n	text-shadow: 1px 1px white;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n#NpcStore .titlebar .text {\r\n	position: relative;\r\n	top: 2px;\r\n	left: 15px;\r\n	white-space: nowrap;\r\n}\r\n#NpcStore .footer {\r\n	width: 100%;\r\n	height: 27px;\r\n	background-repeat: repeat-x;\r\n	background-color: transparent;\r\n	position: relative;\r\n	border-radius: 0px 0px 3px 3px;\r\n}\r\n#NpcStore .resize {\r\n	position: absolute;\r\n	right: 1px;\r\n	bottom: 1px;\r\n	width: 13px;\r\n	height: 13px;\r\n}\r\n#NpcStore .btn {\r\n	width: 42px;\r\n	height: 20px;\r\n	margin: 0;\r\n}\r\n#NpcStore .selectall {\r\n	display: inline-block;\r\n	vertical-align: 2px;\r\n	width: 10px;\r\n	height: 10px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	cursor: pointer;\r\n}\r\n#NpcStore .ask_quantity {\r\n	padding-top: 7px;\r\n	padding-left: 20px;\r\n}\r\n\r\n#NpcStore .container {\r\n	padding-left: 16px;\r\n	border-right: 1px solid #ccc;\r\n	background: white;\r\n	background-repeat: repeat-y;\r\n	padding-right: 2px;\r\n	padding-top: 5px;\r\n	padding-bottom: 5px;\r\n}\r\n#NpcStore .content {\r\n	overflow-y: auto;\r\n	overflow-x: hidden;\r\n	width: 100%;\r\n	height: 100%;\r\n	min-height: 65px;\r\n	background-color: transparent;\r\n	background-repeat: repeat-y;\r\n	background-attachment: local;\r\n}\r\n#NpcStore .content.contentAvailable {\r\n	background-repeat: repeat;\r\n	overflow-y: unset;\r\n}\r\n#NpcStore .content .item {\r\n	display: block;\r\n	position: relative;\r\n	height: 28px;\r\n	padding-top: 4px;\r\n}\r\n\r\n#NpcStore .content .item.expanded-barter {\r\n	padding-bottom: 30px !important;\r\n}\r\n\r\n#NpcStore .content .item.selected {\r\n	background-color: #346ae180;\r\n}\r\n#NpcStore .content .item.itemAvailable {\r\n	display: block;\r\n	float: left;\r\n	width: 28px;\r\n	position: relative;\r\n	height: 28px;\r\n	padding-top: 4px;\r\n}\r\n#NpcStore .content .item.itemAvailable.selected {\r\n	background-color: transparent;\r\n}\r\n\r\n#NpcStore .content .item .icon {\r\n	position: absolute;\r\n	top: 6px;\r\n	left: 4px;\r\n	width: 24px;\r\n	height: 24px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#NpcStore .content .item .amount {\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	top: 18px;\r\n	left: 18px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n}\r\n#NpcStore .content .item .amountBuying {\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	top: 13px;\r\n	left: 160px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n	color: red;\r\n}\r\n#NpcStore .content .item .name {\r\n	position: absolute;\r\n	top: 13px;\r\n	left: 32px;\r\n	width: 115px;\r\n	white-space: nowrap;\r\n}\r\n#NpcStore .content .item .price {\r\n	position: absolute;\r\n	top: 13px;\r\n	right: 16px;\r\n	white-space: nowrap;\r\n	text-align: right;\r\n}\r\n#NpcStore .content .item .unity {\r\n	position: absolute;\r\n	top: 13px;\r\n	right: 2px;\r\n	width: 10px;\r\n}\r\n\r\n#NpcStore .footer .total,\r\n#NpcStore .footer .totalP,\r\n#NpcStore .footer .cashuser {\r\n	padding-left: 10px;\r\n	padding-top: 8px;\r\n}\r\n#NpcStore .footer .total,\r\n#NpcStore .footer .totalP,\r\n#NpcStore .footer .limitZeny {\r\n	padding-left: 10px;\r\n	padding-top: 8px;\r\n}\r\n#NpcStore .InputWindow,\r\n#NpcStore .OutputWindow,\r\n#NpcStore .AvailableItemsWindow,\r\n#NpcStore .PurchaseResult {\r\n	width: 280px;\r\n	position: absolute;\r\n	z-index: 50;\r\n	pointer-events: auto;\r\n}\r\n#NpcStore .btn.buy,\r\n#NpcStore .btn.sell {\r\n	position: absolute;\r\n	top: 4px;\r\n	right: 62px;\r\n}\r\n#NpcStore .btn.ok {\r\n	position: absolute;\r\n	top: 4px;\r\n	right: 20px;\r\n}\r\n#NpcStore .btn.cancel {\r\n	position: absolute;\r\n	top: 4px;\r\n	right: 15px;\r\n}\r\n\r\n#NpcStore .content .item .nameOverlay {\r\n	position: relative;\r\n	display: none;\r\n	top: -17px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#NpcStore .content .item:hover .nameOverlay {\r\n	display: table;\r\n}\r\n#NpcStore .content .item .nameOverlay {\r\n	display: none;\r\n}\r\n\r\n#NpcStore .content .item .currency_icon {\r\n	position: absolute;\r\n	top: 6px;\r\n	left: 200px;\r\n	width: 24px;\r\n	height: 24px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n#NpcStore .content .item .currency_amount {\r\n	position: absolute;\r\n	white-space: nowrap;\r\n	top: 18px;\r\n	right: 13px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n}\r\n#NpcStore .content .item .currency_nameOverlay {\r\n	position: relative;\r\n	display: none;\r\n	top: -17px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n}\r\n#NpcStore .content .item:hover .currency_nameOverlay {\r\n	display: table;\r\n}\r\n#NpcStore .content .item .currency_nameOverlay {\r\n	display: none;\r\n}\r\n\r\n#NpcStore .currency_section {\r\n	display: flex;\r\n	height: 25px;\r\n	position: relative;\r\n	left: 30px;\r\n	width: 200px;\r\n}\r\n#NpcStore .currency_slot {\r\n	width: 24px;\r\n	padding-right: 15px;\r\n}\r\n#NpcStore .expanded_currency_holder {\r\n	height: 27px;\r\n	width: 30px;\r\n	position: relative;\r\n}\r\n#NpcStore .expanded_currency_icon {\r\n	height: 24px;\r\n	width: 24px;\r\n	position: relative;\r\n	left: 5px;\r\n}\r\n#NpcStore .expanded_currency_amount {\r\n	position: relative;\r\n	white-space: nowrap;\r\n	top: -10px;\r\n	left: 15px;\r\n	text-align: left;\r\n	text-shadow: -1px -1px white;\r\n}\r\n#NpcStore .expanded_currency_refinelvl {\r\n	position: relative;\r\n	white-space: nowrap;\r\n	top: -43px;\r\n	left: 12px;\r\n	text-align: left;\r\n	color: white;\r\n	font-weight: 850;\r\n	-webkit-text-stroke: 1px red;\r\n}\r\n#NpcStore .expanded_price {\r\n	position: relative;\r\n	top: -10px;\r\n	left: 215px;\r\n	white-space: nowrap;\r\n	text-align: right;\r\n	width: 80px;\r\n}\r\n#NpcStore .content .item .expanded_currency_nameOverlay {\r\n	position: relative;\r\n	visibility: hidden;\r\n	opacity: 0;\r\n	top: -17px;\r\n	left: 0px;\r\n	background-color: rgba(0, 0, 0, 0.6);\r\n	text-shadow: 1px 1px black;\r\n	color: white;\r\n	padding: 5px;\r\n	white-space: nowrap;\r\n	font-size: 0.6rem;\r\n	transition:\r\n		opacity 0.2s ease-in-out,\r\n		visibility 0.2s ease-in-out;\r\n	pointer-events: none;\r\n	z-index: 10;\r\n}\r\n#NpcStore .content .item:hover .expanded_currency_nameOverlay {\r\n	visibility: visible;\r\n	opacity: 1;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/NpcStore/NpcStore.js
@@ -340296,18 +334681,6 @@ function prettyZeny(val, useStyle) {
 	return str;
 }
 /**
-* Text for an item's amount column. A market shop's remaining stock lives in
-* `maxCount`, because its `count` has to stay infinite (see setList).
-*
-* @param {Item} item info
-* @returns {string} amount to display, empty when there is no amount to show
-*/
-function amountColumn(item) {
-	if (isFinite(item.count)) return String(item.count);
-	if (_type === NpcStore.Type.MARKETSHOP && typeof item.maxCount === "number") return String(item.maxCount);
-	return "";
-}
-/**
 * Add item to the list
 *
 * @param {Element} content element
@@ -340331,20 +334704,16 @@ function addItem(content, item) {
 	if (element) {
 		amountText = _type === NpcStore.Type.BUYING_STORE && !content.classList.contains("contentAvailable") ? " ea." : "";
 		const amountEl = element.querySelector(".amount");
-		if (amountEl) {
-			const amount = amountColumn(item);
-			amountEl.textContent = amount === "" ? "" : amount + amountText;
-		}
+		if (amountEl) amountEl.textContent = isFinite(item.count) ? item.count + amountText : "";
 		return;
 	}
 	if (!content.classList.contains("contentAvailable") && _type !== NpcStore.Type.BARTER_MARKET && _type !== NpcStore.Type.BARTER_MARKET_EXTENDED) {
 		price = prettyZeny(item.price, _type === NpcStore.Type.VENDING_STORE || _type === NpcStore.Type.BUYING_STORE);
 		if ("discountprice" in item && item.price !== item.discountprice) price += " -> " + prettyZeny(item.discountprice);
 		else if ("overchargeprice" in item && item.price !== item.overchargeprice) price += " -> " + prettyZeny(item.overchargeprice);
-		const amountClass = _type === NpcStore.Type.BUYING_STORE ? " amountBuying" : _type === NpcStore.Type.MARKETSHOP ? " amountStock" : "";
+		const buyingClass = _type === NpcStore.Type.BUYING_STORE ? " amountBuying" : "";
 		amountText = _type === NpcStore.Type.BUYING_STORE ? " ea." : "";
-		const amount = amountColumn(item);
-		const html = `<div class="item" draggable="true" data-index="${item.index}"><div class="icon"></div><div class="amount${amountClass}">` + (amount === "" && _type === NpcStore.Type.BUYING_STORE ? 0 : amount) + amountText + `</div><div class="name">${_escapeHTML(DB.getItemName(item))}</div><div class="price">${price}</div><div class="unity">Z</div></div>`;
+		const html = `<div class="item" draggable="true" data-index="${item.index}"><div class="icon"></div><div class="amount${buyingClass}">` + (isFinite(item.count) ? item.count : _type === NpcStore.Type.BUYING_STORE ? 0 : "") + amountText + `</div><div class="name">${_escapeHTML(DB.getItemName(item))}</div><div class="price">${price}</div><div class="unity">Z</div></div>`;
 		content.insertAdjacentHTML("beforeend", html);
 	} else if (_type === NpcStore.Type.BARTER_MARKET) {
 		const html = `<div class="item" draggable="true" data-index="${item.index}" data-weight="${item.weight}" data-location="${item.location}" data-viewSprite="${item.viewSprite}"><div class="icon"></div><div class="amount">${isFinite(item.count) ? item.count : ""}</div><div class="name">${_escapeHTML(DB.getItemName(item))}</div><div class="currency_icon" data-item="${item.currencyITID}"></div><div class="currency_amount">${item.currencyamount}</div><div class="currency_nameOverlay">${_escapeHTML(DB.getItemName(currency_item))} ${item.currencyamount} ea</div></div>`;
@@ -340520,7 +334889,11 @@ function onItemFocus() {
 * Update scroll by block (32px)
 */
 function onScroll(event) {
-	WheelSteps_default.scrollRows(event, this, 32);
+	let delta;
+	if (event.deltaY) delta = event.deltaY > 0 ? -1 : 1;
+	else if (event.wheelDelta) delta = event.wheelDelta / 120;
+	else if (event.detail) delta = -event.detail;
+	this.scrollTop = Math.floor(this.scrollTop / 32) * 32 - delta * 32;
 	event.preventDefault();
 }
 /**
@@ -340587,8 +334960,6 @@ var init_NpcStore = __esmMin((() => {
 	init_InventoryItemTransfer();
 	init_NpcStore$2();
 	init_NpcStore$1();
-	init_ItemDoubleClick();
-	init_WheelSteps();
 	NpcStore = new GUIComponent("NpcStore", NpcStore_default$1);
 	NpcStore.render = () => NpcStore_default$2;
 	/**
@@ -340694,7 +335065,10 @@ var init_NpcStore = __esmMin((() => {
 					onItemInfo.call(icon, e);
 				}
 			});
-			onItemDoubleClick(content, ".item", (item) => onItemSelected.call(item));
+			content.addEventListener("dblclick", (e) => {
+				const item = e.target.closest(".item");
+				if (item) onItemSelected.call(item);
+			});
 			content.addEventListener("mousedown", (e) => {
 				const item = e.target.closest(".item");
 				if (item) onItemFocus.call(item);
@@ -340874,10 +335248,7 @@ var init_NpcStore = __esmMin((() => {
 			case NpcStore.Type.CASH_SHOP:
 				for (i = 0, count = items.length; i < count; ++i) {
 					if (!("index" in items[i])) items[i].index = i;
-					if (_type === NpcStore.Type.MARKETSHOP && typeof items[i].qty === "number" && items[i].qty !== 4294967295) {
-						items[i].maxCount = items[i].qty;
-						items[i].count = items[i].qty === 0 ? 0 : Infinity;
-					} else items[i].count = items[i].count || Infinity;
+					items[i].count = items[i].count || Infinity;
 					items[i].IsIdentified = true;
 					out = Object.assign({}, items[i]);
 					out.count = 0;
@@ -341006,22 +335377,18 @@ var init_NpcStore = __esmMin((() => {
 			tmpItem.count = inputItem.count - outputItem.count;
 			tmpItem.price = inputItem.price;
 			tmpItem.index = inputItem.index;
-			tmpItem.maxCount = typeof inputItem.maxCount === "number" ? inputItem.maxCount - outputItem.count : inputItem.maxCount;
 		};
 		return function(fromContent, toContent, isAdding, index, count) {
 			const inputItem = _input[index];
 			const outputItem = _output[index];
 			const root = NpcStore.getRoot();
 			if (isAdding) {
-				const available = _type === NpcStore.Type.MARKETSHOP && typeof inputItem.maxCount === "number" ? Math.min(inputItem.count, inputItem.maxCount) : inputItem.count;
-				if (isFinite(available)) count = Math.min(count, available - outputItem.count);
-				if (count < 1) return;
 				if ((_type === NpcStore.Type.BUY || _type === NpcStore.Type.VENDING_STORE || _type === NpcStore.Type.MARKETSHOP) && NpcStore.calculateCost() + (inputItem.discountprice || inputItem.price) * count > SessionStorage_default.zeny) {
 					ChatBox_default.addText(DB.getMessage(55), ChatBox_default.TYPE.ERROR, ChatBox_default.FILTER.PUBLIC_LOG);
 					return;
 				}
 				const originalCount = outputItem.count;
-				outputItem.count = Math.min(outputItem.count + count, available);
+				outputItem.count = Math.min(outputItem.count + count, inputItem.count);
 				if (_type === NpcStore.Type.BARTER_MARKET) {
 					const inputCurrency = root.querySelector(`.InputWindow .item[data-index="${index}"]`);
 					const inputCurrencyDiv = root.querySelector(`.InputWindow .item[data-index="${index}"] .currency_amount`);
@@ -341352,15 +335719,6 @@ function onBuyCashResult(pkt) {
 	NpcStore_default.ui.find(".cashuser .cashpoints").text(pkt.KafraPoint);
 }
 /**
-* Sold to a buying store: the server takes the items without the usual
-* removal packet and sends this one instead (price is per item).
-*
-* @param {object} pkt - PACKET.ZC.ITEM_DELETE_BUYING_STORE
-*/
-function onSellToBuyingStoreDelete(pkt) {
-	InventoryController.getUI().removeItem(pkt.index, pkt.count);
-}
-/**
 * Received purchased informations
 *
 * @param {object} pkt - FAILED_TRADE_BUYING_STORE_TO_SELLER
@@ -341565,7 +335923,6 @@ function MainEngine$9() {
 	Network.hookPacket(PACKET.ZC.PC_PURCHASE_ITEMLIST_FROMMC3, onVendingStoreList);
 	Network.hookPacket(PACKET.ZC.ACK_ITEMLIST_BUYING_STORE, onBuyingStoreList);
 	Network.hookPacket(PACKET.ZC.FAILED_TRADE_BUYING_STORE_TO_SELLER, onSellToBuyingStoreResult);
-	Network.hookPacket(PACKET.ZC.ITEM_DELETE_BUYING_STORE, onSellToBuyingStoreDelete);
 	Network.hookPacket(PACKET.ZC.NPC_MARKET_OPEN2, onMarketShop);
 	Network.hookPacket(PACKET.ZC.NPC_MARKET_PURCHASE_RESULT, onMarketShopResult);
 	Network.hookPacket(PACKET.ZC.NPC_MARKET_PURCHASE_RESULT2, onMarketShopResult);
@@ -342143,15 +336500,11 @@ var init_ReadRodex = __esmMin((() => {
 		this.focus();
 	};
 	ReadRodex.clearItemList = function clearItemList() {
-		const root = _root();
-		if (!root) return;
-		const itemList = root.querySelector(".item-list");
+		const itemList = _root().querySelector(".item-list");
 		if (itemList) itemList.innerHTML = "";
 	};
 	ReadRodex.clearZeny = function clearZeny() {
-		const root = _root();
-		if (!root) return;
-		const valueEl = root.querySelector(".value");
+		const valueEl = _root().querySelector(".value");
 		if (valueEl) valueEl.textContent = "";
 	};
 	ReadRodex.close = function close() {
@@ -342217,7 +336570,7 @@ function rodexGetZeny(pkt) {
 			break;
 		default:
 			ChatBox_default.addText(DB.getMessage(2591), ChatBox_default.TYPE.INFO_MAIL, ChatBox_default.FILTER.PUBLIC_LOG);
-			if (pkt.MailID === ReadRodex_default.MailID) ReadRodex_default.clearZeny();
+			ReadRodex_default.clearZeny();
 	}
 }
 /**
@@ -342235,7 +336588,7 @@ function rodexGetItem(pkt) {
 			break;
 		default:
 			ChatBox_default.addText(DB.getMessage(2588), ChatBox_default.TYPE.INFO_MAIL, ChatBox_default.FILTER.PUBLIC_LOG);
-			if (pkt.MailID === ReadRodex_default.MailID) ReadRodex_default.clearItemList();
+			ReadRodex_default.clearItemList();
 	}
 }
 /**
@@ -343112,26 +337465,8 @@ function initSessionAchievement() {
 		rank: 0,
 		current_rank_points: 0,
 		next_rank_points: 0,
-		list: {},
-		titles: [],
-		loginListPending: true
+		list: {}
 	};
-	if (!SessionStorage_default.Achievement.titles) SessionStorage_default.Achievement.titles = [];
-}
-/**
-* Give the player the title an achievement rewards, if it has one.
-* Mirrors the map-server's list (map_session_data::titles), which is what
-* CZ_REQ_CHANGE_TITLE is checked against.
-*
-* @param {object} ach - achievement from the session list
-*/
-function grantTitle(ach) {
-	const titleId = ach.info && ach.info.reward ? ach.info.reward.title : 0;
-	if (titleId && !SessionStorage_default.Achievement.titles.includes(titleId)) SessionStorage_default.Achievement.titles.push(titleId);
-}
-function refreshEquipmentTitles() {
-	const equipment = EquipmentController.getUI();
-	if (equipment && typeof equipment.loadTitles === "function") equipment.loadTitles();
 }
 function onAllAchievementList(pkt) {
 	initSessionAchievement();
@@ -343141,14 +337476,10 @@ function onAllAchievementList(pkt) {
 	SessionStorage_default.Achievement.current_rank_points = pkt.current_rank_points;
 	SessionStorage_default.Achievement.next_rank_points = pkt.next_rank_points;
 	const achTable = DB.getAchievementTable();
-	const isLoginList = SessionStorage_default.Achievement.loginListPending;
-	SessionStorage_default.Achievement.loginListPending = false;
 	pkt.ach_list.forEach((ach) => {
 		ach.info = achTable[ach.ach_id] || null;
 		SessionStorage_default.Achievement.list[ach.ach_id] = ach;
-		if (ach.reward || isLoginList && ach.completed) grantTitle(ach);
 	});
-	refreshEquipmentTitles();
 	const ui = UIManager.components.Achievement;
 	if (ui) ui.updateHeaderAndView();
 }
@@ -343158,17 +337489,12 @@ function onAchievementUpdate(pkt) {
 	SessionStorage_default.Achievement.rank = pkt.rank;
 	SessionStorage_default.Achievement.current_rank_points = pkt.current_rank_points;
 	SessionStorage_default.Achievement.next_rank_points = pkt.next_rank_points;
-	if (pkt.ach_list.length === 0) {
-		SessionStorage_default.Achievement.titles = [];
-		SessionStorage_default.Achievement.loginListPending = true;
-	} else SessionStorage_default.Achievement.loginListPending = false;
 	const achTable = DB.getAchievementTable();
 	pkt.ach_list.forEach((ach) => {
 		ach.info = achTable[ach.ach_id] || null;
 		const oldAch = SessionStorage_default.Achievement.list[ach.ach_id];
 		const isNewCompletion = ach.completed && (!oldAch || !oldAch.completed);
 		SessionStorage_default.Achievement.list[ach.ach_id] = ach;
-		if (ach.reward) grantTitle(ach);
 		if (isNewCompletion && ach.info && ach.info.title) {
 			Announce_default.append();
 			Announce_default.set(`${DB.getMessage(2681).replace("%s", ach.info.title)}`, "#FFFFFF", {
@@ -343184,11 +337510,11 @@ function onAchievementUpdate(pkt) {
 			EffectManager.spam(EF_Init_Par);
 		}
 	});
-	refreshEquipmentTitles();
 	const ui = UIManager.components.Achievement;
 	if (ui) ui.updateHeaderAndView();
 }
 function onRequestAchievementRewardACK(pkt) {
+	if (pkt.failed === 0 && SessionStorage_default.Achievement && SessionStorage_default.Achievement.list[pkt.ach_id]) SessionStorage_default.Achievement.list[pkt.ach_id].reward = 1;
 	const ui = UIManager.components.Achievement;
 	if (ui) ui.updateHeaderAndView();
 }
@@ -343210,7 +337536,6 @@ var init_Achievement = __esmMin((() => {
 	init_Achievement$1();
 	init_EffectConst();
 	init_EffectManager();
-	init_Equipment();
 }));
 //#endregion
 //#region src/Engine/MapEngine.js
@@ -343221,10 +337546,9 @@ var init_Achievement = __esmMin((() => {
 function onPong(pkt) {
 	const SP = SessionStorage_default.ping;
 	SP.returned = true;
-	SP.pongTime = SP.epoch ? Date.now() - SP.epoch : SP.pingTime;
+	SP.pongTime = 0;
 	SP.value = SP.pongTime - SP.pingTime;
 	SessionStorage_default.serverTick = pkt.time + SP.value / 2;
-	SessionStorage_default.serverTickSynced = true;
 }
 /**
 * Ping from server?
@@ -343352,7 +337676,6 @@ function onConnectionRefused$2(pkt) {
 * @param {object} pkt - PACKET.ZC.NPCACK_MAPMOVE
 */
 function onMapChange(pkt) {
-	clearQuestEffects();
 	MapRenderer.onLoad = () => {
 		SessionStorage_default.Entity.set({
 			PosDir: [
@@ -343982,10 +338305,6 @@ var init_MapEngine = __esmMin((() => {
 			const current_ip = forceAddress ? server_info.address : Network.utils.longToIP(ip);
 			Network.connect(current_ip, port, (success) => {
 				MapRenderer.currentMap = "";
-				if (SessionStorage_default.Achievement) {
-					SessionStorage_default.Achievement.titles = [];
-					SessionStorage_default.Achievement.loginListPending = true;
-				}
 				if (!success) {
 					UIManager.showErrorBox(DB.getMessage(1));
 					return;
@@ -344012,13 +338331,11 @@ var init_MapEngine = __esmMin((() => {
 				if (PacketVerManager_default.value >= 20180307) ping = new PACKET.CZ.REQUEST_TIME2();
 				else ping = new PACKET.CZ.REQUEST_TIME();
 				const startTick = Date.now();
-				SessionStorage_default.serverTickSynced = false;
 				Network.setPing(() => {
 					if (is_sec_hbt) Network.sendPacket(hbt);
 					ping.clientTime = Date.now() - startTick;
 					if (!SP.returned && SP.pingTime) console.warn("[Network] The server did not answer the previous PING!");
 					SP.pingTime = ping.clientTime;
-					SP.epoch = startTick;
 					SP.returned = false;
 					Network.sendPacket(ping);
 				});
@@ -344388,9 +338705,8 @@ var init_PincodeWindow = __esmMin((() => {
 	*/
 	PincodeWindow.init = function init() {
 		const root = this.getRoot();
-		const scale = this.scale;
-		this._host.style.top = (Renderer.height - 358 * scale) / 2 + "px";
-		this._host.style.left = (Renderer.width - 576 * scale) / 2 + "px";
+		this._host.style.top = (Renderer.height - 358) / 2 + "px";
+		this._host.style.left = (Renderer.width - 576) / 2 + "px";
 		root.querySelector(".pass").disabled = true;
 		root.querySelector(".newpass").disabled = true;
 		root.querySelector(".checkpass").disabled = true;
@@ -344656,143 +338972,6 @@ var init_CharSelect$2 = __esmMin((() => {
 	CharSelect_default$1 = ":host {\r\n	width: 576px;\r\n	height: 342px;\r\n}\r\n\r\n#charselect {\r\n	position: absolute;\r\n	width: 576px;\r\n	height: 342px;\r\n}\r\n\r\n/** Box **/\r\n#charselect .box_select {\r\n	position: absolute;\r\n	width: 139px;\r\n	height: 144px;\r\n	top: 40px;\r\n	margin-left: -5px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n#charselect canvas {\r\n	position: absolute;\r\n	top: 44px;\r\n}\r\n#charselect .slot1 {\r\n	left: 60px;\r\n}\r\n#charselect .slot2 {\r\n	left: 224px;\r\n}\r\n#charselect .slot3 {\r\n	left: 386px;\r\n}\r\n\r\n/** Arrow **/\r\n#charselect .arrow {\r\n	position: absolute;\r\n	top: 105px;\r\n	width: 13px;\r\n	height: 13px;\r\n}\r\n#charselect .arrow.left {\r\n	left: 40px;\r\n}\r\n#charselect .arrow.right {\r\n	right: 40px;\r\n}\r\n\r\n/** Slot info **/\r\n#charselect .slotinfo {\r\n	position: absolute;\r\n	top: 195px;\r\n	right: 10px;\r\n	height: 20px;\r\n	display: block;\r\n	border: 1px solid #c6cee7;\r\n	border-radius: 4px;\r\n	padding-left: 10px;\r\n	padding-right: 10px;\r\n}\r\n#charselect .slotinfo .number {\r\n	color: #58709e;\r\n	font-weight: bold;\r\n	margin-right: 10px;\r\n}\r\n#charselect .slotinfo .content {\r\n	color: #555;\r\n	top: 6px;\r\n	right: 8px;\r\n}\r\n\r\n/** Page info **/\r\n#charselect .pageinfo {\r\n	position: absolute;\r\n	left: 275px;\r\n	top: 185px;\r\n	font-weight: bold;\r\n	color: #646464;\r\n}\r\n#charselect .pageinfo .current {\r\n	color: #fe3b7d;\r\n}\r\n\r\n/** Characters infos **/\r\n#charselect .charinfo {\r\n	position: absolute;\r\n	width: 285px;\r\n	top: 204px;\r\n	left: 16px;\r\n}\r\n#charselect .charinfo div {\r\n	position: absolute;\r\n	width: 90px;\r\n	height: 13px;\r\n}\r\n#charselect .charinfo .name {\r\n	left: 52px;\r\n	top: 2px;\r\n	white-space: nowrap;\r\n}\r\n#charselect .charinfo .job {\r\n	left: 52px;\r\n	top: 18px;\r\n}\r\n#charselect .charinfo .lvl {\r\n	left: 52px;\r\n	top: 34px;\r\n}\r\n#charselect .charinfo .exp {\r\n	left: 52px;\r\n	top: 50px;\r\n}\r\n#charselect .charinfo .hp {\r\n	left: 52px;\r\n	top: 66px;\r\n}\r\n#charselect .charinfo .sp {\r\n	left: 52px;\r\n	top: 82px;\r\n}\r\n#charselect .charinfo .map {\r\n	left: 52px;\r\n	top: 98px;\r\n	width: 238px;\r\n}\r\n#charselect .charinfo .str {\r\n	left: 200px;\r\n	top: 2px;\r\n}\r\n#charselect .charinfo .agi {\r\n	left: 200px;\r\n	top: 18px;\r\n}\r\n#charselect .charinfo .vit {\r\n	left: 200px;\r\n	top: 34px;\r\n}\r\n#charselect .charinfo .int {\r\n	left: 200px;\r\n	top: 50px;\r\n}\r\n#charselect .charinfo .dex {\r\n	left: 200px;\r\n	top: 66px;\r\n}\r\n#charselect .charinfo .luk {\r\n	left: 200px;\r\n	top: 82px;\r\n}\r\n\r\n/** Buttons **/\r\n#charselect .btns {\r\n	position: absolute;\r\n	bottom: 4px;\r\n	width: 100%;\r\n	height: 20px;\r\n}\r\n#charselect .btn {\r\n	position: absolute;\r\n	width: 42px;\r\n	height: 20px;\r\n}\r\n\r\n#charselect .ok,\r\n#charselect .make {\r\n	right: 50px;\r\n}\r\n#charselect .cancel {\r\n	right: 4px;\r\n}\r\n#charselect .delete {\r\n	left: 4px;\r\n}\r\n";
 }));
 //#endregion
-//#region src/UI/ScreenHooks.js
-function check(screen) {
-	if (!SCREENS.includes(screen)) throw new Error(`ScreenHooks: unknown screen '${screen}'`);
-}
-function current(screen) {
-	const list = _hooks[screen];
-	return list && list.length ? list[list.length - 1] : null;
-}
-function setHidden(host, hidden) {
-	if (host && host.style) host.style.display = hidden ? "none" : "";
-}
-/** Take a hook out after it threw, and give the screen back. */
-function fail(screen, hook, what, error) {
-	console.error(`[ScreenHooks] ${hook.name || "a hook"} failed in ${what} for ${screen}, and is switched off:`, error);
-	const list = _hooks[screen] || [];
-	const index = list.indexOf(hook);
-	if (index > -1) list.splice(index, 1);
-	const open = _open[screen];
-	if (open && open.hook === hook) {
-		open.hook = null;
-		if (what !== "hide") quietHide(screen, hook);
-		take(screen);
-	}
-}
-function quietHide(screen, hook) {
-	if (typeof hook.hide !== "function") return;
-	try {
-		hook.hide();
-	} catch (error) {
-		console.error(`[ScreenHooks] ${hook.name || "a hook"} failed to hide ${screen}:`, error);
-	}
-}
-/** Give an open screen to its current hook, or to the client's window. */
-function take(screen) {
-	const open = _open[screen];
-	if (!open) return;
-	const hook = current(screen);
-	open.hook = hook;
-	setHidden(open.host, Boolean(hook));
-	if (hook && typeof hook.show === "function") try {
-		hook.show(open.ctx);
-	} catch (error) {
-		fail(screen, hook, "show", error);
-	}
-}
-/**
-* Add a hook for a screen. If that screen is open, the hook takes it now.
-* Returns a function that takes the hook out again.
-*/
-function register(screen, hook) {
-	check(screen);
-	if (!hook || typeof hook !== "object") throw new Error("ScreenHooks.register takes a screen name and an object");
-	(_hooks[screen] = _hooks[screen] || []).push(hook);
-	const open = _open[screen];
-	if (open) {
-		if (open.hook) quietHide(screen, open.hook);
-		take(screen);
-	}
-	return () => unregister(screen, hook);
-}
-function unregister(screen, hook) {
-	const list = _hooks[screen] || [];
-	const index = list.indexOf(hook);
-	if (index < 0) return;
-	list.splice(index, 1);
-	const open = _open[screen];
-	if (open && open.hook === hook) {
-		open.hook = null;
-		quietHide(screen, hook);
-		take(screen);
-	}
-}
-/**
-* A window opened. Returns whether a hook draws it (the window is then
-* hidden). `host` is the element to hide.
-*/
-function show(screen, ctx, host) {
-	check(screen);
-	if (_open[screen]) hide(screen);
-	_open[screen] = {
-		ctx,
-		host,
-		hook: null
-	};
-	take(screen);
-	return Boolean(_open[screen] && _open[screen].hook);
-}
-/** Something the screen's ctx reports changed. */
-function update(screen) {
-	const open = _open[screen];
-	if (!open || !open.hook || typeof open.hook.update !== "function") return;
-	const hook = open.hook;
-	try {
-		hook.update(open.ctx);
-	} catch (error) {
-		fail(screen, hook, "update", error);
-	}
-}
-/** A window closed. */
-function hide(screen) {
-	const open = _open[screen];
-	if (!open) return;
-	delete _open[screen];
-	setHidden(open.host, false);
-	if (open.hook) {
-		const hook = open.hook;
-		if (typeof hook.hide === "function") try {
-			hook.hide();
-		} catch (error) {
-			fail(screen, hook, "hide", error);
-		}
-	}
-}
-/** Whether a hook is drawing this screen now. */
-function active(screen) {
-	return Boolean(_open[screen] && _open[screen].hook);
-}
-var SCREENS, _hooks, _open, ScreenHooks_default;
-var init_ScreenHooks = __esmMin((() => {
-	SCREENS = [
-		"login",
-		"serverList",
-		"charSelect",
-		"charCreate"
-	];
-	_hooks = {};
-	_open = {};
-	ScreenHooks_default = {
-		SCREENS,
-		register,
-		show,
-		update,
-		hide,
-		active
-	};
-}));
-//#endregion
 //#region src/UI/Components/CharSelect/CharSelectCommon.js
 function createCharSelect(config) {
 	const { name, htmlText, cssText, gridLayout = false, hostHeight = 342, defaultMaxSlots = 27, deleteReservation = false, packetverGatedDelete = false, pageBalls = false } = config;
@@ -344843,45 +339022,12 @@ function createCharSelect(config) {
 	let countdownInterval;
 	let _bgInterval = null;
 	const render = gridLayout ? renderGrid : renderPaginated;
-	const moveCursorTo = (index) => {
-		(gridLayout ? moveCursorToGrid : moveCursorToPaginated)(index);
-		ScreenHooks_default.update("charSelect");
-	};
-	/**
-	* What a plugin drawing this screen sees (UI/ScreenHooks.js). The
-	* actions are the window's own buttons, acting on the selected slot.
-	*/
-	const _screen = {
-		get characters() {
-			return _list.slice();
-		},
-		get maxSlots() {
-			return _maxSlots;
-		},
-		get index() {
-			return _index;
-		},
-		get sex() {
-			return _sex;
-		},
-		get enabled() {
-			return !_disable_UI;
-		},
-		deleteReservation: deleteReservation && (!packetverGatedDelete || PacketVerManager_default.value >= 20100803),
-		select: (slot) => moveCursorTo(slot),
-		play: () => connect(),
-		create: () => create(),
-		requestDelete: () => _screen.deleteReservation ? reserve() : suppress(),
-		cancelDelete: () => _screen.deleteReservation && removedelete(),
-		confirmDelete: () => suppress(),
-		exit: () => cancel()
-	};
+	const moveCursorTo = gridLayout ? moveCursorToGrid : moveCursorToPaginated;
 	/**
 	* Initialize UI
 	*/
 	Component.init = function init() {
 		const root = this.getRoot();
-		_ctx.length = 0;
 		if (gridLayout) {
 			root.querySelector(".ok").addEventListener("click", connect);
 			root.querySelector(".cancel").addEventListener("click", cancel);
@@ -344956,25 +339102,21 @@ function createCharSelect(config) {
 			moveCursorTo(_index);
 			_bgInterval = setInterval(changeBackgroundEverySecond, 250);
 			Renderer.render(render);
-			ScreenHooks_default.show("charSelect", _screen, this._host);
 			return;
 		}
 		const root = this.getRoot();
-		const scale = this.scale;
-		this._host.style.top = `${(Renderer.height - hostHeight * scale) / 2}px`;
-		this._host.style.left = `${(Renderer.width - 576 * scale) / 2}px`;
+		this._host.style.top = `${(Renderer.height - hostHeight) / 2}px`;
+		this._host.style.left = `${(Renderer.width - 576) / 2}px`;
 		_index = _preferences.index;
 		root.querySelector(".slotinfo .number").textContent = `${_list.length} / ${_maxSlots}`;
 		if (!pageBalls) root.querySelector(".pageinfo .count").textContent = _maxSlots / 3;
 		moveCursorTo(_index);
 		Renderer.render(render);
-		ScreenHooks_default.show("charSelect", _screen, this._host);
 	};
 	/**
 	* Stop rendering
 	*/
 	Component.onRemove = function onRemove() {
-		ScreenHooks_default.hide("charSelect");
 		if (gridLayout) {
 			if (_bgInterval) {
 				clearInterval(_bgInterval);
@@ -345169,7 +339311,6 @@ function createCharSelect(config) {
 			_entitySlots[character.CharNum].effectState = _entitySlots[character.CharNum]._effectState & ~StatusState_default.EffectState.INVISIBLE;
 			_entitySlots[character.CharNum].hideShadow = true;
 			Component.updateCharSlot(character.CharNum);
-			ScreenHooks_default.update("charSelect");
 			return;
 		}
 		if (deleteReservation && character.DeleteDate) {
@@ -345200,7 +339341,6 @@ function createCharSelect(config) {
 				});
 			}
 		}
-		ScreenHooks_default.update("charSelect");
 	};
 	/**
 	* Disable or Enable the UI.
@@ -345209,7 +339349,6 @@ function createCharSelect(config) {
 	*/
 	Component.setUIEnabled = function setUIEnabled(value) {
 		_disable_UI = !value;
-		ScreenHooks_default.update("charSelect");
 	};
 	/**
 	* Callback to use
@@ -345254,13 +339393,11 @@ function createCharSelect(config) {
 		if (_disable_UI === false) {
 			if (gridLayout) {
 				UIManager.showPromptBox(DB.getMessage(17), "ok", "cancel", () => {
-					ExitHooks_default.emit("login", "charSelect");
 					Component.onExitRequest();
 					Component.clearAllSlots();
 				}, null);
 				stopCountdownInterval();
 			} else UIManager.showPromptBox(DB.getMessage(17), "ok", "cancel", () => {
-				ExitHooks_default.emit("login", "charSelect");
 				Component.onExitRequest();
 			}, null);
 		}
@@ -345367,7 +339504,6 @@ function createCharSelect(config) {
 	*/
 	function requestdelete(index, timer) {
 		const root = Component.getRoot();
-		ScreenHooks_default.update("charSelect");
 		if (gridLayout) {
 			_entitySlots[index].action = 2;
 			const countdown = root.querySelector(`.timedelete.slot${index}`);
@@ -345412,7 +339548,6 @@ function createCharSelect(config) {
 		if (_slots[_index]) {
 			const root = Component.getRoot();
 			_slots[_index].DeleteDate = 0;
-			ScreenHooks_default.update("charSelect");
 			if (gridLayout) {
 				_entitySlots[_index].action = 0;
 				render();
@@ -345823,8 +339958,6 @@ var init_CharSelectCommon = __esmMin((() => {
 	init_Camera();
 	init_UIManager();
 	init_GUIComponent();
-	init_ScreenHooks();
-	init_ExitHooks();
 	init_Elements();
 	init_PacketVerManager();
 }));
@@ -345908,7 +340041,7 @@ var init_CharSelectV4$2 = __esmMin((() => {
 //#region src/UI/Components/CharSelect/CharSelectV4/CharSelectV4.css?raw
 var CharSelectV4_default$1;
 var init_CharSelectV4$1 = __esmMin((() => {
-	CharSelectV4_default$1 = ":host {\r\n	top: 0;\r\n	left: 0;\r\n	min-width: 100%;\r\n	min-height: 100%;\r\n}\r\n\r\n#CharSelectV4 {\r\n	position: absolute;\r\n	min-width: 100%;\r\n	min-height: 100%;\r\n	top: 0;\r\n	left: 0;\r\n	display: flex;\r\n	justify-content: center;\r\n	align-items: center;\r\n	flex-direction: column;\r\n}\r\n\r\n#CharSelectV4 .char_select_container {\r\n	position: absolute;\r\n	display: flex;\r\n	flex-direction: row;\r\n	background-color: rgba(0, 0, 0, 0.1);\r\n	border-radius: 5px;\r\n	padding-top: 20px;\r\n	padding-left: 5px;\r\n}\r\n\r\n/** Box **/\r\n#CharSelectV4 .char_list {\r\n	flex: 1;\r\n	max-width: 800px;\r\n	min-width: 157px;\r\n	height: 595px;\r\n	max-height: 80vh;\r\n	display: flex;\r\n	flex-direction: row;\r\n	flex-wrap: wrap;\r\n	overflow-y: auto;\r\n}\r\n\r\n#CharSelectV4 .box_select {\r\n	position: absolute;\r\n	width: 157px;\r\n	height: 159px;\r\n	top: 40px;\r\n	margin-left: -5px;\r\n}\r\n#CharSelectV4 .char_canvas {\r\n	width: 157px;\r\n	height: 195px;\r\n	position: relative;\r\n	z-index: 10;\r\n}\r\n#CharSelectV4 .char_canvas .name {\r\n	position: absolute;\r\n	bottom: 17px;\r\n	width: 100%;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #15154a;\r\n}\r\n\r\n#CharSelectV4 .char_canvas .job_icon {\r\n	position: absolute;\r\n	top: 15px;\r\n	right: 12px;\r\n	width: 25px;\r\n	height: 25px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n/** Slot info **/\r\n#CharSelectV4 .slotinfo {\r\n	position: absolute;\r\n	top: 195px;\r\n	right: 10px;\r\n	height: 20px;\r\n	display: block;\r\n	border: 1px solid #c6cee7;\r\n	border-radius: 4px;\r\n	padding-left: 10px;\r\n	padding-right: 10px;\r\n}\r\n#CharSelectV4 .slotinfo .number {\r\n	color: #58709e;\r\n	font-weight: bold;\r\n	margin-right: 10px;\r\n}\r\n#CharSelectV4 .slotinfo .content {\r\n	color: #555;\r\n	top: 6px;\r\n	right: 8px;\r\n}\r\n\r\n/** Page info **/\r\n#CharSelectV4 .pageinfo {\r\n	position: absolute;\r\n	left: 275px;\r\n	top: 185px;\r\n	font-weight: bold;\r\n	color: #646464;\r\n}\r\n#CharSelectV4 .pageinfo .current {\r\n	color: #fe3b7d;\r\n}\r\n\r\n/** Characters infos **/\r\n#CharSelectV4 .charinfo {\r\n	height: 585px;\r\n	max-height: 80vh;\r\n	width: 185px;\r\n	background-repeat: no-repeat;\r\n	margin-top: 10px;\r\n	margin-left: 10px;\r\n	position: relative;\r\n}\r\n#CharSelectV4 .charinfo div {\r\n	position: absolute;\r\n	width: 90px;\r\n	height: 13px;\r\n}\r\n#CharSelectV4 .charinfo .name {\r\n	left: 52px;\r\n	top: 2px;\r\n	white-space: nowrap;\r\n}\r\n#CharSelectV4 .charinfo .job {\r\n	left: 60px;\r\n	top: 105px;\r\n}\r\n#CharSelectV4 .charinfo .lvl {\r\n	left: 60px;\r\n	top: 123px;\r\n}\r\n#CharSelectV4 .charinfo .exp {\r\n	left: 60px;\r\n	top: 140px;\r\n}\r\n#CharSelectV4 .charinfo .hp {\r\n	left: 60px;\r\n	top: 157px;\r\n}\r\n#CharSelectV4 .charinfo .sp {\r\n	left: 60px;\r\n	top: 174px;\r\n}\r\n#CharSelectV4 .charinfo .map {\r\n	left: 60px;\r\n	top: 89px;\r\n	white-space: nowrap;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n}\r\n#CharSelectV4 .charinfo .str {\r\n	left: 60px;\r\n	top: 191px;\r\n}\r\n#CharSelectV4 .charinfo .agi {\r\n	left: 60px;\r\n	top: 208px;\r\n}\r\n#CharSelectV4 .charinfo .vit {\r\n	left: 60px;\r\n	top: 225px;\r\n}\r\n#CharSelectV4 .charinfo .int {\r\n	left: 60px;\r\n	top: 242px;\r\n}\r\n#CharSelectV4 .charinfo .dex {\r\n	left: 60px;\r\n	top: 259px;\r\n}\r\n#CharSelectV4 .charinfo .luk {\r\n	left: 60px;\r\n	top: 276px;\r\n}\r\n\r\n/** Buttons **/\r\n#CharSelectV4 .btn.delete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.canceldelete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.finaldelete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.delete,\r\n#CharSelectV4 .btn.canceldelete,\r\n#CharSelectV4 .btn.finaldelete {\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: 0;\r\n	text-align: center;\r\n	line-height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.ok {\r\n	position: absolute;\r\n	width: 165px;\r\n	height: 110px;\r\n	color: white;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: 0;\r\n	text-align: center;\r\n}\r\n\r\n/* The label sits on the middle of the Poring, not at its crown. Centred on\r\n   its own: the button's display is set inline when it is shown. */\r\n#CharSelectV4 .btn.ok ui-text {\r\n	position: absolute;\r\n	left: 0;\r\n	right: 0;\r\n	top: 50%;\r\n	transform: translateY(-50%);\r\n}\r\n\r\n#CharSelectV4 .btn.ok:hover {\r\n	text-shadow: #000 1px 1px;\r\n}\r\n\r\n#CharSelectV4 .ok,\r\n#CharSelectV4 .make {\r\n	right: 15px;\r\n	top: 380px;\r\n}\r\n#CharSelectV4 .cancel {\r\n	position: absolute;\r\n	top: 5px;\r\n	right: 5px;\r\n	width: 17px;\r\n	height: 18px;\r\n}\r\n#CharSelectV4 .delete {\r\n	right: 33px;\r\n	top: 300px;\r\n}\r\n\r\n#CharSelectV4 .canceldelete {\r\n	right: 33px;\r\n	top: 300px;\r\n}\r\n\r\n#CharSelectV4 .finaldelete {\r\n	right: 33px;\r\n	top: 330px;\r\n}\r\n\r\n#CharSelectV4 .timedelete {\r\n	position: relative;\r\n	height: 20px;\r\n	width: 100px;\r\n	top: -150px;\r\n	left: 55px;\r\n}\r\n\r\n#CharSelectV4 .hidden {\r\n	display: none;\r\n}\r\n";
+	CharSelectV4_default$1 = ":host {\r\n	top: 0;\r\n	left: 0;\r\n	min-width: 100%;\r\n	min-height: 100%;\r\n}\r\n\r\n#CharSelectV4 {\r\n	position: absolute;\r\n	min-width: 100%;\r\n	min-height: 100%;\r\n	top: 0;\r\n	left: 0;\r\n	display: flex;\r\n	justify-content: center;\r\n	align-items: center;\r\n	flex-direction: column;\r\n}\r\n\r\n#CharSelectV4 .char_select_container {\r\n	position: absolute;\r\n	display: flex;\r\n	flex-direction: row;\r\n	background-color: rgba(0, 0, 0, 0.1);\r\n	border-radius: 5px;\r\n	padding-top: 20px;\r\n	padding-left: 5px;\r\n}\r\n\r\n/** Box **/\r\n#CharSelectV4 .char_list {\r\n	flex: 1;\r\n	max-width: 800px;\r\n	min-width: 157px;\r\n	height: 595px;\r\n	max-height: 80vh;\r\n	display: flex;\r\n	flex-direction: row;\r\n	flex-wrap: wrap;\r\n	overflow-y: auto;\r\n}\r\n\r\n#CharSelectV4 .box_select {\r\n	position: absolute;\r\n	width: 157px;\r\n	height: 159px;\r\n	top: 40px;\r\n	margin-left: -5px;\r\n}\r\n#CharSelectV4 .char_canvas {\r\n	width: 157px;\r\n	height: 195px;\r\n	position: relative;\r\n	z-index: 10;\r\n}\r\n#CharSelectV4 .char_canvas .name {\r\n	position: absolute;\r\n	bottom: 17px;\r\n	width: 100%;\r\n	text-align: center;\r\n	font-weight: bold;\r\n	color: #15154a;\r\n}\r\n\r\n#CharSelectV4 .char_canvas .job_icon {\r\n	position: absolute;\r\n	top: 15px;\r\n	right: 12px;\r\n	width: 25px;\r\n	height: 25px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n/** Slot info **/\r\n#CharSelectV4 .slotinfo {\r\n	position: absolute;\r\n	top: 195px;\r\n	right: 10px;\r\n	height: 20px;\r\n	display: block;\r\n	border: 1px solid #c6cee7;\r\n	border-radius: 4px;\r\n	padding-left: 10px;\r\n	padding-right: 10px;\r\n}\r\n#CharSelectV4 .slotinfo .number {\r\n	color: #58709e;\r\n	font-weight: bold;\r\n	margin-right: 10px;\r\n}\r\n#CharSelectV4 .slotinfo .content {\r\n	color: #555;\r\n	top: 6px;\r\n	right: 8px;\r\n}\r\n\r\n/** Page info **/\r\n#CharSelectV4 .pageinfo {\r\n	position: absolute;\r\n	left: 275px;\r\n	top: 185px;\r\n	font-weight: bold;\r\n	color: #646464;\r\n}\r\n#CharSelectV4 .pageinfo .current {\r\n	color: #fe3b7d;\r\n}\r\n\r\n/** Characters infos **/\r\n#CharSelectV4 .charinfo {\r\n	height: 585px;\r\n	max-height: 80vh;\r\n	width: 185px;\r\n	background-repeat: no-repeat;\r\n	margin-top: 10px;\r\n	margin-left: 10px;\r\n	position: relative;\r\n}\r\n#CharSelectV4 .charinfo div {\r\n	position: absolute;\r\n	width: 90px;\r\n	height: 13px;\r\n}\r\n#CharSelectV4 .charinfo .name {\r\n	left: 52px;\r\n	top: 2px;\r\n	white-space: nowrap;\r\n}\r\n#CharSelectV4 .charinfo .job {\r\n	left: 60px;\r\n	top: 105px;\r\n}\r\n#CharSelectV4 .charinfo .lvl {\r\n	left: 60px;\r\n	top: 123px;\r\n}\r\n#CharSelectV4 .charinfo .exp {\r\n	left: 60px;\r\n	top: 140px;\r\n}\r\n#CharSelectV4 .charinfo .hp {\r\n	left: 60px;\r\n	top: 157px;\r\n}\r\n#CharSelectV4 .charinfo .sp {\r\n	left: 60px;\r\n	top: 174px;\r\n}\r\n#CharSelectV4 .charinfo .map {\r\n	left: 60px;\r\n	top: 89px;\r\n	white-space: nowrap;\r\n	overflow: hidden;\r\n	text-overflow: ellipsis;\r\n}\r\n#CharSelectV4 .charinfo .str {\r\n	left: 60px;\r\n	top: 191px;\r\n}\r\n#CharSelectV4 .charinfo .agi {\r\n	left: 60px;\r\n	top: 208px;\r\n}\r\n#CharSelectV4 .charinfo .vit {\r\n	left: 60px;\r\n	top: 225px;\r\n}\r\n#CharSelectV4 .charinfo .int {\r\n	left: 60px;\r\n	top: 242px;\r\n}\r\n#CharSelectV4 .charinfo .dex {\r\n	left: 60px;\r\n	top: 259px;\r\n}\r\n#CharSelectV4 .charinfo .luk {\r\n	left: 60px;\r\n	top: 276px;\r\n}\r\n\r\n/** Buttons **/\r\n#CharSelectV4 .btn.delete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.canceldelete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.finaldelete {\r\n	position: absolute;\r\n	width: 131px;\r\n	height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.delete,\r\n#CharSelectV4 .btn.canceldelete,\r\n#CharSelectV4 .btn.finaldelete {\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: 0;\r\n	text-align: center;\r\n	line-height: 24px;\r\n}\r\n\r\n#CharSelectV4 .btn.ok {\r\n	position: absolute;\r\n	width: 165px;\r\n	height: 110px;\r\n	color: white;\r\n	padding-top: 20px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	border: 0;\r\n	text-align: center;\r\n}\r\n\r\n#CharSelectV4 .btn.ok:hover {\r\n	text-shadow: #000 1px 1px;\r\n}\r\n\r\n#CharSelectV4 .ok,\r\n#CharSelectV4 .make {\r\n	right: 15px;\r\n	top: 380px;\r\n}\r\n#CharSelectV4 .cancel {\r\n	position: absolute;\r\n	top: 5px;\r\n	right: 5px;\r\n	width: 17px;\r\n	height: 18px;\r\n}\r\n#CharSelectV4 .delete {\r\n	right: 33px;\r\n	top: 300px;\r\n}\r\n\r\n#CharSelectV4 .canceldelete {\r\n	right: 33px;\r\n	top: 300px;\r\n}\r\n\r\n#CharSelectV4 .finaldelete {\r\n	right: 33px;\r\n	top: 330px;\r\n}\r\n\r\n#CharSelectV4 .timedelete {\r\n	position: relative;\r\n	height: 20px;\r\n	width: 100px;\r\n	top: -150px;\r\n	left: 55px;\r\n}\r\n\r\n#CharSelectV4 .hidden {\r\n	display: none;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/CharSelect/CharSelectV4/CharSelectV4.js
@@ -346014,76 +340147,6 @@ function createCharCreate(config) {
 	let _curcolor = 0;
 	const render = hasRace ? renderRace : renderLegacy;
 	/**
-	* What a plugin drawing this screen sees (UI/ScreenHooks.js).
-	* create() goes the way the Make button does.
-	*/
-	const _screen = {
-		get sex() {
-			return _accountSex;
-		},
-		get races() {
-			return raceOptions();
-		},
-		chooseSex: hasRace,
-		hasStats,
-		create(look) {
-			const stats = look && look.stats || {};
-			const stat = (key) => hasStats ? parseInt(stats[key], 10) || 1 : 1;
-			const args = [
-				String(look && look.name || ""),
-				stat("str"),
-				stat("agi"),
-				stat("vit"),
-				stat("int"),
-				stat("dex"),
-				stat("luk"),
-				look.hair,
-				look.hairColor
-			];
-			if (hasRace) args.push(look.job, look.sex);
-			Component.onCharCreationRequest(...args);
-		},
-		exit: () => cancel()
-	};
-	/**
-	* The jobs a character can start as, and the hair each can have.
-	*/
-	function raceOptions() {
-		if (!hasRace) return [{
-			job: 0,
-			hair: {
-				min: 2,
-				max: 26
-			},
-			hairColor: {
-				min: 0,
-				max: 9
-			}
-		}];
-		const root = Component.getRoot && Component.__loaded ? Component.getRoot() : null;
-		return [["human", RACE.HUMAN], ["doram", RACE.DORAM]].map(([race, job]) => {
-			const cap = CAP[job];
-			let hairMax = cap.HEAD.MAX;
-			let colorMax = cap.HEADPALETTE.MAX;
-			if (gridHairstyle && root) {
-				hairMax = root.querySelectorAll(`[id$="_${race}_male"]`).length || hairMax;
-				colorMax = root.querySelectorAll("[id$=\"_color\"]").length - 1;
-				if (colorMax < 0) colorMax = cap.HEADPALETTE.MAX;
-			}
-			return {
-				job,
-				hair: {
-					min: cap.HEAD.MIN,
-					max: hairMax
-				},
-				hairColor: {
-					min: cap.HEADPALETTE.MIN,
-					max: colorMax
-				}
-			};
-		});
-	}
-	/**
 	* Initialize UI
 	*/
 	Component.init = function init() {
@@ -346139,9 +340202,8 @@ function createCharCreate(config) {
 	* Once add to HTML, start rendering
 	*/
 	Component.onAppend = function onAppend() {
-		const scale = this.scale;
-		this._host.style.top = `${(Renderer.height - hostHeight * scale) / 2}px`;
-		this._host.style.left = `${(Renderer.width - hostWidth * scale) / 2}px`;
+		this._host.style.top = `${(Renderer.height - hostHeight) / 2}px`;
+		this._host.style.left = `${(Renderer.width - hostWidth) / 2}px`;
 		if (hasRace) {
 			_human.render = true;
 			_human.entity.set({
@@ -346190,14 +340252,12 @@ function createCharCreate(config) {
 		}
 		Renderer.render(render);
 		if (hasStats) updateGraphic();
-		ScreenHooks_default.show("charCreate", _screen, this._host);
 	};
 	/**
 	* Remove component from HTML
 	* Stop rendering
 	*/
 	Component.onRemove = function onRemove() {
-		ScreenHooks_default.hide("charCreate");
 		Renderer.stop(render);
 	};
 	/**
@@ -346732,7 +340792,6 @@ var init_CharCreateCommon = __esmMin((() => {
 	init_Client();
 	init_UIManager();
 	init_GUIComponent();
-	init_ScreenHooks();
 	init_Elements();
 	TYPE = {
 		RACE: 1,
@@ -347471,7 +341530,6 @@ function onReceiveMapInfo(pkt) {
 			DB.startedLazyInit = true;
 		}
 		retryCount++;
-		if (retryCount % 50 === 0) console.warn("waiting for the client database: " + DB.index + " of " + DB.count + " loaded after " + retryCount / 10 + "s. If this does not move, a file the database asked for never came back.");
 		if (retryCount > 600) {
 			UIManager.showMessageBox("Failed loading databases, please restart the game", "ok", () => {
 				CharEngine.reload();
@@ -347588,44 +341646,23 @@ var init_WinList$1 = __esmMin((() => {
 }));
 //#endregion
 //#region src/UI/Components/WinList/WinList.js
-var WinList, _screen, WinList_default;
+var WinList, WinList_default;
 var init_WinList = __esmMin((() => {
 	init_Renderer();
 	init_KeyEventHandler();
 	init_UIManager();
 	init_GUIComponent();
-	init_ScreenHooks();
 	init_Elements();
 	init_WinList$2();
 	init_WinList$1();
 	WinList = new GUIComponent("WinList", WinList_default$1);
 	WinList.render = () => WinList_default$2;
-	_screen = {
-		get servers() {
-			return WinList.list ? WinList.list.slice() : [];
-		},
-		get index() {
-			return WinList.index;
-		},
-		select(index) {
-			WinList.setIndex(index);
-			WinList.selectIndex();
-		},
-		exit: () => WinList.exit()
-	};
-	/**
-	* Once in the page: a plugin may draw this screen instead
-	*/
-	WinList.onAppend = function onAppend() {
-		ScreenHooks_default.show("serverList", _screen, this._host);
-	};
 	/**
 	* Initialize UI
 	*/
 	WinList.init = function init() {
-		const scale = this.scale;
-		this._host.style.top = `${(Renderer.height - 280 * scale) / 1.5}px`;
-		this._host.style.left = `${(Renderer.width - 280 * scale) / 2}px`;
+		this._host.style.top = `${(Renderer.height - 280) / 1.5}px`;
+		this._host.style.left = `${(Renderer.width - 280) / 2}px`;
 		this.draggable();
 		const root = this.getRoot();
 		this._listEl = root.querySelector(".list");
@@ -347657,7 +341694,6 @@ var init_WinList = __esmMin((() => {
 			this._listEl.appendChild(node);
 		}
 		this.setIndex(0);
-		ScreenHooks_default.update("serverList");
 	};
 	/**
 	*  Cancel window
@@ -347681,7 +341717,6 @@ var init_WinList = __esmMin((() => {
 			if (nodes[this.index]) nodes[this.index].style.backgroundColor = "transparent";
 			if (nodes[id]) nodes[id].style.backgroundColor = "#cde0ff";
 			this.index = id;
-			ScreenHooks_default.update("serverList");
 		}
 	};
 	/**
@@ -347716,7 +341751,6 @@ var init_WinList = __esmMin((() => {
 	* Free variables once removed from HTML
 	*/
 	WinList.onRemove = function onRemove() {
-		ScreenHooks_default.hide("serverList");
 		this._listEl.innerHTML = "";
 		this.list = null;
 		this.index = 0;
@@ -351934,25 +345968,6 @@ function createWinLogin({ name, htmlText, cssText }) {
 	let _inputUsername;
 	let _inputPassword;
 	let _buttonSave;
-	/**
-	* What a plugin drawing this screen sees (UI/ScreenHooks.js). login()
-	* goes the way the Connect button does, so a different sign-in -- a
-	* token in place of a password -- reaches the server the same way.
-	*/
-	const _screen = {
-		get savedId() {
-			return _preferences.saveID ? _preferences.ID : "";
-		},
-		get saveId() {
-			return Boolean(_preferences.saveID);
-		},
-		login(user, pass, saveId) {
-			if (typeof saveId === "boolean") _preferences.saveID = saveId;
-			submit(String(user), String(pass));
-		},
-		signup: () => signup(),
-		exit: () => exit()
-	};
 	Component.init = function init() {
 		this.draggable();
 		const root = this.getRoot();
@@ -352002,10 +346017,6 @@ function createWinLogin({ name, htmlText, cssText }) {
 		if (_preferences.ID.length) _inputPassword.focus();
 		else _inputUsername.focus();
 		Component.placeOnTop();
-		ScreenHooks_default.show("login", _screen, this._host);
-	};
-	Component.onRemove = function onRemove() {
-		ScreenHooks_default.hide("login");
 	};
 	Component.onKeyDown = function onKeyDown(event) {
 		if (this._host.style.display === "none") return true;
@@ -352039,10 +346050,8 @@ function createWinLogin({ name, htmlText, cssText }) {
 		return false;
 	}
 	function connect() {
-		submit(_inputUsername.value, _inputPassword.value);
-		return false;
-	}
-	function submit(user, pass) {
+		const user = _inputUsername.value;
+		const pass = _inputPassword.value;
 		if (_preferences.saveID) {
 			_preferences.saveID = true;
 			_preferences.ID = user;
@@ -352052,6 +346061,7 @@ function createWinLogin({ name, htmlText, cssText }) {
 		}
 		_preferences.save();
 		Component.onConnectionRequest(user, pass);
+		return false;
 	}
 	async function loadReplay(file) {
 		try {
@@ -352087,7 +346097,6 @@ var init_WinLoginCommon = __esmMin((() => {
 	init_KeyEventHandler();
 	init_UIManager();
 	init_GUIComponent();
-	init_ScreenHooks();
 	init_Elements();
 	init_preload_helper();
 }));
@@ -352144,14 +346153,12 @@ var init_WinLoginV3 = __esmMin((() => {
 }));
 //#endregion
 //#region src/UI/Components/WinLogin/WinLogin.js
-var publicName, versionInfo, Controller, REDESIGN_BACKGROUND, _hasRedesignArt;
+var publicName, versionInfo, Controller;
 var init_WinLogin = __esmMin((() => {
 	init_WinLogin$1();
 	init_WinLoginV2();
 	init_WinLoginV3();
 	init_UIVersionManager();
-	init_Client();
-	init_DBManager();
 	publicName = "WinLogin";
 	versionInfo = {
 		default: WinLogin_default,
@@ -352163,38 +346170,6 @@ var init_WinLogin = __esmMin((() => {
 		prere: {}
 	};
 	Controller = UIVersionManager.getUIController(publicName, versionInfo);
-	REDESIGN_BACKGROUND = "login_interface/bg_login.tga";
-	_hasRedesignArt = null;
-	/**
-	* Settle on a login window the client data can draw, then call back.
-	*
-	* Call after selectUIVersion(). The result is remembered: a file that failed
-	* to load does not always report the failure to a second listener.
-	*
-	* @param {function} callback
-	*/
-	Controller.selectUIVersionForData = function selectUIVersionForData(callback) {
-		const useClassic = () => {
-			Controller.selectSpecificUIVersion(0);
-			callback();
-		};
-		if (Controller.getUI() === WinLogin_default || _hasRedesignArt === true) {
-			callback();
-			return;
-		}
-		if (_hasRedesignArt === false) {
-			useClassic();
-			return;
-		}
-		Client.loadFile(DB.INTERFACE_PATH + REDESIGN_BACKGROUND, () => {
-			_hasRedesignArt = true;
-			callback();
-		}, () => {
-			_hasRedesignArt = false;
-			console.warn("%c[UIVersion] WinLogin: " + REDESIGN_BACKGROUND + " is not in the client data, using the classic window", "color:#007000");
-			useClassic();
-		});
-	};
 }));
 //#endregion
 //#region src/Engine/LoginEngine.js
@@ -352897,11 +346872,7 @@ var init_LoginEngine = __esmMin((() => {
 				onConnectionRequest.apply(null, autoLogin);
 				Configs.set("autoLogin", null);
 			} else q.add(function() {
-				Controller.selectUIVersionForData(() => {
-					Controller.getUI().onConnectionRequest = onConnectionRequest;
-					Controller.getUI().onExitRequest = onExitRequest;
-					Controller.getUI().append();
-				});
+				Controller.getUI().append();
 			});
 			if (PacketVerManager_default.value < 20170315) Network.hookPacket(PACKET.AC.ACCEPT_LOGIN, onConnectionAccepted);
 			else Network.hookPacket(PACKET.AC.ACCEPT_LOGIN3, onConnectionAccepted);
@@ -354478,13 +348449,6 @@ async function onFileLoaded(data, error, input) {
 	let i, count, j, size;
 	let gl, frames, texture, layers, palette;
 	let precision;
-	if (error && ClothPalette_default.canBuild(input.filename)) {
-		ClothPalette_default.build(input.filename, function(built) {
-			if (built) onFileLoaded(built.buffer, null, input);
-			else MemoryManager.set(input.filename, data, error);
-		});
-		return;
-	}
 	if (data && !error) switch (input.filename.substr(-3)) {
 		case "bmp":
 			Texture.load(data, function() {
@@ -354565,7 +348529,6 @@ var init_Client = __esmMin((() => {
 	init_Configs();
 	init_Thread();
 	init_MemoryManager();
-	init_ClothPalette();
 	init_PacketVerManager();
 	init_Texture();
 	init_WebGL();
