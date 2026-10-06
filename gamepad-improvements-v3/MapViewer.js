@@ -238244,6 +238244,7 @@ function drawEmote(canvas, emo) {
 	const layers = animations[Math.floor(animations.length / 5)].layers;
 	if (!layers.length) return;
 	SpriteRenderer.bind2DContext(canvas.getContext("2d"), CELL / 2 - layers[0].pos[0], CELL - layers[0].pos[1]);
+	if (!_entity$2) _entity$2 = new Entity();
 	for (let i = 0; i < layers.length; ++i) _entity$2.renderLayer(layers[i], _sprite$4, _sprite$4, 1, [0, 0], false);
 }
 function render$7() {
@@ -238349,7 +238350,7 @@ var init_JoystickEmoteGrid = __esmMin((() => {
 	_action$4 = null;
 	_sprite$4 = null;
 	_loading = false;
-	_entity$2 = new Entity();
+	_entity$2 = null;
 	JoystickEmoteGrid_default = {
 		open,
 		close,
