@@ -180,8 +180,23 @@ function pickUp() {
 
 	Network.sendPacket(pkt);
 }
+/**
+ * Sit down, or stand up when sitting (L3 hold): the /sit command's request.
+ */
+function toggleSit() {
+	const Player = Session.Entity;
+	if (!Player) {
+		return;
+	}
+
+	const pkt = PACKETVER.value >= 20180307 ? new PACKET.CZ.REQUEST_ACT2() : new PACKET.CZ.REQUEST_ACT();
+	pkt.action = Player.action === Player.ACTION.SIT ? 3 : 2; // 3 stand up, 2 sit down
+	Network.sendPacket(pkt);
+}
+
 export default {
 	attack: attack,
+	toggleSit: toggleSit,
 	pickUp: pickUp,
 	move: move,
 	releaseStick: releaseStick
