@@ -21,6 +21,7 @@ import ButtonMap from 'UI/Components/JoystickUI/JoystickButtonMap.js';
 import JoystickUIRenderer from 'UI/Components/JoystickUI/JoystickUIRenderer.js';
 import JoystickAim from 'UI/Components/JoystickUI/JoystickAimMode.js';
 import StickFilter from 'UI/Components/JoystickUI/JoystickStickFilter.js';
+import TargetCategory from 'UI/Components/JoystickUI/JoystickTargetCategory.js';
 
 /**
  * Gamepad sliders that save as they move, with their value shown beside
@@ -209,10 +210,10 @@ ShortCutOption.init = function () {
  * Apply preferences once append to body
  */
 ShortCutOption.onAppend = function () {
-	// Reflect the current value; L3 can change it while the window is closed.
+	// Reflect the current value; D-pad up / down can change it while the window is closed.
 	const cycleMode = this.getRoot().querySelector('.joyCycleMode');
 	if (cycleMode) {
-		cycleMode.value = String(Controls.joyCycleMode | 0);
+		cycleMode.value = String(shownCategory());
 	}
 	reflectGamepadSettings(this.getRoot());
 
@@ -700,7 +701,7 @@ function reflectGamepadSettings(root) {
 			el.value = String(value);
 		}
 	};
-	setValue('.joyCycleMode', Controls.joyCycleMode | 0);
+	setValue('.joyCycleMode', shownCategory());
 	setValue('.attackTargetMode', Controls.attackTargetMode | 0);
 	showQuickCast(root);
 	setValue('.joySense', Controls.joySense);
@@ -769,9 +770,17 @@ function onCalibrate(root) {
 	});
 }
 
+/**
+ * The target category as the select offers it: the old "mobs and items"
+ * setting, no longer offered, shows as Mobs.
+ */
+function shownCategory() {
+	const category = TargetCategory.get();
+	return TargetCategory.ORDER.includes(category) ? category : TargetCategory.CATEGORY.MOBS;
+}
+
 function onUpdateCycleMode() {
-	Controls.joyCycleMode = parseInt(this.value, 10);
-	Controls.save();
+	TargetCategory.set(parseInt(this.value, 10));
 }
 
 function onUpdateSense() {

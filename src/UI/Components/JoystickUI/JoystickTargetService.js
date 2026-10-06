@@ -11,19 +11,14 @@ import Session from 'Engine/SessionStorage.js';
 import EntityManager from 'Renderer/EntityManager.js';
 import ControlsSettings from 'Preferences/Controls.js';
 import Cursor from './JoystickMouseCursorAdapter.js';
-import ChatBox from 'UI/Components/ChatBox/ChatBox.js';
 import GameCursor from 'UI/CursorManager.js';
+import Category from './JoystickTargetCategory.js';
 
 /**
- * What the D-pad cycle walks through. Values match ControlsSettings.joyCycleMode.
+ * What the D-pad cycle and the aim walk through: the target category
+ * (ControlsSettings.joyCycleMode, switched with D-pad up / down).
  */
-const CYCLE_MODE = {
-	MOBS: 0,
-	ITEMS: 1,
-	BOTH: 2,
-	INTERACT: 3
-};
-const CYCLE_MODE_NAMES = ['mobs', 'items', 'mobs and items', 'NPCs and portals'];
+const CYCLE_MODE = Category.CATEGORY;
 
 // NPCs with these sprites are invisible script triggers (DB.getBodyPath
 // draws nothing for them); the cycle and aim skip them.
@@ -39,13 +34,16 @@ const HIDDEN_NPC_JOBS = [111, 139, 2337];
 let _marked = null;
 
 function getCycleTypes(Entity) {
-	switch (ControlsSettings.joyCycleMode) {
+	switch (Category.get()) {
 		case CYCLE_MODE.ITEMS:
 			return [Entity.TYPE_ITEM];
 		case CYCLE_MODE.BOTH:
 			return [Entity.TYPE_MOB, Entity.TYPE_ITEM];
 		case CYCLE_MODE.INTERACT:
 			return [Entity.TYPE_NPC, Entity.TYPE_NPC2, Entity.TYPE_WARP];
+		case CYCLE_MODE.SUPPORT:
+			// The party is picked from the radial (JoystickSupportMode)
+			return [];
 		default:
 			return [Entity.TYPE_MOB];
 	}
@@ -299,25 +297,28 @@ function clearFocus() {
 }
 
 /**
- * Advance the cycle mode (mobs -> items -> both -> mobs), save it, and tell
- * the player in the chat box. A cycled item is released when the new mode
- * no longer includes items.
+ * A new target category: drop a mark it cannot reach any more (an item
+ * once the category is no longer Items, ...). The combat focus stays: X
+ * keeps attacking what it attacked, whatever is being targeted.
  */
-function nextCycleMode() {
-	ControlsSettings.joyCycleMode = ((ControlsSettings.joyCycleMode | 0) + 1) % CYCLE_MODE_NAMES.length;
-	ControlsSettings.save();
-
-	// Drop a mark the new mode cannot reach any more
+Category.onChange(function () {
 	const marked = getMarked();
 	if (marked && !getCycleTypes(marked.constructor).includes(marked.objecttype)) {
 		releaseMark();
 	}
+});
 
-	ChatBox.addText(
-		'D-pad target cycle: ' + CYCLE_MODE_NAMES[ControlsSettings.joyCycleMode],
-		ChatBox.TYPE.INFO,
-		ChatBox.FILTER.PUBLIC_LOG
-	);
+/**
+ * Clear what the gamepad targets (L3 tap): the mark and the focus. Unlike
+ * clearFocus, the cursor stays where it is.
+ */
+function clearTarget() {
+	releaseMark();
+	const focus = EntityManager.getFocusEntity();
+	if (focus) {
+		focus.onFocusEnd();
+		EntityManager.setFocusEntity(null);
+	}
 }
 
 export default {
@@ -327,6 +328,7 @@ export default {
 	focus: focusTarget,
 	cycle: cycle,
 	clear: clearFocus,
+	clearTarget: clearTarget,
 	getItem: getCycledItem,
 	getMarked: getMarked,
 	getInteractTarget: getInteractTarget,
@@ -350,5 +352,5 @@ export default {
 			Cursor.moveMouseToEntity(focus);
 		}
 	},
-	nextCycleMode: nextCycleMode
+	CYCLE_MODE: CYCLE_MODE
 };

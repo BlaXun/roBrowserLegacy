@@ -24,10 +24,13 @@ const CAMERA_STEP_SMALL = 45;
 const CAMERA_STEP_LARGE = 90;
 
 // RS click: a tap switches the right stick between aim and cursor, a hold
-// clears the target. Decided on release (tap) or after RS_HOLD_MS (hold).
-const RS_HOLD_MS = 400;
+// recenters the cursor. LS click: a tap clears the target, a hold sits down
+// or stands up. Decided on release (tap) or after STICK_HOLD_MS (hold).
+const STICK_HOLD_MS = 400;
 let rsDownAt = 0;
 let rsHoldFired = false;
+let lsDownAt = 0;
+let lsHoldFired = false;
 
 function setClickLock() {
 	clickLock = true;
@@ -39,7 +42,8 @@ function setClickLock() {
 const ButtonInput = {
 	update: function (buttons) {
 		// Before the click lock: a release must not be missed, or a tap is lost
-		const stickButton = this._handleRightStickButton(buttons);
+		let stickButton = this._handleRightStickButton(buttons);
+		stickButton = this._handleLeftStickButton(buttons) || stickButton;
 
 		if (clickLock) {
 			return stickButton;
@@ -106,12 +110,6 @@ const ButtonInput = {
 			pressed = true;
 		}
 
-		// L3 (left stick click) → switch D-pad cycle mode (mobs/items/both)
-		if (btn[10] === 'pressed') {
-			Interaction.nextCycleMode();
-			pressed = true;
-		}
-
 		if (pressed) {
 			setClickLock();
 		}
@@ -122,12 +120,12 @@ const ButtonInput = {
 	_handleRightStickButton: function (btn) {
 		const state = btn[11];
 
-		// Aiming switched off in the settings: RS click clears the target as
-		// soon as it is pressed, as it did before aiming existed.
+		// Aiming switched off in the settings: there is no mode to switch,
+		// so RS click recenters the cursor as soon as it is pressed.
 		if (!ControlsSettings.joyAimEnabled) {
 			rsDownAt = 0;
 			if (state === 'pressed') {
-				Interaction.resetFocus();
+				Interaction.recenterCursor();
 			}
 			return state !== 'unpressed';
 		}
@@ -136,9 +134,9 @@ const ButtonInput = {
 			if (!rsDownAt) {
 				rsDownAt = Date.now();
 				rsHoldFired = false;
-			} else if (!rsHoldFired && Date.now() - rsDownAt >= RS_HOLD_MS) {
-				// Hold: clear target + recenter cursor, once per hold
-				Interaction.resetFocus();
+			} else if (!rsHoldFired && Date.now() - rsDownAt >= STICK_HOLD_MS) {
+				// Hold: recenter the cursor, once per hold
+				Interaction.recenterCursor();
 				rsHoldFired = true;
 			}
 			return true;
@@ -150,6 +148,37 @@ const ButtonInput = {
 				Interaction.toggleStickMode();
 			}
 			rsDownAt = 0;
+			return true;
+		}
+		return false;
+	},
+
+	/**
+	 * LS click. A tap clears the target, whatever it is; a hold sits down
+	 * or stands up, once per hold. Not while the selection window is open:
+	 * it has the pad then.
+	 */
+	_handleLeftStickButton: function (btn) {
+		const state = btn[10];
+
+		if (state !== 'unpressed') {
+			if (!lsDownAt) {
+				lsDownAt = Date.now();
+				lsHoldFired = false;
+			} else if (!lsHoldFired && Date.now() - lsDownAt >= STICK_HOLD_MS) {
+				if (!SelectionUI.active()) {
+					Interaction.toggleSit();
+				}
+				lsHoldFired = true;
+			}
+			return true;
+		}
+
+		if (lsDownAt) {
+			if (!lsHoldFired && !SelectionUI.active()) {
+				Interaction.clearTarget();
+			}
+			lsDownAt = 0;
 			return true;
 		}
 		return false;
@@ -224,11 +253,11 @@ const ButtonInput = {
 
 		// D-Pad
 		if (buttons[12] !== 'unpressed') {
-			// D-pad Up
+			// D-pad Up: previous target category (or a window's own navigation)
 			Interaction.navigateDpad('up');
 			pressed = true;
 		} else if (buttons[13] !== 'unpressed') {
-			// D-pad Down
+			// D-pad Down: next target category (or a window's own navigation)
 			Interaction.navigateDpad('down');
 			pressed = true;
 		} else if (buttons[14] !== 'unpressed') {

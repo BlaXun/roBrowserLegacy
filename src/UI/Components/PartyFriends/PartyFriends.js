@@ -32,6 +32,14 @@ controller.isGroupMember = function isGroupMember(name) {
 };
 
 /**
+ * Proxy for getPartyMembers
+ */
+controller.getPartyMembers = function getPartyMembers() {
+	const ui = controller.getUI();
+	return ui && ui.getPartyMembers ? ui.getPartyMembers() : [];
+};
+
+/**
  * Proxy for onOpenChat1to1
  */
 controller.onOpenChat1to1 = function onOpenChat1to1(name) {
