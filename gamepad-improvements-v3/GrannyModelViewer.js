@@ -236248,6 +236248,51 @@ var init_JoystickMouseCursorAdapter = __esmMin((() => {
 	};
 }));
 //#endregion
+//#region src/UI/Components/JoystickUI/JoystickScreenAnchor.js
+/**
+* Centre an absolutely positioned element horizontally under the feet,
+* gap pixels below them, kept on screen. It must be laid out (displayed)
+* so its size can be measured.
+*
+* @param {HTMLElement} element
+* @param {?Array<number>} feet [x, y] of the character's feet on screen;
+*   null puts the element in the lower middle of the screen
+* @param {number} gap pixels between the feet and the element's top
+*/
+function placeBelowFeet(element, feet, gap) {
+	const viewWidth = window.innerWidth;
+	const viewHeight = window.innerHeight;
+	const width = element.offsetWidth;
+	const height = element.offsetHeight;
+	const x = feet ? feet[0] : viewWidth / 2;
+	const y = feet ? feet[1] + gap : viewHeight * .6;
+	const left = Math.max(EDGE, Math.min(x - width / 2, viewWidth - width - EDGE));
+	const top = Math.max(EDGE, Math.min(y, viewHeight - height - EDGE));
+	element.style.left = Math.round(left) + "px";
+	element.style.top = Math.round(top) + "px";
+}
+/**
+* Call an anchor function safely.
+*
+* @param {?function(): ?Array<number>} anchor
+* @return {?Array<number>} the feet, or null
+*/
+function feetFrom(anchor) {
+	try {
+		return anchor ? anchor() : null;
+	} catch {
+		return null;
+	}
+}
+var EDGE, JoystickScreenAnchor_default;
+var init_JoystickScreenAnchor = __esmMin((() => {
+	EDGE = 8;
+	JoystickScreenAnchor_default = {
+		placeBelowFeet,
+		feetFrom
+	};
+}));
+//#endregion
 //#region src/UI/Components/JoystickUI/JoystickTargetCategory.js
 function get$1() {
 	const value = Controls_default.joyCycleMode | 0;
@@ -236276,13 +236321,15 @@ function set(category) {
 * wrapping. A legacy value outside ORDER counts as Mobs.
 *
 * @param {string} direction 'up' or 'down'
+* @param {function(): ?Array<number>} [anchor] the character's feet on
+*   screen, for the list
 */
-function step(direction) {
+function step(direction, anchor) {
 	let index = ORDER.indexOf(get$1());
 	if (index === -1) index = 0;
 	index = (index + (direction === "up" ? -1 : 1) + ORDER.length) % ORDER.length;
 	set(ORDER[index]);
-	showList();
+	showList(anchor);
 }
 function onChange(callback) {
 	_listeners.push(callback);
@@ -236294,16 +236341,15 @@ function getList() {
 	_list$4.className = "joystick-target-category";
 	Object.assign(_list$4.style, {
 		position: "absolute",
-		left: "12px",
-		top: "40%",
-		transform: "translateY(-50%)",
 		zIndex: 1e3,
 		pointerEvents: "none",
 		display: "flex",
 		flexDirection: "column",
-		gap: "3px",
+		alignItems: "stretch",
+		gap: "4px",
 		fontFamily: "sans-serif",
-		fontSize: "13px",
+		fontSize: "17px",
+		textAlign: "center",
 		transition: "opacity 400ms",
 		opacity: "0"
 	});
@@ -236311,9 +236357,13 @@ function getList() {
 	return _list$4;
 }
 /**
-* Show every category, the active one highlighted, then fade out.
+* Show every category, the active one highlighted, below the character,
+* then fade out.
+*
+* @param {function(): ?Array<number>} [anchor] the character's feet on
+*   screen; without it the list sits in the lower middle
 */
-function showList() {
+function showList(anchor) {
 	const list = getList();
 	if (!list) return;
 	const active = get$1();
@@ -236324,8 +236374,8 @@ function showList() {
 		row.textContent = (on ? "▶ " : "") + nameOf(category);
 		row.dataset.category = String(category);
 		Object.assign(row.style, {
-			padding: "3px 10px",
-			borderRadius: "4px",
+			padding: "5px 16px",
+			borderRadius: "5px",
 			color: on ? "#fff" : "#bbb",
 			background: on ? "rgba(46, 125, 50, 0.85)" : "rgba(0, 0, 0, 0.55)",
 			fontWeight: on ? "bold" : "normal"
@@ -236334,6 +236384,7 @@ function showList() {
 	});
 	list.style.display = "flex";
 	list.style.opacity = "1";
+	JoystickScreenAnchor_default.placeBelowFeet(list, JoystickScreenAnchor_default.feetFrom(anchor), BELOW_FEET$2);
 	if (_hideTimer) clearTimeout(_hideTimer);
 	_hideTimer = setTimeout(function() {
 		_hideTimer = null;
@@ -236348,9 +236399,10 @@ function dispose$2() {
 	if (_list$4 && _list$4.parentNode) _list$4.parentNode.removeChild(_list$4);
 	_list$4 = null;
 }
-var CATEGORY, ORDER, NAMES, LIST_VISIBLE_MS, _list$4, _hideTimer, _listeners, JoystickTargetCategory_default;
+var CATEGORY, ORDER, NAMES, LIST_VISIBLE_MS, BELOW_FEET$2, _list$4, _hideTimer, _listeners, JoystickTargetCategory_default;
 var init_JoystickTargetCategory = __esmMin((() => {
 	init_Controls();
+	init_JoystickScreenAnchor();
 	CATEGORY = {
 		MOBS: 0,
 		ITEMS: 1,
@@ -236372,6 +236424,7 @@ var init_JoystickTargetCategory = __esmMin((() => {
 		[CATEGORY.SUPPORT]: "Support"
 	};
 	LIST_VISIBLE_MS = 2e3;
+	BELOW_FEET$2 = 24;
 	_list$4 = null;
 	_hideTimer = null;
 	_listeners = [];
@@ -237594,6 +237647,12 @@ function getFocusEntity$1() {
 * be cast on them (Heal not on the dead, Resurrection only on them).
 */
 function getFocusForSkill() {
+	if (_open$2 && !_pending$1 && _highlight !== -1 && _entries[_highlight]) {
+		const entry = _entries[_highlight];
+		if (!judge(entry, skillContext()).ok) return null;
+		setFocus(entry);
+		return entry.entity;
+	}
 	const focus = getFocus();
 	return focus && judge(focus, skillContext()).ok ? focus.entity : null;
 }
@@ -237649,7 +237708,9 @@ function castOn(entity) {
 		});
 		return true;
 	}
-	SkillTargetSelection_default.intersectEntityId(entity.GID);
+	const skill = entity === SessionStorage_default.Entity && SkillTargetSelection_default.getSkill ? SkillTargetSelection_default.getSkill() : null;
+	if (skill) SkillTargetSelection_default.onUseSkillToId(skill.SKID, skill.useLevel || skill.level, entity.GID);
+	else SkillTargetSelection_default.intersectEntityId(entity.GID);
 	SkillTargetSelection_default.remove();
 	return true;
 }
@@ -237720,6 +237781,18 @@ function pick(index) {
 	rumble(RUMBLE_FOCUS);
 }
 /**
+* B with the radial open and no skill pending (that one B cancels): close
+* it until the stick is let go.
+*
+* @return {boolean} whether it was open
+*/
+function dismiss() {
+	if (!_open$2 || _pending$1) return false;
+	closeRadial();
+	_waitRest = true;
+	return true;
+}
+/**
 * A with a skill pending: cast it on the highlighted member, who becomes
 * the focus. A member the skill cannot take is not cast on (the skill
 * keeps waiting).
@@ -237771,7 +237844,9 @@ function update$2(x, y, magnitude, deadzone) {
 			_highlight = _pending$1 ? 0 : -1;
 			_picked = -1;
 		}
-		if (magnitude >= SELECT_MIN && _entries.length > 0) {
+		const atRest = magnitude <= Math.max(deadzone, RELEASE_MAX);
+		if (_waitRest && atRest) _waitRest = false;
+		if (magnitude >= SELECT_MIN && _entries.length > 0 && !_waitRest) {
 			const index = segmentAt(x, y, _entries.length);
 			const now = performance.now();
 			_open$2 = true;
@@ -237781,7 +237856,7 @@ function update$2(x, y, magnitude, deadzone) {
 			}
 			_pushed = true;
 			if (_picked !== _highlight && now - _highlightAt >= SETTLE_MS) pick(_highlight);
-		} else if (magnitude <= deadzone) {
+		} else if (atRest) {
 			_pushed = false;
 			if (_pending$1) _highlight = _picked !== -1 ? _picked : 0;
 			else closeRadial();
@@ -238111,7 +238186,7 @@ function opaqueBounds(ctx, side) {
 		right
 	};
 }
-var SELECT_MIN, SETTLE_MS, R_INNER, R_OUTER_MIN, R_OUTER_PER_ENTRY, POP_OUT, GAP_DEG, ICON_SIZE, BELOW_FEET$1, LABEL_ROOM, HP_GOOD, HP_LOW, COLOR_GOOD, COLOR_MID, COLOR_LOW, FOCUS_RING, SP_BACK, SP_FILL, SP_COST, SP_SHORT, FAR_OUTLINE, RUMBLE_FOCUS, RUMBLE_CAST, REVIVE_SKILLS, PORTRAIT_BOX, PORTRAIT_RETRY_MS, _overlay, _supportCtx, _drawn, _focusKey, _open$2, _highlight, _highlightAt, _picked, _pushed, _entries, _pending$1, _portraits, _jobIcons, HEADGEAR, _scratch, _scratchCtx, JoystickSupportMode_default;
+var SELECT_MIN, RELEASE_MAX, SETTLE_MS, R_INNER, R_OUTER_MIN, R_OUTER_PER_ENTRY, POP_OUT, GAP_DEG, ICON_SIZE, BELOW_FEET$1, LABEL_ROOM, HP_GOOD, HP_LOW, COLOR_GOOD, COLOR_MID, COLOR_LOW, FOCUS_RING, SP_BACK, SP_FILL, SP_COST, SP_SHORT, FAR_OUTLINE, RUMBLE_FOCUS, RUMBLE_CAST, REVIVE_SKILLS, PORTRAIT_BOX, PORTRAIT_RETRY_MS, _overlay, _supportCtx, _drawn, _focusKey, _open$2, _highlight, _highlightAt, _picked, _pushed, _waitRest, _entries, _pending$1, _portraits, _jobIcons, HEADGEAR, _scratch, _scratchCtx, JoystickSupportMode_default;
 var init_JoystickSupportMode = __esmMin((() => {
 	init_SessionStorage();
 	init_EntityManager();
@@ -238129,6 +238204,7 @@ var init_JoystickSupportMode = __esmMin((() => {
 	init_JoystickAimMode();
 	init_JoystickMouseCursorAdapter();
 	SELECT_MIN = .5;
+	RELEASE_MAX = .3;
 	SETTLE_MS = 250;
 	R_INNER = 30;
 	R_OUTER_MIN = 72;
@@ -238171,6 +238247,7 @@ var init_JoystickSupportMode = __esmMin((() => {
 	_highlightAt = 0;
 	_picked = -1;
 	_pushed = false;
+	_waitRest = false;
 	_entries = [];
 	_pending$1 = null;
 	_portraits = /* @__PURE__ */ new Map();
@@ -238198,6 +238275,7 @@ var init_JoystickSupportMode = __esmMin((() => {
 		cancelPending,
 		castPendingOnSelf,
 		confirmPending,
+		dismiss,
 		ownsStick,
 		update: update$2,
 		release,
@@ -238490,35 +238568,14 @@ function render$9() {
 	const n = JoystickButtonMap_default.nameOf;
 	hint.textContent = n(BTN.A) + " play · " + n(BTN.X) + " play, stay · " + n(BTN.Y) + " favourite · " + n(BTN.LB) + "/" + n(BTN.RB) + " page · " + n(BTN.B) + " close";
 	root.appendChild(hint);
-	place(root);
-}
-/**
-* Centre the grid under the character's feet, kept on screen.
-*/
-function place(root) {
-	let feet = null;
-	try {
-		feet = _anchor ? _anchor() : null;
-	} catch {
-		feet = null;
-	}
-	const viewWidth = window.innerWidth;
-	const viewHeight = window.innerHeight;
-	const width = root.offsetWidth;
-	const height = root.offsetHeight;
-	const x = feet ? feet[0] : viewWidth / 2;
-	const y = feet ? feet[1] + BELOW_FEET : viewHeight * .6;
-	const left = Math.max(EDGE, Math.min(x - width / 2, viewWidth - width - EDGE));
-	const top = Math.max(EDGE, Math.min(y, viewHeight - height - EDGE));
-	root.style.left = Math.round(left) + "px";
-	root.style.top = Math.round(top) + "px";
+	JoystickScreenAnchor_default.placeBelowFeet(root, JoystickScreenAnchor_default.feetFrom(_anchor), BELOW_FEET);
 }
 function dispose$1() {
 	close();
 	if (_root$13 && _root$13.parentNode) _root$13.parentNode.removeChild(_root$13);
 	_root$13 = null;
 }
-var COLS, PER_PAGE, MAX_FAVORITES, CELL, BELOW_FEET, EDGE, REPEAT_DELAY_MS, REPEAT_EVERY_MS, BTN, _root$13, _anchor, _open$1, _page$1, _row, _col, _repeatButton, _repeatAt, _action$4, _sprite$4, _loading, _entity$2, JoystickEmoteGrid_default;
+var COLS, PER_PAGE, MAX_FAVORITES, CELL, BELOW_FEET, REPEAT_DELAY_MS, REPEAT_EVERY_MS, BTN, _root$13, _anchor, _open$1, _page$1, _row, _col, _repeatButton, _repeatAt, _action$4, _sprite$4, _loading, _entity$2, JoystickEmoteGrid_default;
 var init_JoystickEmoteGrid = __esmMin((() => {
 	init_Emotions();
 	init_Client();
@@ -238528,12 +238585,12 @@ var init_JoystickEmoteGrid = __esmMin((() => {
 	init_PacketStructure();
 	init_Controls();
 	init_JoystickButtonMap();
+	init_JoystickScreenAnchor();
 	COLS = 6;
 	PER_PAGE = 30;
 	MAX_FAVORITES = COLS;
 	CELL = 40;
 	BELOW_FEET = 24;
-	EDGE = 8;
 	REPEAT_DELAY_MS = 350;
 	REPEAT_EVERY_MS = 120;
 	BTN = {
@@ -238573,6 +238630,13 @@ var init_JoystickEmoteGrid = __esmMin((() => {
 }));
 //#endregion
 //#region src/UI/Components/JoystickUI/JoystickInteractionService.js
+/**
+* The character's feet on screen, for overlays placed below them.
+*/
+function playerFeet() {
+	const player = SessionStorage_default.Entity;
+	return player ? JoystickAimMode_default.project(player.position[0], player.position[1]) : null;
+}
 var SELF_CAST_HOLD_MS, HOLD_POLL_MS, JoystickInteractionService_default;
 var init_JoystickInteractionService = __esmMin((() => {
 	init_ShortCut();
@@ -238826,16 +238890,14 @@ var init_JoystickInteractionService = __esmMin((() => {
 				JoystickSupportMode_default.cancelPending(true);
 				return;
 			}
+			if (!holding && JoystickSupportMode_default.dismiss()) return;
 			JoystickMouseCursorAdapter_default.rightClick(holding);
 		},
 		/**
 		* Menu hold: the emote grid, below the character.
 		*/
 		openEmoteGrid: function() {
-			JoystickEmoteGrid_default.open(function() {
-				const player = SessionStorage_default.Entity;
-				return player ? JoystickAimMode_default.project(player.position[0], player.position[1]) : null;
-			});
+			JoystickEmoteGrid_default.open(playerFeet);
 		},
 		isEmoteGridOpen: function() {
 			return JoystickEmoteGrid_default.isActive();
@@ -238901,7 +238963,7 @@ var init_JoystickInteractionService = __esmMin((() => {
 		navigateDpad: function(direction) {
 			if (JoystickMenuNavigation_default.navigate(direction)) return true;
 			if ((direction === "up" || direction === "down") && !this._uiWantsArrows()) {
-				JoystickTargetCategory_default.step(direction);
+				JoystickTargetCategory_default.step(direction, playerFeet);
 				return true;
 			}
 			return JoystickMouseCursorAdapter_default.navigateDraggableItems(direction);
