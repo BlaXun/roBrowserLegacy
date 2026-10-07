@@ -86,6 +86,14 @@ function getPlannedLevel(plan, ownedSkills, skillId) {
  * is invalid or cannot be afforded.
  */
 export function stageSkillPlan({ plan, skillId, ownedSkills, skillInfo, skillTreeView, jobId, availablePoints }) {
+	// The server says which owned skills can take a point. A copied
+	// (Plagiarism/Reproduce) or granted skill never can: it would ask for
+	// a skill up the server refuses.
+	const owned = getOwnedSkill(ownedSkills, skillId);
+	if (owned?.level > 0 && !owned.upgradable) {
+		return null;
+	}
+
 	const candidate = clonePlan(plan);
 	const visiting = new Set();
 
