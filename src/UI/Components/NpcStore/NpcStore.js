@@ -30,6 +30,7 @@ import htmlText from './NpcStore.html?raw';
 import cssText from './NpcStore.css?raw';
 import { onItemDoubleClick } from 'UI/ItemDoubleClick.js';
 import WheelSteps from 'UI/WheelSteps.js';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create NPC Store component
@@ -758,7 +759,7 @@ function addItem(content, item) {
 			(amount === '' && _type === NpcStore.Type.BUYING_STORE ? 0 : amount) +
 			amountText +
 			`</div>` +
-			`<div class="name">${_escapeHTML(DB.getItemName(item))}</div>` +
+			`<div class="name">${sanitizeHtml(DB.getItemName(item))}</div>` +
 			`<div class="price">${price}</div>` +
 			`<div class="unity">Z</div>` +
 			`</div>`;
@@ -771,10 +772,10 @@ function addItem(content, item) {
 			` data-viewSprite="${item.viewSprite}">` +
 			`<div class="icon"></div>` +
 			`<div class="amount">${isFinite(item.count) ? item.count : ''}</div>` +
-			`<div class="name">${_escapeHTML(DB.getItemName(item))}</div>` +
+			`<div class="name">${sanitizeHtml(DB.getItemName(item))}</div>` +
 			`<div class="currency_icon" data-item="${item.currencyITID}"></div>` +
 			`<div class="currency_amount">${item.currencyamount}</div>` +
-			`<div class="currency_nameOverlay">${_escapeHTML(DB.getItemName(currency_item))} ${item.currencyamount} ea</div>` +
+			`<div class="currency_nameOverlay">${sanitizeHtml(DB.getItemName(currency_item))} ${item.currencyamount} ea</div>` +
 			`</div>`;
 		content.insertAdjacentHTML('beforeend', html);
 	} else if (_type === NpcStore.Type.BARTER_MARKET_EXTENDED) {
@@ -808,7 +809,7 @@ function addItem(content, item) {
 			`<div class="icon"></div>` +
 			`</div>` +
 			`<div class="amount">${isFinite(item.count) ? item.count : ''}</div>` +
-			`<div class="name">${_escapeHTML(DB.getItemName(item))}</div>` +
+			`<div class="name">${sanitizeHtml(DB.getItemName(item))}</div>` +
 			`<div class="currency_section">${currencySlotsHTML}</div>` +
 			`<div class="expanded_price">${item.price}z</div>` +
 			`<div class="expanded_currency_nameOverlay">${currencyOverlay}</div>` +
@@ -838,7 +839,7 @@ function addItem(content, item) {
 			`<div class="item itemAvailable" draggable="true" data-index="${item.index}">` +
 			`<div class="icon"></div>` +
 			`<div class="amount">${isFinite(item.count) ? item.count : ''}</div>` +
-			`<div class="nameOverlay">${_escapeHTML(DB.getItemName(item))}</div>` +
+			`<div class="nameOverlay">${sanitizeHtml(DB.getItemName(item))}</div>` +
 			`</div>`;
 		content.insertAdjacentHTML('beforeend', html);
 	}

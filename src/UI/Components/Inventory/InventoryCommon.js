@@ -47,6 +47,7 @@ import Mail from 'UI/Components/Mail/Mail.js';
 import WriteRodex from 'UI/Components/Rodex/WriteRodex.js';
 import { attachTouchDrag } from 'UI/TouchDrag.js';
 import { transferInventoryItemStack } from './InventoryItemTransfer.js';
+import { htmlToText } from 'Utils/HtmlHelper.js';
 
 function _sanitizeHtml(str) {
 	const whitelist = ['font', 'i', 'b'];
@@ -1584,7 +1585,11 @@ export function createInventory(config) {
 			});
 
 			SwitchEquip.equip(item, item.location, true);
-			ChatBox.addText(DB.getItemName(item) + ' ' + DB.getMessage(3143), ChatBox.TYPE.BLUE, ChatBox.FILTER.ITEM);
+			ChatBox.addText(
+				htmlToText(DB.getItemName(item)) + ' ' + DB.getMessage(3143),
+				ChatBox.TYPE.BLUE,
+				ChatBox.FILTER.ITEM
+			);
 		};
 
 		Component.removeItemFromSwitch = function (index) {
@@ -1611,7 +1616,7 @@ export function createInventory(config) {
 				this.equipswitchlist.splice(existingItemIndex, 1);
 
 				ChatBox.addText(
-					DB.getItemName(item) + ' ' + DB.getMessage(3144),
+					htmlToText(DB.getItemName(item)) + ' ' + DB.getMessage(3144),
 					ChatBox.TYPE.BLUE,
 					ChatBox.FILTER.ITEM
 				);
@@ -1665,7 +1670,7 @@ export function createInventory(config) {
 							return false;
 						}
 
-						const itemname = DB.getItemName(item);
+						const itemname = htmlToText(DB.getItemName(item));
 						const root = Component.getRoot();
 						const mcntEl = root.querySelector('.mcnt');
 						const currentlimit = mcntEl ? parseInt(mcntEl.textContent, 10) : 100;

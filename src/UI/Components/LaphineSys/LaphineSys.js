@@ -21,6 +21,7 @@ import KEYS from 'Controls/KeyEventHandler.js';
 import htmlText from './LaphineSys.html?raw';
 import cssText from './LaphineSys.css?raw';
 import PACKET from 'Network/PacketStructure.js';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -284,7 +285,7 @@ function onUpdateLaphineUI() {
 	}
 
 	const root = _root();
-	root.querySelector('.item_text').textContent = DB.getItemName(item);
+	root.querySelector('.item_text').innerHTML = sanitizeHtml(DB.getItemName(item));
 	root.querySelector('.mat_info_list').textContent = LaphineUIState.needSourceString;
 	root.querySelector('.mat_count_needed').textContent = LaphineUIState.needCount;
 }
@@ -729,7 +730,7 @@ function onItemOver() {
 	overlay.style.display = 'block';
 	overlay.style.top = `${top}px`;
 	overlay.style.left = `${left}px`;
-	overlay.textContent = DB.getItemName(item);
+	overlay.innerHTML = sanitizeHtml(DB.getItemName(item));
 
 	if (item.IsIdentified) {
 		overlay.classList.remove('grey');

@@ -25,6 +25,7 @@ import htmlText from './ItemCompare.html?raw';
 import cssText from './ItemCompare.css?raw';
 import ItemInfo from 'UI/Components/ItemInfo/ItemInfo.js';
 import Entity from 'Renderer/Entity/Entity.js';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * @let {Sprite,Action} objects
@@ -158,7 +159,7 @@ ItemCompare.setItem = function setItem(item) {
 		} else {
 			title.classList.remove('damaged');
 		}
-		title.textContent = itemName;
+		title.innerHTML = sanitizeHtml(itemName);
 	}
 
 	if (item.Options && item.IsIdentified) {

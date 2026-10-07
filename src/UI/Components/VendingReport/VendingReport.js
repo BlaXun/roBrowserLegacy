@@ -19,6 +19,7 @@ import 'UI/Elements/Elements.js';
 import htmlText from './VendingReport.html?raw';
 import cssText from './VendingReport.css?raw';
 import WheelSteps from 'UI/WheelSteps.js';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -389,7 +390,7 @@ function onItemOver() {
 	overlay.style.display = 'block';
 	overlay.style.top = `${itemRect.top - rootRect.top}px`;
 	overlay.style.left = `${itemRect.left - rootRect.left + 35}px`;
-	overlay.textContent = DB.getItemName(item);
+	overlay.innerHTML = sanitizeHtml(DB.getItemName(item));
 
 	if (item.IsIdentified) {
 		overlay.classList.remove('grey');

@@ -24,6 +24,7 @@ import ItemInfo from 'UI/Components/ItemInfo/ItemInfo.js';
 import 'UI/Elements/Elements.js';
 import htmlText from './Refine.html?raw';
 import cssText from './Refine.css?raw';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -544,7 +545,7 @@ function onRefineUIUpdateMaterials(pkt) {
 
 		const itemname = root.querySelector('.item_to_refine_name');
 		if (itemname) {
-			itemname.textContent = DB.getItemName(item);
+			itemname.innerHTML = sanitizeHtml(DB.getItemName(item));
 		}
 
 		// Select previously selected material if available
@@ -1370,7 +1371,7 @@ function onUpdateRefineUI(result) {
 		if (refineditem) {
 			const itemToRefineName = root.querySelector('.item_to_refine_name');
 			if (itemToRefineName) {
-				itemToRefineName.textContent = DB.getItemName(refineditem);
+				itemToRefineName.innerHTML = sanitizeHtml(DB.getItemName(refineditem));
 			}
 		}
 	}

@@ -28,6 +28,7 @@ import cssText from './VendingShop.css?raw';
 import VendingReport from 'UI/Components/VendingReport/VendingReport.js';
 import { onItemDoubleClick } from 'UI/ItemDoubleClick.js';
 import WheelSteps from 'UI/WheelSteps.js';
+import { htmlToText, sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -346,7 +347,9 @@ VendingShop.removeItem = function removeItem(index, count) {
 		return null;
 	}
 
-	const msg = DB.getMessage(231).replace('%s', DB.getItemName(item)).replace('%d', count);
+	const msg = DB.getMessage(231)
+		.replace('%s', htmlToText(DB.getItemName(item)))
+		.replace('%d', count);
 	ChatBox.addText(msg, ChatBox.TYPE.BLUE, ChatBox.FILTER.PUBLIC_LOG);
 
 	const root = this.getRoot();
@@ -538,7 +541,7 @@ function onItemOver(itemEl, root) {
 	overlay.style.display = '';
 	overlay.style.top = `${itemEl.offsetTop}px`;
 	overlay.style.left = `${itemEl.offsetLeft + 35}px`;
-	overlay.textContent = `${DB.getItemName(item)} ${prettyZeny(item.price, false)} ${DB.getMessage(2328)}`;
+	overlay.innerHTML = sanitizeHtml(`${DB.getItemName(item)} ${prettyZeny(item.price, false)} ${DB.getMessage(2328)}`);
 
 	if (item.IsIdentified) {
 		overlay.classList.remove('grey');

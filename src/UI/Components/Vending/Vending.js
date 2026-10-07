@@ -29,6 +29,7 @@ import Inventory from 'UI/Components/Inventory/Inventory.js';
 import BasicInfo from 'UI/Components/BasicInfo/BasicInfo.js';
 import { onItemDoubleClick } from 'UI/ItemDoubleClick.js';
 import WheelSteps from 'UI/WheelSteps.js';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 const Vending = new GUIComponent('Vending', cssText);
 
@@ -76,12 +77,6 @@ let _slots = 0;
  * @var {number} type (buy/sell)
  */
 let _type;
-
-function escapeHtml(text) {
-	const div = document.createElement('div');
-	div.appendChild(document.createTextNode(text));
-	return div.innerHTML;
-}
 
 function isItemStackable(item) {
 	return (
@@ -437,7 +432,7 @@ function addItem(content, item, isinput) {
 			'<div class="icon"></div>' +
 			`<div class="amount">${amountText}</div>` +
 			eaHtml +
-			`<div class="name">${escapeHtml(DB.getItemName(item))}</div>` +
+			`<div class="name">${sanitizeHtml(DB.getItemName(item))}</div>` +
 			`<div class="price">${textPrice} ${price}</div>` +
 			'</div>';
 
@@ -845,7 +840,7 @@ function onItemOver() {
 	overlay.style.display = '';
 	overlay.style.top = `${this.offsetTop - 20}px`;
 	overlay.style.left = `${this.offsetLeft - 10}px`;
-	overlay.textContent = `${DB.getItemName(item)} ${item.count || 1} ea`;
+	overlay.innerHTML = sanitizeHtml(`${DB.getItemName(item)} ${item.count || 1} ea`);
 }
 
 function onItemOut() {
