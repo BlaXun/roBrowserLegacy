@@ -29,7 +29,9 @@ vi.mock('DB/DBManager.js', () => ({
 		getMessage: (id, defaultText) => (defaultText !== undefined ? defaultText : `NO MSG ${id}`)
 	}
 }));
-vi.mock('Renderer/Renderer.js', () => ({ default: { width: 1200, height: 800, tick: 0, render: vi.fn(), stop: vi.fn() } }));
+vi.mock('Renderer/Renderer.js', () => ({
+	default: { width: 1200, height: 800, tick: 0, render: vi.fn(), stop: vi.fn() }
+}));
 vi.mock('Renderer/EntityManager.js', () => ({ default: { get: vi.fn(), getOverEntity: vi.fn() } }));
 vi.mock('Core/Client.js', () => ({
 	default: {
@@ -149,4 +151,71 @@ describe('ChatBox — Enter on a focused button', () => {
 		expect(ChatBox.onKeyDown(event)).toBe(false);
 		expect(event.stopImmediatePropagation).toHaveBeenCalled();
 	});
+});
+
+describe('ChatBox — height cycle position', () => {
+	it.each([
+		[800, 1, false],
+		[400, 1, false],
+		[800, 1, true],
+		[400, 1, true],
+		[800, 2, false],
+		[400, 2, false],
+		[800, 2, true],
+		[400, 2, true]
+	])(
+		'preserves bottom %ipx at scale %f (battle mode: %s) across repeated F10 cycles',
+		(bottom, scale, battleMode) => {
+			document.body.innerHTML = '';
+			const host = mountChatBox();
+			const content = host.querySelector('.contentwrapper');
+			const header = host.querySelector('.header');
+			const body = host.querySelector('.body');
+			const input = host.querySelector('.input');
+			const battle = host.querySelector('.battlemode');
+			input.style.display = battleMode ? 'none' : 'block';
+			battle.style.display = battleMode ? 'block' : 'none';
+
+			// jsdom has no layout. Model the CSS dimensions and the browser's
+			// zero rectangle for descendants of a display:none host.
+			const height = () => {
+				const headerHeight = header.style.display === 'none' ? 0 : 17;
+				const bodyHeight = body.style.display === 'none' ? 0 : parseInt(content.style.height, 10) + 19;
+				const inputMargin = !battleMode && input.classList.contains('fix') ? 29 : 0;
+				return (headerHeight + bodyHeight + inputMargin + 25) * scale;
+			};
+			for (const element of [input, battle]) {
+				element.getBoundingClientRect = () => ({
+					bottom:
+						host.style.display === 'none' || element.style.display === 'none'
+							? 0
+							: parseInt(host.style.top, 10) + height()
+				});
+			}
+			host.style.top = '0px';
+			// Start each case at maximum height without depending on the module's
+			// index left by another test. The size button skips the hidden state.
+			for (let i = 0; i < 7; i++) {
+				ChatBox.updateHeight(true);
+				if (content.style.height === '210px') {
+					break;
+				}
+			}
+			host.style.top = `${bottom - height()}px`;
+			delete ChatBox.__lastBottomY;
+
+			let hiddenSteps = 0;
+			for (let i = 0; i < 14; i++) {
+				const event = { ...enterEvent(document.body), which: KEYS.F10, key: 'F10' };
+				ChatBox.onKeyDown(event);
+				if (host.style.display === 'none') {
+					hiddenSteps++;
+				} else {
+					const anchor = battleMode ? battle : input;
+					expect(anchor.getBoundingClientRect().bottom).toBe(bottom);
+				}
+			}
+			expect(hiddenSteps).toBe(2);
+		}
+	);
 });
