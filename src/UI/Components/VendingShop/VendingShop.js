@@ -28,6 +28,7 @@ import cssText from './VendingShop.css?raw';
 import VendingReport from 'UI/Components/VendingReport/VendingReport.js';
 import { onItemDoubleClick } from 'UI/ItemDoubleClick.js';
 import WheelSteps from 'UI/WheelSteps.js';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -538,7 +539,7 @@ function onItemOver(itemEl, root) {
 	overlay.style.display = '';
 	overlay.style.top = `${itemEl.offsetTop}px`;
 	overlay.style.left = `${itemEl.offsetLeft + 35}px`;
-	overlay.textContent = `${DB.getItemName(item)} ${prettyZeny(item.price, false)} ${DB.getMessage(2328)}`;
+	overlay.innerHTML = sanitizeHtml(`${DB.getItemName(item)} ${prettyZeny(item.price, false)} ${DB.getMessage(2328)}`);
 
 	if (item.IsIdentified) {
 		overlay.classList.remove('grey');

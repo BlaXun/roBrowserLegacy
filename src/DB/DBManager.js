@@ -56,6 +56,7 @@ import Network from 'Network/NetworkManager.js';
 import PACKET from 'Network/PacketStructure.js';
 import PACKETVER from 'Network/PacketVerManager.js';
 import MemoryManager from 'Core/MemoryManager.js';
+import { escapeHtml } from 'Utils/HtmlHelper.js';
 
 //Pet
 //MapName
@@ -2523,7 +2524,12 @@ class DB {
 					const GID = (item.slot.card4 << 16) + item.slot.card3;
 					name = '<font color="red" class="owner-' + GID + '">Unknown</font>';
 					if (DB.CNameTable[GID] && DB.CNameTable[GID] !== 'Unknown') {
-						name = '<font color="#87cefa" class="owner-' + GID + '">' + DB.CNameTable[GID] + '</font>';
+						name =
+							'<font color="#87cefa" class="owner-' +
+							GID +
+							'">' +
+							escapeHtml(DB.CNameTable[GID]) +
+							'</font>';
 					} else {
 						DB.UpdateOwnerName[GID] = function (pkt) {
 							delete DB.UpdateOwnerName[pkt.GID];
