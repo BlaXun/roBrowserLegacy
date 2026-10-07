@@ -137,7 +137,9 @@ vi.mock('Core/Preferences.js', () => ({
 		}
 	}
 }));
-vi.mock('Renderer/Renderer.js', () => ({ default: { width: 1200, height: 800 } }));
+vi.mock('Renderer/Renderer.js', () => ({ default: { width: 1200, height: 800, render: vi.fn(), stop: vi.fn() } }));
+vi.mock('Renderer/Camera.js', () => ({ default: { direction: 0 } }));
+vi.mock('Renderer/SpriteRenderer.js', () => ({ default: { bind2DContext: vi.fn() } }));
 vi.mock('Controls/MouseEventHandler.js', () => ({ default: { screen: { x: 0, y: 0 } } }));
 vi.mock('UI/GUIComponent.js', () => ({ default: mocks.MockGUIComponent }));
 vi.mock('UI/UIManager.js', () => ({
@@ -167,6 +169,7 @@ vi.mock('UI/Components/SkillDescription/SkillDescription.js', () => ({
 }));
 
 const { createSkillList } = await import('UI/Components/SkillList/SkillListCommon.js');
+const { default: Renderer } = await import('Renderer/Renderer.js');
 
 function getFixtureHTML() {
 	const cells = positions => positions.map(position => `<div class="skillCol s${position}"></div>`).join('');
@@ -186,6 +189,7 @@ function getFixtureHTML() {
 				<table id="minitab2"></table>
 			</div>
 			<div class="contentbig">
+				<canvas class="sitting" width="80" height="100"></canvas>
 				<input type="radio" id="tab-1" class="tab-switch" checked />
 				<input type="radio" id="tab-2" class="tab-switch" />
 				<div id="positionSkills1">${cells([0, 7, 14, 21, 28])}</div>
@@ -306,5 +310,48 @@ describe('SkillListV2 prerequisite planning', () => {
 
 		component.toggle();
 		expect(getTreeSkill(root, mocks.ids.HEAL).querySelector('.current').textContent).toBe('0');
+	});
+});
+
+describe('SkillListV2 sitting character', () => {
+	it('draws the player sitting and gives their state back', () => {
+		const ctx = { canvas: { width: 60, height: 100 }, clearRect: vi.fn() };
+		vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx);
+		const drawn = [];
+		const animation = { frame: 3 };
+		const effectColor = new Float32Array([1, 1, 1, 0.5]);
+		mocks.session.Entity = {
+			_job: mocks.ids.CRUSADER,
+			ACTION: { IDLE: 0, SIT: 2 },
+			action: 0,
+			direction: 6,
+			headDir: 1,
+			animation,
+			effectColor,
+			renderEntity() {
+				drawn.push({
+					action: this.action,
+					direction: this.direction,
+					headDir: this.headDir,
+					alpha: this.effectColor[3]
+				});
+			}
+		};
+
+		const component = createComponent();
+		component.onAppend();
+		const render = Renderer.render.mock.calls.at(-1)[0];
+		render(0);
+		render(1000);
+		render(2000);
+		render(3000);
+
+		expect(drawn.map(d => d.headDir)).toEqual([0, 1, 0, 2]);
+		expect(drawn[0]).toEqual({ action: 2, direction: 4, headDir: 0, alpha: 1 });
+		expect(mocks.session.Entity).toMatchObject({ action: 0, direction: 6, headDir: 1, animation });
+		expect(effectColor[3]).toBe(0.5);
+
+		component.onRemove();
+		expect(Renderer.stop).toHaveBeenCalledWith(render);
 	});
 });

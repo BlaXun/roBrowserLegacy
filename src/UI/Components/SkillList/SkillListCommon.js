@@ -13,6 +13,7 @@
 
 import 'UI/Elements/Elements.js';
 
+import Camera from 'Renderer/Camera.js';
 import Client from 'Core/Client.js';
 import DB from 'DB/DBManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
@@ -20,6 +21,7 @@ import Mouse from 'Controls/MouseEventHandler.js';
 import Preferences from 'Core/Preferences.js';
 import Renderer from 'Renderer/Renderer.js';
 import Session from 'Engine/SessionStorage.js';
+import SpriteRenderer from 'Renderer/SpriteRenderer.js';
 import SkillDescription from 'UI/Components/SkillDescription/SkillDescription.js';
 import SkillInfo from 'DB/Skills/SkillInfo.js';
 import SK from 'DB/Skills/SkillConst.js';
@@ -341,6 +343,9 @@ export function createSkillList({
 		}
 
 		resize(this, _preferences.width, _preferences.height);
+		if (this.getRoot().querySelector('canvas.sitting')) {
+			Renderer.render(renderSitting);
+		}
 		this._host.style.top = `${Math.min(Math.max(0, _preferences.y), Renderer.height - 100)}px`;
 		this._host.style.left = `${Math.min(Math.max(0, _preferences.x), Renderer.width - 100)}px`;
 
@@ -355,6 +360,7 @@ export function createSkillList({
 		if (_btnLevelUp && _btnLevelUp.parentNode) {
 			_btnLevelUp.remove();
 		}
+		Renderer.stop(renderSitting);
 
 		_preferences.show = this.ui.is(':visible');
 		_preferences.y = parseInt(this._host.style.top, 10) || 0;
@@ -1028,6 +1034,65 @@ export function createSkillList({
 			document.body.appendChild(_btnLevelUp);
 		}
 	};
+
+	// Tree view: the player's own character, sitting and looking around,
+	// as the official client draws it in the lower left of the expanded window
+	const renderSitting = (function renderSittingClosure() {
+		// headDir per step: ahead, one way, ahead, the other way
+		const _look = [0, 1, 0, 2];
+		const _lookStep = 1000;
+		const _cleanColor = new Float32Array([1.0, 1.0, 1.0, 1.0]);
+		const _savedColor = new Float32Array(4);
+		const _animation = {
+			tick: 0,
+			frame: 0,
+			repeat: true,
+			play: true,
+			next: false,
+			delay: 0,
+			save: false
+		};
+		let _ctx = null;
+
+		return function renderSittingChar(tick) {
+			const character = Session.Entity;
+			const root = Component.getRoot();
+			const contentbig = root.querySelector('.contentbig');
+			if (!character || !contentbig || contentbig.style.display === 'none' || !Component.ui.is(':visible')) {
+				return;
+			}
+			if (!_ctx) {
+				_ctx = root.querySelector('canvas.sitting')?.getContext('2d');
+				if (!_ctx) {
+					return;
+				}
+			}
+
+			const direction = character.direction;
+			const headDir = character.headDir;
+			const action = character.action;
+			const animation = character.animation;
+
+			Camera.direction = 4;
+			character.direction = 4;
+			character.headDir = _look[Math.floor((tick || 0) / _lookStep) % _look.length];
+			character.action = character.ACTION.SIT;
+			character.animation = _animation;
+
+			_savedColor.set(character.effectColor);
+			character.effectColor.set(_cleanColor);
+
+			SpriteRenderer.bind2DContext(_ctx, _ctx.canvas.width / 2, _ctx.canvas.height - 10);
+			_ctx.clearRect(0, 0, _ctx.canvas.width, _ctx.canvas.height);
+			character.renderEntity();
+
+			character.direction = direction;
+			character.headDir = headDir;
+			character.action = action;
+			character.animation = animation;
+			character.effectColor.set(_savedColor);
+		};
+	})();
 
 	function getSkillById(id) {
 		const count = _list.length;

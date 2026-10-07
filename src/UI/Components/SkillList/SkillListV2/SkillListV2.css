@@ -229,6 +229,18 @@
 	background-repeat: no-repeat;
 }
 
+#SkillListV2 .contentbig {
+	position: relative;
+}
+/* behind the tree, so skill slots stay on top and clickable */
+#SkillListV2 canvas.sitting {
+	position: absolute;
+	left: 0;
+	bottom: 4px;
+	z-index: 0;
+	pointer-events: none;
+}
+
 #SkillListV2 .tab-content {
 	overflow-y: auto;
 	padding: 5px;
