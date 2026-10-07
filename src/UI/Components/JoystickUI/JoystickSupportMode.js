@@ -6,9 +6,10 @@
  * - Right stick (aim or cursor mode): pushing it opens a radial below the
  *   character with yourself, the whole party (offline members greyed) and
  *   your homunculus / mercenary, each always in the same place. Holding the
- *   stick on a segment for a moment makes that member the focus. Letting
- *   the stick go closes the radial. The left stick keeps walking the whole
- *   time.
+ *   stick on a segment for a moment makes that member the focus; a skill
+ *   pressed while the radial is open goes to the highlighted member. Letting
+ *   the stick go, or B, closes the radial. The left stick keeps walking the
+ *   whole time.
  * - D-pad left / right: step the focus through the members, lowest HP
  *   first.
  * - A support skill (Heal, Blessing, ...) goes to the focused member; a
@@ -50,10 +51,13 @@ import Category from './JoystickTargetCategory.js';
 import Aim from './JoystickAimMode.js';
 import Cursor from './JoystickMouseCursorAdapter.js';
 
-// Stick: a push past SELECT_MIN opens the radial and moves the highlight.
-// A segment is picked once highlighted for SETTLE_MS, so sweeping the stick
-// round the ring past other members does not cast on them.
+// Stick: a push past SELECT_MIN opens the radial and moves the highlight;
+// back under RELEASE_MAX counts as let go (well above the deadzone, so a
+// pad that rests slightly off centre still closes the radial). A segment
+// becomes the focus once highlighted for SETTLE_MS, so sweeping the stick
+// round the ring does not refocus every member on the way.
 const SELECT_MIN = 0.5;
+const RELEASE_MAX = 0.3;
 const SETTLE_MS = 250;
 
 // Radial, in CSS pixels
@@ -102,6 +106,7 @@ let _highlight = -1;
 let _highlightAt = 0;
 let _picked = -1; // the segment the stick settled on in this push
 let _pushed = false; // the stick was out past SELECT_MIN last frame
+let _waitRest = false; // closed with B: stays closed until the stick is let go
 let _entries = [];
 
 let _pending = null; // { index, name } of the skill waiting for a member
@@ -342,6 +347,16 @@ function getFocusEntity() {
  * be cast on them (Heal not on the dead, Resurrection only on them).
  */
 function getFocusForSkill() {
+	// The radial open on someone: what is highlighted is what is meant,
+	// settled or not
+	if (_open && !_pending && _highlight !== -1 && _entries[_highlight]) {
+		const entry = _entries[_highlight];
+		if (!judge(entry, skillContext()).ok) {
+			return null;
+		}
+		setFocus(entry);
+		return entry.entity;
+	}
 	const focus = getFocus();
 	return focus && judge(focus, skillContext()).ok ? focus.entity : null;
 }
@@ -417,7 +432,15 @@ function castOn(entity) {
 		return true;
 	}
 
-	SkillTargetSelection.intersectEntityId(entity.GID);
+	// Yourself: straight to the request. The target selection refuses you
+	// for any skill that also takes an enemy, and the server sends Heal
+	// (which hurts the undead) as one.
+	const skill = entity === Session.Entity && SkillTargetSelection.getSkill ? SkillTargetSelection.getSkill() : null;
+	if (skill) {
+		SkillTargetSelection.onUseSkillToId(skill.SKID, skill.useLevel || skill.level, entity.GID);
+	} else {
+		SkillTargetSelection.intersectEntityId(entity.GID);
+	}
 	SkillTargetSelection.remove();
 	return true;
 }
@@ -504,6 +527,21 @@ function pick(index) {
 }
 
 /**
+ * B with the radial open and no skill pending (that one B cancels): close
+ * it until the stick is let go.
+ *
+ * @return {boolean} whether it was open
+ */
+function dismiss() {
+	if (!_open || _pending) {
+		return false;
+	}
+	closeRadial();
+	_waitRest = true;
+	return true;
+}
+
+/**
  * A with a skill pending: cast it on the highlighted member, who becomes
  * the focus. A member the skill cannot take is not cast on (the skill
  * keeps waiting).
@@ -566,7 +604,11 @@ function update(x, y, magnitude, deadzone) {
 			_highlight = _pending ? 0 : -1;
 			_picked = -1;
 		}
-		if (magnitude >= SELECT_MIN && _entries.length > 0) {
+		const atRest = magnitude <= Math.max(deadzone, RELEASE_MAX);
+		if (_waitRest && atRest) {
+			_waitRest = false;
+		}
+		if (magnitude >= SELECT_MIN && _entries.length > 0 && !_waitRest) {
 			const index = segmentAt(x, y, _entries.length);
 			const now = performance.now();
 			_open = true;
@@ -579,7 +621,7 @@ function update(x, y, magnitude, deadzone) {
 			if (_picked !== _highlight && now - _highlightAt >= SETTLE_MS) {
 				pick(_highlight);
 			}
-		} else if (magnitude <= deadzone) {
+		} else if (atRest) {
 			_pushed = false;
 			if (_pending) {
 				// Waiting for A: stay on the member the stick settled on,
@@ -1028,6 +1070,7 @@ export default {
 	cancelPending,
 	castPendingOnSelf,
 	confirmPending,
+	dismiss,
 	ownsStick,
 	update,
 	release,

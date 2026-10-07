@@ -27,6 +27,7 @@ import Network from 'Network/NetworkManager.js';
 import PACKET from 'Network/PacketStructure.js';
 import ControlsSettings from 'Preferences/Controls.js';
 import ButtonMap from './JoystickButtonMap.js';
+import Anchor from './JoystickScreenAnchor.js';
 
 const COLS = 6;
 const ROWS_PER_PAGE = 5;
@@ -34,7 +35,6 @@ const PER_PAGE = COLS * ROWS_PER_PAGE;
 const MAX_FAVORITES = COLS;
 const CELL = 40;
 const BELOW_FEET = 24; // gap between the character's feet and the grid
-const EDGE = 8; // kept from the screen's edges
 
 const REPEAT_DELAY_MS = 350; // a held D-pad starts repeating after this
 const REPEAT_EVERY_MS = 120;
@@ -447,30 +447,7 @@ function render() {
 		' close';
 	root.appendChild(hint);
 
-	place(root);
-}
-
-/**
- * Centre the grid under the character's feet, kept on screen.
- */
-function place(root) {
-	let feet = null;
-	try {
-		feet = _anchor ? _anchor() : null;
-	} catch {
-		feet = null;
-	}
-	const viewWidth = window.innerWidth;
-	const viewHeight = window.innerHeight;
-	const width = root.offsetWidth;
-	const height = root.offsetHeight;
-
-	const x = feet ? feet[0] : viewWidth / 2;
-	const y = feet ? feet[1] + BELOW_FEET : viewHeight * 0.6;
-	const left = Math.max(EDGE, Math.min(x - width / 2, viewWidth - width - EDGE));
-	const top = Math.max(EDGE, Math.min(y, viewHeight - height - EDGE));
-	root.style.left = Math.round(left) + 'px';
-	root.style.top = Math.round(top) + 'px';
+	Anchor.placeBelowFeet(root, Anchor.feetFrom(_anchor), BELOW_FEET);
 }
 
 function dispose() {

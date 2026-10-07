@@ -13,6 +13,7 @@
  */
 
 import ControlsSettings from 'Preferences/Controls.js';
+import Anchor from './JoystickScreenAnchor.js';
 
 const CATEGORY = {
 	MOBS: 0,
@@ -37,6 +38,7 @@ const NAMES = {
 
 const LIST_VISIBLE_MS = 2000; // the list stays this long after a step, then fades
 const LIST_FADE_MS = 400;
+const BELOW_FEET = 24; // gap between the character's feet and the list
 
 let _list = null;
 let _hideTimer = null;
@@ -75,15 +77,17 @@ function set(category) {
  * wrapping. A legacy value outside ORDER counts as Mobs.
  *
  * @param {string} direction 'up' or 'down'
+ * @param {function(): ?Array<number>} [anchor] the character's feet on
+ *   screen, for the list
  */
-function step(direction) {
+function step(direction, anchor) {
 	let index = ORDER.indexOf(get());
 	if (index === -1) {
 		index = 0;
 	}
 	index = (index + (direction === 'up' ? -1 : 1) + ORDER.length) % ORDER.length;
 	set(ORDER[index]);
-	showList();
+	showList(anchor);
 }
 
 function onChange(callback) {
@@ -102,16 +106,15 @@ function getList() {
 	_list.className = 'joystick-target-category';
 	Object.assign(_list.style, {
 		position: 'absolute',
-		left: '12px',
-		top: '40%',
-		transform: 'translateY(-50%)',
 		zIndex: 1000,
 		pointerEvents: 'none',
 		display: 'flex',
 		flexDirection: 'column',
-		gap: '3px',
+		alignItems: 'stretch',
+		gap: '4px',
 		fontFamily: 'sans-serif',
-		fontSize: '13px',
+		fontSize: '17px',
+		textAlign: 'center',
 		transition: 'opacity ' + LIST_FADE_MS + 'ms',
 		opacity: '0'
 	});
@@ -120,9 +123,13 @@ function getList() {
 }
 
 /**
- * Show every category, the active one highlighted, then fade out.
+ * Show every category, the active one highlighted, below the character,
+ * then fade out.
+ *
+ * @param {function(): ?Array<number>} [anchor] the character's feet on
+ *   screen; without it the list sits in the lower middle
  */
-function showList() {
+function showList(anchor) {
 	const list = getList();
 	if (!list) {
 		return;
@@ -136,8 +143,8 @@ function showList() {
 		row.textContent = (on ? '▶ ' : '') + nameOf(category);
 		row.dataset.category = String(category);
 		Object.assign(row.style, {
-			padding: '3px 10px',
-			borderRadius: '4px',
+			padding: '5px 16px',
+			borderRadius: '5px',
 			color: on ? '#fff' : '#bbb',
 			background: on ? 'rgba(46, 125, 50, 0.85)' : 'rgba(0, 0, 0, 0.55)',
 			fontWeight: on ? 'bold' : 'normal'
@@ -147,6 +154,7 @@ function showList() {
 
 	list.style.display = 'flex';
 	list.style.opacity = '1';
+	Anchor.placeBelowFeet(list, Anchor.feetFrom(anchor), BELOW_FEET);
 
 	if (_hideTimer) {
 		clearTimeout(_hideTimer);

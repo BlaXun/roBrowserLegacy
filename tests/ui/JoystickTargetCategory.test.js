@@ -57,4 +57,11 @@ describe('JoystickTargetCategory', () => {
 		Category.dispose();
 		expect(document.querySelector('.joystick-target-category')).toBeNull();
 	});
+
+	it('places the list below the feet of the character', () => {
+		Category.step('down', () => [400, 300]);
+		const list = document.querySelector('.joystick-target-category');
+		expect(parseInt(list.style.top, 10)).toBeGreaterThan(300);
+		Category.dispose();
+	});
 });
