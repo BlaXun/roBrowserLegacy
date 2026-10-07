@@ -803,10 +803,6 @@ export function createSkillList({
 						box.innerHTML = '';
 					}
 					box.appendChild(element);
-
-					if (skill.upgradable) {
-						box.classList.add('upgradable');
-					}
 				}
 			}
 		});
@@ -839,6 +835,8 @@ export function createSkillList({
 				}
 			}
 		}
+
+		highlightUpgradable(root, skill);
 
 		loadSkillIcon(sk, skill.SKID, data => {
 			const img = element.querySelector('.icon img');
@@ -981,6 +979,7 @@ export function createSkillList({
 				levelupEl.style.display = skill.upgradable && _points ? '' : 'none';
 			}
 		});
+		highlightUpgradable(root, target);
 
 		this.onUpdateSkill(skill.SKID, skill.level);
 	};
@@ -1026,6 +1025,7 @@ export function createSkillList({
 			levelups.forEach(lu => {
 				lu.style.display = _list[i].upgradable && amount ? '' : 'none';
 			});
+			highlightUpgradable(root, _list[i]);
 		}
 	};
 
@@ -1093,6 +1093,15 @@ export function createSkillList({
 			character.effectColor.set(_savedColor);
 		};
 	})();
+
+	// Tree view: mark a skill's slot only while points can go into it,
+	// the same rule the list view uses for its level-up button
+	function highlightUpgradable(root, skill) {
+		const on = !!(skill.upgradable && _points);
+		root.querySelectorAll(`.skillCol > .skill.id${skill.SKID}`).forEach(element => {
+			element.parentElement.classList.toggle('upgradable', on);
+		});
+	}
 
 	function getSkillById(id) {
 		const count = _list.length;
