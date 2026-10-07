@@ -3,20 +3,30 @@
  *
  * The Support target category: healing and buffing the party with the pad.
  *
- * - Right stick (aim mode): pushing it opens a radial around the character
- *   with yourself, the party members and your homunculus / mercenary. The
- *   stick highlights a segment; letting it go focuses that member. The left
- *   stick keeps walking the whole time.
+ * - Right stick (aim or cursor mode): pushing it opens a radial below the
+ *   character with yourself, the whole party (offline members greyed) and
+ *   your homunculus / mercenary, each always in the same place. Holding the
+ *   stick on a segment for a moment makes that member the focus. Letting
+ *   the stick go closes the radial. The left stick keeps walking the whole
+ *   time.
  * - D-pad left / right: step the focus through the members, lowest HP
  *   first.
  * - A support skill (Heal, Blessing, ...) goes to the focused member; a
- *   ground skill lands where the member stands. With nobody focused the
- *   radial opens with the skill pending: pick a member with the right stick
- *   to cast it there, press the same shortcut again to cast it on yourself,
- *   B to cancel.
+ *   ground skill lands where the member stands. With nobody focused (or a
+ *   focus the skill cannot take: Heal on the dead, Resurrection on the
+ *   living) the radial opens with the skill pending, on yourself: choose a
+ *   member with the right stick and confirm with A. The same shortcut again
+ *   casts it on yourself, B cancels.
+ *
+ * With a skill pending, members it cannot take are greyed out and cannot
+ * be chosen, members beyond its range are outlined orange (choosing one
+ * walks you there first), and the SP circle shows what the skill will
+ * cost. A new focus or a cast gives a short rumble.
  *
  * Each segment fills outward with the member's HP: green from 50 %, yellow
- * below, red under 30 %. Members out of sight (another map, too far) are
+ * below, red under 30 %. The highlighted segment stands out from the ring.
+ * The middle shows your own SP as a blue level rising from the bottom, and
+ * its number. Members out of sight (another map, too far) or offline are
  * grey and cannot be picked: the client has no entity to cast on.
  *
  * The support focus is deliberately not the EntityManager focus. That is
@@ -34,24 +44,28 @@ import Client from 'Core/Client.js';
 import DB from 'DB/DBManager.js';
 import PartyFriends from 'UI/Components/PartyFriends/PartyFriends.js';
 import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTargetSelection.js';
+import SkillInfo from 'DB/Skills/SkillInfo.js';
+import SkillId from 'DB/Skills/SkillConst.js';
 import Category from './JoystickTargetCategory.js';
 import Aim from './JoystickAimMode.js';
 import Cursor from './JoystickMouseCursorAdapter.js';
 
 // Stick: a push past SELECT_MIN opens the radial and moves the highlight.
-// A segment counts as chosen once highlighted for SETTLE_MS, so the stick
-// springing back to centre across a neighbour does not pick the neighbour.
+// A segment is picked once highlighted for SETTLE_MS, so sweeping the stick
+// round the ring past other members does not cast on them.
 const SELECT_MIN = 0.5;
-const SETTLE_MS = 100;
+const SETTLE_MS = 250;
 
 // Radial, in CSS pixels
 const R_INNER = 30;
 const R_OUTER_MIN = 72;
 const R_OUTER_PER_ENTRY = 2; // more members, a wider ring
-const HIGHLIGHT_GROW = 6;
+const POP_OUT = 8; // the highlighted segment moves out from the centre this far
+const SP_INSET = 4; // the SP circle sits this far inside the ring
 const GAP_DEG = 2;
-const ICON_SIZE = 26;
-const CENTER_LIFT = 45; // the radial centres on the body, not the feet
+const ICON_SIZE = 30; // room for the headgear around the head
+const BELOW_FEET = 28; // gap between the feet and the radial's top (room for the skill name)
+const LABEL_ROOM = 24; // below the radial, for the member's name
 
 const HP_GOOD = 0.5;
 const HP_LOW = 0.3;
@@ -59,6 +73,18 @@ const COLOR_GOOD = '76, 175, 80';
 const COLOR_MID = '255, 193, 7';
 const COLOR_LOW = '244, 67, 54';
 const FOCUS_RING = '76, 175, 80';
+const SP_BACK = 'rgba(110, 110, 110, 0.55)';
+const SP_FILL = 'rgba(48, 120, 255, 0.85)';
+const SP_COST = 'rgba(150, 200, 255, 0.9)'; // the part of the level the pending skill uses
+const SP_SHORT = '#ff6b6b'; // the SP number when the skill costs more than there is
+const FAR_OUTLINE = 'rgba(255, 152, 0, 0.95)'; // beyond the pending skill's range
+
+// Rumble: [strong, weak, ms]
+const RUMBLE_FOCUS = [0, 0.35, 40];
+const RUMBLE_CAST = [0.35, 0.6, 70];
+
+// Skills that only take the dead
+const REVIVE_SKILLS = [SkillId.ALL_RESURRECTION];
 
 // Portraits: drawn into a scratch box, cropped to the opaque part
 const PORTRAIT_BOX = 96;
@@ -74,7 +100,8 @@ let _focusKey = null;
 let _open = false;
 let _highlight = -1;
 let _highlightAt = 0;
-let _settled = -1;
+let _picked = -1; // the segment the stick settled on in this push
+let _pushed = false; // the stick was out past SELECT_MIN last frame
 let _entries = [];
 
 let _pending = null; // { index, name } of the skill waiting for a member
@@ -83,10 +110,12 @@ const _portraits = new Map(); // GID -> { look, entity, canvas, ok, triedAt }
 const _jobIcons = new Map(); // job -> Image | null (null: none in the data)
 
 /**
- * Who the radial offers, in order: yourself (12 o'clock), the online party
- * members, your homunculus, your mercenary.
+ * Who the radial offers, in order: yourself (12 o'clock), the party members
+ * in the party's own order, your homunculus, your mercenary. Nobody drops
+ * out for being offline or out of sight (they are greyed instead), so each
+ * keeps their place on the ring.
  *
- * @return {Array<object>} { key, kind, GID, name, job, entity, hp, hpMax, dead, selectable }
+ * @return {Array<object>} { key, kind, GID, name, job, entity, hp, hpMax, dead, offline, selectable }
  */
 function getMembers() {
 	const player = Session.Entity;
@@ -104,7 +133,7 @@ function getMembers() {
 	}
 	for (let i = 0; i < party.length; i++) {
 		const member = party[i];
-		if (member.AID === Session.AID || member.AID === player.GID || member.state !== 0) {
+		if (member.AID === Session.AID || member.AID === player.GID) {
 			continue;
 		}
 		list.push(describe('aid:' + member.AID, 'party', member.AID, member.characterName, member.class_, member));
@@ -116,13 +145,12 @@ function getMembers() {
 	if (Session.mercId) {
 		list.push(describe('merc', 'merc', Session.mercId, null, null, null));
 	}
-
-	// A companion out of sight is not worth a segment: nothing to show, nothing to pick
-	return list.filter(entry => entry.kind === 'self' || entry.kind === 'party' || entry.entity);
+	return list;
 }
 
 function describe(key, kind, GID, name, job, member) {
-	const entity = kind === 'self' ? Session.Entity : liveEntity(GID);
+	const offline = !!member && member.state !== 0;
+	const entity = kind === 'self' ? Session.Entity : offline ? null : liveEntity(GID);
 
 	let hp = -1;
 	let hpMax = 0;
@@ -159,6 +187,7 @@ function describe(key, kind, GID, name, job, member) {
 		hp,
 		hpMax,
 		dead,
+		offline,
 		selectable: !!entity
 	};
 }
@@ -176,6 +205,104 @@ function hpRatio(entry) {
 		return 0;
 	}
 	return entry.hpMax > 0 ? Math.max(0, Math.min(1, entry.hp / entry.hpMax)) : -1;
+}
+
+/**
+ * What the skill waiting for a target needs, or null with none waiting.
+ *
+ * @return {?object} { place, revive, range (-1 unknown), cost (-1 unknown) }
+ */
+function skillContext() {
+	const flag = SkillTargetSelection.getFlag();
+	if (!flag) {
+		return null;
+	}
+	const skill = SkillTargetSelection.getSkill ? SkillTargetSelection.getSkill() : null;
+	const SKID = skill ? skill.SKID : 0;
+	const level = skill ? skill.useLevel || skill.level : 0;
+	// The skill list's numbers are for the learned level; for another level, the skill table's
+	const atLearned = !!skill && (!skill.useLevel || skill.useLevel === skill.level);
+	const info = SkillInfo[SKID];
+
+	let cost = -1;
+	if (atLearned && skill.spcost >= 0) {
+		cost = skill.spcost;
+	} else if (info && info.SpAmount && info.SpAmount[level - 1] >= 0) {
+		cost = info.SpAmount[level - 1];
+	}
+
+	let range = -1;
+	if (atLearned && skill.attackRange >= 0) {
+		range = skill.attackRange;
+	} else if (info && info.AttackRange && info.AttackRange[level - 1] >= 0) {
+		range = info.AttackRange[level - 1];
+	}
+
+	return {
+		place: (flag & SkillTargetSelection.TYPE.PLACE) !== 0,
+		revive: REVIVE_SKILLS.includes(SKID),
+		range,
+		cost
+	};
+}
+
+/**
+ * Whether a member can take the skill described by ctx (with no skill,
+ * whether they can be focused), whether they stand beyond its range, and
+ * why not, for the label.
+ *
+ * @return {object} { ok, far, reason }
+ */
+function judge(entry, ctx) {
+	if (!entry.selectable) {
+		return { ok: false, far: false, reason: entry.offline ? 'offline' : 'out of sight' };
+	}
+	if (!ctx) {
+		return { ok: true, far: false, reason: '' };
+	}
+	// A ground skill lands where they lie, dead or alive
+	if (!ctx.place) {
+		if (ctx.revive && !entry.dead) {
+			return { ok: false, far: false, reason: 'not dead' };
+		}
+		if (!ctx.revive && entry.dead) {
+			return { ok: false, far: false, reason: '' };
+		}
+	}
+	const player = Session.Entity;
+	const far =
+		ctx.range >= 0 &&
+		!!player &&
+		entry.entity !== player &&
+		Math.max(
+			Math.abs(entry.entity.position[0] - player.position[0]),
+			Math.abs(entry.entity.position[1] - player.position[1])
+		) > ctx.range;
+	return { ok: true, far, reason: far ? 'out of range' : '' };
+}
+
+/**
+ * A short rumble, on pads that have one.
+ *
+ * @param {Array<number>} effect [strong, weak, ms]
+ */
+function rumble(effect) {
+	try {
+		const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+		for (let i = 0; i < pads.length; i++) {
+			const actuator = pads[i] && pads[i].vibrationActuator;
+			if (actuator && actuator.playEffect) {
+				actuator.playEffect('dual-rumble', {
+					duration: effect[2],
+					strongMagnitude: effect[0],
+					weakMagnitude: effect[1]
+				});
+				return;
+			}
+		}
+	} catch {
+		// No rumble on this pad or browser
+	}
 }
 
 function hpColor(ratio) {
@@ -208,6 +335,15 @@ function getFocus() {
 function getFocusEntity() {
 	const focus = getFocus();
 	return focus && focus.selectable ? focus.entity : null;
+}
+
+/**
+ * The focused member's entity, when the skill waiting for a target can
+ * be cast on them (Heal not on the dead, Resurrection only on them).
+ */
+function getFocusForSkill() {
+	const focus = getFocus();
+	return focus && judge(focus, skillContext()).ok ? focus.entity : null;
 }
 
 function setFocus(entry) {
@@ -272,6 +408,7 @@ function castOn(entity) {
 		return false;
 	}
 
+	rumble(RUMBLE_CAST);
 	if (flag & SkillTargetSelection.TYPE.PLACE) {
 		Cursor.moveMouseToEntity(entity);
 		Cursor.quickCastClick(function () {
@@ -294,8 +431,8 @@ function castOn(entity) {
 function openPending(index, name) {
 	_pending = { index: index, name: name || '' };
 	_open = true;
-	_highlight = -1;
-	_settled = -1;
+	_highlight = 0; // yourself
+	_picked = -1;
 }
 
 function isPending() {
@@ -339,7 +476,7 @@ function castPendingOnSelf() {
 function closeRadial() {
 	_open = false;
 	_highlight = -1;
-	_settled = -1;
+	_picked = -1;
 }
 
 /**
@@ -353,40 +490,49 @@ function segmentAt(x, y, count) {
 }
 
 /**
- * Let the stick go: focus the chosen member, and cast the pending skill
- * on it.
+ * The stick held on a segment. With no skill pending that member becomes
+ * the focus; with one, the segment is only remembered, for A.
  */
-function confirm() {
-	const index = _settled !== -1 ? _settled : _highlight;
-	const entry = index !== -1 ? _entries[index] : null;
-	const wasPending = _pending;
-
-	if (!entry || !entry.selectable) {
-		// Nothing pickable chosen: a pending skill stays waiting
-		if (wasPending) {
-			_highlight = -1;
-			_settled = -1;
-			return;
-		}
-		closeRadial();
+function pick(index) {
+	_picked = index;
+	const entry = _entries[index];
+	if (_pending || !entry || !entry.selectable || entry.key === _focusKey) {
 		return;
 	}
-
 	setFocus(entry);
-	closeRadial();
-	if (wasPending) {
-		_pending = null;
-		castOn(entry.entity);
-	}
+	rumble(RUMBLE_FOCUS);
 }
 
 /**
- * Whether the right stick drives the radial: always while a skill waits
- * for its member, otherwise in Support with the stick in aim mode (in
- * cursor mode it stays the cursor, for the windows).
+ * A with a skill pending: cast it on the highlighted member, who becomes
+ * the focus. A member the skill cannot take is not cast on (the skill
+ * keeps waiting).
+ *
+ * @return {boolean} whether a skill was pending (A is taken either way)
+ */
+function confirmPending() {
+	if (!_pending) {
+		return false;
+	}
+	const entry = _highlight !== -1 ? _entries[_highlight] : null;
+	if (!entry || !judge(entry, skillContext()).ok) {
+		return true;
+	}
+	setFocus(entry);
+	_pending = null;
+	closeRadial();
+	castOn(entry.entity);
+	return true;
+}
+
+/**
+ * Whether the right stick drives the radial: in Support, in aim and cursor
+ * mode alike, and whenever a skill waits for its member. For the windows,
+ * step to another category (D-pad up / down) and the stick is the cursor
+ * again.
  */
 function ownsStick() {
-	return _pending !== null || (Category.isSupport() && Aim.isActive());
+	return _pending !== null || Category.isSupport();
 }
 
 /**
@@ -415,19 +561,33 @@ function update(x, y, magnitude, deadzone) {
 	_entries = getMembers();
 
 	if (owns) {
+		if (_highlight >= _entries.length) {
+			// The party shrank under the highlight
+			_highlight = _pending ? 0 : -1;
+			_picked = -1;
+		}
 		if (magnitude >= SELECT_MIN && _entries.length > 0) {
 			const index = segmentAt(x, y, _entries.length);
 			const now = performance.now();
 			_open = true;
-			if (index !== _highlight) {
+			// A fresh push times its segment from now, yourself included
+			if (index !== _highlight || !_pushed) {
 				_highlight = index;
 				_highlightAt = now;
 			}
-			if (now - _highlightAt >= SETTLE_MS) {
-				_settled = _highlight;
+			_pushed = true;
+			if (_picked !== _highlight && now - _highlightAt >= SETTLE_MS) {
+				pick(_highlight);
 			}
-		} else if (magnitude <= deadzone && _open && _highlight !== -1) {
-			confirm();
+		} else if (magnitude <= deadzone) {
+			_pushed = false;
+			if (_pending) {
+				// Waiting for A: stay on the member the stick settled on,
+				// not a neighbour it crossed springing back
+				_highlight = _picked !== -1 ? _picked : 0;
+			} else {
+				closeRadial();
+			}
 		}
 	} else if (!_pending) {
 		closeRadial();
@@ -453,7 +613,8 @@ function getContext() {
 		_overlay.style.position = 'absolute';
 		_overlay.style.top = '0px';
 		_overlay.style.left = '0px';
-		_overlay.style.zIndex = 1;
+		// Above the names and HP / SP bars (EntityOverlay, 2), below the windows
+		_overlay.style.zIndex = 3;
 		_overlay.style.pointerEvents = 'none';
 		scene.parentNode.insertBefore(_overlay, scene.nextSibling);
 		_supportCtx = _overlay.getContext('2d');
@@ -519,39 +680,50 @@ function drawRadial(ctx) {
 	}
 
 	const count = _entries.length;
-	const cx = feet[0];
-	const cy = feet[1] - CENTER_LIFT;
 	const outer = R_OUTER_MIN + count * R_OUTER_PER_ENTRY;
+	const reach = outer + POP_OUT;
+	// Below the character, clear of it; pushed up only as far as the screen's bottom edge needs
+	const cx = feet[0];
+	const cy = Math.max(feet[1], Math.min(feet[1] + BELOW_FEET + reach, Renderer.height - reach - LABEL_ROOM));
 	const step = (Math.PI * 2) / count;
 	const gap = (GAP_DEG * Math.PI) / 180;
+	const skill = _pending ? skillContext() : null;
 
 	for (let i = 0; i < count; i++) {
 		const entry = _entries[i];
+		const verdict = judge(entry, skill);
 		const mid = -Math.PI / 2 + i * step;
 		const a0 = mid - step / 2 + gap / 2;
 		const a1 = mid + step / 2 - gap / 2;
 		const lit = i === _highlight;
-		const rOut = lit ? outer + HIGHLIGHT_GROW : outer;
-		const alpha = entry.selectable ? 1 : 0.45;
+		const rOut = outer;
+		const usable = verdict.ok;
+		const alpha = usable ? 1 : 0.45;
+		// The highlight stands out from the ring, along its middle
+		const sx = lit ? cx + Math.cos(mid) * POP_OUT : cx;
+		const sy = lit ? cy + Math.sin(mid) * POP_OUT : cy;
 
 		// Base
-		wedge(ctx, cx, cy, R_INNER, rOut, a0, a1);
-		ctx.fillStyle = entry.selectable ? 'rgba(20, 20, 20, ' + 0.6 * alpha + ')' : 'rgba(90, 90, 90, 0.5)';
+		wedge(ctx, sx, sy, R_INNER, rOut, a0, a1);
+		ctx.fillStyle = usable ? 'rgba(20, 20, 20, ' + 0.6 * alpha + ')' : 'rgba(90, 90, 90, 0.5)';
 		ctx.fill();
 
 		// HP, filled outward from the inner edge
 		const ratio = hpRatio(entry);
 		if (ratio > 0) {
-			wedge(ctx, cx, cy, R_INNER, R_INNER + (rOut - R_INNER) * ratio, a0, a1);
-			ctx.fillStyle = 'rgba(' + (entry.selectable ? hpColor(ratio) : '160, 160, 160') + ', ' + 0.75 * alpha + ')';
+			wedge(ctx, sx, sy, R_INNER, R_INNER + (rOut - R_INNER) * ratio, a0, a1);
+			ctx.fillStyle = 'rgba(' + (usable ? hpColor(ratio) : '160, 160, 160') + ', ' + 0.75 * alpha + ')';
 			ctx.fill();
 		}
 
-		// Outline: white for the highlight, light for the focus
-		wedge(ctx, cx, cy, R_INNER, rOut, a0, a1);
+		// Outline: white for the highlight, orange beyond the skill's range, green for the focus
+		wedge(ctx, sx, sy, R_INNER, rOut, a0, a1);
 		if (lit) {
 			ctx.lineWidth = 2.5;
 			ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+		} else if (verdict.far) {
+			ctx.lineWidth = 2;
+			ctx.strokeStyle = FAR_OUTLINE;
 		} else {
 			ctx.lineWidth = entry.key === _focusKey ? 2 : 1;
 			ctx.strokeStyle = entry.key === _focusKey ? 'rgba(' + FOCUS_RING + ', 0.95)' : 'rgba(0, 0, 0, 0.6)';
@@ -559,8 +731,10 @@ function drawRadial(ctx) {
 		ctx.stroke();
 
 		const ir = (R_INNER + outer) / 2;
-		drawIcon(ctx, entry, cx + Math.cos(mid) * ir, cy + Math.sin(mid) * ir, alpha);
+		drawIcon(ctx, entry, sx + Math.cos(mid) * ir, sy + Math.sin(mid) * ir, alpha);
 	}
+
+	drawSp(ctx, cx, cy, R_INNER - SP_INSET, skill ? skill.cost : -1);
 
 	// Name and HP of the highlighted member (else the focus) below the radial
 	const shown = _highlight !== -1 ? _entries[_highlight] : getFocus();
@@ -572,18 +746,65 @@ function drawRadial(ctx) {
 		} else if (ratio >= 0) {
 			label += ' ' + Math.round(ratio * 100) + '%';
 		}
-		if (!shown.selectable) {
-			label += ' - out of sight';
+		const reason = judge(shown, skill).reason;
+		if (reason) {
+			label += ' - ' + reason;
 		}
-		drawLabel(ctx, label, cx, cy + outer + HIGHLIGHT_GROW + 14);
+		drawLabel(ctx, label, cx, cy + outer + POP_OUT + 14);
 	}
 
 	// The skill waiting for its member, above
 	if (_pending && _pending.name) {
-		drawLabel(ctx, _pending.name, cx, cy - outer - HIGHLIGHT_GROW - 8);
+		drawLabel(ctx, _pending.name, cx, cy - outer - POP_OUT - 8);
 	}
 
 	_drawn = true;
+}
+
+/**
+ * Your own SP in the middle of the radial: a grey disc filled blue from
+ * the bottom up in proportion to SP / max SP, with the SP left as a number.
+ * With a skill pending, the top of the level that it would use is lighter,
+ * and the number turns red when the SP does not cover it.
+ *
+ * @param {number} cost SP the pending skill uses, -1 for none / unknown
+ */
+function drawSp(ctx, cx, cy, radius, cost) {
+	const life = Session.Entity && Session.Entity.life;
+	const known = !!life && life.sp_max > 0 && life.sp >= 0;
+	const ratio = known ? Math.max(0, Math.min(1, life.sp / life.sp_max)) : 0;
+
+	ctx.beginPath();
+	ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+	ctx.fillStyle = SP_BACK;
+	ctx.fill();
+
+	if (ratio > 0) {
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+		ctx.clip();
+		ctx.fillStyle = SP_FILL;
+		// A level rising from the bottom: full SP fills the disc
+		const level = radius * 2 * ratio;
+		ctx.fillRect(cx - radius, cy + radius - level, radius * 2, level);
+		if (cost > 0) {
+			const used = Math.min(level, (radius * 2 * cost) / life.sp_max);
+			ctx.fillStyle = SP_COST;
+			ctx.fillRect(cx - radius, cy + radius - level, radius * 2, used);
+		}
+		ctx.restore();
+	}
+
+	ctx.beginPath();
+	ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+	ctx.lineWidth = 1;
+	ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+	ctx.stroke();
+
+	if (known) {
+		drawLabel(ctx, String(life.sp), cx, cy, cost > life.sp ? SP_SHORT : '#fff');
+	}
 }
 
 function wedge(ctx, cx, cy, r0, r1, a0, a1) {
@@ -593,14 +814,14 @@ function wedge(ctx, cx, cy, r0, r1, a0, a1) {
 	ctx.closePath();
 }
 
-function drawLabel(ctx, text, x, y) {
+function drawLabel(ctx, text, x, y, color = '#fff') {
 	ctx.font = 'bold 12px sans-serif';
 	ctx.textAlign = 'center';
 	ctx.textBaseline = 'middle';
 	ctx.lineWidth = 3;
 	ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
 	ctx.strokeText(text, x, y);
-	ctx.fillStyle = '#fff';
+	ctx.fillStyle = color;
 	ctx.fillText(text, x, y);
 }
 
@@ -660,15 +881,26 @@ function getJobIcon(job) {
 	return null;
 }
 
+const HEADGEAR = ['accessory', 'accessory2', 'accessory3']; // lower, upper, middle
+
 /**
- * The member's head, drawn from a separate head-only entity with their look
- * (as the guild window draws its members), cropped to what was drawn. Null
- * until the head sprite has loaded.
+ * The member's head with their headgear, drawn from a separate head-only
+ * entity with their look (as the guild window draws its members), cropped
+ * to what was drawn. Null until the head sprite has loaded; drawn again as
+ * each headgear sprite arrives.
  *
  * @see docs/reference/guild/member-portrait.md
  */
 function getPortrait(source) {
-	const look = [source._sex, source._job, source.head, source.headpalette].join(',');
+	const look = [
+		source._sex,
+		source._job,
+		source.head,
+		source.headpalette,
+		source.accessory,
+		source.accessory2,
+		source.accessory3
+	].join(',');
 	let portrait = _portraits.get(source.GID);
 
 	if (!portrait || portrait.look !== look) {
@@ -680,6 +912,12 @@ function getPortrait(source) {
 		entity._effectiveJob = source._job;
 		entity.head = source.head;
 		entity.headpalette = source.headpalette;
+		// Through the real setters: they load the sprites, which then turn up in files
+		for (let i = 0; i < HEADGEAR.length; i++) {
+			if (source[HEADGEAR[i]] > 0) {
+				entity[HEADGEAR[i]] = source[HEADGEAR[i]];
+			}
+		}
 		entity.direction = 4;
 		entity.headDir = 0;
 		entity.action = entity.ACTION.IDLE;
@@ -687,15 +925,24 @@ function getPortrait(source) {
 
 		const canvas = document.createElement('canvas');
 		canvas.width = canvas.height = ICON_SIZE;
-		portrait = { look, entity, canvas, ok: false, triedAt: 0 };
+		portrait = { look, entity, canvas, ok: false, drawn: '', triedAt: 0 };
 		_portraits.set(source.GID, portrait);
 	}
 
-	if (!portrait.ok) {
+	// Draw again whenever another sprite (head, a headgear) has finished loading
+	const files = portrait.entity.files;
+	const loaded = ['head']
+		.concat(HEADGEAR)
+		.map(part => files[part].spr || '')
+		.join('|');
+	if (!portrait.ok || portrait.drawn !== loaded) {
 		const now = performance.now();
 		if (now - portrait.triedAt >= PORTRAIT_RETRY_MS) {
 			portrait.triedAt = now;
-			portrait.ok = renderPortrait(portrait);
+			if (renderPortrait(portrait)) {
+				portrait.ok = true;
+				portrait.drawn = loaded;
+			}
 		}
 	}
 	return portrait.ok ? portrait.canvas : null;
@@ -769,6 +1016,7 @@ export default {
 	getMembers,
 	getFocus,
 	getFocusEntity,
+	getFocusForSkill,
 	setFocus,
 	clearFocus,
 	cycle,
@@ -779,9 +1027,11 @@ export default {
 	pendingIndex,
 	cancelPending,
 	castPendingOnSelf,
+	confirmPending,
 	ownsStick,
 	update,
 	release,
 	segmentAt,
-	isRadialOpen: () => _open
+	isRadialOpen: () => _open,
+	getHighlight: () => _highlight
 };

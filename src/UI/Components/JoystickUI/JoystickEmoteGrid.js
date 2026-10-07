@@ -3,7 +3,7 @@
  *
  * Emotes with the gamepad: hold Menu to open a grid of every emote, in the
  * Emoticons window's order, 30 to a page, with the player's favourites in a
- * row on top.
+ * row on top. It opens below the character, clear of it.
  *
  *   D-pad   move the selection (held: repeats)
  *   LB/RB   previous / next page
@@ -33,6 +33,8 @@ const ROWS_PER_PAGE = 5;
 const PER_PAGE = COLS * ROWS_PER_PAGE;
 const MAX_FAVORITES = COLS;
 const CELL = 40;
+const BELOW_FEET = 24; // gap between the character's feet and the grid
+const EDGE = 8; // kept from the screen's edges
 
 const REPEAT_DELAY_MS = 350; // a held D-pad starts repeating after this
 const REPEAT_EVERY_MS = 120;
@@ -40,6 +42,7 @@ const REPEAT_EVERY_MS = 120;
 const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, MENU: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
 
 let _root = null;
+let _anchor = null; // () => [x, y] of the character's feet on screen, or null
 let _open = false;
 let _page = 0;
 let _row = 0; // 0 is the favourites row when there are favourites
@@ -261,7 +264,12 @@ function handleInput(buttons) {
 	render();
 }
 
-function open() {
+/**
+ * @param {function(): ?Array<number>} [anchor] the character's feet on
+ *   screen; without it (or off screen) the grid sits in the lower middle
+ */
+function open(anchor) {
+	_anchor = anchor || null;
 	_open = true;
 	_repeatButton = -1;
 	// Start on the first favourite, else the first emote of the page
@@ -316,8 +324,7 @@ function getRoot() {
 	Object.assign(_root.style, {
 		position: 'absolute',
 		left: '50%',
-		top: '45%',
-		transform: 'translate(-50%, -50%)',
+		top: '60%',
 		zIndex: 1001,
 		pointerEvents: 'none',
 		background: 'rgba(0, 0, 0, 0.75)',
@@ -439,6 +446,31 @@ function render() {
 		n(BTN.B) +
 		' close';
 	root.appendChild(hint);
+
+	place(root);
+}
+
+/**
+ * Centre the grid under the character's feet, kept on screen.
+ */
+function place(root) {
+	let feet = null;
+	try {
+		feet = _anchor ? _anchor() : null;
+	} catch {
+		feet = null;
+	}
+	const viewWidth = window.innerWidth;
+	const viewHeight = window.innerHeight;
+	const width = root.offsetWidth;
+	const height = root.offsetHeight;
+
+	const x = feet ? feet[0] : viewWidth / 2;
+	const y = feet ? feet[1] + BELOW_FEET : viewHeight * 0.6;
+	const left = Math.max(EDGE, Math.min(x - width / 2, viewWidth - width - EDGE));
+	const top = Math.max(EDGE, Math.min(y, viewHeight - height - EDGE));
+	root.style.left = Math.round(left) + 'px';
+	root.style.top = Math.round(top) + 'px';
 }
 
 function dispose() {

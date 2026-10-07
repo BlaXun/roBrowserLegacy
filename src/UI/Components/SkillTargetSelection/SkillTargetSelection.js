@@ -395,6 +395,14 @@ SkillTargetSelection.getFlag = function getFlag() {
 };
 
 /**
+ * The skill waiting for a target ({ SKID, level, useLevel, spcost,
+ * attackRange, ... }), or null when none is.
+ */
+SkillTargetSelection.getSkill = function getSkill() {
+	return SkillTargetSelection.getFlag() ? _skill || null : null;
+};
+
+/**
  * Intersect with an entity ID
  * (used in party UI)
  */
