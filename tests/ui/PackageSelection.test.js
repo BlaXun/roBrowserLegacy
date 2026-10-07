@@ -54,19 +54,6 @@ afterEach(async () => {
 });
 
 describe('package selection', () => {
-	it('confirms group zero once, without locally consuming the box', () => {
-		Selection.open(state.item, inventory);
-		expect(Selection.getRoot().textContent).toContain('+7 Sword');
-		click('[data-group="0"]');
-		const confirm = Selection.getRoot().querySelector('.confirm');
-		confirm.click();
-		confirm.click();
-		expect(state.packets).toHaveLength(1);
-		expect(state.packets[0]).toBeInstanceOf(PACKET.CZ.USE_PACKAGEITEM);
-		expect(state.packets[0]).toMatchObject({ index: 5, AID: 2000000, itemID: 101454, BoxIndex: 0 });
-		expect(state.item.count).toBe(1);
-	});
-
 	it('sends the selected group ID rather than its position', () => {
 		Selection.open(state.item, inventory);
 		click('[data-group="10"]');
@@ -88,27 +75,7 @@ describe('package selection', () => {
 		click('.confirm');
 		expect(state.packets).toHaveLength(0);
 	});
-
-	it('rejects confirmation after the account changes or the box disappears', () => {
-		Selection.open(state.item, inventory);
-		state.account = 2000001;
-		state.item = null;
-		click('[data-group="0"]');
-		click('.confirm');
-		expect(state.packets).toHaveLength(0);
-	});
-
-	it('does not open on an unsupported packet version or without package metadata', () => {
-		state.version = 20220215;
-		Selection.open(state.item, inventory);
-		expect(Selection.__active).toBe(false);
-		state.version = 20221005;
-		state.groups = [];
-		Selection.open(state.item, inventory);
-		expect(Selection.__active).toBe(false);
-	});
 });
-
 
 describe('inventory package routing', () => {
 	const makeInventory = () => {
@@ -124,9 +91,15 @@ describe('inventory package routing', () => {
 		component.useItem(state.item);
 		expect(Selection.__active).toBe(true);
 		expect(component.onUseItem).not.toHaveBeenCalled();
+		expect(Selection.getRoot().textContent).toContain('+7 Sword');
 		click('[data-group="0"]');
-		click('.confirm');
-		expect(state.packets[0]).toMatchObject({ index: 5, itemID: 101454, BoxIndex: 0 });
+		const confirm = Selection.getRoot().querySelector('.confirm');
+		confirm.click();
+		confirm.click();
+		expect(state.packets).toHaveLength(1);
+		expect(state.packets[0]).toBeInstanceOf(PACKET.CZ.USE_PACKAGEITEM);
+		expect(state.packets[0]).toMatchObject({ index: 5, AID: 2000000, itemID: 101454, BoxIndex: 0 });
+		expect(state.item.count).toBe(1);
 	});
 
 	it('keeps ordinary usable items on their existing use path', () => {

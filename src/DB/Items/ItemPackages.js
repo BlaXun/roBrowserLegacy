@@ -1,5 +1,5 @@
 /** Normalize client package tables without changing the server's zero-based group IDs. */
-export function normalizeItemPackages({ names = [], items = [], modern } = {}) {
+export function normalizeItemPackages({ names = [], items = [] } = {}) {
 	const packages = new Map();
 	const labels = new Map();
 	for (const [box, group, name] of Object.values(names)) {
@@ -36,25 +36,6 @@ export function normalizeItemPackages({ names = [], items = [], modern } = {}) {
 			{ id, amount, hours, refine, randomOption: Boolean(randomOption), grade },
 			labels.get(`${box}:${group}`)
 		);
-	}
-	for (const [box, groups] of Object.entries(modern?.PackageTbl || {})) {
-		for (const [group, rewards] of Object.entries(groups)) {
-			for (const reward of Object.values(rewards)) {
-				add(
-					box,
-					group,
-					{
-						id: reward.item,
-						amount: reward.cnt,
-						hours: reward.hour || 0,
-						refine: reward.refine || 0,
-						randomOption: Boolean(reward.randomOption),
-						grade: reward.grade || 0
-					},
-					modern.TabNameTbl?.[box]?.[group]
-				);
-			}
-		}
 	}
 	return new Map([...packages].map(([box, groups]) => [box, [...groups.values()].sort((a, b) => a.id - b.id)]));
 }

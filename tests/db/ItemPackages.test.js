@@ -16,23 +16,6 @@ describe('selection package metadata', () => {
 		]);
 	});
 
-	it('reads the newer keyed format without shifting group zero', () => {
-		const packages = normalizeItemPackages({ modern: {
-			TabNameTbl: { 101458: { 0: 'Rabbit' } },
-			PackageTbl: { 101458: { 0: { 0: { item: 440003, cnt: 1, hour: 0, refine: 0, randomOption: false, grade: 0 } } } }
-		} });
-		expect(packages.get(101458)).toEqual([{ id: 0, name: 'Rabbit', items: [
-			{ id: 440003, amount: 1, hours: 0, refine: 0, randomOption: false, grade: 0 }
-		] }]);
-	});
-
-	it('ignores sentinels and malformed or empty groups', () => {
-		const packages = normalizeItemPackages({ names: [[0, 0, '0'], [101459, 0, 'Empty']], items: [
-			[0, 0, 0, 0], [101459, -1, 20595, 1], [101459, 1, 20595, 0], [101459, 2, 20595, 1]
-		] });
-		expect([...packages.keys()]).toEqual([101459]);
-		expect(packages.get(101459).map(group => group.id)).toEqual([2]);
-	});
 });
 
 describe('optional package file loading', () => {

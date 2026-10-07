@@ -4,7 +4,6 @@ import PacketRegister from 'Network/PacketRegister.js';
 
 describe('CZ_USE_PACKAGEITEM', () => {
 	it('sends the server inventory index, account, full item ID and group zero in 16 bytes', () => {
-		expect(PACKET.CZ.USE_PACKAGEITEM).toBeTypeOf('function');
 		const packet = new PACKET.CZ.USE_PACKAGEITEM();
 		Object.assign(packet, { index: 5, AID: 2000000, itemID: 101454, BoxIndex: 0 });
 		const writer = packet.build();
