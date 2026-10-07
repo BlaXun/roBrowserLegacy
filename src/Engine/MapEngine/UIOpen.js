@@ -15,6 +15,7 @@ import Configs from 'Core/Configs.js';
 import Network from 'Network/NetworkManager.js';
 import PACKET from 'Network/PacketStructure.js';
 import PACKETVER from 'Network/PacketVerManager.js';
+import MapRenderer from 'Renderer/MapRenderer.js';
 import CheckAttendance from 'UI/Components/CheckAttendance/CheckAttendance.js';
 import EnchantGradeUI from 'UI/Components/EnchantGrade/EnchantGrade.js';
 import EnchantUI from 'UI/Components/Enchant/Enchant.js';
@@ -43,12 +44,14 @@ function onUIOpen(pkt) {
 	switch (pkt.ui_type) {
 		case 7:
 			if (Configs.get('enableCheckAttendance') && PACKETVER.value >= 20180307) {
-				CheckAttendance.prepare();
-				CheckAttendance.setData(pkt.data);
-				CheckAttendance.cleanUI();
-				CheckAttendance.append();
-				CheckAttendance.ui.show();
-				CheckAttendance.focus();
+				// rAthena opens the window as soon as the character is loaded,
+				// which is while the map is still loading here: the window would
+				// sit over the loading screen, and the map load removes it again.
+				// Keep the data and open it once the map is up.
+				_pendingAttendance = pkt.data;
+				if (!MapRenderer.loading) {
+					openPendingUI();
+				}
 			}
 			break;
 		case 8:
@@ -66,6 +69,32 @@ function onUIOpen(pkt) {
 		default:
 			console.error(`[PACKET.ZC.UI_OPEN] not implemented (${pkt.ui_type})`);
 	}
+}
+
+/**
+ * Attendance data the server sent while the map was loading
+ * @var {number|null}
+ */
+let _pendingAttendance = null;
+
+/**
+ * Open the windows the server asked for while the map was loading.
+ * Called by the map engine once the map is loaded.
+ */
+export function openPendingUI() {
+	if (_pendingAttendance === null) {
+		return;
+	}
+
+	const data = _pendingAttendance;
+	_pendingAttendance = null;
+
+	CheckAttendance.prepare();
+	CheckAttendance.setData(data);
+	CheckAttendance.cleanUI();
+	CheckAttendance.append();
+	CheckAttendance.ui.show();
+	CheckAttendance.focus();
 }
 
 /**

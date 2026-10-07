@@ -108,7 +108,7 @@ import MercenaryEngine from './MapEngine/Mercenary.js';
 import StoreEngine from './MapEngine/Store.js';
 import TradeEngine from './MapEngine/Trade.js';
 import FriendsEngine from './MapEngine/Friends.js';
-import UIOpenEngine from './MapEngine/UIOpen.js';
+import UIOpenEngine, { openPendingUI } from './MapEngine/UIOpen.js';
 import QuestEngine from './MapEngine/Quest.js';
 import RodexEngine from './MapEngine/Rodex.js';
 import RouletteEngine from './MapEngine/Roulette.js';
@@ -765,6 +765,8 @@ function onMapChange(pkt) {
 
 		if (Configs.get('enableCheckAttendance') && PACKETVER.value >= 20180307) {
 			CheckAttendance.append();
+			// The attendance window the server opened during the load
+			openPendingUI();
 		}
 
 		// Reload plugins
