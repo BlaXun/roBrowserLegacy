@@ -308,3 +308,39 @@ describe('SkillListV2 prerequisite planning', () => {
 		expect(getTreeSkill(root, mocks.ids.HEAL).querySelector('.current').textContent).toBe('0');
 	});
 });
+
+describe('SkillListV2 upgradable highlight', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+	});
+
+	const slot = (root, position) => root.querySelector(`#positionSkills2 .s${position}`);
+
+	it('highlights nothing without skill points', () => {
+		const root = createComponent({ faith: 0, points: 0 }).getRoot();
+
+		expect(root.querySelectorAll('.upgradable')).toHaveLength(0);
+	});
+
+	it('highlights upgradable skills once points arrive and clears them when spent', () => {
+		const component = createComponent({ faith: 10, points: 0 });
+		const root = component.getRoot();
+
+		component.setPoints(3);
+		expect(slot(root, 0).classList.contains('upgradable')).toBe(false);
+		expect(slot(root, 7).classList.contains('upgradable')).toBe(true);
+
+		component.setPoints(0);
+		expect(root.querySelectorAll('.upgradable')).toHaveLength(0);
+	});
+
+	it('clears the highlight when a skill reaches its max level', () => {
+		const component = createComponent({ points: 5 });
+		const root = component.getRoot();
+
+		expect(slot(root, 7).classList.contains('upgradable')).toBe(true);
+
+		component.updateSkill({ SKID: mocks.ids.CURE, level: 1, type: 1, upgradable: false, spcost: 15 });
+		expect(slot(root, 7).classList.contains('upgradable')).toBe(false);
+	});
+});
