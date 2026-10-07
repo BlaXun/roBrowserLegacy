@@ -1456,6 +1456,11 @@ ChatBox.updateHeight = function changeHeight(AlwaysVisible) {
 };
 
 function getChatBottomAnchorPx(root, fallback) {
+	// Hidden descendants have zero rectangles; keep the last visible anchor.
+	if (ChatBox._host.style.display === 'none') {
+		return fallback;
+	}
+
 	const inputEl = root.querySelector('.input');
 	if (inputEl && inputEl.style.display !== 'none') {
 		const rect = inputEl.getBoundingClientRect();
