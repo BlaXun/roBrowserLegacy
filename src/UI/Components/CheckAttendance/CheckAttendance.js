@@ -17,7 +17,6 @@ import Network from 'Network/NetworkManager.js';
 import PACKET from 'Network/PacketStructure.js';
 import htmlText from './CheckAttendance.html?raw';
 import cssText from './CheckAttendance.css?raw';
-import ChatBox from 'UI/Components/ChatBox/ChatBox.js';
 import 'UI/Elements/Elements.js';
 
 /**
@@ -84,11 +83,12 @@ CheckAttendance.onAppend = function onAppend() {
 		this._host.style.display = 'none';
 	}
 
+	// The map engine appends the window on every map load, before the server
+	// has sent any attendance data. The server says itself when there is no
+	// attendance event (MSI_CHECK_ATTENDANCE_NOT_EVENT), so stay quiet here.
 	if (_checkAttendanceData >= 0 && _CheckAttendanceInfo.Config) {
 		CheckAttendance.updateUI();
 		this.focus();
-	} else {
-		ChatBox.addText('Currently there is no attendance check event.', ChatBox.TYPE.ERROR | ChatBox.TYPE.SELF);
 	}
 };
 
@@ -185,7 +185,8 @@ CheckAttendance.updateUI = function updateUI() {
 			const slot_complete_string = day > slot_off ? 'bt_slot_complete' : 'bt_slot_off';
 			const item_slot =
 				`<li id="attendance_day_${i}" class="attendance-item" ${background}>` +
-				`<div class="item" data-background="${DB.INTERFACE_PATH}item/${item.identifiedResourceName}.bmp">` +
+				// processDataAttrs prefixes DB.INTERFACE_PATH itself
+				`<div class="item" data-background="item/${item.identifiedResourceName}.bmp">` +
 				`<span class="item-quantity">${_CheckAttendanceInfo.Rewards[i].quantity}</span>` +
 				`<span class="name">${item.identifiedDisplayName}</span>` +
 				`<div class="${checked}" data-background="check_attendance/${slot_complete_string}.tga"></div>` +
