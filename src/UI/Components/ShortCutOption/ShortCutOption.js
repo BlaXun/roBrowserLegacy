@@ -529,8 +529,11 @@ function onUpdateTargetOption() {
  * Roles a single button plays, in the order the mapping panel lists them.
  */
 const MAPPING_ROLES = [
-	[ButtonMap.BUTTON.A, 'Click / confirm'],
-	[ButtonMap.BUTTON.B, 'Right click (hold on item/skill: options) - cancels a skill waiting in the Support radial'],
+	[ButtonMap.BUTTON.A, 'Click / confirm (Support radial: cast the waiting skill on the chosen member)'],
+	[
+		ButtonMap.BUTTON.B,
+		'Right click (hold on item/skill: options) - Support radial: close it, or cancel the waiting skill'
+	],
 	[ButtonMap.BUTTON.X, 'Attack target'],
 	[ButtonMap.BUTTON.Y, 'Pick up item'],
 	[ButtonMap.BUTTON.LEFT, 'Previous target (Support: party member; grid left on items)'],
@@ -588,7 +591,7 @@ function getMappingCombos() {
 			sticks[1],
 			Controls.joyAimEnabled
 				? 'Cursor, or aim (tap ' + n(B.RS) + '); Support: party radial'
-				: 'Cursor; picks a member for a skill waiting in the Support radial'
+				: 'Cursor; Support: party radial'
 		]
 	];
 }
