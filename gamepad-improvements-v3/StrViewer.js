@@ -227125,6 +227125,13 @@ var init_SkillTargetSelection = __esmMin((() => {
 		return Mouse.state === Mouse.MOUSE_STATE.USESKILL ? _flag : 0;
 	};
 	/**
+	* The skill waiting for a target ({ SKID, level, useLevel, spcost,
+	* attackRange, ... }), or null when none is.
+	*/
+	SkillTargetSelection.getSkill = function getSkill() {
+		return SkillTargetSelection.getFlag() ? _skill || null : null;
+	};
+	/**
 	* Intersect with an entity ID
 	* (used in party UI)
 	*/
@@ -237400,10 +237407,12 @@ var init_JoystickMenuNavigation = __esmMin((() => {
 //#endregion
 //#region src/UI/Components/JoystickUI/JoystickSupportMode.js
 /**
-* Who the radial offers, in order: yourself (12 o'clock), the online party
-* members, your homunculus, your mercenary.
+* Who the radial offers, in order: yourself (12 o'clock), the party members
+* in the party's own order, your homunculus, your mercenary. Nobody drops
+* out for being offline or out of sight (they are greyed instead), so each
+* keeps their place on the ring.
 *
-* @return {Array<object>} { key, kind, GID, name, job, entity, hp, hpMax, dead, selectable }
+* @return {Array<object>} { key, kind, GID, name, job, entity, hp, hpMax, dead, offline, selectable }
 */
 function getMembers() {
 	const player = SessionStorage_default.Entity;
@@ -237417,15 +237426,16 @@ function getMembers() {
 	}
 	for (let i = 0; i < party.length; i++) {
 		const member = party[i];
-		if (member.AID === SessionStorage_default.AID || member.AID === player.GID || member.state !== 0) continue;
+		if (member.AID === SessionStorage_default.AID || member.AID === player.GID) continue;
 		list.push(describe("aid:" + member.AID, "party", member.AID, member.characterName, member.class_, member));
 	}
 	if (SessionStorage_default.homunId) list.push(describe("homun", "homun", SessionStorage_default.homunId, null, null, null));
 	if (SessionStorage_default.mercId) list.push(describe("merc", "merc", SessionStorage_default.mercId, null, null, null));
-	return list.filter((entry) => entry.kind === "self" || entry.kind === "party" || entry.entity);
+	return list;
 }
 function describe(key, kind, GID, name, job, member) {
-	const entity = kind === "self" ? SessionStorage_default.Entity : liveEntity(GID);
+	const offline = !!member && member.state !== 0;
+	const entity = kind === "self" ? SessionStorage_default.Entity : offline ? null : liveEntity(GID);
 	let hp = -1;
 	let hpMax = 0;
 	if (entity && entity.life && entity.life.hp_max > 0) {
@@ -237451,6 +237461,7 @@ function describe(key, kind, GID, name, job, member) {
 		hp,
 		hpMax,
 		dead,
+		offline,
 		selectable: !!entity
 	};
 }
@@ -237464,6 +237475,91 @@ function liveEntity(GID) {
 function hpRatio(entry) {
 	if (entry.dead) return 0;
 	return entry.hpMax > 0 ? Math.max(0, Math.min(1, entry.hp / entry.hpMax)) : -1;
+}
+/**
+* What the skill waiting for a target needs, or null with none waiting.
+*
+* @return {?object} { place, revive, range (-1 unknown), cost (-1 unknown) }
+*/
+function skillContext() {
+	const flag = SkillTargetSelection_default.getFlag();
+	if (!flag) return null;
+	const skill = SkillTargetSelection_default.getSkill ? SkillTargetSelection_default.getSkill() : null;
+	const SKID = skill ? skill.SKID : 0;
+	const level = skill ? skill.useLevel || skill.level : 0;
+	const atLearned = !!skill && (!skill.useLevel || skill.useLevel === skill.level);
+	const info = SkillInfo[SKID];
+	let cost = -1;
+	if (atLearned && skill.spcost >= 0) cost = skill.spcost;
+	else if (info && info.SpAmount && info.SpAmount[level - 1] >= 0) cost = info.SpAmount[level - 1];
+	let range = -1;
+	if (atLearned && skill.attackRange >= 0) range = skill.attackRange;
+	else if (info && info.AttackRange && info.AttackRange[level - 1] >= 0) range = info.AttackRange[level - 1];
+	return {
+		place: (flag & SkillTargetSelection_default.TYPE.PLACE) !== 0,
+		revive: REVIVE_SKILLS.includes(SKID),
+		range,
+		cost
+	};
+}
+/**
+* Whether a member can take the skill described by ctx (with no skill,
+* whether they can be focused), whether they stand beyond its range, and
+* why not, for the label.
+*
+* @return {object} { ok, far, reason }
+*/
+function judge(entry, ctx) {
+	if (!entry.selectable) return {
+		ok: false,
+		far: false,
+		reason: entry.offline ? "offline" : "out of sight"
+	};
+	if (!ctx) return {
+		ok: true,
+		far: false,
+		reason: ""
+	};
+	if (!ctx.place) {
+		if (ctx.revive && !entry.dead) return {
+			ok: false,
+			far: false,
+			reason: "not dead"
+		};
+		if (!ctx.revive && entry.dead) return {
+			ok: false,
+			far: false,
+			reason: ""
+		};
+	}
+	const player = SessionStorage_default.Entity;
+	const far = ctx.range >= 0 && !!player && entry.entity !== player && Math.max(Math.abs(entry.entity.position[0] - player.position[0]), Math.abs(entry.entity.position[1] - player.position[1])) > ctx.range;
+	return {
+		ok: true,
+		far,
+		reason: far ? "out of range" : ""
+	};
+}
+/**
+* A short rumble, on pads that have one.
+*
+* @param {Array<number>} effect [strong, weak, ms]
+*/
+function rumble(effect) {
+	try {
+		const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+		for (let i = 0; i < pads.length; i++) {
+			const actuator = pads[i] && pads[i].vibrationActuator;
+			if (actuator && actuator.playEffect) {
+				actuator.playEffect("dual-rumble", {
+					duration: effect[2],
+					strongMagnitude: effect[0],
+					weakMagnitude: effect[1]
+				});
+				return;
+			}
+		}
+	} catch {}
 }
 function hpColor(ratio) {
 	if (ratio >= HP_GOOD) return COLOR_GOOD;
@@ -237481,6 +237577,14 @@ function getFocus() {
 function getFocusEntity$1() {
 	const focus = getFocus();
 	return focus && focus.selectable ? focus.entity : null;
+}
+/**
+* The focused member's entity, when the skill waiting for a target can
+* be cast on them (Heal not on the dead, Resurrection only on them).
+*/
+function getFocusForSkill() {
+	const focus = getFocus();
+	return focus && judge(focus, skillContext()).ok ? focus.entity : null;
 }
 function setFocus(entry) {
 	_focusKey = entry ? entry.key : null;
@@ -237526,6 +237630,7 @@ function isSupportSkill(flag) {
 function castOn(entity) {
 	const flag = SkillTargetSelection_default.getFlag();
 	if (!flag || !entity) return false;
+	rumble(RUMBLE_CAST);
 	if (flag & SkillTargetSelection_default.TYPE.PLACE) {
 		JoystickMouseCursorAdapter_default.moveMouseToEntity(entity);
 		JoystickMouseCursorAdapter_default.quickCastClick(function() {
@@ -237549,8 +237654,8 @@ function openPending(index, name) {
 		name: name || ""
 	};
 	_open$2 = true;
-	_highlight = -1;
-	_settled = -1;
+	_highlight = 0;
+	_picked = -1;
 }
 function isPending() {
 	return _pending$1 !== null;
@@ -237581,7 +237686,7 @@ function castPendingOnSelf() {
 function closeRadial() {
 	_open$2 = false;
 	_highlight = -1;
-	_settled = -1;
+	_picked = -1;
 }
 /**
 * The segment a stick direction points at. Segment 0 sits at 12 o'clock,
@@ -237593,36 +237698,41 @@ function segmentAt(x, y, count) {
 	return (Math.round(degrees / step) % count + count) % count;
 }
 /**
-* Let the stick go: focus the chosen member, and cast the pending skill
-* on it.
+* The stick held on a segment. With no skill pending that member becomes
+* the focus; with one, the segment is only remembered, for A.
 */
-function confirm() {
-	const index = _settled !== -1 ? _settled : _highlight;
-	const entry = index !== -1 ? _entries[index] : null;
-	const wasPending = _pending$1;
-	if (!entry || !entry.selectable) {
-		if (wasPending) {
-			_highlight = -1;
-			_settled = -1;
-			return;
-		}
-		closeRadial();
-		return;
-	}
+function pick(index) {
+	_picked = index;
+	const entry = _entries[index];
+	if (_pending$1 || !entry || !entry.selectable || entry.key === _focusKey) return;
 	setFocus(entry);
-	closeRadial();
-	if (wasPending) {
-		_pending$1 = null;
-		castOn(entry.entity);
-	}
+	rumble(RUMBLE_FOCUS);
 }
 /**
-* Whether the right stick drives the radial: always while a skill waits
-* for its member, otherwise in Support with the stick in aim mode (in
-* cursor mode it stays the cursor, for the windows).
+* A with a skill pending: cast it on the highlighted member, who becomes
+* the focus. A member the skill cannot take is not cast on (the skill
+* keeps waiting).
+*
+* @return {boolean} whether a skill was pending (A is taken either way)
+*/
+function confirmPending() {
+	if (!_pending$1) return false;
+	const entry = _highlight !== -1 ? _entries[_highlight] : null;
+	if (!entry || !judge(entry, skillContext()).ok) return true;
+	setFocus(entry);
+	_pending$1 = null;
+	closeRadial();
+	castOn(entry.entity);
+	return true;
+}
+/**
+* Whether the right stick drives the radial: in Support, in aim and cursor
+* mode alike, and whenever a skill waits for its member. For the windows,
+* step to another category (D-pad up / down) and the stick is the cursor
+* again.
 */
 function ownsStick() {
-	return _pending$1 !== null || JoystickTargetCategory_default.isSupport() && JoystickAimMode_default.isActive();
+	return _pending$1 !== null || JoystickTargetCategory_default.isSupport();
 }
 /**
 * One frame (JoystickCursorMotion), before aim and cursor get the stick.
@@ -237646,16 +237756,25 @@ function update$2(x, y, magnitude, deadzone) {
 	const owns = ownsStick();
 	_entries = getMembers();
 	if (owns) {
+		if (_highlight >= _entries.length) {
+			_highlight = _pending$1 ? 0 : -1;
+			_picked = -1;
+		}
 		if (magnitude >= SELECT_MIN && _entries.length > 0) {
 			const index = segmentAt(x, y, _entries.length);
 			const now = performance.now();
 			_open$2 = true;
-			if (index !== _highlight) {
+			if (index !== _highlight || !_pushed) {
 				_highlight = index;
 				_highlightAt = now;
 			}
-			if (now - _highlightAt >= SETTLE_MS) _settled = _highlight;
-		} else if (magnitude <= deadzone && _open$2 && _highlight !== -1) confirm();
+			_pushed = true;
+			if (_picked !== _highlight && now - _highlightAt >= SETTLE_MS) pick(_highlight);
+		} else if (magnitude <= deadzone) {
+			_pushed = false;
+			if (_pending$1) _highlight = _picked !== -1 ? _picked : 0;
+			else closeRadial();
+		}
 	} else if (!_pending$1) closeRadial();
 	draw();
 	return owns;
@@ -237669,7 +237788,7 @@ function getContext() {
 		_overlay.style.position = "absolute";
 		_overlay.style.top = "0px";
 		_overlay.style.left = "0px";
-		_overlay.style.zIndex = 1;
+		_overlay.style.zIndex = 3;
 		_overlay.style.pointerEvents = "none";
 		scene.parentNode.insertBefore(_overlay, scene.nextSibling);
 		_supportCtx = _overlay.getContext("2d");
@@ -237717,51 +237836,100 @@ function drawRadial(ctx) {
 	const feet = JoystickAimMode_default.project(player.position[0], player.position[1]);
 	if (!feet || _entries.length === 0) return;
 	const count = _entries.length;
-	const cx = feet[0];
-	const cy = feet[1] - CENTER_LIFT;
 	const outer = R_OUTER_MIN + count * R_OUTER_PER_ENTRY;
+	const reach = outer + POP_OUT;
+	const cx = feet[0];
+	const cy = Math.max(feet[1], Math.min(feet[1] + BELOW_FEET$1 + reach, Renderer.height - reach - LABEL_ROOM));
 	const step = Math.PI * 2 / count;
 	const gap = GAP_DEG * Math.PI / 180;
+	const skill = _pending$1 ? skillContext() : null;
 	for (let i = 0; i < count; i++) {
 		const entry = _entries[i];
+		const verdict = judge(entry, skill);
 		const mid = -Math.PI / 2 + i * step;
 		const a0 = mid - step / 2 + gap / 2;
 		const a1 = mid + step / 2 - gap / 2;
 		const lit = i === _highlight;
-		const rOut = lit ? outer + HIGHLIGHT_GROW : outer;
-		const alpha = entry.selectable ? 1 : .45;
-		wedge(ctx, cx, cy, R_INNER, rOut, a0, a1);
-		ctx.fillStyle = entry.selectable ? "rgba(20, 20, 20, " + .6 * alpha + ")" : "rgba(90, 90, 90, 0.5)";
+		const rOut = outer;
+		const usable = verdict.ok;
+		const alpha = usable ? 1 : .45;
+		const sx = lit ? cx + Math.cos(mid) * POP_OUT : cx;
+		const sy = lit ? cy + Math.sin(mid) * POP_OUT : cy;
+		wedge(ctx, sx, sy, R_INNER, rOut, a0, a1);
+		ctx.fillStyle = usable ? "rgba(20, 20, 20, " + .6 * alpha + ")" : "rgba(90, 90, 90, 0.5)";
 		ctx.fill();
 		const ratio = hpRatio(entry);
 		if (ratio > 0) {
-			wedge(ctx, cx, cy, R_INNER, R_INNER + (rOut - R_INNER) * ratio, a0, a1);
-			ctx.fillStyle = "rgba(" + (entry.selectable ? hpColor(ratio) : "160, 160, 160") + ", " + .75 * alpha + ")";
+			wedge(ctx, sx, sy, R_INNER, R_INNER + (rOut - R_INNER) * ratio, a0, a1);
+			ctx.fillStyle = "rgba(" + (usable ? hpColor(ratio) : "160, 160, 160") + ", " + .75 * alpha + ")";
 			ctx.fill();
 		}
-		wedge(ctx, cx, cy, R_INNER, rOut, a0, a1);
+		wedge(ctx, sx, sy, R_INNER, rOut, a0, a1);
 		if (lit) {
 			ctx.lineWidth = 2.5;
 			ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+		} else if (verdict.far) {
+			ctx.lineWidth = 2;
+			ctx.strokeStyle = FAR_OUTLINE;
 		} else {
 			ctx.lineWidth = entry.key === _focusKey ? 2 : 1;
 			ctx.strokeStyle = entry.key === _focusKey ? "rgba(76, 175, 80, 0.95)" : "rgba(0, 0, 0, 0.6)";
 		}
 		ctx.stroke();
 		const ir = (R_INNER + outer) / 2;
-		drawIcon(ctx, entry, cx + Math.cos(mid) * ir, cy + Math.sin(mid) * ir, alpha);
+		drawIcon(ctx, entry, sx + Math.cos(mid) * ir, sy + Math.sin(mid) * ir, alpha);
 	}
+	drawSp(ctx, cx, cy, 26, skill ? skill.cost : -1);
 	const shown = _highlight !== -1 ? _entries[_highlight] : getFocus();
 	if (shown) {
 		const ratio = hpRatio(shown);
 		let label = shown.name;
 		if (shown.dead) label += " (dead)";
 		else if (ratio >= 0) label += " " + Math.round(ratio * 100) + "%";
-		if (!shown.selectable) label += " - out of sight";
-		drawLabel(ctx, label, cx, cy + outer + HIGHLIGHT_GROW + 14);
+		const reason = judge(shown, skill).reason;
+		if (reason) label += " - " + reason;
+		drawLabel(ctx, label, cx, cy + outer + POP_OUT + 14);
 	}
-	if (_pending$1 && _pending$1.name) drawLabel(ctx, _pending$1.name, cx, cy - outer - HIGHLIGHT_GROW - 8);
+	if (_pending$1 && _pending$1.name) drawLabel(ctx, _pending$1.name, cx, cy - outer - POP_OUT - 8);
 	_drawn = true;
+}
+/**
+* Your own SP in the middle of the radial: a grey disc filled blue from
+* the bottom up in proportion to SP / max SP, with the SP left as a number.
+* With a skill pending, the top of the level that it would use is lighter,
+* and the number turns red when the SP does not cover it.
+*
+* @param {number} cost SP the pending skill uses, -1 for none / unknown
+*/
+function drawSp(ctx, cx, cy, radius, cost) {
+	const life = SessionStorage_default.Entity && SessionStorage_default.Entity.life;
+	const known = !!life && life.sp_max > 0 && life.sp >= 0;
+	const ratio = known ? Math.max(0, Math.min(1, life.sp / life.sp_max)) : 0;
+	ctx.beginPath();
+	ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+	ctx.fillStyle = SP_BACK;
+	ctx.fill();
+	if (ratio > 0) {
+		ctx.save();
+		ctx.beginPath();
+		ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+		ctx.clip();
+		ctx.fillStyle = SP_FILL;
+		const level = radius * 2 * ratio;
+		ctx.fillRect(cx - radius, cy + radius - level, radius * 2, level);
+		if (cost > 0) {
+			const used = Math.min(level, radius * 2 * cost / life.sp_max);
+			ctx.fillStyle = SP_COST;
+			ctx.fillRect(cx - radius, cy + radius - level, radius * 2, used);
+		}
+		ctx.restore();
+	}
+	ctx.beginPath();
+	ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+	ctx.lineWidth = 1;
+	ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
+	ctx.stroke();
+	if (known) drawLabel(ctx, String(life.sp), cx, cy, cost > life.sp ? SP_SHORT : "#fff");
 }
 function wedge(ctx, cx, cy, r0, r1, a0, a1) {
 	ctx.beginPath();
@@ -237769,14 +237937,14 @@ function wedge(ctx, cx, cy, r0, r1, a0, a1) {
 	ctx.arc(cx, cy, r0, a1, a0, true);
 	ctx.closePath();
 }
-function drawLabel(ctx, text, x, y) {
+function drawLabel(ctx, text, x, y, color = "#fff") {
 	ctx.font = "bold 12px sans-serif";
 	ctx.textAlign = "center";
 	ctx.textBaseline = "middle";
 	ctx.lineWidth = 3;
 	ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
 	ctx.strokeText(text, x, y);
-	ctx.fillStyle = "#fff";
+	ctx.fillStyle = color;
 	ctx.fillText(text, x, y);
 }
 /**
@@ -237823,9 +237991,10 @@ function getJobIcon(job) {
 	return null;
 }
 /**
-* The member's head, drawn from a separate head-only entity with their look
-* (as the guild window draws its members), cropped to what was drawn. Null
-* until the head sprite has loaded.
+* The member's head with their headgear, drawn from a separate head-only
+* entity with their look (as the guild window draws its members), cropped
+* to what was drawn. Null until the head sprite has loaded; drawn again as
+* each headgear sprite arrives.
 *
 * @see docs/reference/guild/member-portrait.md
 */
@@ -237834,7 +238003,10 @@ function getPortrait(source) {
 		source._sex,
 		source._job,
 		source.head,
-		source.headpalette
+		source.headpalette,
+		source.accessory,
+		source.accessory2,
+		source.accessory3
 	].join(",");
 	let portrait = _portraits.get(source.GID);
 	if (!portrait || portrait.look !== look) {
@@ -237846,6 +238018,7 @@ function getPortrait(source) {
 		entity._effectiveJob = source._job;
 		entity.head = source.head;
 		entity.headpalette = source.headpalette;
+		for (let i = 0; i < HEADGEAR.length; i++) if (source[HEADGEAR[i]] > 0) entity[HEADGEAR[i]] = source[HEADGEAR[i]];
 		entity.direction = 4;
 		entity.headDir = 0;
 		entity.action = entity.ACTION.IDLE;
@@ -237865,15 +238038,21 @@ function getPortrait(source) {
 			entity,
 			canvas,
 			ok: false,
+			drawn: "",
 			triedAt: 0
 		};
 		_portraits.set(source.GID, portrait);
 	}
-	if (!portrait.ok) {
+	const files = portrait.entity.files;
+	const loaded = ["head"].concat(HEADGEAR).map((part) => files[part].spr || "").join("|");
+	if (!portrait.ok || portrait.drawn !== loaded) {
 		const now = performance.now();
 		if (now - portrait.triedAt >= PORTRAIT_RETRY_MS) {
 			portrait.triedAt = now;
-			portrait.ok = renderPortrait(portrait);
+			if (renderPortrait(portrait)) {
+				portrait.ok = true;
+				portrait.drawn = loaded;
+			}
 		}
 	}
 	return portrait.ok ? portrait.canvas : null;
@@ -237921,7 +238100,7 @@ function opaqueBounds(ctx, side) {
 		right
 	};
 }
-var SELECT_MIN, SETTLE_MS, R_INNER, R_OUTER_MIN, R_OUTER_PER_ENTRY, HIGHLIGHT_GROW, GAP_DEG, ICON_SIZE, CENTER_LIFT, HP_GOOD, HP_LOW, COLOR_GOOD, COLOR_MID, COLOR_LOW, FOCUS_RING, PORTRAIT_BOX, PORTRAIT_RETRY_MS, _overlay, _supportCtx, _drawn, _focusKey, _open$2, _highlight, _highlightAt, _settled, _entries, _pending$1, _portraits, _jobIcons, _scratch, _scratchCtx, JoystickSupportMode_default;
+var SELECT_MIN, SETTLE_MS, R_INNER, R_OUTER_MIN, R_OUTER_PER_ENTRY, POP_OUT, GAP_DEG, ICON_SIZE, BELOW_FEET$1, LABEL_ROOM, HP_GOOD, HP_LOW, COLOR_GOOD, COLOR_MID, COLOR_LOW, FOCUS_RING, SP_BACK, SP_FILL, SP_COST, SP_SHORT, FAR_OUTLINE, RUMBLE_FOCUS, RUMBLE_CAST, REVIVE_SKILLS, PORTRAIT_BOX, PORTRAIT_RETRY_MS, _overlay, _supportCtx, _drawn, _focusKey, _open$2, _highlight, _highlightAt, _picked, _pushed, _entries, _pending$1, _portraits, _jobIcons, HEADGEAR, _scratch, _scratchCtx, JoystickSupportMode_default;
 var init_JoystickSupportMode = __esmMin((() => {
 	init_SessionStorage();
 	init_EntityManager();
@@ -237933,24 +238112,43 @@ var init_JoystickSupportMode = __esmMin((() => {
 	init_DBManager();
 	init_PartyFriends();
 	init_SkillTargetSelection();
+	init_SkillInfo();
+	init_SkillConst();
 	init_JoystickTargetCategory();
 	init_JoystickAimMode();
 	init_JoystickMouseCursorAdapter();
 	SELECT_MIN = .5;
-	SETTLE_MS = 100;
+	SETTLE_MS = 250;
 	R_INNER = 30;
 	R_OUTER_MIN = 72;
 	R_OUTER_PER_ENTRY = 2;
-	HIGHLIGHT_GROW = 6;
+	POP_OUT = 8;
 	GAP_DEG = 2;
-	ICON_SIZE = 26;
-	CENTER_LIFT = 45;
+	ICON_SIZE = 30;
+	BELOW_FEET$1 = 28;
+	LABEL_ROOM = 24;
 	HP_GOOD = .5;
 	HP_LOW = .3;
 	COLOR_GOOD = "76, 175, 80";
 	COLOR_MID = "255, 193, 7";
 	COLOR_LOW = "244, 67, 54";
 	FOCUS_RING = "76, 175, 80";
+	SP_BACK = "rgba(110, 110, 110, 0.55)";
+	SP_FILL = "rgba(48, 120, 255, 0.85)";
+	SP_COST = "rgba(150, 200, 255, 0.9)";
+	SP_SHORT = "#ff6b6b";
+	FAR_OUTLINE = "rgba(255, 152, 0, 0.95)";
+	RUMBLE_FOCUS = [
+		0,
+		.35,
+		40
+	];
+	RUMBLE_CAST = [
+		.35,
+		.6,
+		70
+	];
+	REVIVE_SKILLS = [SkillConst_default.ALL_RESURRECTION];
 	PORTRAIT_BOX = 96;
 	PORTRAIT_RETRY_MS = 500;
 	_overlay = null;
@@ -237960,17 +238158,24 @@ var init_JoystickSupportMode = __esmMin((() => {
 	_open$2 = false;
 	_highlight = -1;
 	_highlightAt = 0;
-	_settled = -1;
+	_picked = -1;
+	_pushed = false;
 	_entries = [];
 	_pending$1 = null;
 	_portraits = /* @__PURE__ */ new Map();
 	_jobIcons = /* @__PURE__ */ new Map();
+	HEADGEAR = [
+		"accessory",
+		"accessory2",
+		"accessory3"
+	];
 	_scratch = null;
 	_scratchCtx = null;
 	JoystickSupportMode_default = {
 		getMembers,
 		getFocus,
 		getFocusEntity: getFocusEntity$1,
+		getFocusForSkill,
 		setFocus,
 		clearFocus,
 		cycle,
@@ -237981,11 +238186,13 @@ var init_JoystickSupportMode = __esmMin((() => {
 		pendingIndex,
 		cancelPending,
 		castPendingOnSelf,
+		confirmPending,
 		ownsStick,
 		update: update$2,
 		release,
 		segmentAt,
-		isRadialOpen: () => _open$2
+		isRadialOpen: () => _open$2,
+		getHighlight: () => _highlight
 	};
 }));
 //#endregion
@@ -238139,7 +238346,12 @@ function handleInput(buttons) {
 	else return;
 	render$8();
 }
-function open() {
+/**
+* @param {function(): ?Array<number>} [anchor] the character's feet on
+*   screen; without it (or off screen) the grid sits in the lower middle
+*/
+function open(anchor) {
+	_anchor = anchor || null;
 	_open$1 = true;
 	_repeatButton = -1;
 	_row = 0;
@@ -238175,8 +238387,7 @@ function getRoot() {
 	Object.assign(_root$13.style, {
 		position: "absolute",
 		left: "50%",
-		top: "45%",
-		transform: "translate(-50%, -50%)",
+		top: "60%",
 		zIndex: 1001,
 		pointerEvents: "none",
 		background: "rgba(0, 0, 0, 0.75)",
@@ -238268,13 +238479,35 @@ function render$8() {
 	const n = JoystickButtonMap_default.nameOf;
 	hint.textContent = n(BTN.A) + " play · " + n(BTN.X) + " play, stay · " + n(BTN.Y) + " favourite · " + n(BTN.LB) + "/" + n(BTN.RB) + " page · " + n(BTN.B) + " close";
 	root.appendChild(hint);
+	place(root);
+}
+/**
+* Centre the grid under the character's feet, kept on screen.
+*/
+function place(root) {
+	let feet = null;
+	try {
+		feet = _anchor ? _anchor() : null;
+	} catch {
+		feet = null;
+	}
+	const viewWidth = window.innerWidth;
+	const viewHeight = window.innerHeight;
+	const width = root.offsetWidth;
+	const height = root.offsetHeight;
+	const x = feet ? feet[0] : viewWidth / 2;
+	const y = feet ? feet[1] + BELOW_FEET : viewHeight * .6;
+	const left = Math.max(EDGE, Math.min(x - width / 2, viewWidth - width - EDGE));
+	const top = Math.max(EDGE, Math.min(y, viewHeight - height - EDGE));
+	root.style.left = Math.round(left) + "px";
+	root.style.top = Math.round(top) + "px";
 }
 function dispose$1() {
 	close();
 	if (_root$13 && _root$13.parentNode) _root$13.parentNode.removeChild(_root$13);
 	_root$13 = null;
 }
-var COLS, PER_PAGE, MAX_FAVORITES, CELL, REPEAT_DELAY_MS, REPEAT_EVERY_MS, BTN, _root$13, _open$1, _page$1, _row, _col, _repeatButton, _repeatAt, _action$4, _sprite$4, _loading, _entity$2, JoystickEmoteGrid_default;
+var COLS, PER_PAGE, MAX_FAVORITES, CELL, BELOW_FEET, EDGE, REPEAT_DELAY_MS, REPEAT_EVERY_MS, BTN, _root$13, _anchor, _open$1, _page$1, _row, _col, _repeatButton, _repeatAt, _action$4, _sprite$4, _loading, _entity$2, JoystickEmoteGrid_default;
 var init_JoystickEmoteGrid = __esmMin((() => {
 	init_Emotions();
 	init_Client();
@@ -238288,6 +238521,8 @@ var init_JoystickEmoteGrid = __esmMin((() => {
 	PER_PAGE = 30;
 	MAX_FAVORITES = COLS;
 	CELL = 40;
+	BELOW_FEET = 24;
+	EDGE = 8;
 	REPEAT_DELAY_MS = 350;
 	REPEAT_EVERY_MS = 120;
 	BTN = {
@@ -238304,6 +238539,7 @@ var init_JoystickEmoteGrid = __esmMin((() => {
 		RIGHT: 15
 	};
 	_root$13 = null;
+	_anchor = null;
 	_open$1 = false;
 	_page$1 = 0;
 	_row = 0;
@@ -238415,7 +238651,7 @@ var init_JoystickInteractionService = __esmMin((() => {
 				}
 				return false;
 			}
-			const member = JoystickSupportMode_default.getFocusEntity();
+			const member = JoystickSupportMode_default.getFocusForSkill();
 			if (member) return JoystickSupportMode_default.castOn(member);
 			const shortcut = index >= 0 ? ShortCut_default.getList()[index] : null;
 			const info = shortcut && shortcut.isSkill ? SkillInfo[shortcut.ID] : null;
@@ -238545,6 +238781,7 @@ var init_JoystickInteractionService = __esmMin((() => {
 		* @param {boolean} holding A held rather than freshly pressed
 		*/
 		leftClick: function(holding) {
+			if (!holding && JoystickSupportMode_default.confirmPending()) return;
 			if (!holding && this.castOnAim()) return;
 			if (!holding && SkillTargetSelection_default.getFlag()) {
 				const el = JoystickMouseCursorAdapter_default.elementAtCursor();
@@ -238581,10 +238818,13 @@ var init_JoystickInteractionService = __esmMin((() => {
 			JoystickMouseCursorAdapter_default.rightClick(holding);
 		},
 		/**
-		* Menu hold: the emote grid.
+		* Menu hold: the emote grid, below the character.
 		*/
 		openEmoteGrid: function() {
-			JoystickEmoteGrid_default.open();
+			JoystickEmoteGrid_default.open(function() {
+				const player = SessionStorage_default.Entity;
+				return player ? JoystickAimMode_default.project(player.position[0], player.position[1]) : null;
+			});
 		},
 		isEmoteGridOpen: function() {
 			return JoystickEmoteGrid_default.isActive();
