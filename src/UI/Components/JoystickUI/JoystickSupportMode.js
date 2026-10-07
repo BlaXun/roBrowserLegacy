@@ -435,7 +435,11 @@ function castOn(entity) {
 	// Yourself: straight to the request. The target selection refuses you
 	// for any skill that also takes an enemy, and the server sends Heal
 	// (which hurts the undead) as one.
-	const skill = entity === Session.Entity && SkillTargetSelection.getSkill ? SkillTargetSelection.getSkill() : null;
+	// Only a skill that takes a friend: anything else (a homunculus skill, Resurrection on a
+	// living player) goes through the target check, as a click on yourself would.
+	const friendly = (SkillTargetSelection.getFlag() & SkillTargetSelection.TYPE.FRIEND) !== 0;
+	const skill =
+		entity === Session.Entity && friendly && SkillTargetSelection.getSkill ? SkillTargetSelection.getSkill() : null;
 	if (skill) {
 		SkillTargetSelection.onUseSkillToId(skill.SKID, skill.useLevel || skill.level, entity.GID);
 	} else {
@@ -596,11 +600,23 @@ function update(x, y, magnitude, deadzone) {
 	}
 
 	const owns = ownsStick();
+	// The ring is rebuilt every frame, and a slot is only a position in it: someone leaving the
+	// party moves everyone after them. Hold on to who was highlighted and picked, not where, so
+	// A never casts on whoever slid into the slot.
+	const keyAt = index => (index >= 0 && _entries[index] ? _entries[index].key : null);
+	const highlightKey = keyAt(_highlight);
+	const pickedKey = keyAt(_picked);
 	_entries = getMembers();
+	if (highlightKey !== null) {
+		_highlight = _entries.findIndex(entry => entry.key === highlightKey);
+	}
+	if (pickedKey !== null) {
+		_picked = _entries.findIndex(entry => entry.key === pickedKey);
+	}
 
 	if (owns) {
-		if (_highlight >= _entries.length) {
-			// The party shrank under the highlight
+		if (_highlight === -1 && highlightKey !== null) {
+			// The highlighted member is gone
 			_highlight = _pending ? 0 : -1;
 			_picked = -1;
 		}
@@ -687,6 +703,22 @@ function clearOverlay() {
  */
 function release() {
 	clearOverlay();
+}
+
+/**
+ * The gamepad is going away (JoystickModule.dispose): take the overlay off the page and drop
+ * what was kept for drawing, so nothing outlives it. The next use builds them again.
+ */
+function dispose() {
+	cancelPending(false);
+	closeRadial();
+	clearFocus();
+	if (_overlay && _overlay.parentNode) {
+		_overlay.parentNode.removeChild(_overlay);
+	}
+	_overlay = null;
+	_supportCtx = null;
+	_portraits.clear();
 }
 
 function draw() {
@@ -1074,6 +1106,7 @@ export default {
 	ownsStick,
 	update,
 	release,
+	dispose,
 	segmentAt,
 	isRadialOpen: () => _open,
 	getHighlight: () => _highlight

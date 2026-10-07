@@ -36,6 +36,12 @@ let lsHoldFired = false;
 let menuDownAt = 0;
 let menuHoldFired = false;
 
+// A, B, X, Y, LB and RB still down when the emote grid last had them. A press that closes the
+// grid (A plays an emote, B closes) is still held on the next frame, when the grid is gone: it
+// belonged to the grid, and must not reach the map as a click until it is let go.
+const GRID_BUTTONS = [0, 1, 2, 3, 4, 5];
+let gridHeld = [];
+
 function setClickLock() {
 	clickLock = true;
 	setTimeout(function () {
@@ -51,7 +57,14 @@ const ButtonInput = {
 			menuDownAt = buttons[9] !== 'unpressed' ? menuDownAt || Date.now() : 0;
 			menuHoldFired = true;
 			Interaction.emoteGridInput(buttons);
+			gridHeld = GRID_BUTTONS.filter(i => buttons[i] && buttons[i] !== 'unpressed');
 			return true;
+		}
+		if (gridHeld.length) {
+			gridHeld = gridHeld.filter(i => buttons[i] && buttons[i] !== 'unpressed');
+			if (gridHeld.length) {
+				return false;
+			}
 		}
 
 		// Before the click lock: a release must not be missed, or a tap is lost

@@ -50,6 +50,7 @@ const mocks = vi.hoisted(() => ({
 	sts: {
 		TYPE: { ENEMY: 1, PLACE: 2, FRIEND: 16 },
 		getFlag: vi.fn(() => 1),
+		getSkill: vi.fn(() => ({ SKID: 28 })),
 		intersectEntityId: vi.fn(),
 		remove: vi.fn()
 	}
@@ -318,6 +319,23 @@ describe('JoystickInteractionService support category', () => {
 			expect(mocks.support.openPending).not.toHaveBeenCalled();
 		} finally {
 			mocks.input.buttonStates = [];
+			vi.useRealTimers();
+		}
+	});
+
+	it('the hold watch stops when another skill is waiting by then', () => {
+		vi.useFakeTimers();
+		try {
+			mocks.input.buttonStates = ['pressed', 'unpressed', 'unpressed', 'unpressed'];
+			Interaction.executeShortcut(0, 'L1');
+			// Another shortcut, within the hold window, put a different skill in waiting
+			mocks.sts.getSkill.mockReturnValue({ SKID: 34 });
+			vi.advanceTimersByTime(400);
+			expect(mocks.support.castOn).not.toHaveBeenCalled();
+			expect(mocks.support.openPending).not.toHaveBeenCalled();
+		} finally {
+			mocks.input.buttonStates = [];
+			mocks.sts.getSkill.mockReturnValue({ SKID: 28 });
 			vi.useRealTimers();
 		}
 	});

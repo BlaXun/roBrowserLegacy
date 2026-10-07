@@ -15,7 +15,9 @@ const mocks = vi.hoisted(() => ({
 		escape: vi.fn(),
 		openEmoteGrid: vi.fn(),
 		isEmoteGridOpen: vi.fn(() => false),
-		emoteGridInput: vi.fn()
+		emoteGridInput: vi.fn(),
+		leftClick: vi.fn(),
+		rightClick: vi.fn()
 	},
 	setManager: { toggle: vi.fn() },
 	shortcuts: { getGroup: vi.fn(() => ''), getShortcutIndex: vi.fn(() => -1) },
@@ -48,6 +50,7 @@ describe('JoystickButtonInput View + shoulder buttons', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
+
 
 	[
 		[4, -45],
@@ -181,5 +184,38 @@ describe('JoystickButtonInput stick clicks', () => {
 		await new Promise(resolve => setTimeout(resolve, 250));
 		ButtonInput.update(buttons({ 12: 'pressed' }));
 		expect(mocks.interaction.navigateDpad).toHaveBeenCalledWith('up');
+	});
+});
+
+describe('JoystickButtonInput after the emote grid', () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		mocks.controls.joyAimEnabled = false;
+		mocks.interaction.isEmoteGridOpen.mockReturnValue(false);
+		// A click lock an earlier test set runs on real time (200 ms): let it run out
+		vi.useRealTimers();
+		await new Promise(resolve => setTimeout(resolve, 250));
+		vi.useFakeTimers();
+		ButtonInput.update(buttons({}));
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('the A that closes the emote grid does not also click the map', () => {
+		// A plays an emote and the grid closes; on the next frames A is still held
+		mocks.interaction.isEmoteGridOpen.mockReturnValue(true);
+		ButtonInput.update(buttons({ 0: 'pressed' }));
+		mocks.interaction.isEmoteGridOpen.mockReturnValue(false);
+		ButtonInput.update(buttons({ 0: 'holding' }));
+		ButtonInput.update(buttons({ 0: 'holding' }));
+		expect(mocks.interaction.leftClick).not.toHaveBeenCalled();
+		// Let go: the next press is the map's again
+		ButtonInput.update(buttons({}));
+		ButtonInput.update(buttons({ 0: 'pressed' }));
+		expect(mocks.interaction.leftClick).toHaveBeenCalledTimes(1);
+		vi.advanceTimersByTime(1000);
+		ButtonInput.update(buttons({}));
 	});
 });

@@ -34,6 +34,8 @@ import EmoteGrid from './JoystickEmoteGrid.js';
 // instead of the focused member.
 const SELF_CAST_HOLD_MS = 300;
 const HOLD_POLL_MS = 30;
+// The latest self-cast hold watch; an older one stops when it sees a newer number.
+let selfCastWatch = 0;
 
 /**
  * The character's feet on screen, for overlays placed below them.
@@ -46,7 +48,12 @@ function playerFeet() {
 export default {
 	prepare: function () {},
 
-	dispose: function () {},
+	dispose: function () {
+		// What the gamepad drew or held open goes with it: the Support radial's overlay and its
+		// portraits, and the emote grid, which otherwise stayed on screen taking every button.
+		Support.dispose();
+		EmoteGrid.close();
+	},
 	cancelQuick: false,
 	executeShortcut: function (index, group) {
 		const shortcut = ShortCut.getList()[index];
@@ -196,10 +203,17 @@ export default {
 		}
 
 		const startedAt = Date.now();
+		// This watch belongs to this skill. Another shortcut within the hold window starts its
+		// own watch and ends this one, so the old timer can't cast the new skill on the player
+		// or open the radial with the old skill's slot.
+		const token = ++selfCastWatch;
+		const waiting = SkillTargetSelection.getSkill();
+		const skid = waiting ? waiting.SKID : 0;
 		const watch = () => {
 			setTimeout(() => {
 				// Cancelled meanwhile (Escape, another skill)
-				if (!SkillTargetSelection.getFlag()) {
+				const now = SkillTargetSelection.getSkill();
+				if (token !== selfCastWatch || !SkillTargetSelection.getFlag() || !now || now.SKID !== skid) {
 					return;
 				}
 				const held = (Input.buttonStates || [])[face];
