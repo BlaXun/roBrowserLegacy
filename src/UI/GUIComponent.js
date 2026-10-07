@@ -71,6 +71,32 @@ const MouseMode = Object.freeze({
 });
 
 /**
+ * STOP-mode guards that think the pointer is over their window, each by the
+ * function that checks it still is.
+ *
+ * A browser fires no mouseenter or mouseleave while a drag is under way, so
+ * dragging an item out of a window left its guard entered, and the map took no
+ * clicks until the pointer passed over that window again. Every trade starts
+ * that way. No mousemove fires during a drag either, so the first one after a
+ * dragstart comes once it is over, and that asks every entered guard.
+ */
+const _enteredGuards = new Set();
+let _dragged = false;
+if (typeof window !== 'undefined') {
+	window.addEventListener('dragstart', () => (_dragged = true), true);
+	window.addEventListener(
+		'mousemove',
+		() => {
+			if (_dragged) {
+				_dragged = false;
+				_enteredGuards.forEach(check => check());
+			}
+		},
+		true
+	);
+}
+
+/**
  * A clickable a component has marked as refusing the click
  */
 const DENIED_SELECTOR = '.denied';
@@ -897,10 +923,18 @@ class GUIComponent {
 			let _intersect;
 			let _enter = 0;
 
+			// The leave a drag swallowed, once the pointer is seen elsewhere.
+			const check = () => {
+				if (_enter > 0 && !(element.isConnected && element.matches(':hover'))) {
+					element.dispatchEvent(new Event('mouseleave'));
+				}
+			};
+
 			element.addEventListener('mouseenter', () => {
 				if (_enter === 0) {
 					_intersect = Mouse.intersect;
 					_enter++;
+					_enteredGuards.add(check);
 					if (_intersect) {
 						Mouse.intersect = false;
 						_Cursor?.setType(_Cursor?.ACTION?.DEFAULT ?? 0);
@@ -912,6 +946,7 @@ class GUIComponent {
 			element.addEventListener('mouseleave', () => {
 				if (_enter > 0) {
 					_enter--;
+					_enteredGuards.delete(check);
 					if (_enter === 0 && _intersect) {
 						if (!Session.FreezeUI) {
 							Mouse.intersect = true;
@@ -925,6 +960,7 @@ class GUIComponent {
 			element.addEventListener('x_remove', () => {
 				if (_enter > 0) {
 					_enter = 0;
+					_enteredGuards.delete(check);
 					if (_intersect) {
 						Mouse.intersect = true;
 						_EntityManager?.setOverEntity(null);
