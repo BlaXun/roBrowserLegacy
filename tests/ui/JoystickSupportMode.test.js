@@ -29,7 +29,9 @@ const mocks = vi.hoisted(() => {
 		sts: {
 			TYPE: { ENEMY: 1, PLACE: 2, SELF: 4, FRIEND: 16, HOMUN: 128 },
 			flag: 16,
+			skill: null,
 			getFlag: vi.fn(() => mocks.sts.flag),
+			getSkill: vi.fn(() => (mocks.sts.flag ? mocks.sts.skill : null)),
 			intersectEntityId: vi.fn(),
 			remove: vi.fn()
 		}
@@ -53,6 +55,10 @@ vi.mock('UI/Components/PartyFriends/PartyFriends.js', () => ({
 	default: { getPartyMembers: () => mocks.party }
 }));
 vi.mock('UI/Components/SkillTargetSelection/SkillTargetSelection.js', () => ({ default: mocks.sts }));
+vi.mock('DB/Skills/SkillConst.js', () => ({ default: { ALL_RESURRECTION: 54 } }));
+vi.mock('DB/Skills/SkillInfo.js', () => ({
+	default: { 54: { SpAmount: [60, 60, 60, 60], AttackRange: [9, 9, 9, 9] } }
+}));
 vi.mock('UI/Components/JoystickUI/JoystickTargetCategory.js', () => ({ default: mocks.category }));
 vi.mock('UI/Components/JoystickUI/JoystickAimMode.js', () => ({ default: mocks.aim }));
 vi.mock('UI/Components/JoystickUI/JoystickMouseCursorAdapter.js', () => ({ default: mocks.cursor }));
@@ -85,9 +91,9 @@ function setup() {
 		{ AID: 1, characterName: 'Me', state: 0 },
 		{ AID: 2, characterName: 'Low', state: 0, class_: 1 },
 		{ AID: 3, characterName: 'Mid', state: 0, class_: 2 },
-		{ AID: 4, characterName: 'Far', state: 0, class_: 3 },
-		{ AID: 5, characterName: 'Offline', state: 1 }
+		{ AID: 4, characterName: 'Far', state: 0, class_: 3 }
 	];
+	mocks.sts.skill = { SKID: 28, level: 10, spcost: 40, attackRange: 9 }; // Heal
 }
 
 describe('JoystickSupportMode members', () => {
@@ -97,16 +103,19 @@ describe('JoystickSupportMode members', () => {
 		Support.clearFocus();
 	});
 
-	it('lists yourself first, then the online party, then your companions', () => {
+	it('lists yourself, the whole party in its order, then your companions, each in a fixed place', () => {
+		mocks.party.push({ AID: 5, characterName: 'Offline', state: 1 });
+		mocks.entities.set(5, mocks.entity(5, 100, 100)); // a stale entity is not used for the offline
 		mocks.session.homunId = 50;
 		mocks.entities.set(50, mocks.entity(50, 10, 100));
-		mocks.session.mercId = 60; // not in sight: left out
+		mocks.session.mercId = 60; // not in sight: greyed, still in its place
 
 		const members = Support.getMembers();
-		expect(members.map(m => m.key)).toEqual(['self', 'aid:2', 'aid:3', 'aid:4', 'homun']);
-		expect(members.map(m => m.selectable)).toEqual([true, true, true, false, true]);
+		expect(members.map(m => m.key)).toEqual(['self', 'aid:2', 'aid:3', 'aid:4', 'aid:5', 'homun', 'merc']);
+		expect(members.map(m => m.selectable)).toEqual([true, true, true, false, false, true, false]);
+		expect(members[4].offline).toBe(true);
 		expect(members[3].hp).toBe(100); // from the party HP packets
-		expect(members[4].name).toBe('E50');
+		expect(members[5].name).toBe('E50');
 	});
 
 	it('marks the dead', () => {
@@ -154,29 +163,31 @@ describe('JoystickSupportMode radial', () => {
 		expect(Support.segmentAt(-1, 0, 4)).toBe(3);
 	});
 
-	it('takes the right stick in Support with aiming on, not otherwise', () => {
+	it('takes the right stick in Support, in aim and cursor mode alike', () => {
 		expect(stick(0, 0)).toBe(true);
 		mocks.aim.isActive.mockReturnValue(false);
-		expect(stick(1, 0)).toBe(false);
+		expect(stick(1, 0)).toBe(true);
 		mocks.aim.isActive.mockReturnValue(true);
 		mocks.category.isSupport.mockReturnValue(false);
 		expect(stick(1, 0)).toBe(false);
 		mocks.category.isSupport.mockReturnValue(true);
 	});
 
-	it('letting the stick go focuses the highlighted member', () => {
+	it('holding the stick on a member focuses it, letting go closes the radial', () => {
 		stick(1, 0); // 4 members: right is segment 1 (aid:2)
 		expect(Support.isRadialOpen()).toBe(true);
-		now += 150;
+		expect(Support.getFocus()).toBeNull();
+		now += 300;
 		stick(1, 0);
+		expect(Support.getFocus().key).toBe('aid:2');
 		stick(0, 0);
 		expect(Support.isRadialOpen()).toBe(false);
 		expect(Support.getFocus().key).toBe('aid:2');
 	});
 
-	it('the stick springing back across a neighbour keeps the settled member', () => {
+	it('sweeping past a member does not pick it', () => {
 		stick(1, 0);
-		now += 150;
+		now += 300;
 		stick(1, 0);
 		now += 16;
 		stick(0, 1); // a frame on segment 2 on the way back
@@ -187,26 +198,116 @@ describe('JoystickSupportMode radial', () => {
 
 	it('a member out of sight cannot be picked', () => {
 		stick(-1, 0); // segment 3: aid:4, out of sight
-		now += 150;
+		now += 300;
 		stick(-1, 0);
 		stick(0, 0);
 		expect(Support.getFocus()).toBeNull();
 	});
 
-	it('a pending skill is cast on the member the stick picks', () => {
+	it('a pending skill waits for A, then goes to the member the stick chose', () => {
 		Support.openPending(0, 'Heal');
 		expect(stick(0, 0)).toBe(true); // owns the stick even if the radial just opened
 		expect(Support.isPending()).toBe(true);
 
 		stick(0, 1); // segment 2: aid:3
-		now += 150;
+		now += 300;
 		stick(0, 1);
 		stick(0, 0);
+		expect(mocks.sts.intersectEntityId).not.toHaveBeenCalled();
+		expect(Support.isRadialOpen()).toBe(true);
+		expect(Support.getHighlight()).toBe(2);
 
+		expect(Support.confirmPending()).toBe(true);
 		expect(mocks.sts.intersectEntityId).toHaveBeenCalledWith(3);
 		expect(mocks.sts.remove).toHaveBeenCalled();
 		expect(Support.isPending()).toBe(false);
+		expect(Support.isRadialOpen()).toBe(false);
 		expect(Support.getFocus().key).toBe('aid:3');
+	});
+
+	it('a pending radial opens on yourself, and A casts on you', () => {
+		Support.openPending(0, 'Heal');
+		stick(0, 0);
+		expect(Support.getHighlight()).toBe(0);
+		Support.confirmPending();
+		expect(mocks.sts.intersectEntityId).toHaveBeenCalledWith(1);
+	});
+
+	it('the stick springing back keeps the settled member, an unsettled push goes back to you', () => {
+		Support.openPending(0, 'Heal');
+		stick(1, 0);
+		now += 300;
+		stick(1, 0);
+		now += 16;
+		stick(0, 1); // a frame on segment 2 on the way back
+		stick(0, 0);
+		expect(Support.getHighlight()).toBe(1);
+
+		Support.cancelPending(false);
+		Support.openPending(0, 'Heal');
+		stick(1, 0);
+		stick(0, 0);
+		expect(Support.getHighlight()).toBe(0);
+	});
+
+	it('without a skill pending, A is not taken', () => {
+		expect(Support.confirmPending()).toBe(false);
+	});
+
+	it('the dead cannot take Heal, only Resurrection', () => {
+		mocks.entities.get(3).action = 8; // aid:3, segment 2
+		Support.openPending(0, 'Heal');
+		stick(0, 1);
+		now += 300;
+		stick(0, 1);
+		stick(0, 0);
+		Support.confirmPending();
+		expect(mocks.sts.intersectEntityId).not.toHaveBeenCalled();
+		expect(Support.isPending()).toBe(true);
+		Support.cancelPending(false);
+
+		mocks.sts.skill = { SKID: 54, level: 4, spcost: 60, attackRange: 9 };
+		Support.openPending(0, 'Resurrection');
+		Support.confirmPending(); // yourself: alive
+		expect(mocks.sts.intersectEntityId).not.toHaveBeenCalled();
+		stick(0, 1);
+		now += 300;
+		stick(0, 1);
+		Support.confirmPending();
+		expect(mocks.sts.intersectEntityId).toHaveBeenCalledWith(3);
+	});
+
+	it('a ground skill takes the dead too', () => {
+		mocks.sts.flag = 2;
+		mocks.entities.get(3).action = 8;
+		Support.openPending(0, 'Sanctuary');
+		stick(0, 1);
+		now += 300;
+		stick(0, 1);
+		Support.confirmPending();
+		expect(mocks.cursor.moveMouseToEntity).toHaveBeenCalledWith(mocks.entities.get(3));
+	});
+
+	it('a focus the skill cannot take is no target for it', () => {
+		mocks.entities.get(3).action = 8;
+		stick(0, 1);
+		now += 300;
+		stick(0, 1); // no skill pending: the stick focuses aid:3
+		expect(Support.getFocus().key).toBe('aid:3');
+		expect(Support.getFocusForSkill()).toBeNull(); // Heal waiting
+
+		mocks.sts.skill = { SKID: 54, level: 4, spcost: 60, attackRange: 9 };
+		expect(Support.getFocusForSkill()).toBe(mocks.entities.get(3));
+	});
+
+	it('a member beyond the range can still be chosen', () => {
+		mocks.entities.get(3).position = [30, 10, 0];
+		Support.openPending(0, 'Heal');
+		stick(0, 1);
+		now += 300;
+		stick(0, 1);
+		Support.confirmPending();
+		expect(mocks.sts.intersectEntityId).toHaveBeenCalledWith(3);
 	});
 
 	it('the pending radial owns the stick in cursor mode too', () => {
@@ -219,10 +320,12 @@ describe('JoystickSupportMode radial', () => {
 	it('picking nobody keeps the skill pending', () => {
 		Support.openPending(0, 'Heal');
 		stick(-1, 0); // out of sight
-		now += 150;
+		now += 300;
 		stick(-1, 0);
 		stick(0, 0);
+		Support.confirmPending();
 		expect(Support.isPending()).toBe(true);
+		expect(Support.isRadialOpen()).toBe(true);
 		expect(mocks.sts.intersectEntityId).not.toHaveBeenCalled();
 	});
 

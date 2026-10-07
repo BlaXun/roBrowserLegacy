@@ -36,7 +36,8 @@ const mocks = vi.hoisted(() => ({
 		cancelPending: vi.fn(),
 		castPendingOnSelf: vi.fn(),
 		isSupportSkill: vi.fn(flag => (flag & (2 | 16)) !== 0),
-		getFocusEntity: vi.fn(() => null),
+		getFocusForSkill: vi.fn(() => null),
+		confirmPending: vi.fn(() => false),
 		castOn: vi.fn(() => true),
 		openPending: vi.fn(),
 		cycle: vi.fn(),
@@ -170,14 +171,14 @@ describe('JoystickInteractionService support category', () => {
 		mocks.controls.joyQuick = 2;
 		mocks.category.isSupport.mockReturnValue(true);
 		mocks.support.isPending.mockReturnValue(false);
-		mocks.support.getFocusEntity.mockReturnValue(null);
+		mocks.support.getFocusForSkill.mockReturnValue(null);
 		mocks.sts.getFlag.mockReturnValue(mocks.sts.TYPE.FRIEND);
 		mocks.aim.isActive.mockReturnValue(true);
 		mocks.cursor.elementAtCursor.mockReturnValue(null);
 	});
 
 	it('a support skill goes to the focused member', () => {
-		mocks.support.getFocusEntity.mockReturnValue(member);
+		mocks.support.getFocusForSkill.mockReturnValue(member);
 		Interaction.executeShortcut(0, 'L1');
 		expect(mocks.support.castOn).toHaveBeenCalledWith(member);
 		expect(mocks.cursor.quickCastClick).not.toHaveBeenCalled();
@@ -192,7 +193,7 @@ describe('JoystickInteractionService support category', () => {
 
 	it('a ground skill counts as support too', () => {
 		mocks.sts.getFlag.mockReturnValue(mocks.sts.TYPE.PLACE);
-		mocks.support.getFocusEntity.mockReturnValue(member);
+		mocks.support.getFocusForSkill.mockReturnValue(member);
 		Interaction.executeShortcut(0, 'L1');
 		expect(mocks.support.castOn).toHaveBeenCalledWith(member);
 	});
@@ -237,6 +238,15 @@ describe('JoystickInteractionService support category', () => {
 		expect(mocks.shortcut.onShortCut).toHaveBeenCalled();
 	});
 
+	it('A confirms the member chosen in the radial, a held A does not', () => {
+		mocks.support.confirmPending.mockReturnValue(true);
+		Interaction.leftClick(true);
+		expect(mocks.support.confirmPending).not.toHaveBeenCalled();
+		Interaction.leftClick(false);
+		expect(mocks.support.confirmPending).toHaveBeenCalledTimes(1);
+		mocks.support.confirmPending.mockReturnValue(false);
+	});
+
 	it('B cancels a pending skill instead of right-clicking', () => {
 		mocks.support.isPending.mockReturnValue(true);
 		Interaction.rightClick(false);
@@ -253,7 +263,7 @@ describe('JoystickInteractionService support category', () => {
 	it('a quick tap of the face button casts on the focused member', () => {
 		vi.useFakeTimers();
 		try {
-			mocks.support.getFocusEntity.mockReturnValue(member);
+			mocks.support.getFocusForSkill.mockReturnValue(member);
 			mocks.input.buttonStates = ['unpressed', 'unpressed', 'pressed', 'unpressed'];
 			Interaction.executeShortcut(0, 'L1');
 			expect(mocks.support.castOn).not.toHaveBeenCalled(); // decided on release
@@ -272,7 +282,7 @@ describe('JoystickInteractionService support category', () => {
 		try {
 			const self = { GID: 1 };
 			mocks.session.Entity = self;
-			mocks.support.getFocusEntity.mockReturnValue(member);
+			mocks.support.getFocusForSkill.mockReturnValue(member);
 			mocks.input.buttonStates = ['unpressed', 'unpressed', 'pressed', 'unpressed'];
 			Interaction.executeShortcut(0, 'L1');
 

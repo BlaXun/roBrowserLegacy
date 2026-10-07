@@ -140,7 +140,8 @@ export default {
 			return false;
 		}
 
-		const member = Support.getFocusEntity();
+		// A focus the skill cannot take (Heal on the dead) opens the radial instead
+		const member = Support.getFocusForSkill();
 		if (member) {
 			return Support.castOn(member);
 		}
@@ -320,6 +321,11 @@ export default {
 	 * @param {boolean} holding A held rather than freshly pressed
 	 */
 	leftClick: function (holding) {
+		// A skill waiting in the support radial: cast it on the chosen member
+		if (!holding && Support.confirmPending()) {
+			return;
+		}
+
 		// A skill waiting for a target: the aimed one, not the stale cursor
 		if (!holding && this.castOnAim()) {
 			return;
@@ -374,10 +380,13 @@ export default {
 	},
 
 	/**
-	 * Menu hold: the emote grid.
+	 * Menu hold: the emote grid, below the character.
 	 */
 	openEmoteGrid: function () {
-		EmoteGrid.open();
+		EmoteGrid.open(function () {
+			const player = Session.Entity;
+			return player ? Aim.project(player.position[0], player.position[1]) : null;
+		});
 	},
 
 	isEmoteGridOpen: function () {
