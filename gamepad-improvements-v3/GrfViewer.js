@@ -239994,7 +239994,7 @@ function getMappingCombos() {
 		].join(" / ") + " (emotes open)", "Play / play and stay open / favourite / close"],
 		[n(B.LB) + " / " + n(B.RB) + " (emotes open)", "Previous / next emote page"],
 		[sticks[0], "Move"],
-		[sticks[1], Controls_default.joyAimEnabled ? "Cursor, or aim (tap " + n(B.RS) + "); Support: party radial" : "Cursor; picks a member for a skill waiting in the Support radial"]
+		[sticks[1], Controls_default.joyAimEnabled ? "Cursor, or aim (tap " + n(B.RS) + "); Support: party radial" : "Cursor; Support: party radial"]
 	];
 }
 /**
@@ -240420,8 +240420,8 @@ var init_ShortCutOption = __esmMin((() => {
 		}
 	};
 	MAPPING_ROLES = [
-		[JoystickButtonMap_default.BUTTON.A, "Click / confirm"],
-		[JoystickButtonMap_default.BUTTON.B, "Right click (hold on item/skill: options) - cancels a skill waiting in the Support radial"],
+		[JoystickButtonMap_default.BUTTON.A, "Click / confirm (Support radial: cast the waiting skill on the chosen member)"],
+		[JoystickButtonMap_default.BUTTON.B, "Right click (hold on item/skill: options) - Support radial: close it, or cancel the waiting skill"],
 		[JoystickButtonMap_default.BUTTON.X, "Attack target"],
 		[JoystickButtonMap_default.BUTTON.Y, "Pick up item"],
 		[JoystickButtonMap_default.BUTTON.LEFT, "Previous target (Support: party member; grid left on items)"],
