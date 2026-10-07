@@ -1,5 +1,7 @@
 :host {
 	position: absolute;
+	/* Include the 5px root offset and 2px frame overflow in the window snap bounds. */
+	padding-right: 7px;
 }
 
 #chatbox {
