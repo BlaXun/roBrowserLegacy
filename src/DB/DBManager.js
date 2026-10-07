@@ -24,6 +24,7 @@ import MonsterNameTable from './Monsters/MonsterNameTable.js';
 import PetIllustration from './Pets/PetIllustration.js';
 import PetAction from './Pets/PetAction.js';
 import ItemTable from './Items/ItemTable.js';
+import { loadItemPackages } from 'DB/Items/ItemPackages.js';
 import HatTable from './Items/HatTable.js';
 import ShieldTable from './Items/ShieldTable.js';
 import WeaponTable from './Items/WeaponTable.js';
@@ -65,6 +66,7 @@ import { escapeHtml } from 'Utils/HtmlHelper.js';
  * @type {Object} lua instance
  */
 let lua;
+let itemPackages = new Map();
 let HO_AI;
 let MER_AI;
 let default_HO_AI;
@@ -398,6 +400,17 @@ class DB {
 		}
 		// TODO: load these load files by PACKETVER
 		if (Configs.get('loadLua')) {
+			itemPackages = new Map();
+			if (PACKETVER.value >= 20220216) {
+				const done = onLoad();
+				loadItemPackages(lua, DB.LUA_PATH, PACKETVER.value, Client.loadFile.bind(Client), value =>
+					userStringDecoder.decode(value, userCharpage)
+				)
+					.then(packages => {
+						itemPackages = packages;
+					})
+					.finally(done);
+			}
 			// Item
 			let iteminfoNames = [];
 			const customII = Configs.get('customItemInfo', []);
@@ -2397,6 +2410,11 @@ class DB {
 
 	static isKatar(weaponType) {
 		return weaponType == WeaponType.KATAR;
+	}
+
+	/** Selection groups supplied by the client's package table. */
+	static getItemPackage(itemid) {
+		return itemPackages.get(itemid) || [];
 	}
 
 	/**

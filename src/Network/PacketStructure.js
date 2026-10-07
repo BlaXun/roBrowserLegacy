@@ -360,6 +360,23 @@ PACKET.CZ.USE_ITEM.prototype.build = function () {
 	return pkt;
 };
 
+// 0x0baf - selection package request (main clients >= 20220216)
+PACKET.CZ.USE_PACKAGEITEM = function PACKET_CZ_USE_PACKAGEITEM() {
+	this.index = 0;
+	this.AID = 0;
+	this.itemID = 0;
+	this.BoxIndex = 0;
+};
+PACKET.CZ.USE_PACKAGEITEM.prototype.build = function () {
+	const packet = new BinaryWriter(16);
+	packet.writeUShort(0x0baf);
+	packet.writeUShort(this.index);
+	packet.writeULong(this.AID);
+	packet.writeULong(this.itemID);
+	packet.writeULong(this.BoxIndex);
+	return packet;
+};
+
 // 0xa9
 PACKET.CZ.REQ_WEAR_EQUIP = function PACKET_CZ_REQ_WEAR_EQUIP() {
 	this.index = 0;
