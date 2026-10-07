@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => {
 			getFlag: vi.fn(() => mocks.sts.flag),
 			getSkill: vi.fn(() => (mocks.sts.flag ? mocks.sts.skill : null)),
 			intersectEntityId: vi.fn(),
+			onUseSkillToId: vi.fn(),
 			remove: vi.fn()
 		}
 	};
@@ -230,7 +231,7 @@ describe('JoystickSupportMode radial', () => {
 		stick(0, 0);
 		expect(Support.getHighlight()).toBe(0);
 		Support.confirmPending();
-		expect(mocks.sts.intersectEntityId).toHaveBeenCalledWith(1);
+		expect(mocks.sts.onUseSkillToId).toHaveBeenCalledWith(28, 10, 1); // yourself: past the enemy-skill self check
 	});
 
 	it('the stick springing back keeps the settled member, an unsettled push goes back to you', () => {
@@ -248,6 +249,40 @@ describe('JoystickSupportMode radial', () => {
 		stick(1, 0);
 		stick(0, 0);
 		expect(Support.getHighlight()).toBe(0);
+	});
+
+	it('a skill pressed with the radial open goes to the highlighted member, settled or not', () => {
+		stick(1, 0);
+		now += 300;
+		stick(1, 0); // aid:2 is the focus
+		stick(0, 0);
+		stick(0, -1); // the radial again, on yourself, not settled yet
+		expect(Support.getFocus().key).toBe('aid:2');
+		expect(Support.getFocusForSkill()).toBe(mocks.session.Entity);
+		expect(Support.getFocus().key).toBe('self');
+	});
+
+	it('B closes the radial until the stick is let go', () => {
+		stick(1, 0);
+		expect(Support.dismiss()).toBe(true);
+		expect(Support.isRadialOpen()).toBe(false);
+		stick(1, 0); // still pushed: stays closed
+		expect(Support.isRadialOpen()).toBe(false);
+		stick(0, 0);
+		stick(1, 0);
+		expect(Support.isRadialOpen()).toBe(true);
+	});
+
+	it('B leaves a pending radial to the cancel', () => {
+		Support.openPending(0, 'Heal');
+		expect(Support.dismiss()).toBe(false);
+		expect(Support.isPending()).toBe(true);
+	});
+
+	it('a stick resting slightly off centre still closes the radial', () => {
+		stick(1, 0);
+		stick(0.2, 0.1); // past the deadzone, under the release threshold
+		expect(Support.isRadialOpen()).toBe(false);
 	});
 
 	it('without a skill pending, A is not taken', () => {
@@ -341,7 +376,7 @@ describe('JoystickSupportMode radial', () => {
 		Support.openPending(3, 'Heal');
 		expect(Support.pendingIndex()).toBe(3);
 		Support.castPendingOnSelf();
-		expect(mocks.sts.intersectEntityId).toHaveBeenCalledWith(1);
+		expect(mocks.sts.onUseSkillToId).toHaveBeenCalledWith(28, 10, 1); // yourself: past the enemy-skill self check
 		expect(Support.isPending()).toBe(false);
 	});
 

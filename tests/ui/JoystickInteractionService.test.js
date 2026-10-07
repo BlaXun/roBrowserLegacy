@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
 		isSupportSkill: vi.fn(flag => (flag & (2 | 16)) !== 0),
 		getFocusForSkill: vi.fn(() => null),
 		confirmPending: vi.fn(() => false),
+		dismiss: vi.fn(() => false),
 		castOn: vi.fn(() => true),
 		openPending: vi.fn(),
 		cycle: vi.fn(),
@@ -247,6 +248,13 @@ describe('JoystickInteractionService support category', () => {
 		mocks.support.confirmPending.mockReturnValue(false);
 	});
 
+	it('B closes an open radial instead of right-clicking', () => {
+		mocks.support.dismiss.mockReturnValueOnce(true);
+		Interaction.rightClick(false);
+		expect(mocks.support.dismiss).toHaveBeenCalled();
+		expect(mocks.cursor.rightClick).not.toHaveBeenCalled();
+	});
+
 	it('B cancels a pending skill instead of right-clicking', () => {
 		mocks.support.isPending.mockReturnValue(true);
 		Interaction.rightClick(false);
@@ -333,7 +341,7 @@ describe('JoystickInteractionService D-pad up / down', () => {
 
 	it('switch the target category over the map', () => {
 		Interaction.navigateDpad('down');
-		expect(mocks.category.step).toHaveBeenCalledWith('down');
+		expect(mocks.category.step).toHaveBeenCalledWith('down', expect.any(Function));
 		expect(mocks.cursor.navigateDraggableItems).not.toHaveBeenCalled();
 	});
 

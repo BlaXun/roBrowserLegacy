@@ -35,6 +35,14 @@ import EmoteGrid from './JoystickEmoteGrid.js';
 const SELF_CAST_HOLD_MS = 300;
 const HOLD_POLL_MS = 30;
 
+/**
+ * The character's feet on screen, for overlays placed below them.
+ */
+function playerFeet() {
+	const player = Session.Entity;
+	return player ? Aim.project(player.position[0], player.position[1]) : null;
+}
+
 export default {
 	prepare: function () {},
 
@@ -376,6 +384,10 @@ export default {
 			Support.cancelPending(true);
 			return;
 		}
+		// B with the support radial open: close it
+		if (!holding && Support.dismiss()) {
+			return;
+		}
 		Cursor.rightClick(holding);
 	},
 
@@ -383,10 +395,7 @@ export default {
 	 * Menu hold: the emote grid, below the character.
 	 */
 	openEmoteGrid: function () {
-		EmoteGrid.open(function () {
-			const player = Session.Entity;
-			return player ? Aim.project(player.position[0], player.position[1]) : null;
-		});
+		EmoteGrid.open(playerFeet);
 	},
 
 	isEmoteGridOpen: function () {
@@ -479,7 +488,7 @@ export default {
 		// Up / down switch the target category, unless a window wants them:
 		// a grid under the cursor, the NPC dialogue choices, a text field
 		if ((direction === 'up' || direction === 'down') && !this._uiWantsArrows()) {
-			Category.step(direction);
+			Category.step(direction, playerFeet);
 			return true;
 		}
 		return Cursor.navigateDraggableItems(direction);
