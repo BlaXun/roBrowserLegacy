@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
 	const ids = {
 		NOVICE: 0,
+		BASH: 5,
 		CRUSADER: 14,
 		DIVINE_PROTECTION: 22,
 		DEMON_BANE: 23,
@@ -12,6 +13,12 @@ const mocks = vi.hoisted(() => {
 	};
 
 	const skillInfo = {
+		[ids.BASH]: {
+			Name: 'SM_BASH',
+			SkillName: 'Bash',
+			MaxLv: 10,
+			bSeperateLv: true
+		},
 		[ids.FAITH]: {
 			Name: 'CR_TRUST',
 			SkillName: 'Faith',
@@ -194,6 +201,7 @@ function getFixtureHTML() {
 				<input type="radio" id="tab-2" class="tab-switch" />
 				<div id="positionSkills1">${cells([0, 7, 14, 21, 28])}</div>
 				<div id="positionSkills2">${cells([0, 7, 14, 21, 28])}</div>
+				<div id="etcBIG5">${cells([0])}</div>
 			</div>
 			<div class="footer">
 				<span class="skpoints_count"></span>
@@ -389,5 +397,49 @@ describe('SkillListV2 upgradable highlight', () => {
 
 		component.updateSkill({ SKID: mocks.ids.CURE, level: 1, type: 1, upgradable: false, spcost: 15 });
 		expect(slot(root, 7).classList.contains('upgradable')).toBe(false);
+	});
+});
+
+describe('SkillListV2 skills added in game', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+	});
+
+	const etcSkill = root => root.querySelector(`#etcBIG5 .skill.id${mocks.ids.BASH}`);
+
+	it('stages no points for a copied skill the server marks not upgradable', () => {
+		const component = createComponent();
+		const root = component.getRoot();
+		component.onIncreaseSkill = vi.fn();
+
+		// Plagiarism: ZC_ADD_SKILL, outside the job's tree, upgradable 0
+		component.addSkill({ SKID: mocks.ids.BASH, level: 5, type: 1, upgradable: 0, spcost: 8 });
+		etcSkill(root).querySelector('.icon').click();
+		etcSkill(root).querySelector('.icon').click();
+
+		expect(etcSkill(root).querySelector('.current').textContent).toBe('5');
+		expect(root.querySelector('.skpoints_count').textContent).toBe('10');
+
+		root.querySelector('.apply').click();
+		expect(component.onIncreaseSkill).not.toHaveBeenCalled();
+
+		root.querySelector('.reset').click();
+		expect(etcSkill(root).classList.contains('disabled')).toBe(false);
+		expect(etcSkill(root).querySelector('.current').textContent).toBe('5');
+	});
+
+	it('counts the level of a skill added in game as owned', () => {
+		const component = createComponent();
+		const root = component.getRoot();
+
+		component.addSkill({ SKID: mocks.ids.BASH, level: 3, type: 1, upgradable: 1, spcost: 8 });
+		etcSkill(root).querySelector('.icon').click();
+
+		expect(etcSkill(root).querySelector('.current').textContent).toBe('4');
+		expect(root.querySelector('.skpoints_count').textContent).toBe('9/10');
+
+		root.querySelector('.reset').click();
+		expect(etcSkill(root).classList.contains('disabled')).toBe(false);
+		expect(etcSkill(root).querySelector('.current').textContent).toBe('3');
 	});
 });

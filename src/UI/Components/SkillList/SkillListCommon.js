@@ -642,6 +642,9 @@ export function createSkillList({
 			this.addSkillBig(skill);
 		}
 		this.addSkillMini(skill);
+		// A skill added in game (ZC_ADD_SKILL: a copied or granted one) is
+		// owned like the ones from the full list.
+		hasSkills[skill.SKID] = skill;
 	};
 
 	Component.prepareSkillTree = function prepareSkillTree(items, list) {
