@@ -234110,6 +234110,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 	Component.onAppend = function onAppend() {
 		if (!_preferences.show) this.ui.hide();
 		resize(this, _preferences.width, _preferences.height);
+		if (this.getRoot().querySelector("canvas.sitting")) Renderer.render(renderSitting);
 		this._host.style.top = `${Math.min(Math.max(0, _preferences.y), Renderer.height - 100)}px`;
 		this._host.style.left = `${Math.min(Math.max(0, _preferences.x), Renderer.width - 100)}px`;
 		const cb = this.getRoot().querySelector(".view_skill_info");
@@ -234117,6 +234118,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 	};
 	Component.onRemove = function onRemove() {
 		if (_btnLevelUp && _btnLevelUp.parentNode) _btnLevelUp.remove();
+		Renderer.stop(renderSitting);
 		_preferences.show = this.ui.is(":visible");
 		_preferences.y = parseInt(this._host.style.top, 10) || 0;
 		_preferences.x = parseInt(this._host.style.left, 10) || 0;
@@ -234403,7 +234405,6 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 				if (box) {
 					if (box.hasChildNodes()) box.innerHTML = "";
 					box.appendChild(element);
-					if (skill.upgradable) box.classList.add("upgradable");
 				}
 			}
 		});
@@ -234429,6 +234430,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 				}
 			}
 		}
+		highlightUpgradable(root, skill);
 		loadSkillIcon(sk, skill.SKID, (data) => {
 			const img = element.querySelector(".icon img");
 			if (img) img.src = data;
@@ -234513,6 +234515,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 			const levelupEl = element.querySelector(".levelup");
 			if (levelupEl) levelupEl.style.display = skill.upgradable && _points ? "" : "none";
 		});
+		highlightUpgradable(root, target);
 		this.onUpdateSkill(skill.SKID, skill.level);
 	};
 	Component.useSkillID = function useSkillID(id, level) {
@@ -234538,13 +234541,77 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 		}
 		_points = amount;
 		const count = _list.length;
-		for (let i = 0; i < count; ++i) root.querySelectorAll(`.skill.id${_list[i].SKID} .levelup`).forEach((lu) => {
-			lu.style.display = _list[i].upgradable && amount ? "" : "none";
-		});
+		for (let i = 0; i < count; ++i) {
+			root.querySelectorAll(`.skill.id${_list[i].SKID} .levelup`).forEach((lu) => {
+				lu.style.display = _list[i].upgradable && amount ? "" : "none";
+			});
+			highlightUpgradable(root, _list[i]);
+		}
 	};
 	Component.onLevelUp = function onLevelUp() {
 		if (_btnLevelUp) document.body.appendChild(_btnLevelUp);
 	};
+	const renderSitting = (function renderSittingClosure() {
+		const _look = [
+			0,
+			1,
+			0,
+			2
+		];
+		const _lookStep = 1e3;
+		const _cleanColor = new Float32Array([
+			1,
+			1,
+			1,
+			1
+		]);
+		const _savedColor = /* @__PURE__ */ new Float32Array(4);
+		const _animation = {
+			tick: 0,
+			frame: 0,
+			repeat: true,
+			play: true,
+			next: false,
+			delay: 0,
+			save: false
+		};
+		let _ctx = null;
+		return function renderSittingChar(tick) {
+			const character = SessionStorage_default.Entity;
+			const root = Component.getRoot();
+			const contentbig = root.querySelector(".contentbig");
+			if (!character || !contentbig || contentbig.style.display === "none" || !Component.ui.is(":visible")) return;
+			if (!_ctx) {
+				_ctx = root.querySelector("canvas.sitting")?.getContext("2d");
+				if (!_ctx) return;
+			}
+			const direction = character.direction;
+			const headDir = character.headDir;
+			const action = character.action;
+			const animation = character.animation;
+			Camera.direction = 4;
+			character.direction = 4;
+			character.headDir = _look[Math.floor((tick || 0) / _lookStep) % _look.length];
+			character.action = character.ACTION.SIT;
+			character.animation = _animation;
+			_savedColor.set(character.effectColor);
+			character.effectColor.set(_cleanColor);
+			SpriteRenderer.bind2DContext(_ctx, _ctx.canvas.width / 2, _ctx.canvas.height - 10);
+			_ctx.clearRect(0, 0, _ctx.canvas.width, _ctx.canvas.height);
+			character.renderEntity();
+			character.direction = direction;
+			character.headDir = headDir;
+			character.action = action;
+			character.animation = animation;
+			character.effectColor.set(_savedColor);
+		};
+	})();
+	function highlightUpgradable(root, skill) {
+		const on = !!(skill.upgradable && _points);
+		root.querySelectorAll(`.skillCol > .skill.id${skill.SKID}`).forEach((element) => {
+			element.parentElement.classList.toggle("upgradable", on);
+		});
+	}
 	function getSkillById(id) {
 		const count = _list.length;
 		for (let i = 0; i < count; ++i) if (_list[i].SKID === id) return _list[i];
@@ -234735,6 +234802,7 @@ function createSkillList({ name, htmlText, cssText, hasTabs = false, showDescOnM
 var _skillConstNames;
 var init_SkillListCommon = __esmMin((() => {
 	init_Elements();
+	init_Camera();
 	init_Client();
 	init_DBManager();
 	init_GUIComponent();
@@ -234742,6 +234810,7 @@ var init_SkillListCommon = __esmMin((() => {
 	init_Preferences$1();
 	init_Renderer();
 	init_SessionStorage();
+	init_SpriteRenderer();
 	init_SkillDescription();
 	init_SkillInfo();
 	init_SkillConst();
@@ -234830,13 +234899,13 @@ var init_SkillList$1 = __esmMin((() => {
 //#region src/UI/Components/SkillList/SkillListV2/SkillListV2.html?raw
 var SkillListV2_default$2;
 var init_SkillListV2$2 = __esmMin((() => {
-	SkillListV2_default$2 = "<div id=\"SkillListV2\">\r\n	<div class=\"border\">\r\n		<div class=\"titlebar\">\r\n			<ui-image src=\"basic_interface/btnbar_mid2.bmp\"></ui-image>\r\n			<div class=\"left\">\r\n				<ui-button\r\n					class=\"base\"\r\n					bg=\"basic_interface/sys_base_off.bmp\"\r\n					hover=\"basic_interface/sys_base_on.bmp\"\r\n				></ui-button>\r\n				<ui-text class=\"text\" msgid=\"283\">Skill Tree</ui-text>\r\n			</div>\r\n			<div class=\"right\">\r\n				<input type=\"checkbox\" class=\"view_skill_info\" />view skill info\r\n				<ui-button\r\n					class=\"base mini\"\r\n					bg=\"basic_interface/sys_mini_off.bmp\"\r\n					hover=\"basic_interface/sys_mini_on.bmp\"\r\n				></ui-button>\r\n				<ui-button\r\n					class=\"base close\"\r\n					bg=\"basic_interface/sys_close_off.bmp\"\r\n					hover=\"basic_interface/sys_close_on.bmp\"\r\n				></ui-button>\r\n			</div>\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n\r\n		<div class=\"panel\">\r\n			<div class=\"content\" style=\"display: block; width: 256px; height: 320px\">\r\n				<!-- Just to get reference, will be removed -->\r\n				<ui-button\r\n					class=\"btn levelup\"\r\n					bg=\"basic_interface/skill_up_a.bmp\"\r\n					hover=\"basic_interface/skill_up_b.bmp\"\r\n					down=\"basic_interface/skill_up_c.bmp\"\r\n				></ui-button>\r\n				<div class=\"tabs-mini\">\r\n					<div class=\"tab-mini\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-1-mini\" checked class=\"tab-switch-mini\" />\r\n						<label for=\"tab-1-mini\" class=\"tab-label-mini\">1st</label>\r\n						<div class=\"tab-content-mini\">\r\n							<table id=\"minitab1\"></table>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab-mini\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-2-mini\" class=\"tab-switch-mini\" />\r\n						<label for=\"tab-2-mini\" id=\"tabminil2\" class=\"tab-label-mini\">2nd</label>\r\n						<div class=\"tab-content-mini\">\r\n							<table id=\"minitab2\"></table>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab-mini\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-3-mini\" class=\"tab-switch-mini\" />\r\n						<label for=\"tab-3-mini\" id=\"tabminil3\" class=\"tab-label-mini\">3rd</label>\r\n						<div class=\"tab-content-mini\">\r\n							<table id=\"minitab3\"></table>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab-mini\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-4-mini\" class=\"tab-switch-mini\" />\r\n						<label for=\"tab-4-mini\" id=\"tabminil4\" class=\"tab-label-mini\">4th</label>\r\n						<div class=\"tab-content-mini\">\r\n							<table id=\"minitab4\"></table>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab-mini\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-5-mini\" class=\"tab-switch-mini\" />\r\n						<label for=\"tab-5-mini\" class=\"tab-label-mini\">Etc</label>\r\n						<div class=\"tab-content-mini\">\r\n							<table id=\"minitab5\"></table>\r\n						</div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n			<div class=\"contentbig\" style=\"width: 480px; height: 384px; display: block\">\r\n				<div class=\"tabs\">\r\n					<div class=\"tab\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-1\" checked class=\"tab-switch\" />\r\n						<label for=\"tab-1\" class=\"tab-label\">1st</label>\r\n						<div class=\"tab-content\">\r\n							<div id=\"positionSkills1\">\r\n								<div class=\"skillRow\" data-order=\"0\">\r\n									<div class=\"skillCol s0\"></div>\r\n									<div class=\"skillCol s1\"></div>\r\n									<div class=\"skillCol s2\"></div>\r\n									<div class=\"skillCol s3\"></div>\r\n									<div class=\"skillCol s4\"></div>\r\n									<div class=\"skillCol s5\"></div>\r\n									<div class=\"skillCol s6\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"1\">\r\n									<div class=\"skillCol s7\"></div>\r\n									<div class=\"skillCol s8\"></div>\r\n									<div class=\"skillCol s9\"></div>\r\n									<div class=\"skillCol s10\"></div>\r\n									<div class=\"skillCol s11\"></div>\r\n									<div class=\"skillCol s12\"></div>\r\n									<div class=\"skillCol s13\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"2\">\r\n									<div class=\"skillCol s14\"></div>\r\n									<div class=\"skillCol s15\"></div>\r\n									<div class=\"skillCol s16\"></div>\r\n									<div class=\"skillCol s17\"></div>\r\n									<div class=\"skillCol s18\"></div>\r\n									<div class=\"skillCol s19\"></div>\r\n									<div class=\"skillCol s20\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"3\">\r\n									<div class=\"skillCol s21\"></div>\r\n									<div class=\"skillCol s22\"></div>\r\n									<div class=\"skillCol s23\"></div>\r\n									<div class=\"skillCol s24\"></div>\r\n									<div class=\"skillCol s25\"></div>\r\n									<div class=\"skillCol s26\"></div>\r\n									<div class=\"skillCol s27\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"4\">\r\n									<div class=\"skillCol s28\"></div>\r\n									<div class=\"skillCol s29\"></div>\r\n									<div class=\"skillCol s30\"></div>\r\n									<div class=\"skillCol s31\"></div>\r\n									<div class=\"skillCol s32\"></div>\r\n									<div class=\"skillCol s33\"></div>\r\n									<div class=\"skillCol s34\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"5\">\r\n									<div class=\"skillCol s35\"></div>\r\n									<div class=\"skillCol s36\"></div>\r\n									<div class=\"skillCol s37\"></div>\r\n									<div class=\"skillCol s38\"></div>\r\n									<div class=\"skillCol s39\"></div>\r\n									<div class=\"skillCol s40\"></div>\r\n									<div class=\"skillCol s41\"></div>\r\n								</div>\r\n							</div>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-2\" class=\"tab-switch\" />\r\n						<label for=\"tab-2\" id=\"tabl2\" class=\"tab-label\">2nd</label>\r\n						<div class=\"tab-content\">\r\n							<div id=\"positionSkills2\">\r\n								<div class=\"skillRow\" data-order=\"0\">\r\n									<div class=\"skillCol s0\"></div>\r\n									<div class=\"skillCol s1\"></div>\r\n									<div class=\"skillCol s2\"></div>\r\n									<div class=\"skillCol s3\"></div>\r\n									<div class=\"skillCol s4\"></div>\r\n									<div class=\"skillCol s5\"></div>\r\n									<div class=\"skillCol s6\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"1\">\r\n									<div class=\"skillCol s7\"></div>\r\n									<div class=\"skillCol s8\"></div>\r\n									<div class=\"skillCol s9\"></div>\r\n									<div class=\"skillCol s10\"></div>\r\n									<div class=\"skillCol s11\"></div>\r\n									<div class=\"skillCol s12\"></div>\r\n									<div class=\"skillCol s13\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"2\">\r\n									<div class=\"skillCol s14\"></div>\r\n									<div class=\"skillCol s15\"></div>\r\n									<div class=\"skillCol s16\"></div>\r\n									<div class=\"skillCol s17\"></div>\r\n									<div class=\"skillCol s18\"></div>\r\n									<div class=\"skillCol s19\"></div>\r\n									<div class=\"skillCol s20\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"3\">\r\n									<div class=\"skillCol s21\"></div>\r\n									<div class=\"skillCol s22\"></div>\r\n									<div class=\"skillCol s23\"></div>\r\n									<div class=\"skillCol s24\"></div>\r\n									<div class=\"skillCol s25\"></div>\r\n									<div class=\"skillCol s26\"></div>\r\n									<div class=\"skillCol s27\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"4\">\r\n									<div class=\"skillCol s28\"></div>\r\n									<div class=\"skillCol s29\"></div>\r\n									<div class=\"skillCol s30\"></div>\r\n									<div class=\"skillCol s31\"></div>\r\n									<div class=\"skillCol s32\"></div>\r\n									<div class=\"skillCol s33\"></div>\r\n									<div class=\"skillCol s34\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"5\">\r\n									<div class=\"skillCol s35\"></div>\r\n									<div class=\"skillCol s36\"></div>\r\n									<div class=\"skillCol s37\"></div>\r\n									<div class=\"skillCol s38\"></div>\r\n									<div class=\"skillCol s39\"></div>\r\n									<div class=\"skillCol s40\"></div>\r\n									<div class=\"skillCol s41\"></div>\r\n								</div>\r\n							</div>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-3\" class=\"tab-switch\" />\r\n						<label for=\"tab-3\" id=\"tabl3\" class=\"tab-label\">3rd</label>\r\n						<div class=\"tab-content\">\r\n							<div id=\"positionSkills3\">\r\n								<div class=\"skillRow\" data-order=\"0\">\r\n									<div class=\"skillCol s0\"></div>\r\n									<div class=\"skillCol s1\"></div>\r\n									<div class=\"skillCol s2\"></div>\r\n									<div class=\"skillCol s3\"></div>\r\n									<div class=\"skillCol s4\"></div>\r\n									<div class=\"skillCol s5\"></div>\r\n									<div class=\"skillCol s6\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"1\">\r\n									<div class=\"skillCol s7\"></div>\r\n									<div class=\"skillCol s8\"></div>\r\n									<div class=\"skillCol s9\"></div>\r\n									<div class=\"skillCol s10\"></div>\r\n									<div class=\"skillCol s11\"></div>\r\n									<div class=\"skillCol s12\"></div>\r\n									<div class=\"skillCol s13\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"2\">\r\n									<div class=\"skillCol s14\"></div>\r\n									<div class=\"skillCol s15\"></div>\r\n									<div class=\"skillCol s16\"></div>\r\n									<div class=\"skillCol s17\"></div>\r\n									<div class=\"skillCol s18\"></div>\r\n									<div class=\"skillCol s19\"></div>\r\n									<div class=\"skillCol s20\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"3\">\r\n									<div class=\"skillCol s21\"></div>\r\n									<div class=\"skillCol s22\"></div>\r\n									<div class=\"skillCol s23\"></div>\r\n									<div class=\"skillCol s24\"></div>\r\n									<div class=\"skillCol s25\"></div>\r\n									<div class=\"skillCol s26\"></div>\r\n									<div class=\"skillCol s27\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"4\">\r\n									<div class=\"skillCol s28\"></div>\r\n									<div class=\"skillCol s29\"></div>\r\n									<div class=\"skillCol s30\"></div>\r\n									<div class=\"skillCol s31\"></div>\r\n									<div class=\"skillCol s32\"></div>\r\n									<div class=\"skillCol s33\"></div>\r\n									<div class=\"skillCol s34\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"5\">\r\n									<div class=\"skillCol s35\"></div>\r\n									<div class=\"skillCol s36\"></div>\r\n									<div class=\"skillCol s37\"></div>\r\n									<div class=\"skillCol s38\"></div>\r\n									<div class=\"skillCol s39\"></div>\r\n									<div class=\"skillCol s40\"></div>\r\n									<div class=\"skillCol s41\"></div>\r\n								</div>\r\n							</div>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-4\" class=\"tab-switch\" />\r\n						<label for=\"tab-4\" id=\"tabl4\" class=\"tab-label\">4th</label>\r\n						<div class=\"tab-content\">\r\n							<div id=\"positionSkills4\">\r\n								<div class=\"skillRow\" data-order=\"0\">\r\n									<div class=\"skillCol s0\"></div>\r\n									<div class=\"skillCol s1\"></div>\r\n									<div class=\"skillCol s2\"></div>\r\n									<div class=\"skillCol s3\"></div>\r\n									<div class=\"skillCol s4\"></div>\r\n									<div class=\"skillCol s5\"></div>\r\n									<div class=\"skillCol s6\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"1\">\r\n									<div class=\"skillCol s7\"></div>\r\n									<div class=\"skillCol s8\"></div>\r\n									<div class=\"skillCol s9\"></div>\r\n									<div class=\"skillCol s10\"></div>\r\n									<div class=\"skillCol s11\"></div>\r\n									<div class=\"skillCol s12\"></div>\r\n									<div class=\"skillCol s13\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"2\">\r\n									<div class=\"skillCol s14\"></div>\r\n									<div class=\"skillCol s15\"></div>\r\n									<div class=\"skillCol s16\"></div>\r\n									<div class=\"skillCol s17\"></div>\r\n									<div class=\"skillCol s18\"></div>\r\n									<div class=\"skillCol s19\"></div>\r\n									<div class=\"skillCol s20\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"3\">\r\n									<div class=\"skillCol s21\"></div>\r\n									<div class=\"skillCol s22\"></div>\r\n									<div class=\"skillCol s23\"></div>\r\n									<div class=\"skillCol s24\"></div>\r\n									<div class=\"skillCol s25\"></div>\r\n									<div class=\"skillCol s26\"></div>\r\n									<div class=\"skillCol s27\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"4\">\r\n									<div class=\"skillCol s28\"></div>\r\n									<div class=\"skillCol s29\"></div>\r\n									<div class=\"skillCol s30\"></div>\r\n									<div class=\"skillCol s31\"></div>\r\n									<div class=\"skillCol s32\"></div>\r\n									<div class=\"skillCol s33\"></div>\r\n									<div class=\"skillCol s34\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"5\">\r\n									<div class=\"skillCol s35\"></div>\r\n									<div class=\"skillCol s36\"></div>\r\n									<div class=\"skillCol s37\"></div>\r\n									<div class=\"skillCol s38\"></div>\r\n									<div class=\"skillCol s39\"></div>\r\n									<div class=\"skillCol s40\"></div>\r\n									<div class=\"skillCol s41\"></div>\r\n								</div>\r\n							</div>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-5\" class=\"tab-switch\" />\r\n						<label for=\"tab-5\" class=\"tab-label\">Etc</label>\r\n						<div class=\"tab-content\">\r\n							<div id=\"etcBIG5\">\r\n								<div class=\"skillRow\" data-order=\"0\">\r\n									<div class=\"skillCol s0\"></div>\r\n									<div class=\"skillCol s1\"></div>\r\n									<div class=\"skillCol s2\"></div>\r\n									<div class=\"skillCol s3\"></div>\r\n									<div class=\"skillCol s4\"></div>\r\n									<div class=\"skillCol s5\"></div>\r\n									<div class=\"skillCol s6\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"1\">\r\n									<div class=\"skillCol s7\"></div>\r\n									<div class=\"skillCol s8\"></div>\r\n									<div class=\"skillCol s9\"></div>\r\n									<div class=\"skillCol s10\"></div>\r\n									<div class=\"skillCol s11\"></div>\r\n									<div class=\"skillCol s12\"></div>\r\n									<div class=\"skillCol s13\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"2\">\r\n									<div class=\"skillCol s14\"></div>\r\n									<div class=\"skillCol s15\"></div>\r\n									<div class=\"skillCol s16\"></div>\r\n									<div class=\"skillCol s17\"></div>\r\n									<div class=\"skillCol s18\"></div>\r\n									<div class=\"skillCol s19\"></div>\r\n									<div class=\"skillCol s20\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"3\">\r\n									<div class=\"skillCol s21\"></div>\r\n									<div class=\"skillCol s22\"></div>\r\n									<div class=\"skillCol s23\"></div>\r\n									<div class=\"skillCol s24\"></div>\r\n									<div class=\"skillCol s25\"></div>\r\n									<div class=\"skillCol s26\"></div>\r\n									<div class=\"skillCol s27\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"4\">\r\n									<div class=\"skillCol s28\"></div>\r\n									<div class=\"skillCol s29\"></div>\r\n									<div class=\"skillCol s30\"></div>\r\n									<div class=\"skillCol s31\"></div>\r\n									<div class=\"skillCol s32\"></div>\r\n									<div class=\"skillCol s33\"></div>\r\n									<div class=\"skillCol s34\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"5\">\r\n									<div class=\"skillCol s35\"></div>\r\n									<div class=\"skillCol s36\"></div>\r\n									<div class=\"skillCol s37\"></div>\r\n									<div class=\"skillCol s38\"></div>\r\n									<div class=\"skillCol s39\"></div>\r\n									<div class=\"skillCol s40\"></div>\r\n									<div class=\"skillCol s41\"></div>\r\n								</div>\r\n							</div>\r\n						</div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n\r\n			<div class=\"footer\">\r\n				<ui-image src=\"basic_interface/btnbar_mid2.bmp\"></ui-image>\r\n				<div class=\"text\">Skill Points: <span class=\"skpoints_count\">0</span></div>\r\n				<ui-button\r\n					class=\"btn apply\"\r\n					bg=\"btn_apply.bmp\"\r\n					hover=\"btn_apply_a.bmp\"\r\n					down=\"btn_apply_b.bmp\"\r\n				></ui-button>\r\n				<ui-button\r\n					class=\"btn reset\"\r\n					bg=\"btn_reset.bmp\"\r\n					hover=\"btn_reset_a.bmp\"\r\n					down=\"btn_reset_b.bmp\"\r\n				></ui-button>\r\n				<ui-button class=\"extend\" bg=\"btn_resize.bmp\"></ui-button>\r\n			</div>\r\n		</div>\r\n	</div>\r\n\r\n	<ui-button id=\"lvlup_job\" bg=\"basic_interface/lv_up_off.bmp\" down=\"basic_interface/lv_up_on.bmp\"></ui-button>\r\n</div>\r\n";
+	SkillListV2_default$2 = "<div id=\"SkillListV2\">\r\n	<div class=\"border\">\r\n		<div class=\"titlebar\">\r\n			<ui-image src=\"basic_interface/btnbar_mid2.bmp\"></ui-image>\r\n			<div class=\"left\">\r\n				<ui-button\r\n					class=\"base\"\r\n					bg=\"basic_interface/sys_base_off.bmp\"\r\n					hover=\"basic_interface/sys_base_on.bmp\"\r\n				></ui-button>\r\n				<ui-text class=\"text\" msgid=\"283\">Skill Tree</ui-text>\r\n			</div>\r\n			<div class=\"right\">\r\n				<input type=\"checkbox\" class=\"view_skill_info\" />view skill info\r\n				<ui-button\r\n					class=\"base mini\"\r\n					bg=\"basic_interface/sys_mini_off.bmp\"\r\n					hover=\"basic_interface/sys_mini_on.bmp\"\r\n				></ui-button>\r\n				<ui-button\r\n					class=\"base close\"\r\n					bg=\"basic_interface/sys_close_off.bmp\"\r\n					hover=\"basic_interface/sys_close_on.bmp\"\r\n				></ui-button>\r\n			</div>\r\n			<div class=\"clear\"></div>\r\n		</div>\r\n\r\n		<div class=\"panel\">\r\n			<div class=\"content\" style=\"display: block; width: 256px; height: 320px\">\r\n				<!-- Just to get reference, will be removed -->\r\n				<ui-button\r\n					class=\"btn levelup\"\r\n					bg=\"basic_interface/skill_up_a.bmp\"\r\n					hover=\"basic_interface/skill_up_b.bmp\"\r\n					down=\"basic_interface/skill_up_c.bmp\"\r\n				></ui-button>\r\n				<div class=\"tabs-mini\">\r\n					<div class=\"tab-mini\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-1-mini\" checked class=\"tab-switch-mini\" />\r\n						<label for=\"tab-1-mini\" class=\"tab-label-mini\">1st</label>\r\n						<div class=\"tab-content-mini\">\r\n							<table id=\"minitab1\"></table>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab-mini\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-2-mini\" class=\"tab-switch-mini\" />\r\n						<label for=\"tab-2-mini\" id=\"tabminil2\" class=\"tab-label-mini\">2nd</label>\r\n						<div class=\"tab-content-mini\">\r\n							<table id=\"minitab2\"></table>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab-mini\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-3-mini\" class=\"tab-switch-mini\" />\r\n						<label for=\"tab-3-mini\" id=\"tabminil3\" class=\"tab-label-mini\">3rd</label>\r\n						<div class=\"tab-content-mini\">\r\n							<table id=\"minitab3\"></table>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab-mini\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-4-mini\" class=\"tab-switch-mini\" />\r\n						<label for=\"tab-4-mini\" id=\"tabminil4\" class=\"tab-label-mini\">4th</label>\r\n						<div class=\"tab-content-mini\">\r\n							<table id=\"minitab4\"></table>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab-mini\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-5-mini\" class=\"tab-switch-mini\" />\r\n						<label for=\"tab-5-mini\" class=\"tab-label-mini\">Etc</label>\r\n						<div class=\"tab-content-mini\">\r\n							<table id=\"minitab5\"></table>\r\n						</div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n			<div class=\"contentbig\" style=\"width: 480px; height: 384px; display: block\">\r\n				<canvas class=\"sitting\" width=\"60\" height=\"100\"></canvas>\r\n				<div class=\"tabs\">\r\n					<div class=\"tab\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-1\" checked class=\"tab-switch\" />\r\n						<label for=\"tab-1\" class=\"tab-label\">1st</label>\r\n						<div class=\"tab-content\">\r\n							<div id=\"positionSkills1\">\r\n								<div class=\"skillRow\" data-order=\"0\">\r\n									<div class=\"skillCol s0\"></div>\r\n									<div class=\"skillCol s1\"></div>\r\n									<div class=\"skillCol s2\"></div>\r\n									<div class=\"skillCol s3\"></div>\r\n									<div class=\"skillCol s4\"></div>\r\n									<div class=\"skillCol s5\"></div>\r\n									<div class=\"skillCol s6\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"1\">\r\n									<div class=\"skillCol s7\"></div>\r\n									<div class=\"skillCol s8\"></div>\r\n									<div class=\"skillCol s9\"></div>\r\n									<div class=\"skillCol s10\"></div>\r\n									<div class=\"skillCol s11\"></div>\r\n									<div class=\"skillCol s12\"></div>\r\n									<div class=\"skillCol s13\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"2\">\r\n									<div class=\"skillCol s14\"></div>\r\n									<div class=\"skillCol s15\"></div>\r\n									<div class=\"skillCol s16\"></div>\r\n									<div class=\"skillCol s17\"></div>\r\n									<div class=\"skillCol s18\"></div>\r\n									<div class=\"skillCol s19\"></div>\r\n									<div class=\"skillCol s20\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"3\">\r\n									<div class=\"skillCol s21\"></div>\r\n									<div class=\"skillCol s22\"></div>\r\n									<div class=\"skillCol s23\"></div>\r\n									<div class=\"skillCol s24\"></div>\r\n									<div class=\"skillCol s25\"></div>\r\n									<div class=\"skillCol s26\"></div>\r\n									<div class=\"skillCol s27\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"4\">\r\n									<div class=\"skillCol s28\"></div>\r\n									<div class=\"skillCol s29\"></div>\r\n									<div class=\"skillCol s30\"></div>\r\n									<div class=\"skillCol s31\"></div>\r\n									<div class=\"skillCol s32\"></div>\r\n									<div class=\"skillCol s33\"></div>\r\n									<div class=\"skillCol s34\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"5\">\r\n									<div class=\"skillCol s35\"></div>\r\n									<div class=\"skillCol s36\"></div>\r\n									<div class=\"skillCol s37\"></div>\r\n									<div class=\"skillCol s38\"></div>\r\n									<div class=\"skillCol s39\"></div>\r\n									<div class=\"skillCol s40\"></div>\r\n									<div class=\"skillCol s41\"></div>\r\n								</div>\r\n							</div>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-2\" class=\"tab-switch\" />\r\n						<label for=\"tab-2\" id=\"tabl2\" class=\"tab-label\">2nd</label>\r\n						<div class=\"tab-content\">\r\n							<div id=\"positionSkills2\">\r\n								<div class=\"skillRow\" data-order=\"0\">\r\n									<div class=\"skillCol s0\"></div>\r\n									<div class=\"skillCol s1\"></div>\r\n									<div class=\"skillCol s2\"></div>\r\n									<div class=\"skillCol s3\"></div>\r\n									<div class=\"skillCol s4\"></div>\r\n									<div class=\"skillCol s5\"></div>\r\n									<div class=\"skillCol s6\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"1\">\r\n									<div class=\"skillCol s7\"></div>\r\n									<div class=\"skillCol s8\"></div>\r\n									<div class=\"skillCol s9\"></div>\r\n									<div class=\"skillCol s10\"></div>\r\n									<div class=\"skillCol s11\"></div>\r\n									<div class=\"skillCol s12\"></div>\r\n									<div class=\"skillCol s13\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"2\">\r\n									<div class=\"skillCol s14\"></div>\r\n									<div class=\"skillCol s15\"></div>\r\n									<div class=\"skillCol s16\"></div>\r\n									<div class=\"skillCol s17\"></div>\r\n									<div class=\"skillCol s18\"></div>\r\n									<div class=\"skillCol s19\"></div>\r\n									<div class=\"skillCol s20\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"3\">\r\n									<div class=\"skillCol s21\"></div>\r\n									<div class=\"skillCol s22\"></div>\r\n									<div class=\"skillCol s23\"></div>\r\n									<div class=\"skillCol s24\"></div>\r\n									<div class=\"skillCol s25\"></div>\r\n									<div class=\"skillCol s26\"></div>\r\n									<div class=\"skillCol s27\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"4\">\r\n									<div class=\"skillCol s28\"></div>\r\n									<div class=\"skillCol s29\"></div>\r\n									<div class=\"skillCol s30\"></div>\r\n									<div class=\"skillCol s31\"></div>\r\n									<div class=\"skillCol s32\"></div>\r\n									<div class=\"skillCol s33\"></div>\r\n									<div class=\"skillCol s34\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"5\">\r\n									<div class=\"skillCol s35\"></div>\r\n									<div class=\"skillCol s36\"></div>\r\n									<div class=\"skillCol s37\"></div>\r\n									<div class=\"skillCol s38\"></div>\r\n									<div class=\"skillCol s39\"></div>\r\n									<div class=\"skillCol s40\"></div>\r\n									<div class=\"skillCol s41\"></div>\r\n								</div>\r\n							</div>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-3\" class=\"tab-switch\" />\r\n						<label for=\"tab-3\" id=\"tabl3\" class=\"tab-label\">3rd</label>\r\n						<div class=\"tab-content\">\r\n							<div id=\"positionSkills3\">\r\n								<div class=\"skillRow\" data-order=\"0\">\r\n									<div class=\"skillCol s0\"></div>\r\n									<div class=\"skillCol s1\"></div>\r\n									<div class=\"skillCol s2\"></div>\r\n									<div class=\"skillCol s3\"></div>\r\n									<div class=\"skillCol s4\"></div>\r\n									<div class=\"skillCol s5\"></div>\r\n									<div class=\"skillCol s6\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"1\">\r\n									<div class=\"skillCol s7\"></div>\r\n									<div class=\"skillCol s8\"></div>\r\n									<div class=\"skillCol s9\"></div>\r\n									<div class=\"skillCol s10\"></div>\r\n									<div class=\"skillCol s11\"></div>\r\n									<div class=\"skillCol s12\"></div>\r\n									<div class=\"skillCol s13\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"2\">\r\n									<div class=\"skillCol s14\"></div>\r\n									<div class=\"skillCol s15\"></div>\r\n									<div class=\"skillCol s16\"></div>\r\n									<div class=\"skillCol s17\"></div>\r\n									<div class=\"skillCol s18\"></div>\r\n									<div class=\"skillCol s19\"></div>\r\n									<div class=\"skillCol s20\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"3\">\r\n									<div class=\"skillCol s21\"></div>\r\n									<div class=\"skillCol s22\"></div>\r\n									<div class=\"skillCol s23\"></div>\r\n									<div class=\"skillCol s24\"></div>\r\n									<div class=\"skillCol s25\"></div>\r\n									<div class=\"skillCol s26\"></div>\r\n									<div class=\"skillCol s27\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"4\">\r\n									<div class=\"skillCol s28\"></div>\r\n									<div class=\"skillCol s29\"></div>\r\n									<div class=\"skillCol s30\"></div>\r\n									<div class=\"skillCol s31\"></div>\r\n									<div class=\"skillCol s32\"></div>\r\n									<div class=\"skillCol s33\"></div>\r\n									<div class=\"skillCol s34\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"5\">\r\n									<div class=\"skillCol s35\"></div>\r\n									<div class=\"skillCol s36\"></div>\r\n									<div class=\"skillCol s37\"></div>\r\n									<div class=\"skillCol s38\"></div>\r\n									<div class=\"skillCol s39\"></div>\r\n									<div class=\"skillCol s40\"></div>\r\n									<div class=\"skillCol s41\"></div>\r\n								</div>\r\n							</div>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-4\" class=\"tab-switch\" />\r\n						<label for=\"tab-4\" id=\"tabl4\" class=\"tab-label\">4th</label>\r\n						<div class=\"tab-content\">\r\n							<div id=\"positionSkills4\">\r\n								<div class=\"skillRow\" data-order=\"0\">\r\n									<div class=\"skillCol s0\"></div>\r\n									<div class=\"skillCol s1\"></div>\r\n									<div class=\"skillCol s2\"></div>\r\n									<div class=\"skillCol s3\"></div>\r\n									<div class=\"skillCol s4\"></div>\r\n									<div class=\"skillCol s5\"></div>\r\n									<div class=\"skillCol s6\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"1\">\r\n									<div class=\"skillCol s7\"></div>\r\n									<div class=\"skillCol s8\"></div>\r\n									<div class=\"skillCol s9\"></div>\r\n									<div class=\"skillCol s10\"></div>\r\n									<div class=\"skillCol s11\"></div>\r\n									<div class=\"skillCol s12\"></div>\r\n									<div class=\"skillCol s13\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"2\">\r\n									<div class=\"skillCol s14\"></div>\r\n									<div class=\"skillCol s15\"></div>\r\n									<div class=\"skillCol s16\"></div>\r\n									<div class=\"skillCol s17\"></div>\r\n									<div class=\"skillCol s18\"></div>\r\n									<div class=\"skillCol s19\"></div>\r\n									<div class=\"skillCol s20\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"3\">\r\n									<div class=\"skillCol s21\"></div>\r\n									<div class=\"skillCol s22\"></div>\r\n									<div class=\"skillCol s23\"></div>\r\n									<div class=\"skillCol s24\"></div>\r\n									<div class=\"skillCol s25\"></div>\r\n									<div class=\"skillCol s26\"></div>\r\n									<div class=\"skillCol s27\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"4\">\r\n									<div class=\"skillCol s28\"></div>\r\n									<div class=\"skillCol s29\"></div>\r\n									<div class=\"skillCol s30\"></div>\r\n									<div class=\"skillCol s31\"></div>\r\n									<div class=\"skillCol s32\"></div>\r\n									<div class=\"skillCol s33\"></div>\r\n									<div class=\"skillCol s34\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"5\">\r\n									<div class=\"skillCol s35\"></div>\r\n									<div class=\"skillCol s36\"></div>\r\n									<div class=\"skillCol s37\"></div>\r\n									<div class=\"skillCol s38\"></div>\r\n									<div class=\"skillCol s39\"></div>\r\n									<div class=\"skillCol s40\"></div>\r\n									<div class=\"skillCol s41\"></div>\r\n								</div>\r\n							</div>\r\n						</div>\r\n					</div>\r\n					<div class=\"tab\">\r\n						<input type=\"radio\" name=\"css-tabs\" id=\"tab-5\" class=\"tab-switch\" />\r\n						<label for=\"tab-5\" class=\"tab-label\">Etc</label>\r\n						<div class=\"tab-content\">\r\n							<div id=\"etcBIG5\">\r\n								<div class=\"skillRow\" data-order=\"0\">\r\n									<div class=\"skillCol s0\"></div>\r\n									<div class=\"skillCol s1\"></div>\r\n									<div class=\"skillCol s2\"></div>\r\n									<div class=\"skillCol s3\"></div>\r\n									<div class=\"skillCol s4\"></div>\r\n									<div class=\"skillCol s5\"></div>\r\n									<div class=\"skillCol s6\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"1\">\r\n									<div class=\"skillCol s7\"></div>\r\n									<div class=\"skillCol s8\"></div>\r\n									<div class=\"skillCol s9\"></div>\r\n									<div class=\"skillCol s10\"></div>\r\n									<div class=\"skillCol s11\"></div>\r\n									<div class=\"skillCol s12\"></div>\r\n									<div class=\"skillCol s13\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"2\">\r\n									<div class=\"skillCol s14\"></div>\r\n									<div class=\"skillCol s15\"></div>\r\n									<div class=\"skillCol s16\"></div>\r\n									<div class=\"skillCol s17\"></div>\r\n									<div class=\"skillCol s18\"></div>\r\n									<div class=\"skillCol s19\"></div>\r\n									<div class=\"skillCol s20\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"3\">\r\n									<div class=\"skillCol s21\"></div>\r\n									<div class=\"skillCol s22\"></div>\r\n									<div class=\"skillCol s23\"></div>\r\n									<div class=\"skillCol s24\"></div>\r\n									<div class=\"skillCol s25\"></div>\r\n									<div class=\"skillCol s26\"></div>\r\n									<div class=\"skillCol s27\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"4\">\r\n									<div class=\"skillCol s28\"></div>\r\n									<div class=\"skillCol s29\"></div>\r\n									<div class=\"skillCol s30\"></div>\r\n									<div class=\"skillCol s31\"></div>\r\n									<div class=\"skillCol s32\"></div>\r\n									<div class=\"skillCol s33\"></div>\r\n									<div class=\"skillCol s34\"></div>\r\n								</div>\r\n								<div class=\"skillRow\" data-order=\"5\">\r\n									<div class=\"skillCol s35\"></div>\r\n									<div class=\"skillCol s36\"></div>\r\n									<div class=\"skillCol s37\"></div>\r\n									<div class=\"skillCol s38\"></div>\r\n									<div class=\"skillCol s39\"></div>\r\n									<div class=\"skillCol s40\"></div>\r\n									<div class=\"skillCol s41\"></div>\r\n								</div>\r\n							</div>\r\n						</div>\r\n					</div>\r\n				</div>\r\n			</div>\r\n\r\n			<div class=\"footer\">\r\n				<ui-image src=\"basic_interface/btnbar_mid2.bmp\"></ui-image>\r\n				<div class=\"text\">Skill Points: <span class=\"skpoints_count\">0</span></div>\r\n				<ui-button\r\n					class=\"btn apply\"\r\n					bg=\"btn_apply.bmp\"\r\n					hover=\"btn_apply_a.bmp\"\r\n					down=\"btn_apply_b.bmp\"\r\n				></ui-button>\r\n				<ui-button\r\n					class=\"btn reset\"\r\n					bg=\"btn_reset.bmp\"\r\n					hover=\"btn_reset_a.bmp\"\r\n					down=\"btn_reset_b.bmp\"\r\n				></ui-button>\r\n				<ui-button class=\"extend\" bg=\"btn_resize.bmp\"></ui-button>\r\n			</div>\r\n		</div>\r\n	</div>\r\n\r\n	<ui-button id=\"lvlup_job\" bg=\"basic_interface/lv_up_off.bmp\" down=\"basic_interface/lv_up_on.bmp\"></ui-button>\r\n</div>\r\n";
 }));
 //#endregion
 //#region src/UI/Components/SkillList/SkillListV2/SkillListV2.css?raw
 var SkillListV2_default$1;
 var init_SkillListV2$1 = __esmMin((() => {
-	SkillListV2_default$1 = ":host {\r\n	top: 100px;\r\n	left: 100px;\r\n}\r\n\r\n#SkillListV2 {\r\n	position: absolute;\r\n	border-radius: 5px;\r\n	background: white;\r\n	line-height: 18px;\r\n	letter-spacing: 0px;\r\n	border: 1px solid #c1c6c2;\r\n}\r\n#SkillListV2 .border {\r\n	border: 1px solid #c1c6c2;\r\n	margin: 1px;\r\n	border-radius: 5px;\r\n}\r\n\r\n#SkillListV2 .titlebar {\r\n	height: 18px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	background-position: 0 -1px;\r\n	border-radius: 3px 3px 0px 0px;\r\n}\r\n#SkillListV2 .titlebar .base {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n#SkillListV2 .titlebar .text {\r\n	text-shadow: 1px 1px white;\r\n	vertical-align: -2px;\r\n	white-space: nowrap;\r\n	/* chrome bug */\r\n	display: inline-block;\r\n	width: 60px;\r\n	height: 13px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n\r\n#SkillListV2 .titlebar .left {\r\n	margin-left: 3px;\r\n	float: left;\r\n	height: 18px;\r\n}\r\n#SkillListV2 .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n}\r\n#SkillListV2 .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n#SkillListV2 .content {\r\n	position: relative;\r\n	padding: 5px;\r\n	border-top: 1px solid #c6c6c6;\r\n	width: 270px;\r\n	height: 200px;\r\n}\r\n#SkillListV2 .content table {\r\n	border: none;\r\n	border-spacing: 0px;\r\n	padding-top: 5px;\r\n}\r\n#SkillListV2 .content td,\r\n#SkillListV2 .content .name {\r\n	padding: 0px;\r\n}\r\n\r\n/* Mini Tab*/\r\n#SkillListV2 .tabs-mini {\r\n	position: relative;\r\n}\r\n#SkillListV2 .tabs-mini::before,\r\n#SkillListV2 .tabs-mini::after {\r\n	content: '';\r\n	display: table;\r\n}\r\n#SkillListV2 .tabs-mini::after {\r\n	clear: both;\r\n}\r\n#SkillListV2 .tab-switch-mini {\r\n	display: none;\r\n}\r\n#SkillListV2 .tab-label-mini {\r\n	writing-mode: vertical-lr;\r\n	text-orientation: upright;\r\n	left: -23px;\r\n	width: 18px;\r\n	position: relative;\r\n	margin: -3px 0;\r\n	border: 1px solid #c1c6c2;\r\n	background: #fff;\r\n	border-radius: 5px 0 0 5px;\r\n	cursor: pointer;\r\n}\r\n#SkillListV2 .tab-content-mini {\r\n	overflow-y: auto;\r\n	overflow-x: hidden;\r\n	width: 100%;\r\n	height: 100%;\r\n	position: absolute;\r\n	z-index: 1;\r\n	left: 0;\r\n	top: 0;\r\n	right: 0;\r\n	bottom: 0;\r\n	opacity: 0;\r\n}\r\n#SkillListV2 .tab-switch-mini:checked + .tab-label-mini {\r\n	width: 20px;\r\n	left: -25px;\r\n	z-index: 1;\r\n}\r\n#SkillListV2 .tab-switch-mini:checked + label + .tab-content-mini {\r\n	z-index: 2;\r\n	opacity: 1;\r\n}\r\n\r\n#SkillListV2 .levelup {\r\n	border: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	padding: 0;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n#SkillListV2 td.type {\r\n	vertical-align: bottom;\r\n}\r\n\r\n#SkillListV2 .content .icon {\r\n	padding-left: 15px;\r\n}\r\n#SkillListV2 .content .levelupcontainer {\r\n	padding-left: 5px;\r\n	padding-right: 5px;\r\n	width: 24px;\r\n}\r\n#SkillListV2 .content div.name {\r\n	line-height: 12px;\r\n	white-space: nowrap;\r\n	padding-left: 5px;\r\n	white-space: nowrap;\r\n	width: 120px;\r\n	padding-top: 4px;\r\n	height: 28px;\r\n}\r\n#SkillListV2 .disabled .icon,\r\n#SkillListV2 .disabled .name {\r\n	opacity: 0.5;\r\n}\r\n#SkillListV2 .disabled .consume,\r\n#SkillListV2 .disabled .level {\r\n	display: none;\r\n}\r\n#SkillListV2 .currentDown,\r\n#SkillListV2 .currentUp {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n\r\n#SkillListV2 .selected.disabled .selectable {\r\n	background-color: #b5b5b5;\r\n}\r\n#SkillListV2 .selected.passive .selectable {\r\n	background-color: #73d5ee;\r\n}\r\n/*#SkillListV2 .selected.active .selectable { background-color:#739cee;}*/\r\n\r\n#SkillListV2 .footer {\r\n	width: 100%;\r\n	height: 27px;\r\n	background-repeat: repeat-x;\r\n	background-color: transparent;\r\n	position: relative;\r\n}\r\n#SkillListV2 .footer .text {\r\n	padding-top: 7px;\r\n	margin-left: 10px;\r\n}\r\n#SkillListV2 .footer .btn {\r\n	position: absolute;\r\n	top: 5px;\r\n	border: 0;\r\n	width: 42px;\r\n	height: 20px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	display: none;\r\n}\r\n#SkillListV2 .footer .apply {\r\n	right: 70px;\r\n}\r\n#SkillListV2 .footer .reset {\r\n	right: 20px;\r\n}\r\n#SkillListV2 .footer .extend {\r\n	position: absolute;\r\n	right: 0px;\r\n	bottom: 1px;\r\n	width: 13px;\r\n	height: 13px;\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#lvlup_job {\r\n	z-index: 51;\r\n	position: absolute;\r\n	right: 0px;\r\n	bottom: 0px;\r\n	width: 43px;\r\n	height: 43px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#SkillListV2 .tab-content {\r\n	overflow-y: auto;\r\n	padding: 5px;\r\n	border-top: 1px solid #c6c6c6;\r\n	width: calc(100% - 12px);\r\n	height: 375px;\r\n}\r\n\r\n/* skill tree with tabs */\r\n#SkillListV2 .skillCol .name,\r\n#SkillListV2 .skillCol .selectable {\r\n	position: relative;\r\n	text-align: center;\r\n	display: block;\r\n	width: 70px;\r\n	left: -23px;\r\n}\r\n#SkillListV2 .skillCol .skill {\r\n	position: relative;\r\n	top: -16px;\r\n}\r\n#SkillListV2 .skillRow {\r\n	display: flex;\r\n	padding-left: 40px;\r\n}\r\n#SkillListV2 .skillCol {\r\n	position: relative;\r\n	margin: 15px 17px;\r\n	border: 1px dashed #c0c0c0ff;\r\n	border-radius: 5px;\r\n	width: 28px;\r\n	height: 28px;\r\n	text-align: center;\r\n	white-space: nowrap;\r\n}\r\n#SkillListV2 .tabs {\r\n	position: relative;\r\n}\r\n#SkillListV2 .tabs::before,\r\n#SkillListV2 .tabs::after {\r\n	content: '';\r\n	display: table;\r\n}\r\n#SkillListV2 .tabs::after {\r\n	clear: both;\r\n}\r\n#SkillListV2 .tab-switch {\r\n	display: none;\r\n}\r\n#SkillListV2 .tab-label {\r\n	writing-mode: vertical-lr;\r\n	text-orientation: upright;\r\n	left: -23px;\r\n	width: 18px;\r\n	position: relative;\r\n	margin: -3px 0;\r\n	border: 1px solid #c1c6c2;\r\n	background: #fff;\r\n	border-radius: 5px 0 0 5px;\r\n	cursor: pointer;\r\n}\r\n#SkillListV2 .tab-content {\r\n	position: absolute;\r\n	z-index: 1;\r\n	left: 0;\r\n	top: 0;\r\n	opacity: 0;\r\n}\r\n#SkillListV2 .tab-switch:checked + .tab-label {\r\n	width: 20px;\r\n	left: -25px;\r\n	z-index: 1;\r\n}\r\n#SkillListV2 .tab-switch:checked + label + .tab-content {\r\n	z-index: 2;\r\n	opacity: 1;\r\n}\r\n#SkillListV2 .needleSkill {\r\n	background: pink !important;\r\n}\r\n#SkillListV2 .upgradable {\r\n	background: #c0cdff;\r\n}\r\n#SkillListV2 .counterSkill {\r\n	position: absolute;\r\n	left: 28px;\r\n	top: 18px;\r\n	color: #fff;\r\n	-webkit-text-stroke: 0.6px #2f2f2f;\r\n	font-weight: 1000;\r\n}\r\n";
+	SkillListV2_default$1 = ":host {\r\n	top: 100px;\r\n	left: 100px;\r\n}\r\n\r\n#SkillListV2 {\r\n	position: absolute;\r\n	border-radius: 5px;\r\n	background: white;\r\n	line-height: 18px;\r\n	letter-spacing: 0px;\r\n	border: 1px solid #c1c6c2;\r\n}\r\n#SkillListV2 .border {\r\n	border: 1px solid #c1c6c2;\r\n	margin: 1px;\r\n	border-radius: 5px;\r\n}\r\n\r\n#SkillListV2 .titlebar {\r\n	height: 18px;\r\n	background-color: white;\r\n	background-repeat: repeat-x;\r\n	background-position: 0 -1px;\r\n	border-radius: 3px 3px 0px 0px;\r\n}\r\n#SkillListV2 .titlebar .base {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n#SkillListV2 .titlebar .text {\r\n	text-shadow: 1px 1px white;\r\n	vertical-align: -2px;\r\n	white-space: nowrap;\r\n	/* chrome bug */\r\n	display: inline-block;\r\n	width: 60px;\r\n	height: 13px;\r\n	font-size: 11px;\r\n	font-weight: bold;\r\n}\r\n\r\n#SkillListV2 .titlebar .left {\r\n	margin-left: 3px;\r\n	float: left;\r\n	height: 18px;\r\n}\r\n#SkillListV2 .titlebar .right {\r\n	float: right;\r\n	margin-right: 3px;\r\n}\r\n#SkillListV2 .titlebar .clear {\r\n	clear: both;\r\n}\r\n\r\n#SkillListV2 .content {\r\n	position: relative;\r\n	padding: 5px;\r\n	border-top: 1px solid #c6c6c6;\r\n	width: 270px;\r\n	height: 200px;\r\n}\r\n#SkillListV2 .content table {\r\n	border: none;\r\n	border-spacing: 0px;\r\n	padding-top: 5px;\r\n}\r\n#SkillListV2 .content td,\r\n#SkillListV2 .content .name {\r\n	padding: 0px;\r\n}\r\n\r\n/* Mini Tab*/\r\n#SkillListV2 .tabs-mini {\r\n	position: relative;\r\n}\r\n#SkillListV2 .tabs-mini::before,\r\n#SkillListV2 .tabs-mini::after {\r\n	content: '';\r\n	display: table;\r\n}\r\n#SkillListV2 .tabs-mini::after {\r\n	clear: both;\r\n}\r\n#SkillListV2 .tab-switch-mini {\r\n	display: none;\r\n}\r\n#SkillListV2 .tab-label-mini {\r\n	writing-mode: vertical-lr;\r\n	text-orientation: upright;\r\n	left: -23px;\r\n	width: 18px;\r\n	position: relative;\r\n	margin: -3px 0;\r\n	border: 1px solid #c1c6c2;\r\n	background: #fff;\r\n	border-radius: 5px 0 0 5px;\r\n	cursor: pointer;\r\n}\r\n#SkillListV2 .tab-content-mini {\r\n	overflow-y: auto;\r\n	overflow-x: hidden;\r\n	width: 100%;\r\n	height: 100%;\r\n	position: absolute;\r\n	z-index: 1;\r\n	left: 0;\r\n	top: 0;\r\n	right: 0;\r\n	bottom: 0;\r\n	opacity: 0;\r\n}\r\n#SkillListV2 .tab-switch-mini:checked + .tab-label-mini {\r\n	width: 20px;\r\n	left: -25px;\r\n	z-index: 1;\r\n}\r\n#SkillListV2 .tab-switch-mini:checked + label + .tab-content-mini {\r\n	z-index: 2;\r\n	opacity: 1;\r\n}\r\n\r\n#SkillListV2 .levelup {\r\n	border: 0;\r\n	width: 24px;\r\n	height: 24px;\r\n	padding: 0;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n#SkillListV2 td.type {\r\n	vertical-align: bottom;\r\n}\r\n\r\n#SkillListV2 .content .icon {\r\n	padding-left: 15px;\r\n}\r\n#SkillListV2 .content .levelupcontainer {\r\n	padding-left: 5px;\r\n	padding-right: 5px;\r\n	width: 24px;\r\n}\r\n#SkillListV2 .content div.name {\r\n	line-height: 12px;\r\n	white-space: nowrap;\r\n	padding-left: 5px;\r\n	white-space: nowrap;\r\n	width: 120px;\r\n	padding-top: 4px;\r\n	height: 28px;\r\n}\r\n#SkillListV2 .disabled .icon,\r\n#SkillListV2 .disabled .name {\r\n	opacity: 0.5;\r\n}\r\n#SkillListV2 .disabled .consume,\r\n#SkillListV2 .disabled .level {\r\n	display: none;\r\n}\r\n#SkillListV2 .currentDown,\r\n#SkillListV2 .currentUp {\r\n	width: 11px;\r\n	height: 11px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n	vertical-align: middle;\r\n}\r\n\r\n#SkillListV2 .selected.disabled .selectable {\r\n	background-color: #b5b5b5;\r\n}\r\n#SkillListV2 .selected.passive .selectable {\r\n	background-color: #73d5ee;\r\n}\r\n/*#SkillListV2 .selected.active .selectable { background-color:#739cee;}*/\r\n\r\n#SkillListV2 .footer {\r\n	width: 100%;\r\n	height: 27px;\r\n	background-repeat: repeat-x;\r\n	background-color: transparent;\r\n	position: relative;\r\n}\r\n#SkillListV2 .footer .text {\r\n	padding-top: 7px;\r\n	margin-left: 10px;\r\n}\r\n#SkillListV2 .footer .btn {\r\n	position: absolute;\r\n	top: 5px;\r\n	border: 0;\r\n	width: 42px;\r\n	height: 20px;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n	display: none;\r\n}\r\n#SkillListV2 .footer .apply {\r\n	right: 70px;\r\n}\r\n#SkillListV2 .footer .reset {\r\n	right: 20px;\r\n}\r\n#SkillListV2 .footer .extend {\r\n	position: absolute;\r\n	right: 0px;\r\n	bottom: 1px;\r\n	width: 13px;\r\n	height: 13px;\r\n	border: none;\r\n	background-repeat: no-repeat;\r\n	background-color: transparent;\r\n}\r\n\r\n#lvlup_job {\r\n	z-index: 51;\r\n	position: absolute;\r\n	right: 0px;\r\n	bottom: 0px;\r\n	width: 43px;\r\n	height: 43px;\r\n	border: none;\r\n	background-color: transparent;\r\n	background-repeat: no-repeat;\r\n}\r\n\r\n#SkillListV2 .contentbig {\r\n	position: relative;\r\n}\r\n/* behind the tree, so skill slots stay on top and clickable */\r\n#SkillListV2 canvas.sitting {\r\n	position: absolute;\r\n	left: 0;\r\n	bottom: 4px;\r\n	z-index: 0;\r\n	pointer-events: none;\r\n}\r\n\r\n#SkillListV2 .tab-content {\r\n	overflow-y: auto;\r\n	padding: 5px;\r\n	border-top: 1px solid #c6c6c6;\r\n	width: calc(100% - 12px);\r\n	height: 375px;\r\n}\r\n\r\n/* skill tree with tabs */\r\n#SkillListV2 .skillCol .name,\r\n#SkillListV2 .skillCol .selectable {\r\n	position: relative;\r\n	text-align: center;\r\n	display: block;\r\n	width: 70px;\r\n	left: -23px;\r\n}\r\n#SkillListV2 .skillCol .skill {\r\n	position: relative;\r\n	top: -16px;\r\n}\r\n#SkillListV2 .skillRow {\r\n	display: flex;\r\n	padding-left: 40px;\r\n}\r\n#SkillListV2 .skillCol {\r\n	position: relative;\r\n	margin: 15px 17px;\r\n	border: 1px dashed #c0c0c0ff;\r\n	border-radius: 5px;\r\n	width: 28px;\r\n	height: 28px;\r\n	text-align: center;\r\n	white-space: nowrap;\r\n}\r\n#SkillListV2 .tabs {\r\n	position: relative;\r\n}\r\n#SkillListV2 .tabs::before,\r\n#SkillListV2 .tabs::after {\r\n	content: '';\r\n	display: table;\r\n}\r\n#SkillListV2 .tabs::after {\r\n	clear: both;\r\n}\r\n#SkillListV2 .tab-switch {\r\n	display: none;\r\n}\r\n#SkillListV2 .tab-label {\r\n	writing-mode: vertical-lr;\r\n	text-orientation: upright;\r\n	left: -23px;\r\n	width: 18px;\r\n	position: relative;\r\n	margin: -3px 0;\r\n	border: 1px solid #c1c6c2;\r\n	background: #fff;\r\n	border-radius: 5px 0 0 5px;\r\n	cursor: pointer;\r\n}\r\n#SkillListV2 .tab-content {\r\n	position: absolute;\r\n	z-index: 1;\r\n	left: 0;\r\n	top: 0;\r\n	opacity: 0;\r\n}\r\n#SkillListV2 .tab-switch:checked + .tab-label {\r\n	width: 20px;\r\n	left: -25px;\r\n	z-index: 1;\r\n}\r\n#SkillListV2 .tab-switch:checked + label + .tab-content {\r\n	z-index: 2;\r\n	opacity: 1;\r\n}\r\n#SkillListV2 .needleSkill {\r\n	background: pink !important;\r\n}\r\n#SkillListV2 .upgradable {\r\n	background: #c0cdff;\r\n}\r\n#SkillListV2 .counterSkill {\r\n	position: absolute;\r\n	left: 28px;\r\n	top: 18px;\r\n	color: #fff;\r\n	-webkit-text-stroke: 0.6px #2f2f2f;\r\n	font-weight: 1000;\r\n}\r\n";
 }));
 //#endregion
 //#region src/UI/Components/SkillList/SkillListV2/SkillListV2.js
@@ -236413,7 +236482,7 @@ function showList(anchor) {
 		list.style.opacity = "0";
 	}, LIST_VISIBLE_MS);
 }
-function dispose$2() {
+function dispose$3() {
 	if (_hideTimer) {
 		clearTimeout(_hideTimer);
 		_hideTimer = null;
@@ -236460,7 +236529,7 @@ var init_JoystickTargetCategory = __esmMin((() => {
 		isSupport,
 		onChange,
 		showList,
-		dispose: dispose$2
+		dispose: dispose$3
 	};
 }));
 //#endregion
@@ -237730,7 +237799,8 @@ function castOn(entity) {
 		});
 		return true;
 	}
-	const skill = entity === SessionStorage_default.Entity && SkillTargetSelection_default.getSkill ? SkillTargetSelection_default.getSkill() : null;
+	const friendly = (SkillTargetSelection_default.getFlag() & SkillTargetSelection_default.TYPE.FRIEND) !== 0;
+	const skill = entity === SessionStorage_default.Entity && friendly && SkillTargetSelection_default.getSkill ? SkillTargetSelection_default.getSkill() : null;
 	if (skill) SkillTargetSelection_default.onUseSkillToId(skill.SKID, skill.useLevel || skill.level, entity.GID);
 	else SkillTargetSelection_default.intersectEntityId(entity.GID);
 	SkillTargetSelection_default.remove();
@@ -237860,9 +237930,14 @@ function update$2(x, y, magnitude, deadzone) {
 		return false;
 	}
 	const owns = ownsStick();
+	const keyAt = (index) => index >= 0 && _entries[index] ? _entries[index].key : null;
+	const highlightKey = keyAt(_highlight);
+	const pickedKey = keyAt(_picked);
 	_entries = getMembers();
+	if (highlightKey !== null) _highlight = _entries.findIndex((entry) => entry.key === highlightKey);
+	if (pickedKey !== null) _picked = _entries.findIndex((entry) => entry.key === pickedKey);
 	if (owns) {
-		if (_highlight >= _entries.length) {
+		if (_highlight === -1 && highlightKey !== null) {
 			_highlight = _pending$1 ? 0 : -1;
 			_picked = -1;
 		}
@@ -237924,6 +237999,19 @@ function clearOverlay() {
 */
 function release() {
 	clearOverlay();
+}
+/**
+* The gamepad is going away (JoystickModule.dispose): take the overlay off the page and drop
+* what was kept for drawing, so nothing outlives it. The next use builds them again.
+*/
+function dispose$2() {
+	cancelPending(false);
+	closeRadial();
+	clearFocus();
+	if (_overlay && _overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+	_overlay = null;
+	_supportCtx = null;
+	_portraits.clear();
 }
 function draw() {
 	clearOverlay();
@@ -238301,6 +238389,7 @@ var init_JoystickSupportMode = __esmMin((() => {
 		ownsStick,
 		update: update$2,
 		release,
+		dispose: dispose$2,
 		segmentAt,
 		isRadialOpen: () => _open$2,
 		getHighlight: () => _highlight
@@ -238659,7 +238748,7 @@ function playerFeet() {
 	const player = SessionStorage_default.Entity;
 	return player ? JoystickAimMode_default.project(player.position[0], player.position[1]) : null;
 }
-var SELF_CAST_HOLD_MS, HOLD_POLL_MS, JoystickInteractionService_default;
+var SELF_CAST_HOLD_MS, HOLD_POLL_MS, selfCastWatch, JoystickInteractionService_default;
 var init_JoystickInteractionService = __esmMin((() => {
 	init_ShortCut();
 	init_Inventory();
@@ -238683,9 +238772,13 @@ var init_JoystickInteractionService = __esmMin((() => {
 	init_JoystickEmoteGrid();
 	SELF_CAST_HOLD_MS = 300;
 	HOLD_POLL_MS = 30;
+	selfCastWatch = 0;
 	JoystickInteractionService_default = {
 		prepare: function() {},
-		dispose: function() {},
+		dispose: function() {
+			JoystickSupportMode_default.dispose();
+			JoystickEmoteGrid_default.close();
+		},
 		cancelQuick: false,
 		executeShortcut: function(index, group) {
 			const shortcut = ShortCut_default.getList()[index];
@@ -238782,9 +238875,13 @@ var init_JoystickInteractionService = __esmMin((() => {
 				return true;
 			}
 			const startedAt = Date.now();
+			const token = ++selfCastWatch;
+			const waiting = SkillTargetSelection_default.getSkill();
+			const skid = waiting ? waiting.SKID : 0;
 			const watch = () => {
 				setTimeout(() => {
-					if (!SkillTargetSelection_default.getFlag()) return;
+					const now = SkillTargetSelection_default.getSkill();
+					if (token !== selfCastWatch || !SkillTargetSelection_default.getFlag() || !now || now.SKID !== skid) return;
 					const held = (JoystickInputService_default.buttonStates || [])[face];
 					if (!held || held === "unpressed") this.castInSupport(index);
 					else if (Date.now() - startedAt >= SELF_CAST_HOLD_MS) JoystickSupportMode_default.castOn(SessionStorage_default.Entity);
@@ -239057,7 +239154,7 @@ function setClickLock() {
 		clickLock = false;
 	}, lockTimeout);
 }
-var clickLock, lockTimeout, CAMERA_STEP_SMALL, CAMERA_STEP_LARGE, STICK_HOLD_MS, rsDownAt, rsHoldFired, lsDownAt, lsHoldFired, menuDownAt, menuHoldFired, ButtonInput;
+var clickLock, lockTimeout, CAMERA_STEP_SMALL, CAMERA_STEP_LARGE, STICK_HOLD_MS, rsDownAt, rsHoldFired, lsDownAt, lsHoldFired, menuDownAt, menuHoldFired, GRID_BUTTONS, gridHeld, ButtonInput;
 var init_JoystickButtonInput = __esmMin((() => {
 	init_JoystickShortcutMapper();
 	init_JoystickInteractionService();
@@ -239076,13 +239173,27 @@ var init_JoystickButtonInput = __esmMin((() => {
 	lsHoldFired = false;
 	menuDownAt = 0;
 	menuHoldFired = false;
+	GRID_BUTTONS = [
+		0,
+		1,
+		2,
+		3,
+		4,
+		5
+	];
+	gridHeld = [];
 	ButtonInput = {
 		update: function(buttons) {
 			if (JoystickInteractionService_default.isEmoteGridOpen()) {
 				menuDownAt = buttons[9] !== "unpressed" ? menuDownAt || Date.now() : 0;
 				menuHoldFired = true;
 				JoystickInteractionService_default.emoteGridInput(buttons);
+				gridHeld = GRID_BUTTONS.filter((i) => buttons[i] && buttons[i] !== "unpressed");
 				return true;
+			}
+			if (gridHeld.length) {
+				gridHeld = gridHeld.filter((i) => buttons[i] && buttons[i] !== "unpressed");
+				if (gridHeld.length) return false;
 			}
 			let stickButton = this._handleRightStickButton(buttons);
 			stickButton = this._handleLeftStickButton(buttons) || stickButton;
@@ -320060,7 +320171,7 @@ function _ensureDeps() {
 	if (!_depsPromise) _depsPromise = _loadHeavyDeps();
 	return _depsPromise;
 }
-var _Cursor, _DB, _Client, _Renderer, _EntityManager, _ScrollBar, _depsPromise, _snapCache, MouseMode, DENIED_SELECTOR, CSS_NUMBER, _frozenBy, GUIComponent;
+var _Cursor, _DB, _Client, _Renderer, _EntityManager, _ScrollBar, _depsPromise, _snapCache, MouseMode, _enteredGuards, _dragged, DENIED_SELECTOR, CSS_NUMBER, _frozenBy, GUIComponent;
 var init_GUIComponent = __esmMin((() => {
 	init_Common$1();
 	init_MouseEventHandler();
@@ -320083,6 +320194,17 @@ var init_GUIComponent = __esmMin((() => {
 		STOP: 1,
 		FREEZE: 2
 	});
+	_enteredGuards = /* @__PURE__ */ new Set();
+	_dragged = false;
+	if (typeof window !== "undefined") {
+		window.addEventListener("dragstart", () => _dragged = true, true);
+		window.addEventListener("mousemove", () => {
+			if (_dragged) {
+				_dragged = false;
+				_enteredGuards.forEach((check) => check());
+			}
+		}, true);
+	}
 	DENIED_SELECTOR = ".denied";
 	CSS_NUMBER = {
 		zIndex: true,
@@ -320637,10 +320759,14 @@ var init_GUIComponent = __esmMin((() => {
 			if (this.mouseMode === GUIComponent.MouseMode.STOP) {
 				let _intersect;
 				let _enter = 0;
+				const check = () => {
+					if (_enter > 0 && !(element.isConnected && element.matches(":hover"))) element.dispatchEvent(new Event("mouseleave"));
+				};
 				element.addEventListener("mouseenter", () => {
 					if (_enter === 0) {
 						_intersect = Mouse.intersect;
 						_enter++;
+						_enteredGuards.add(check);
 						if (_intersect) {
 							Mouse.intersect = false;
 							_Cursor?.setType(_Cursor?.ACTION?.DEFAULT ?? 0);
@@ -320651,6 +320777,7 @@ var init_GUIComponent = __esmMin((() => {
 				element.addEventListener("mouseleave", () => {
 					if (_enter > 0) {
 						_enter--;
+						_enteredGuards.delete(check);
 						if (_enter === 0 && _intersect) {
 							if (!SessionStorage_default.FreezeUI) Mouse.intersect = true;
 							_EntityManager?.setOverEntity(null);
@@ -320660,6 +320787,7 @@ var init_GUIComponent = __esmMin((() => {
 				element.addEventListener("x_remove", () => {
 					if (_enter > 0) {
 						_enter = 0;
+						_enteredGuards.delete(check);
 						if (_intersect) {
 							Mouse.intersect = true;
 							_EntityManager?.setOverEntity(null);
