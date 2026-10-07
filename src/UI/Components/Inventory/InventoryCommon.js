@@ -18,6 +18,7 @@
  */
 
 import DB from 'DB/DBManager.js';
+import PackageSelection from 'UI/Components/PackageSelection/PackageSelection.js';
 import ItemType from 'DB/Items/ItemType.js';
 import Network from 'Network/NetworkManager.js';
 import PACKET from 'Network/PacketStructure.js';
@@ -949,8 +950,15 @@ export function createInventory(config) {
 	 */
 	Component.useItem = function UseItem(item) {
 		switch (item.type) {
-			case ItemType.HEALING:
 			case ItemType.USABLE:
+				// rAthena exposes delay-consume boxes as usable items on the wire.
+				if (PACKETVER.value >= 20220216 && DB.getItemPackage(item.ITID).length) {
+					PackageSelection.open(item, Component);
+				} else {
+					Component.onUseItem(item.index);
+				}
+				break;
+			case ItemType.HEALING:
 			case ItemType.CASH:
 				Component.onUseItem(item.index);
 				break;
@@ -958,6 +966,7 @@ export function createInventory(config) {
 				Component.onUseCard(item.index);
 				break;
 			case ItemType.DELAYCONSUME:
+				PackageSelection.open(item, Component);
 				break;
 			case ItemType.WEAPON:
 			case ItemType.ARMOR:

@@ -11,6 +11,7 @@
 import PACKET from './PacketStructure.js';
 
 export default {
+	0x0baf: PACKET.CZ.USE_PACKAGEITEM,
 	0x69: PACKET.AC.ACCEPT_LOGIN, // ok
 	0x6a: PACKET.AC.REFUSE_LOGIN, // ok
 	0x6b: PACKET.HC.ACCEPT_ENTER_NEO_UNION, // ok
