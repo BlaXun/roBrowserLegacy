@@ -24,10 +24,23 @@ const CAMERA_STEP_SMALL = 45;
 const CAMERA_STEP_LARGE = 90;
 
 // RS click: a tap switches the right stick between aim and cursor, a hold
-// clears the target. Decided on release (tap) or after RS_HOLD_MS (hold).
-const RS_HOLD_MS = 400;
+// recenters the cursor. LS click: a tap clears the target, a hold sits down
+// or stands up. Decided on release (tap) or after STICK_HOLD_MS (hold).
+const STICK_HOLD_MS = 400;
 let rsDownAt = 0;
 let rsHoldFired = false;
+let lsDownAt = 0;
+let lsHoldFired = false;
+
+// Menu (without View): a tap is Enter, a hold opens the emote grid
+let menuDownAt = 0;
+let menuHoldFired = false;
+
+// A, B, X, Y, LB and RB still down when the emote grid last had them. A press that closes the
+// grid (A plays an emote, B closes) is still held on the next frame, when the grid is gone: it
+// belonged to the grid, and must not reach the map as a click until it is let go.
+const GRID_BUTTONS = [0, 1, 2, 3, 4, 5];
+let gridHeld = [];
 
 function setClickLock() {
 	clickLock = true;
@@ -38,8 +51,26 @@ function setClickLock() {
 
 const ButtonInput = {
 	update: function (buttons) {
+		// The emote grid has every button while it is open. The Menu hold that
+		// opened it must not end in an Enter when it is let go.
+		if (Interaction.isEmoteGridOpen()) {
+			menuDownAt = buttons[9] !== 'unpressed' ? menuDownAt || Date.now() : 0;
+			menuHoldFired = true;
+			Interaction.emoteGridInput(buttons);
+			gridHeld = GRID_BUTTONS.filter(i => buttons[i] && buttons[i] !== 'unpressed');
+			return true;
+		}
+		if (gridHeld.length) {
+			gridHeld = gridHeld.filter(i => buttons[i] && buttons[i] !== 'unpressed');
+			if (gridHeld.length) {
+				return false;
+			}
+		}
+
 		// Before the click lock: a release must not be missed, or a tap is lost
-		const stickButton = this._handleRightStickButton(buttons);
+		let stickButton = this._handleRightStickButton(buttons);
+		stickButton = this._handleLeftStickButton(buttons) || stickButton;
+		stickButton = this._handleMenuButton(buttons) || stickButton;
 
 		if (clickLock) {
 			return stickButton;
@@ -106,12 +137,6 @@ const ButtonInput = {
 			pressed = true;
 		}
 
-		// L3 (left stick click) → switch D-pad cycle mode (mobs/items/both)
-		if (btn[10] === 'pressed') {
-			Interaction.nextCycleMode();
-			pressed = true;
-		}
-
 		if (pressed) {
 			setClickLock();
 		}
@@ -122,12 +147,12 @@ const ButtonInput = {
 	_handleRightStickButton: function (btn) {
 		const state = btn[11];
 
-		// Aiming switched off in the settings: RS click clears the target as
-		// soon as it is pressed, as it did before aiming existed.
+		// Aiming switched off in the settings: there is no mode to switch,
+		// so RS click recenters the cursor as soon as it is pressed.
 		if (!ControlsSettings.joyAimEnabled) {
 			rsDownAt = 0;
 			if (state === 'pressed') {
-				Interaction.resetFocus();
+				Interaction.recenterCursor();
 			}
 			return state !== 'unpressed';
 		}
@@ -136,9 +161,9 @@ const ButtonInput = {
 			if (!rsDownAt) {
 				rsDownAt = Date.now();
 				rsHoldFired = false;
-			} else if (!rsHoldFired && Date.now() - rsDownAt >= RS_HOLD_MS) {
-				// Hold: clear target + recenter cursor, once per hold
-				Interaction.resetFocus();
+			} else if (!rsHoldFired && Date.now() - rsDownAt >= STICK_HOLD_MS) {
+				// Hold: recenter the cursor, once per hold
+				Interaction.recenterCursor();
 				rsHoldFired = true;
 			}
 			return true;
@@ -150,6 +175,72 @@ const ButtonInput = {
 				Interaction.toggleStickMode();
 			}
 			rsDownAt = 0;
+			return true;
+		}
+		return false;
+	},
+
+	/**
+	 * LS click. A tap clears the target, whatever it is; a hold sits down
+	 * or stands up, once per hold. Not while the selection window is open:
+	 * it has the pad then.
+	 */
+	_handleLeftStickButton: function (btn) {
+		const state = btn[10];
+
+		if (state !== 'unpressed') {
+			if (!lsDownAt) {
+				lsDownAt = Date.now();
+				lsHoldFired = false;
+			} else if (!lsHoldFired && Date.now() - lsDownAt >= STICK_HOLD_MS) {
+				if (!SelectionUI.active()) {
+					Interaction.toggleSit();
+				}
+				lsHoldFired = true;
+			}
+			return true;
+		}
+
+		if (lsDownAt) {
+			if (!lsHoldFired && !SelectionUI.active()) {
+				Interaction.clearTarget();
+			}
+			lsDownAt = 0;
+			return true;
+		}
+		return false;
+	},
+
+	/**
+	 * Menu on its own (View + Menu is Escape, in _handleSpecial). A tap
+	 * presses Enter on release, a hold opens the emote grid.
+	 */
+	_handleMenuButton: function (btn) {
+		const state = btn[9];
+
+		if (btn[8] !== 'unpressed') {
+			menuDownAt = 0;
+			return false;
+		}
+
+		if (state !== 'unpressed') {
+			if (!menuDownAt) {
+				menuDownAt = Date.now();
+				menuHoldFired = false;
+			} else if (!menuHoldFired && Date.now() - menuDownAt >= STICK_HOLD_MS) {
+				menuHoldFired = true;
+				if (!SelectionUI.active()) {
+					Interaction.openEmoteGrid();
+				}
+			}
+			return true;
+		}
+
+		if (menuDownAt) {
+			if (!menuHoldFired && !SelectionUI.active()) {
+				Interaction.enter();
+			}
+			menuDownAt = 0;
 			return true;
 		}
 		return false;
@@ -224,11 +315,11 @@ const ButtonInput = {
 
 		// D-Pad
 		if (buttons[12] !== 'unpressed') {
-			// D-pad Up
+			// D-pad Up: previous target category (or a window's own navigation)
 			Interaction.navigateDpad('up');
 			pressed = true;
 		} else if (buttons[13] !== 'unpressed') {
-			// D-pad Down
+			// D-pad Down: next target category (or a window's own navigation)
 			Interaction.navigateDpad('down');
 			pressed = true;
 		} else if (buttons[14] !== 'unpressed') {
@@ -238,10 +329,6 @@ const ButtonInput = {
 		} else if (buttons[15] !== 'unpressed') {
 			// D-pad Right: cycle to the next nearby mob/item (or grid nav over a UI)
 			Interaction.cycleTarget('next');
-			pressed = true;
-		} else if (buttons[9] !== 'unpressed') {
-			// Start button
-			Interaction.enter();
 			pressed = true;
 		}
 

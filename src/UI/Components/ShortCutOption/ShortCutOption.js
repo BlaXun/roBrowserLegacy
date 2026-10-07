@@ -21,6 +21,7 @@ import ButtonMap from 'UI/Components/JoystickUI/JoystickButtonMap.js';
 import JoystickUIRenderer from 'UI/Components/JoystickUI/JoystickUIRenderer.js';
 import JoystickAim from 'UI/Components/JoystickUI/JoystickAimMode.js';
 import StickFilter from 'UI/Components/JoystickUI/JoystickStickFilter.js';
+import TargetCategory from 'UI/Components/JoystickUI/JoystickTargetCategory.js';
 
 /**
  * Gamepad sliders that save as they move, with their value shown beside
@@ -209,10 +210,10 @@ ShortCutOption.init = function () {
  * Apply preferences once append to body
  */
 ShortCutOption.onAppend = function () {
-	// Reflect the current value; L3 can change it while the window is closed.
+	// Reflect the current value; D-pad up / down can change it while the window is closed.
 	const cycleMode = this.getRoot().querySelector('.joyCycleMode');
 	if (cycleMode) {
-		cycleMode.value = String(Controls.joyCycleMode | 0);
+		cycleMode.value = String(shownCategory());
 	}
 	reflectGamepadSettings(this.getRoot());
 
@@ -528,23 +529,23 @@ function onUpdateTargetOption() {
  * Roles a single button plays, in the order the mapping panel lists them.
  */
 const MAPPING_ROLES = [
-	[ButtonMap.BUTTON.A, 'Click / confirm'],
-	[ButtonMap.BUTTON.B, 'Right click (hold on item/skill: options)'],
+	[ButtonMap.BUTTON.A, 'Click / confirm (Support radial: cast the waiting skill on the chosen member)'],
+	[
+		ButtonMap.BUTTON.B,
+		'Right click (hold on item/skill: options) - Support radial: close it, or cancel the waiting skill'
+	],
 	[ButtonMap.BUTTON.X, 'Attack target'],
 	[ButtonMap.BUTTON.Y, 'Pick up item'],
-	[ButtonMap.BUTTON.LEFT, 'Previous target (grid left on items)'],
-	[ButtonMap.BUTTON.RIGHT, 'Next target (grid right on items)'],
-	[ButtonMap.BUTTON.UP, 'Up (arrow key, item grids)'],
-	[ButtonMap.BUTTON.DOWN, 'Down (arrow key, item grids)'],
-	[ButtonMap.BUTTON.LS, 'Target cycle: mobs / items / both / NPCs'],
+	[ButtonMap.BUTTON.LEFT, 'Previous target (Support: party member; grid left on items)'],
+	[ButtonMap.BUTTON.RIGHT, 'Next target (Support: party member, lowest HP first; grid right on items)'],
+	[ButtonMap.BUTTON.UP, 'Previous target category (up in item grids and NPC menus)'],
+	[ButtonMap.BUTTON.DOWN, 'Next target category (down in item grids and NPC menus)'],
+	[ButtonMap.BUTTON.LS, 'Tap: clear target - Hold: sit / stand'],
 	[
 		ButtonMap.BUTTON.RS,
-		() =>
-			Controls.joyAimEnabled
-				? 'Tap: right stick aim/cursor - Hold: clear target'
-				: 'Clear target, recenter cursor'
+		() => (Controls.joyAimEnabled ? 'Tap: right stick aim/cursor - Hold: recenter cursor' : 'Recenter cursor')
 	],
-	[ButtonMap.BUTTON.MENU, 'Enter'],
+	[ButtonMap.BUTTON.MENU, 'Tap: Enter - Hold: emotes'],
 	[ButtonMap.BUTTON.VIEW, 'Camera & menu modifier'],
 	[ButtonMap.BUTTON.LB, 'Shortcuts: skill bar 1, slots 1-4'],
 	[ButtonMap.BUTTON.LT, 'Shortcuts: skill bar 1, slots 5-8'],
@@ -575,8 +576,23 @@ function getMappingCombos() {
 		[n(B.VIEW) + ' + ' + n(B.MENU), 'Escape'],
 		[n(B.VIEW) + ' + ' + [n(B.A), n(B.B), n(B.X), n(B.Y)].join(' / '), 'Inventory / equipment / skills / status'],
 		[n(B.VIEW) + ' (cursor on item/skill)', 'Context menu'],
+		[
+			n(B.LB) + ' / ' + n(B.RB) + ' / ' + n(B.LT) + ' / ' + n(B.RT) + ' + ' + faces + ' (hold)',
+			'Support: the support skill on yourself'
+		],
+		[n(B.UP) + ' / ' + n(B.DOWN) + ' / ' + n(B.LEFT) + ' / ' + n(B.RIGHT) + ' (emotes open)', 'Choose an emote'],
+		[
+			[n(B.A), n(B.X), n(B.Y), n(B.B)].join(' / ') + ' (emotes open)',
+			'Play / play and stay open / favourite / close'
+		],
+		[n(B.LB) + ' / ' + n(B.RB) + ' (emotes open)', 'Previous / next emote page'],
 		[sticks[0], 'Move'],
-		[sticks[1], Controls.joyAimEnabled ? 'Cursor, or aim (tap ' + n(B.RS) + ')' : 'Cursor']
+		[
+			sticks[1],
+			Controls.joyAimEnabled
+				? 'Cursor, or aim (tap ' + n(B.RS) + '); Support: party radial'
+				: 'Cursor; Support: party radial'
+		]
 	];
 }
 
@@ -700,7 +716,7 @@ function reflectGamepadSettings(root) {
 			el.value = String(value);
 		}
 	};
-	setValue('.joyCycleMode', Controls.joyCycleMode | 0);
+	setValue('.joyCycleMode', shownCategory());
 	setValue('.attackTargetMode', Controls.attackTargetMode | 0);
 	showQuickCast(root);
 	setValue('.joySense', Controls.joySense);
@@ -769,9 +785,17 @@ function onCalibrate(root) {
 	});
 }
 
+/**
+ * The target category as the select offers it: the old "mobs and items"
+ * setting, no longer offered, shows as Mobs.
+ */
+function shownCategory() {
+	const category = TargetCategory.get();
+	return TargetCategory.ORDER.includes(category) ? category : TargetCategory.CATEGORY.MOBS;
+}
+
 function onUpdateCycleMode() {
-	Controls.joyCycleMode = parseInt(this.value, 10);
-	Controls.save();
+	TargetCategory.set(parseInt(this.value, 10));
 }
 
 function onUpdateSense() {

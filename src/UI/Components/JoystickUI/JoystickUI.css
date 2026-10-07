@@ -30,7 +30,8 @@
 	cursor: pointer;
 }
 
-#JoystickUI .stick-mode {
+#JoystickUI .stick-mode,
+#JoystickUI .target-category {
 	display: inline-block;
 	margin-left: 6px;
 	padding: 2px 8px;
@@ -190,4 +191,8 @@
 	text-shadow: 1px 1px 0px white;
 	text-align: right;
 	font-weight: bold;
+}
+
+#JoystickUI .target-category.support {
+	color: #9be29e;
 }
