@@ -20,6 +20,7 @@ import ChatBox from 'UI/Components/ChatBox/ChatBox.js';
 import { InventoryItemTransferPriority } from 'UI/Components/Inventory/InventoryItemTransfer.js';
 import htmlText from './Trade.html?raw';
 import cssText from './Trade.css?raw';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -55,18 +56,6 @@ Trade.title = '';
  * Capture key events so the zeny input field works inside Shadow DOM
  */
 Trade.captureKeyEvents = true;
-
-/**
- * Escape HTML special characters
- *
- * @param {string} text
- * @returns {string}
- */
-function escapeHtml(text) {
-	const div = document.createElement('div');
-	div.appendChild(document.createTextNode(text));
-	return div.innerHTML;
-}
 
 /**
  * Initialize UI
@@ -271,7 +260,7 @@ Trade.addItemFromInventory = function addItemFromInventory(index, success) {
 	itemDiv.innerHTML =
 		'<div class="icon"></div>' +
 		`<div class="amount"><span class="count">${_tmpCount[index] || 1}</span></div>` +
-		`<span class="name">${escapeHtml(DB.getItemName(item))}</span>`;
+		`<span class="name">${sanitizeHtml(DB.getItemName(item))}</span>`;
 	box.appendChild(itemDiv);
 
 	Client.loadFile(
@@ -312,7 +301,7 @@ Trade.addItem = function addItem(item) {
 	itemDiv.innerHTML =
 		'<div class="icon"></div>' +
 		`<div class="amount">${item.count}</div>` +
-		`<span class="name">${escapeHtml(DB.getItemName(item))}</span>`;
+		`<span class="name">${sanitizeHtml(DB.getItemName(item))}</span>`;
 	box.appendChild(itemDiv);
 
 	Client.loadFile(
@@ -532,7 +521,7 @@ function onItemOver(itemEl) {
 	overlay.style.display = '';
 	overlay.style.top = `${posTop + 5}px`;
 	overlay.style.left = `${posLeft + 30}px`;
-	overlay.textContent = DB.getItemName(item);
+	overlay.innerHTML = sanitizeHtml(DB.getItemName(item));
 
 	if (item.IsIdentified) {
 		overlay.classList.remove('grey');

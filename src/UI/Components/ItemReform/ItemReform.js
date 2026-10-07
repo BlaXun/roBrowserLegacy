@@ -25,6 +25,7 @@ import KEYS from 'Controls/KeyEventHandler.js';
 import htmlText from './ItemReform.html?raw';
 import cssText from './ItemReform.css?raw';
 import PACKET from 'Network/PacketStructure.js';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -284,7 +285,7 @@ function onOpenReformUI(pkt) {
 			const root = _root();
 			const itemText = root.querySelector('.item_text');
 			if (itemText) {
-				itemText.textContent = DB.getItemName(item);
+				itemText.innerHTML = sanitizeHtml(DB.getItemName(item));
 			}
 		} else {
 			console.warn('Item with ID', pkt.itemId, 'not found in Reform List.');
@@ -541,7 +542,7 @@ function UpdatePossibleReformUI(item, info) {
 
 	const resultItemText = root.querySelector('.result_item_text');
 	if (resultItemText) {
-		resultItemText.textContent = DB.getItemName(resultItem, { showItemOptions: false });
+		resultItemText.innerHTML = sanitizeHtml(DB.getItemName(resultItem, { showItemOptions: false }));
 	}
 
 	// Populate Material List
@@ -744,7 +745,7 @@ function onItemOver(event, element) {
 	}
 
 	overlay.style.display = 'block';
-	overlay.textContent = DB.getItemName(item, { showItemOptions: false });
+	overlay.innerHTML = sanitizeHtml(DB.getItemName(item, { showItemOptions: false }));
 
 	if (item.IsIdentified) {
 		overlay.classList.remove('grey');

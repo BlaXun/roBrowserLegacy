@@ -21,6 +21,7 @@ import KEYS from 'Controls/KeyEventHandler.js';
 import htmlText from './LaphineUpg.html?raw';
 import cssText from './LaphineUpg.css?raw';
 import PACKET from 'Network/PacketStructure.js';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -300,7 +301,7 @@ function onUpdateLaphineUpgUI() {
 	}
 
 	const root = _root();
-	root.querySelector('.item_text').textContent = DB.getItemName(item);
+	root.querySelector('.item_text').innerHTML = sanitizeHtml(DB.getItemName(item));
 	root.querySelector('.mat_info_list').textContent = LaphineUpgUIState.needSourceString;
 }
 
@@ -683,7 +684,7 @@ function onItemOver() {
 	overlay.style.display = 'block';
 	overlay.style.top = `${top}px`;
 	overlay.style.left = `${left}px`;
-	overlay.textContent = DB.getItemName(item, { showItemGrade: false, showItemSlots: false });
+	overlay.innerHTML = sanitizeHtml(DB.getItemName(item, { showItemGrade: false, showItemSlots: false }));
 
 	if (item.IsIdentified) {
 		overlay.classList.remove('grey');

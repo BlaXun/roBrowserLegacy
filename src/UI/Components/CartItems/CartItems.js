@@ -30,6 +30,7 @@ import Storage from 'UI/Components/Storage/Storage.js';
 import Inventory from 'UI/Components/Inventory/Inventory.js';
 import Equipment from 'UI/Components/Equipment/Equipment.js';
 import WheelSteps from 'UI/WheelSteps.js';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -664,7 +665,7 @@ function onItemOver(_e) {
 		overlay.style.display = 'block';
 		overlay.style.top = `${itemRect.top - rootRect.top}px`;
 		overlay.style.left = `${itemRect.left - rootRect.left + 35}px`;
-		overlay.textContent = `${DB.getItemName(item)}: ${item.count || 1}${quantity}`;
+		overlay.innerHTML = sanitizeHtml(`${DB.getItemName(item)}: ${item.count || 1}${quantity}`);
 
 		if (item.IsIdentified) {
 			overlay.classList.remove('grey');

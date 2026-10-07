@@ -24,6 +24,7 @@ import Inventory from 'UI/Components/Inventory/Inventory.js';
 import KEYS from 'Controls/KeyEventHandler.js';
 import htmlText from './Enchant.html?raw';
 import cssText from './Enchant.css?raw';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 const Enchant = new GUIComponent('Enchant', cssText);
 
@@ -278,7 +279,7 @@ function showHoverOverlay(text, identified, target) {
 	}
 	const hostRect = Enchant._host.getBoundingClientRect();
 	const targetRect = target.getBoundingClientRect();
-	overlay.textContent = text;
+	overlay.innerHTML = sanitizeHtml(text);
 	Object.assign(overlay.style, {
 		top: targetRect.top - hostRect.top + 'px',
 		left: targetRect.left - hostRect.left + 35 + 'px'
@@ -1009,7 +1010,7 @@ function renderItemList() {
 			showItemOptions: false
 		});
 
-		name.textContent = itemName;
+		name.innerHTML = sanitizeHtml(itemName);
 		info.appendChild(name);
 		info.appendChild(grade);
 

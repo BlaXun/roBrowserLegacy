@@ -29,6 +29,7 @@ import Storage from 'UI/Components/Storage/Storage.js';
 import MakeItemSelection from 'UI/Components/MakeItemSelection/MakeItemSelection.js';
 import ItemListWindowSelection from 'UI/Components/MakeItemSelection/ItemListWindowSelection.js';
 import EffectManager from 'Renderer/EffectManager.js';
+import { htmlToText } from 'Utils/HtmlHelper.js';
 
 /**
  * Spam an item on the map
@@ -80,7 +81,7 @@ function onItemPickAnswer(pkt) {
 	ItemObtain.append();
 	ItemObtain.set(pkt);
 
-	const getTextItem = DB.getItemName(pkt, { showItemOptions: false });
+	const getTextItem = htmlToText(DB.getItemName(pkt, { showItemOptions: false }));
 
 	ChatBox.addText(
 		DB.getMessage(153).replace('%s', getTextItem).replace('%d', pkt.count),
@@ -182,7 +183,11 @@ function onItemEquip(pkt) {
 	if (pkt.result == 1) {
 		const item = Inventory.getUI().removeItem(pkt.index, 1);
 		Equipment.getUI().equip(item, pkt.wearLocation);
-		ChatBox.addText(DB.getItemName(item) + ' ' + DB.getMessage(170), ChatBox.TYPE.BLUE, ChatBox.FILTER.ITEM);
+		ChatBox.addText(
+			htmlToText(DB.getItemName(item)) + ' ' + DB.getMessage(170),
+			ChatBox.TYPE.BLUE,
+			ChatBox.FILTER.ITEM
+		);
 
 		// Variables for Headgear Checks
 		const CostumeCheckTop = Equipment.getUI().checkEquipLoc(EquipLocation.COSTUME_HEAD_TOP);

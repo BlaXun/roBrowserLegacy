@@ -32,6 +32,7 @@ import PACKETVER from 'Network/PacketVerManager.js';
 import SkillWindow from 'UI/Components/SkillList/SkillList.js';
 import htmlText from './ShortCut.html?raw';
 import cssText from './ShortCut.css?raw';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -472,7 +473,7 @@ function onContainerMouseEnter(event) {
 		const host = ShortCut._host;
 		const hostRect = host.getBoundingClientRect();
 
-		tooltip.textContent = tooltipText;
+		tooltip.innerHTML = sanitizeHtml(tooltipText);
 		tooltip.classList.add('show');
 
 		// A scaled hotbar (UI/UIScale.js) clips its fixed children and moves

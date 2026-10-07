@@ -28,7 +28,7 @@ import cssText from './VendingShop.css?raw';
 import VendingReport from 'UI/Components/VendingReport/VendingReport.js';
 import { onItemDoubleClick } from 'UI/ItemDoubleClick.js';
 import WheelSteps from 'UI/WheelSteps.js';
-import { sanitizeHtml } from 'Utils/HtmlHelper.js';
+import { htmlToText, sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -347,7 +347,9 @@ VendingShop.removeItem = function removeItem(index, count) {
 		return null;
 	}
 
-	const msg = DB.getMessage(231).replace('%s', DB.getItemName(item)).replace('%d', count);
+	const msg = DB.getMessage(231)
+		.replace('%s', htmlToText(DB.getItemName(item)))
+		.replace('%d', count);
 	ChatBox.addText(msg, ChatBox.TYPE.BLUE, ChatBox.FILTER.PUBLIC_LOG);
 
 	const root = this.getRoot();

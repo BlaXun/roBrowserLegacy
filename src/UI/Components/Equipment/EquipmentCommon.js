@@ -37,12 +37,7 @@ import WinStats from 'UI/Components/WinStats/WinStats.js';
 import GraphicsSettings from 'Preferences/Graphics.js';
 import Inventory from 'UI/Components/Inventory/Inventory.js';
 import Entity from 'Renderer/Entity/Entity.js';
-
-function escapeHTML(str) {
-	const div = document.createElement('div');
-	div.textContent = str;
-	return div.innerHTML;
-}
+import { sanitizeHtml, truncateHtml } from 'Utils/HtmlHelper.js';
 
 function getFirstChildWithTagName(element, tagName) {
 	for (let i = 0; i < element.childNodes.length; i++) {
@@ -536,17 +531,6 @@ export function createEquipment({
 			}
 		}
 
-		function add3Dots(string, limit) {
-			function stripHTML(str) {
-				const div = document.createElement('div');
-				div.innerHTML = str;
-				return div.textContent || div.innerText || '';
-			}
-			const text = stripHTML(string);
-			if (text.length > limit) return text.substring(0, limit) + '...';
-			return text;
-		}
-
 		const root = Component.getRoot();
 		const selector = getSelectorFromLocation(location);
 		const gradeInner = enchantGrade ? '<div class="grade"></div>' : '';
@@ -559,11 +543,11 @@ export function createEquipment({
 				gradeInner +
 				'</button>' +
 				'<span class="itemName">' +
-				escapeHTML(
-					add3Dots(
-						DB.getItemName(item, { showItemGrade: false, showItemSlots: false, showItemOptions: false }),
-						25
-					)
+				truncateHtml(
+					sanitizeHtml(
+						DB.getItemName(item, { showItemGrade: false, showItemSlots: false, showItemOptions: false })
+					),
+					25
 				) +
 				'</span>' +
 				'</div>';
@@ -984,7 +968,7 @@ export function createEquipment({
 			overlay.style.display = 'block';
 			overlay.style.top = `${top - 22}px`;
 			overlay.style.left = `${left - 22}px`;
-			overlay.textContent = DB.getItemName(item);
+			overlay.innerHTML = sanitizeHtml(DB.getItemName(item));
 		}
 	}
 
@@ -1000,7 +984,12 @@ export function createEquipment({
 			const item = _list[index];
 			if (item.slot && [0x00ff, 0x00fe, 0xff00].includes(item.slot.card1)) {
 				root.querySelectorAll(`.item[data-index="${index}"] .itemName`).forEach(nameEl => {
-					nameEl.textContent = DB.getItemName(item);
+					nameEl.innerHTML = truncateHtml(
+						sanitizeHtml(
+							DB.getItemName(item, { showItemGrade: false, showItemSlots: false, showItemOptions: false })
+						),
+						25
+					);
 				});
 			}
 		}

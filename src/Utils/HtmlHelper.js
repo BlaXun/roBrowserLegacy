@@ -52,6 +52,58 @@ function sanitizeHtml(text) {
 }
 
 /**
+ * Plain text of an HTML string, for places that only show text: the chat
+ * box, prompt boxes. Parsed in a <template>, so nothing in it loads or runs.
+ *
+ * @param {string} html
+ * @returns {string} text content
+ */
+function htmlToText(html) {
+	const template = document.createElement('template');
+	template.innerHTML = html;
+	return template.content.textContent;
+}
+
+/**
+ * Truncate HTML to `limit` characters of text, adding an ellipsis, without
+ * cutting through a tag. Markup around the text that is kept stays intact.
+ *
+ * @param {string} html
+ * @param {number} limit
+ * @returns {string} truncated HTML string
+ */
+function truncateHtml(html, limit) {
+	const template = document.createElement('template');
+	template.innerHTML = html;
+
+	if (template.content.textContent.length <= limit) {
+		return html;
+	}
+
+	const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+	const nodes = [];
+	while (walker.nextNode()) {
+		nodes.push(walker.currentNode);
+	}
+
+	let remaining = limit;
+	for (const node of nodes) {
+		if (remaining <= 0) {
+			node.remove();
+		} else if (node.data.length > remaining) {
+			node.data = node.data.substring(0, remaining);
+			remaining = 0;
+		} else {
+			remaining -= node.data.length;
+		}
+	}
+
+	const container = document.createElement('div');
+	container.appendChild(template.content);
+	return container.innerHTML + '...';
+}
+
+/**
  * Animate CSS properties on an element using requestAnimationFrame.
  * Replaces jQuery.animate() for simple numeric/opacity transitions.
  *
@@ -119,4 +171,4 @@ function animateElement(element, props, duration, callback) {
 	};
 }
 
-export { escapeHtml, sanitizeHtml, animateElement };
+export { escapeHtml, sanitizeHtml, htmlToText, truncateHtml, animateElement };

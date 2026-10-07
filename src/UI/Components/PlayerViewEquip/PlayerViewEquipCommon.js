@@ -19,25 +19,7 @@ import UIManager from 'UI/UIManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
 import ItemInfo from 'UI/Components/ItemInfo/ItemInfo.js';
 import Entity from 'Renderer/Entity/Entity.js';
-
-/**
- * Escape HTML special characters
- */
-function escapeHTML(str) {
-	const div = document.createElement('div');
-	div.appendChild(document.createTextNode(str));
-	return div.innerHTML;
-}
-
-/**
- * Truncate string with ellipsis
- */
-function add3Dots(string, limit) {
-	if (string.length > limit) {
-		return string.substring(0, limit) + '...';
-	}
-	return string;
-}
+import { sanitizeHtml, truncateHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Generate the general equipment table HTML
@@ -350,7 +332,7 @@ export function createPlayerViewEquip({ name, cssText, hasTabs, costumeRows, cos
 				_overlay.style.display = '';
 				_overlay.style.top = top - 22 + 'px';
 				_overlay.style.left = left - 22 + 'px';
-				_overlay.textContent = DB.getItemName(item);
+				_overlay.innerHTML = sanitizeHtml(DB.getItemName(item));
 			});
 
 			// Mouseout on button → hide overlay
@@ -448,7 +430,7 @@ export function createPlayerViewEquip({ name, cssText, hasTabs, costumeRows, cos
 				'">' +
 				'<button></button>' +
 				'<span class="itemName">' +
-				add3Dots(escapeHTML(DB.getItemName(item)), 19) +
+				truncateHtml(sanitizeHtml(DB.getItemName(item)), 19) +
 				'</span>' +
 				'</div>';
 		}
@@ -564,7 +546,7 @@ export function createPlayerViewEquip({ name, cssText, hasTabs, costumeRows, cos
 			if (item.slot && [0x00ff, 0x00fe, 0xff00].includes(item.slot.card1)) {
 				const nameEl = _root.querySelector('.item[data-index="' + index + '"] .itemName');
 				if (nameEl) {
-					nameEl.textContent = DB.getItemName(item);
+					nameEl.innerHTML = truncateHtml(sanitizeHtml(DB.getItemName(item)), 19);
 				}
 			}
 		}

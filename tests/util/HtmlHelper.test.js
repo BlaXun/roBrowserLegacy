@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { escapeHtml, sanitizeHtml } from 'Utils/HtmlHelper.js';
+import { escapeHtml, htmlToText, sanitizeHtml, truncateHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * DB.getItemName returns markup for forged and brewed items: the crafter's
@@ -31,5 +31,23 @@ describe('HtmlHelper', () => {
 
 	it('strips tags outside the whitelist', () => {
 		expect(sanitizeHtml('<b>a</b><script>x</script><span>b</span>')).toBe('<b>a</b>xb');
+	});
+	it('gives plain text for the chat box', () => {
+		expect(htmlToText(crafted('Smith'))).toBe("Very Strong Smith's Fire Sword");
+	});
+
+	it('truncates by visible text and keeps the markup whole', () => {
+		const html = sanitizeHtml(crafted('Blacksmith'));
+		const el = document.createElement('div');
+		el.innerHTML = truncateHtml(html, 16);
+
+		expect(el.textContent).toBe('Very Strong Blac...');
+		expect(el.querySelector('font').textContent).toBe('Blac');
+		expect(el.querySelector('font').getAttribute('color')).toBe('#87cefa');
+	});
+
+	it('leaves short HTML as it is', () => {
+		const html = sanitizeHtml(crafted('Smith'));
+		expect(truncateHtml(html, 40)).toBe(html);
 	});
 });

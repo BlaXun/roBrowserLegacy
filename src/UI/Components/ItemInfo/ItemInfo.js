@@ -33,6 +33,7 @@ import PACKET from 'Network/PacketStructure.js';
 import Entity from 'Renderer/Entity/Entity.js';
 import Equipment from 'UI/Components/Equipment/Equipment.js';
 import Inventory from 'UI/Components/Inventory/Inventory.js';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -210,7 +211,7 @@ ItemInfo.setItem = function setItem(item) {
 		} else {
 			title.classList.remove('damaged');
 		}
-		title.textContent = itemName;
+		title.innerHTML = sanitizeHtml(itemName);
 	}
 
 	if (item.Options && item.IsIdentified) {

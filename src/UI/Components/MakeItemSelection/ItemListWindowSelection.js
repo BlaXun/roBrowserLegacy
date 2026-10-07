@@ -536,7 +536,7 @@ function onItemOver() {
 	overlay.style.display = 'block';
 	overlay.style.top = `${rect.top - hostRect.top - 10}px`;
 	overlay.style.left = `${rect.left - hostRect.left + 35}px`;
-	overlay.textContent = `${DB.getItemName(item)} ${item.count || 1} ea`;
+	overlay.innerHTML = _sanitizeHtml(`${DB.getItemName(item)} ${item.count || 1} ea`);
 
 	if (item.IsIdentified) {
 		overlay.classList.remove('grey');

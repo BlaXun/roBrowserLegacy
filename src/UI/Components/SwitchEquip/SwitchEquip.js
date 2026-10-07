@@ -26,6 +26,7 @@ import cssText from './SwitchEquip.css?raw';
 import Entity from 'Renderer/Entity/Entity.js';
 import Equipment from 'UI/Components/Equipment/Equipment.js';
 import Inventory from 'UI/Components/Inventory/Inventory.js';
+import { sanitizeHtml, truncateHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -33,15 +34,6 @@ import Inventory from 'UI/Components/Inventory/Inventory.js';
 const SwitchEquip = new GUIComponent('SwitchEquip', cssText);
 
 SwitchEquip.render = () => htmlText;
-
-/**
- * Escape HTML entities
- */
-function _escapeHtml(str) {
-	const div = document.createElement('div');
-	div.appendChild(document.createTextNode(str));
-	return div.innerHTML;
-}
 
 /**
  * @var {Array} switchequipment list
@@ -205,13 +197,6 @@ SwitchEquip.equip = function equip(item, location, inSwitchList) {
 	item.equipped = location;
 	SwitchEquip._list[item.index] = item;
 
-	const add3Dots = (string, limit) => {
-		if (string.length > limit) {
-			return string.substring(0, limit) + '...';
-		}
-		return string;
-	};
-
 	const root = SwitchEquip.getRoot();
 	const selector = getSelectorFromLocation(location);
 	const el = root.querySelector(selector);
@@ -219,7 +204,7 @@ SwitchEquip.equip = function equip(item, location, inSwitchList) {
 		el.innerHTML =
 			`<div class="item" data-index="${item.index}">` +
 			'<button></button>' +
-			`<span class="itemName">${add3Dots(_escapeHtml(DB.getItemName(item)), 19)}</span>` +
+			`<span class="itemName">${truncateHtml(sanitizeHtml(DB.getItemName(item)), 19)}</span>` +
 			'</div>';
 	}
 
@@ -486,7 +471,7 @@ function onSwitchEquipOver() {
 	overlay.style.display = '';
 	overlay.style.top = `${posTop - 22}px`;
 	overlay.style.left = `${posLeft - 22}px`;
-	overlay.textContent = DB.getItemName(item);
+	overlay.innerHTML = sanitizeHtml(DB.getItemName(item));
 }
 
 /**
@@ -507,7 +492,7 @@ SwitchEquip.onUpdateOwnerName = function () {
 		const item = SwitchEquip._list[index];
 		if (item.slot && [0x00ff, 0x00fe, 0xff00].includes(item.slot.card1)) {
 			const nameEl = root.querySelector(`.item[data-index="${index}"] .itemName`);
-			if (nameEl) nameEl.textContent = _escapeHtml(DB.getItemName(item));
+			if (nameEl) nameEl.innerHTML = truncateHtml(sanitizeHtml(DB.getItemName(item)), 19);
 		}
 	}
 };

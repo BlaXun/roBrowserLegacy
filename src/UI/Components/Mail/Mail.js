@@ -23,6 +23,7 @@ import GUIComponent from 'UI/GUIComponent.js';
 import 'UI/Elements/Elements.js';
 import htmlText from './Mail.html?raw';
 import cssText from './Mail.css?raw';
+import { sanitizeHtml } from 'Utils/HtmlHelper.js';
 
 /**
  * Create Component
@@ -795,7 +796,7 @@ function onItemOver() {
 	const overlay = root.querySelector('.container_item .overlay');
 	if (overlay) {
 		overlay.style.display = 'block';
-		overlay.textContent = `${DB.getItemName(item)} ${item.count || 1} ea`;
+		overlay.innerHTML = sanitizeHtml(`${DB.getItemName(item)} ${item.count || 1} ea`);
 
 		if (item.IsIdentified) {
 			overlay.classList.remove('grey');
