@@ -13,8 +13,14 @@ uniform float uFogFar;
 uniform vec3  uFogColor;
 
 void main(void) {
-	fragColor = texture( uDiffuse, vTextureCoord.st ) * uSpriteColor;
-	if ( fragColor.a == 0.0 || (fragColor.r == 0.0 && fragColor.g == 0.0 && fragColor.b == 0.0) ) {
+	// Drop a texture's black background, not a layer tinted black: a white
+	// shape coloured (0, 0, 0) is a shadow or a print, drawn by alpha blending.
+	vec4 texel = texture( uDiffuse, vTextureCoord.st );
+	if ( texel.a == 0.0 || (texel.r == 0.0 && texel.g == 0.0 && texel.b == 0.0) ) {
+		discard;
+	}
+	fragColor = texel * uSpriteColor;
+	if ( fragColor.a == 0.0 ) {
 		discard;
 	}
 
