@@ -1163,6 +1163,8 @@ class EffectManager {
 						Init: {
 							effectId: hatEffectID,
 							position: ownerEntity.position,
+							// So removeHatEffect can find what this spawns by owner.
+							ownerAID: ownerAID != null ? ownerAID : ownerEntity.GID,
 							ownerEntity: ownerEntity,
 							startTick: startTick,
 							duration: effectEntry.duration || 0,
@@ -1228,6 +1230,13 @@ class EffectManager {
 			if (info && info.type === 'effect' && info.effectTableId) {
 				attachments.remove(info.effectTableId);
 			}
+		}
+
+		// An effect-table hat effect can also be effects the manager draws
+		// itself, such as the coloured auras' FUNC parts, which no attachment
+		// holds. Without this they stayed after the item came off.
+		if (info && info.type === 'effect' && info.effectTableId) {
+			EffectManager.remove(null, ownerAID, info.effectTableId);
 		}
 
 		if (hatEffects) {

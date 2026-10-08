@@ -159,3 +159,48 @@ describe('effect lifetime and attachment direction', () => {
         assert.equal(fixed.direction, false);
     });
 });
+
+describe('hat effects from the effect table', () => {
+    // A player, not an effect entity: EffectManager.remove deletes the whole
+    // entity when objecttype is TYPE_EFFECT.
+    class Player {
+        static TYPE_EFFECT = 5;
+        constructor(GID, position, remove) { Object.assign(this, { GID, position, objecttype: 0, attachments: { remove } }); }
+    }
+    function hatManager(entity, effects) {
+        return load(source('Renderer/EffectManager.js').replace('export default EffectManager;', 'this.EffectManager = EffectManager; this.list = _list;'), {
+            SU: {}, SkillEffect: {}, SkillUnit: {}, EffectDB: effects,
+            Session: { Entity: { position: [0, 0, 0] } }, Preferences: { effect: true },
+            GraphicsSettings: { performanceMode: false }, Renderer: { tick: 1000 },
+            EntityManager: { get: aid => (aid === entity.GID ? entity : null), remove() { throw new Error('removed a player'); } }
+        });
+    }
+    it('removes the effects a FUNC entry drew when the hat effect is switched off', () => {
+        class Aura {}
+        const removed = [];
+        const entity = new Player(7, [1, 2, 0], uid => removed.push(uid));
+        const { EffectManager, list } = hatManager(entity, {
+            1335: [{ type: 'FUNC', attachedEntity: true, func(Params) { this.add(new Aura(), Params); } }]
+        });
+        EffectManager.spamHatEffect({ Init: { ownerAID: 7, ownerEntity: entity, startTick: 1000 }, effect: { effectID: 109, hatEffectID: 1335 } });
+        assert.equal(list.Aura.length, 1);
+        assert.equal(list.Aura[0]._Params.Init.ownerAID, 7);
+        EffectManager.removeHatEffect(7, 109);
+        assert.equal(list.Aura, undefined);
+        assert.equal(entity._hatEffects[109], undefined);
+        assert.ok(removed.includes(1335));
+    });
+    it('leaves the same effect on another entity alone', () => {
+        class Aura {}
+        const entity = new Player(7, [1, 2, 0], () => {});
+        const other = new Player(8, [3, 4, 0], () => {});
+        const { EffectManager, list } = hatManager(entity, {
+            1335: [{ type: 'FUNC', attachedEntity: true, func(Params) { this.add(new Aura(), Params); } }]
+        });
+        EffectManager.spamHatEffect({ Init: { ownerAID: 7, ownerEntity: entity, startTick: 1000 }, effect: { effectID: 109, hatEffectID: 1335 } });
+        EffectManager.spamHatEffect({ Init: { ownerAID: 8, ownerEntity: other, startTick: 1000 }, effect: { effectID: 109, hatEffectID: 1335 } });
+        EffectManager.removeHatEffect(7, 109);
+        assert.equal(list.Aura.length, 1);
+        assert.equal(list.Aura[0]._Params.Init.ownerAID, 8);
+    });
+});
