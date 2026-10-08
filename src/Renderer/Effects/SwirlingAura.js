@@ -267,7 +267,7 @@ class SwirlingAura {
 		const elapsed = tick - this.tick;
 		const process = elapsed / RAG_TICK_MS;
 
-		beginAuraBlend(gl, this.color);
+		beginAuraBlend(gl, this.color, 'alpha');
 		SpriteRenderer.runWithDepth(true, false, false, function () {
 			// Render each band
 			for (let ec = 0; ec < self.bands.length; ec++) {
@@ -293,7 +293,7 @@ class SwirlingAura {
 				gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, STRIDE * 4, 3 * 4);
 
 				// Set color and alpha
-				gl.uniform4f(uniform.uColor, ...auraUniform(self.color, self.alphaB));
+				gl.uniform4f(uniform.uColor, ...auraUniform(self.color, self.alphaB, 'alpha'));
 				gl.uniform1f(uniform.uZIndex, 0.01 + ec * 0.001);
 
 				// Draw

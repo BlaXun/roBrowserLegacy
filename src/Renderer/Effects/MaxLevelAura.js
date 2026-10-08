@@ -159,7 +159,7 @@ class MaxLevelAura {
 		const uniform = _program.uniform;
 		gl.bindTexture(gl.TEXTURE_2D, texture);
 		gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.quadData);
-		gl.uniform4f(uniform.uColor, ...auraUniform(this.color, alpha));
+		gl.uniform4f(uniform.uColor, ...auraUniform(this.color, alpha, 'alpha'));
 		gl.uniform1f(uniform.uZIndex, zIndex);
 		gl.drawArrays(gl.TRIANGLES, 0, 6);
 	}
@@ -173,7 +173,7 @@ class MaxLevelAura {
 		const base = [this.position[0] + 0.5, -groundZ - BASE_LIFT, this.position[1] + 0.5];
 		const self = this;
 
-		beginAuraBlend(gl, this.color);
+		beginAuraBlend(gl, this.color, 'alpha');
 		SpriteRenderer.runWithDepth(true, false, false, function () {
 			if (self.part === 'rings') {
 				self.renderRings(gl, base, elapsed);

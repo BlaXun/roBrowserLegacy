@@ -6,6 +6,7 @@ out vec4 fragColor;
 
 uniform sampler2D uDiffuse;
 uniform vec4 uColor;
+uniform bool uDarken;
 
 void main(void) {
 	vec4 texColor = texture(uDiffuse, vTextureCoord);
@@ -14,5 +15,10 @@ void main(void) {
 		discard;
 	}
 
+	if (uDarken) {
+		float k = max(max(texColor.r, texColor.g), texColor.b) * uColor.a;
+		fragColor = vec4(k, k, k, 1.0);
+		return;
+	}
 	fragColor = texColor * uColor;
 }
