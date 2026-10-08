@@ -105,4 +105,19 @@ describe('effect table', () => {
 		expect(LevelAuraEffects[1164]).toHaveLength(3); // the level-99 aura's three parts
 		expect(LevelAuraEffects[1174]).toHaveLength(2); // bubbles and rings
 	});
+
+	it('has the eleven job-coloured level-99 and level-160 hat-effect auras', () => {
+		for (let id = 1325; id <= 1335; id++) {
+			expect(LevelAuraEffects[id], `effect ${id}`).toHaveLength(3);
+			expect(LevelAuraEffects[id + 11], `effect ${id + 11}`).toHaveLength(2);
+		}
+		expect(LevelAuraEffects[1347]).toBeUndefined();
+	});
+
+	it('has the midnight blue and gray auras, but not the shared effect 2281', () => {
+		expect(LevelAuraEffects[2281]).toBeUndefined();
+		expect(LevelAuraEffects[2282]).toHaveLength(2);
+		expect(LevelAuraEffects[2283]).toHaveLength(3);
+		expect(LevelAuraEffects[2284]).toHaveLength(2);
+	});
 });
