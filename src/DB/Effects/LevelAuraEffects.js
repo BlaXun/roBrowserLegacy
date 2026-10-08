@@ -10,8 +10,9 @@
  * - The hat effects that costume items give, by the effect they name in
  *   hateffectinfo.lub: EF_LEVEL99_150 (881) and the ten coloured level-99
  *   (1164-1173) and level-160 (1174-1183) auras; the eleven job-coloured
- *   level-99 (1325-1335) and level-160 (1336-1346) auras; and the midnight
- *   blue (2282) and gray (2283, 2284) ones.
+ *   level-99 (1325-1335) and level-160 (1336-1346) auras; the tiger ones
+ *   (1291, 1292); and the midnight blue (2281, 2282) and gray (2283, 2284)
+ *   ones.
  *
  * A caller can pass `auraColor` (AuraTiers.auraColor) in the effect's Init
  * params to draw any of them in another colour; EntityAura does, for a server
@@ -24,7 +25,14 @@ import MaxLevelAura from 'Renderer/Effects/MaxLevelAura.js';
 import SwirlingAura from 'Renderer/Effects/SwirlingAura.js';
 import GroundAura from 'Renderer/Effects/GroundAura.js';
 import Level99Bubble from 'Renderer/Effects/Level99Bubble.js';
-import { TIER_COLORS, NAMED_COLORS, JOB_COLORS, STAR_SOUL_COLORS, auraColor } from 'DB/Effects/AuraTiers.js';
+import {
+	TIER_COLORS,
+	NAMED_COLORS,
+	JOB_COLORS,
+	TIGER_COLOR,
+	STAR_SOUL_COLORS,
+	auraColor
+} from 'DB/Effects/AuraTiers.js';
 
 /**
  * One part of the high-level aura: 'bubbles' for a main effect, 'rings' for a
@@ -149,9 +157,14 @@ JOB_COLORS.forEach((rgb, i) => {
 	table[1336 + i] = high(rgb);
 });
 
-// HAT_EF_160LV_STAR_E_MBLUE. Its level-99 half, effect 2281, is left out:
-// five hat effects share that number, black and the 2020 RTC ones among them.
-table[2282] = high(STAR_SOUL_COLORS.midnight_blue);
+// HAT_EF_LEVEL99_TIGER and HAT_EF_LEVEL160_TIGER.
+table[1291] = classic(TIGER_COLOR);
+table[1292] = high(TIGER_COLOR);
+
+// HAT_EF_99LV_STAR_E_MBLUE and the four other hat effects that name 2281, and
+// HAT_EF_160LV_STAR_E_MBLUE.
+table[2281] = classic(STAR_SOUL_COLORS.midnight_blue_99);
+table[2282] = high(STAR_SOUL_COLORS.midnight_blue_160);
 // HAT_EF_99LV_SOUL_R_GRAY and HAT_EF_160LV_SOUL_R_GRAY.
 table[2283] = classic(STAR_SOUL_COLORS.gray);
 table[2284] = high(STAR_SOUL_COLORS.gray);

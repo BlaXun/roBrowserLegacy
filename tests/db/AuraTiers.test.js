@@ -13,7 +13,9 @@ import {
 	tierColor,
 	isFourthJob,
 	TIER_EFFECTS,
-	ALL_TIER_EFFECTS
+	ALL_TIER_EFFECTS,
+	NAMED_COLORS,
+	JOB_COLORS
 } from 'DB/Effects/AuraTiers.js';
 import LevelAuraEffects from 'DB/Effects/LevelAuraEffects.js';
 
@@ -73,8 +75,19 @@ describe('colours', () => {
 		expect(auraColor([255, 155, 0])).toEqual({ r: 1, g: 155 / 255, b: 0, dark: false });
 		expect(auraColor([300, -5, 0])).toEqual({ r: 1, g: 0, b: 0, dark: false });
 		expect(auraColor([0, 0, 0]).dark).toBe(true);
+		// The client's Shadow Chaser black is not quite black.
+		expect(auraColor([19, 9, 14]).dark).toBe(true);
+		expect(auraColor([0, 44, 67]).dark).toBe(false);
 		expect(auraColor([0, 0])).toBeNull();
 		expect(auraColor('red')).toBeNull();
+	});
+
+	it('takes the hat-effect colours from the client, sampled at both ends', () => {
+		expect(NAMED_COLORS.red).toEqual([255, 0, 0]);
+		expect(NAMED_COLORS.deep_pink).toEqual([255, 20, 147]);
+		expect(JOB_COLORS[0]).toEqual([214, 26, 0]); // Rune Knight
+		expect(JOB_COLORS[10]).toEqual([186, 255, 0]); // Genetic
+		expect(JOB_COLORS).toHaveLength(11);
 	});
 
 	it('draws each tier in its own colour, the gold 4th-job aura as the client does', () => {
@@ -114,8 +127,13 @@ describe('effect table', () => {
 		expect(LevelAuraEffects[1347]).toBeUndefined();
 	});
 
-	it('has the midnight blue and gray auras, but not the shared effect 2281', () => {
-		expect(LevelAuraEffects[2281]).toBeUndefined();
+	it('has the tiger auras', () => {
+		expect(LevelAuraEffects[1291]).toHaveLength(3);
+		expect(LevelAuraEffects[1292]).toHaveLength(2);
+	});
+
+	it('has the midnight blue and gray auras, the level-99 midnight blue shared by five hat effects', () => {
+		expect(LevelAuraEffects[2281]).toHaveLength(3);
 		expect(LevelAuraEffects[2282]).toHaveLength(2);
 		expect(LevelAuraEffects[2283]).toHaveLength(3);
 		expect(LevelAuraEffects[2284]).toHaveLength(2);

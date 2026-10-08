@@ -49,16 +49,23 @@ export const TIER_COLORS = {
 	fourth: [255, 155, 0]
 };
 
-/** The coloured auras costume items give (hat effects 1164-1183), 0-255. */
+/*
+ * The hat-effect aura colours below are the client's own, 0-255, read from an
+ * iRO Ragexe.exe (October 2026). It sets each aura's colour from a switch on
+ * the effect number, one for the level-99 aura and one for the level-160 one,
+ * and every part of an aura takes the same colour.
+ */
+
+/** The coloured auras costume items give (hat effects 1164-1183). */
 export const NAMED_COLORS = {
-	red: [255, 40, 40],
-	ultramarine: [40, 70, 255],
-	cyan: [0, 225, 255],
-	lime: [140, 255, 40],
-	violet: [160, 60, 255],
-	lilac: [215, 150, 255],
-	sun_orange: [255, 140, 0],
-	deep_pink: [255, 30, 140],
+	red: [255, 0, 0],
+	ultramarine: [0, 51, 255],
+	cyan: [0, 255, 255],
+	lime: [204, 255, 0],
+	violet: [139, 0, 255],
+	lilac: [179, 153, 255],
+	sun_orange: [255, 115, 0],
+	deep_pink: [255, 20, 147],
 	black: [0, 0, 0],
 	white: [255, 255, 255]
 };
@@ -66,28 +73,39 @@ export const NAMED_COLORS = {
 /**
  * The job-coloured auras costume items give (hat effects 1325-1346), in the
  * client's order: the level-99 aura in each at 1325-1335, the level-160 one at
- * 1336-1346. Each hat effect is named for a third job and a colour
- * (HAT_EF_99LV_RUNE_RED ... HAT_EF_99LV_GENETIC_YGREEN); the colour is read
- * from the name, 0-255.
+ * 1336-1346, both in the same colour. Each hat effect is named for a third job
+ * and a colour (HAT_EF_99LV_RUNE_RED ... HAT_EF_99LV_GENETIC_YGREEN).
  */
 export const JOB_COLORS = [
-	[255, 40, 40], // Rune Knight, red
-	[40, 70, 255], // Royal Guard, blue
-	[160, 60, 255], // Warlock, violet
-	[110, 190, 255], // Sorcerer, light blue
-	[40, 200, 60], // Ranger, green
-	[255, 120, 200], // Minstrel, pink
-	[255, 255, 255], // Arch Bishop, white
-	[190, 200, 215], // Guillotine Cross, silver
-	[0, 0, 0], // Shadow Chaser, black
-	[255, 200, 40], // Mechanic, gold
-	[190, 240, 40] // Genetic, yellow-green
+	[214, 26, 0], // Rune Knight, red
+	[0, 36, 216], // Royal Guard, blue
+	[141, 0, 228], // Warlock, violet
+	[0, 216, 255], // Sorcerer, light blue
+	[0, 139, 22], // Ranger, green
+	[255, 4, 169], // Minstrel, pink
+	[224, 249, 255], // Arch Bishop, white
+	[175, 185, 211], // Guillotine Cross, silver
+	[19, 9, 14], // Shadow Chaser, black
+	[251, 193, 0], // Mechanic, gold
+	[186, 255, 0] // Genetic, yellow-green
 ];
 
-/** Hat effects 2282-2284's auras, 0-255: midnight blue (HAT_EF_160LV_STAR_E_MBLUE) and gray (_SOUL_R_GRAY). */
+/** The tiger auras (HAT_EF_LEVEL99_TIGER, HAT_EF_LEVEL160_TIGER: effects 1291 and 1292). */
+export const TIGER_COLOR = [237, 80, 49];
+
+/**
+ * Effects 2281-2284's auras. The client gives the two midnight blues slightly
+ * different colours, and the two grays the same one.
+ */
 export const STAR_SOUL_COLORS = {
-	midnight_blue: [25, 40, 140],
-	gray: [140, 140, 150]
+	// Effect 2281, the level-99 aura: HAT_EF_99LV_STAR_E_MBLUE, and also
+	// HAT_EF_SUBJECT_AURA_BLACK and HAT_EF_2020RTC_EFFECT_01-03, which name the
+	// same effect.
+	midnight_blue_99: [0, 44, 67],
+	// Effect 2282, the level-160 aura: HAT_EF_160LV_STAR_E_MBLUE.
+	midnight_blue_160: [0, 30, 67],
+	// Effects 2283 and 2284: HAT_EF_99LV_SOUL_R_GRAY and HAT_EF_160LV_SOUL_R_GRAY.
+	gray: [125, 125, 125]
 };
 
 const DEFAULTS = {
@@ -148,7 +166,8 @@ export function auraTier(level, job, settings) {
 /**
  * A 0-255 RGB list as the colour the aura effects take, or null for none or
  * one that is not three numbers. Black (or near it) cannot be drawn by adding
- * light, so it is marked `dark`, and the effects darken instead.
+ * light, so it is marked `dark`, and the effects darken instead. "Near it"
+ * reaches the client's Shadow Chaser black, (19, 9, 14).
  *
  * @param {Array} rgb [r, g, b], 0-255
  * @return {{r: number, g: number, b: number, dark: boolean}|null}
@@ -158,7 +177,7 @@ export function auraColor(rgb) {
 		return null;
 	}
 	const [r, g, b] = rgb.map(c => Math.min(255, Math.max(0, c)) / 255);
-	return { r, g, b, dark: r + g + b < 0.15 };
+	return { r, g, b, dark: r + g + b < 0.2 };
 }
 
 /**
