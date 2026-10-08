@@ -41,6 +41,12 @@ let _server = null;
 let _creationSlot = 0;
 
 /**
+ * @type {object|null} char-list entry the player was built from before the
+ * client database had loaded, to build it again once it has
+ */
+let _charBeforeDB = null;
+
+/**
  * @type {number} times attempted to provide pin code.
  */
 let _pincodeAttempts = 0;
@@ -791,6 +797,7 @@ function onConnectRequest(entity) {
 	// Done here (instead of on char-list reception) so that characters delivered by
 	// any char-list packet, and freshly created ones, all end up with a Player.
 	Session.Entity = new Player(entity);
+	_charBeforeDB = DB.isLoaded ? null : entity;
 	const pkt = new PACKET.CH.SELECT_CHAR();
 	pkt.CharNum = entity.CharNum;
 	Network.sendPacket(pkt);
@@ -844,6 +851,17 @@ function onReceiveMapInfo(pkt) {
 	}
 	DB.startedLazyInit = false;
 	retryCount = 0;
+
+	// On a cold start the player was built before the database loaded (it
+	// starts above), when only the built-in HatTable/RobeTable were there: a
+	// headgear or garment look newer than those was not found and dropped, and
+	// the map server does not send our own look again. Build it once more now
+	// that the client's accessory and robe tables are in.
+	if (_charBeforeDB) {
+		Session.Entity = new Player(_charBeforeDB);
+		_charBeforeDB = null;
+	}
+
 	Session.GID = pkt.GID;
 	MapEngine.init(pkt.addr.ip, pkt.addr.port, pkt.mapName);
 }
