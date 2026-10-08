@@ -4104,6 +4104,15 @@ class DB {
 	}
 
 	/**
+	 * Get a footprint hat effect's entry from footprinteffectinfo.lub
+	 * @param {number} id - Hateffect ID
+	 * @returns {Object|null} footprint info or null if not found
+	 */
+	static getFootprintEffect(id) {
+		return FootPrintEffectInfo[id] || null;
+	}
+
+	/**
 	 * Get the CashShopBannerTable
 	 *
 	 * @returns {Array} CashShopBannerTable
@@ -6239,8 +6248,10 @@ function loadHatEffectInfo(onEnd) {
 					strTopLeft: info.StrFile_Top_Left ? decodeLuaString(info.StrFile_Top_Left) : null,
 					strTopRight: info.StrFile_Top_Right ? decodeLuaString(info.StrFile_Top_Right) : null,
 
-					scaleBottom: info.Scale_Bottom ?? 0,
-					scaleTop: info.Scale_Top ?? 0,
+					// hateffect_f.lub's defaults: GetFootprintStrScale gives 0.05 for
+					// either scale a footprint leaves out. 0 is a value, and hides it.
+					scaleBottom: info.Scale_Bottom ?? 0.05,
+					scaleTop: info.Scale_Top ?? 0.05,
 					heightTop: info.Height_Top ?? 0,
 
 					stride: info.Stride ?? 50,

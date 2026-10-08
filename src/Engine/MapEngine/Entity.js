@@ -50,6 +50,7 @@ import MiniMap from 'UI/Components/MiniMap/MiniMap.js';
 import PartyFriends from 'UI/Components/PartyFriends/PartyFriends.js';
 import Equipment from 'UI/Components/Equipment/Equipment.js';
 import ScreenEffectManager from 'Renderer/ScreenEffectManager.js';
+import { startFootprints } from 'Renderer/Effects/Footprints.js';
 
 // Excludes for skill name display
 const SkillNameDisplayExclude = [
@@ -2914,6 +2915,8 @@ function onHatEffects(pkt) {
 
 		hatEffect = DB.getHatResource(hatEffectID);
 		if (!hatEffect) {
+			// Footprints are only in footprinteffectinfo.lub.
+			startFootprints(entity, hatEffectID, DB.getFootprintEffect(hatEffectID));
 			continue;
 		}
 
