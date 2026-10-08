@@ -141,7 +141,14 @@ CheckAttendance.updateUI = function updateUI() {
 		const regex = /(\d{4})(\d{2})(\d{2})/;
 		const start = regex.exec(_CheckAttendanceInfo.Config.StartDate);
 		const end = regex.exec(_CheckAttendanceInfo.Config.EndDate);
-		const period_string = `Event Period: From ${start[2]}/${start[3]} ~ Until ${end[2]}/${end[3]} (Month/Day) 24:00`;
+		const end_date = new Date(`${end[1]}-${end[2]}-${end[3]}`);
+		// A period that runs for over a year (a server giving attendance all
+		// the time, e.g. until 2099) has no end worth showing: the dates would
+		// be misleading and the counter would show thousands of days.
+		const ongoing = end_date.getTime() - new Date(`${start[1]}-${start[2]}-${start[3]}`).getTime() > 366 * 24 * 3600 * 1000;
+		const period_string = ongoing
+			? 'Event Period: Ongoing'
+			: `Event Period: From ${start[2]}/${start[3]} ~ Until ${end[2]}/${end[3]} (Month/Day) 24:00`;
 		const periodEl = root.querySelector('.top-panel-period');
 		if (periodEl) {
 			periodEl.innerHTML = period_string;
@@ -156,7 +163,6 @@ CheckAttendance.updateUI = function updateUI() {
 					? `${attendance_count} Day attendance success`
 					: `Click the item to claim day ${current_day} reward`;
 
-			const end_date = new Date(`${end[1]}-${end[2]}-${end[3]}`);
 			const now_date = new Date();
 			const remaining_days = Math.round(Math.abs((end_date.getTime() - now_date.getTime()) / (1000 * 3600 * 24)));
 
@@ -166,7 +172,12 @@ CheckAttendance.updateUI = function updateUI() {
 			}
 			const remainingEl = root.querySelector('.remaining-day-text');
 			if (remainingEl) {
-				remainingEl.textContent = remaining_days;
+				// The box is drawn in the window's background, so it gets a sign, not a blank
+				remainingEl.textContent = ongoing ? '∞' : remaining_days;
+			}
+			const remainingTextEl = root.querySelector('.remaining-text');
+			if (remainingTextEl) {
+				remainingTextEl.style.visibility = ongoing ? 'hidden' : '';
 			}
 		}
 	}
