@@ -63,6 +63,33 @@ export const NAMED_COLORS = {
 	white: [255, 255, 255]
 };
 
+/**
+ * The job-coloured auras costume items give (hat effects 1325-1346), in the
+ * client's order: the level-99 aura in each at 1325-1335, the level-160 one at
+ * 1336-1346. Each hat effect is named for a third job and a colour
+ * (HAT_EF_99LV_RUNE_RED ... HAT_EF_99LV_GENETIC_YGREEN); the colour is read
+ * from the name, 0-255.
+ */
+export const JOB_COLORS = [
+	[255, 40, 40], // Rune Knight, red
+	[40, 70, 255], // Royal Guard, blue
+	[160, 60, 255], // Warlock, violet
+	[110, 190, 255], // Sorcerer, light blue
+	[40, 200, 60], // Ranger, green
+	[255, 120, 200], // Minstrel, pink
+	[255, 255, 255], // Arch Bishop, white
+	[190, 200, 215], // Guillotine Cross, silver
+	[0, 0, 0], // Shadow Chaser, black
+	[255, 200, 40], // Mechanic, gold
+	[190, 240, 40] // Genetic, yellow-green
+];
+
+/** Hat effects 2282-2284's auras, 0-255: midnight blue (HAT_EF_160LV_STAR_E_MBLUE) and gray (_SOUL_R_GRAY). */
+export const STAR_SOUL_COLORS = {
+	midnight_blue: [25, 40, 140],
+	gray: [140, 140, 150]
+};
+
 const DEFAULTS = {
 	defaultLv: 99,
 	lv150: 150,
