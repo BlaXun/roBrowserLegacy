@@ -197,6 +197,7 @@ class GroundAura {
 				gl.uniform2f(uniform.uSize, self.aura[i].size[0], self.aura[i].size[1]);
 				gl.uniform1f(uniform.uAngle, (auraAngle * Math.PI) / 180);
 				gl.uniform4f(uniform.uColor, ...auraUniform(self.color, 0.8));
+				gl.uniform1i(uniform.uDarken, !!(self.color && self.color.dark));
 				gl.uniform1f(uniform.uZIndex, 1 + i);
 
 				gl.drawArrays(gl.TRIANGLES, 0, 6);

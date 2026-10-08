@@ -417,10 +417,10 @@ class Level99Bubble {
 				gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.quadData);
 
 				const self = this;
-				beginAuraBlend(gl, this.color);
+				beginAuraBlend(gl, this.color, 'alpha');
 				SpriteRenderer.runWithDepth(true, false, false, function () {
 					for (let pass = 0; pass < self.passCount; pass++) {
-						gl.uniform4f(uniform.uColor, ...auraUniform(self.color, alphaValue));
+						gl.uniform4f(uniform.uColor, ...auraUniform(self.color, alphaValue, 'alpha'));
 						gl.uniform1f(uniform.uZIndex, 0.01 + ec * 0.002 + ai * 0.0001 + pass * 0.00005);
 						gl.drawArrays(gl.TRIANGLES, 0, 6);
 					}
