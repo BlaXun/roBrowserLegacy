@@ -593,14 +593,11 @@ export function createCharSelect(config) {
 			_list.push(character);
 			_slots[character.CharNum] = character;
 
-			_entitySlots[character.CharNum] = new Entity();
-			_entitySlots[character.CharNum].set(character);
-			_entitySlots[character.CharNum].effectState =
-				_entitySlots[character.CharNum]._effectState & ~StatusConst.EffectState.INVISIBLE;
-			_entitySlots[character.CharNum].hideShadow = true;
+			_entitySlots[character.CharNum] = createSlotEntity(character);
 
 			Component.updateCharSlot(character.CharNum);
 			ScreenHooks.update('charSelect');
+			redrawOnceDBLoaded();
 			return;
 		}
 
@@ -617,10 +614,7 @@ export function createCharSelect(config) {
 		_list.push(character);
 		_slots[character.CharNum] = character;
 
-		_entitySlots[character.CharNum] = new Entity();
-		_entitySlots[character.CharNum].set(character);
-		_entitySlots[character.CharNum].effectState =
-			_entitySlots[character.CharNum]._effectState & ~StatusConst.EffectState.INVISIBLE;
+		_entitySlots[character.CharNum] = createSlotEntity(character);
 
 		if (deleteReservation && (!packetverGatedDelete || PACKETVER.value >= 20100803)) {
 			if (_slots[character.CharNum].DeleteDate && Math.floor(_index / 3) === Math.floor(character.CharNum / 3)) {
@@ -642,7 +636,69 @@ export function createCharSelect(config) {
 			}
 		}
 		ScreenHooks.update('charSelect');
+		redrawOnceDBLoaded();
 	};
+
+	/**
+	 * The entity drawn for a character slot.
+	 *
+	 * @param {object} character data
+	 * @return {Entity}
+	 */
+	function createSlotEntity(character) {
+		const entity = new Entity();
+		entity.set(character);
+		entity.effectState = entity._effectState & ~StatusConst.EffectState.INVISIBLE;
+		if (gridLayout) {
+			entity.hideShadow = true;
+		}
+		return entity;
+	}
+
+	/**
+	 * On a cold start the character list arrives before the client's database
+	 * has loaded (it otherwise starts only on entering the map), when only the
+	 * built-in HatTable/RobeTable are there: a headgear or garment look newer
+	 * than those is not found and the preview is drawn without it. Start the
+	 * load now and build the previews again once it is in.
+	 */
+	let _dbWait = null;
+	function redrawOnceDBLoaded() {
+		if (DB.isLoaded || _dbWait) {
+			return;
+		}
+		if (!DB.startedLazyInit) {
+			DB.lazyInit();
+			DB.startedLazyInit = true;
+		}
+		let tries = 0;
+		_dbWait = setInterval(() => {
+			// The map entry gives up after a minute and reloads; so does this.
+			if (!DB.isLoaded && ++tries < 300) {
+				return;
+			}
+			clearInterval(_dbWait);
+			_dbWait = null;
+			if (!DB.isLoaded) {
+				return;
+			}
+			for (let i = 0; i < _entitySlots.length; ++i) {
+				const old = _entitySlots[i];
+				if (!old || !_slots[i]) {
+					continue;
+				}
+				const entity = createSlotEntity(_slots[i]);
+				entity.setAction({
+					action: old.action,
+					frame: 0,
+					play: true,
+					repeat: true
+				});
+				_entitySlots[i] = entity;
+			}
+			ScreenHooks.update('charSelect');
+		}, 200);
+	}
 
 	/**
 	 * Disable or Enable the UI.
