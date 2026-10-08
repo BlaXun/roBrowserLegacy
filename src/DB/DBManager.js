@@ -6241,6 +6241,10 @@ function loadHatEffectInfo(onEnd) {
 
 					pngLeft: info.PngFile_Left ? decodeLuaString(info.PngFile_Left) : null,
 					pngRight: info.PngFile_Right ? decodeLuaString(info.PngFile_Right) : null,
+					// hateffect_f.lub's defaults, and its spelling of Aplha.
+					pngScale: info.Scale ?? 5,
+					pngAlpha: info.Aplha ?? 250,
+					pngDuration: info.Duration ?? 10,
 
 					strBottomLeft: info.StrFile_Bottom_Left ? decodeLuaString(info.StrFile_Bottom_Left) : null,
 					strBottomRight: info.StrFile_Bottom_Right ? decodeLuaString(info.StrFile_Bottom_Right) : null,

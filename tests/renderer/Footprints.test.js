@@ -14,6 +14,9 @@ vi.mock('Renderer/Effects/StrEffect.js', () => ({
 vi.mock('Renderer/EffectManager.js', () => ({ default: { add: (effect, params) => added.push({ effect, params }) } }));
 vi.mock('Renderer/EntityManager.js', () => ({ default: { get: () => owner } }));
 vi.mock('Renderer/Map/Altitude.js', () => ({ default: { getCellHeight: () => 0 } }));
+vi.mock('Renderer/SpriteRenderer.js', () => ({ default: { runWithDepth: (t, m, c, fn) => fn() } }));
+vi.mock('Core/Client.js', () => ({ default: { loadFile: () => {} } }));
+vi.mock('Utils/WebGL.js', () => ({ default: {} }));
 vi.mock('Renderer/Camera.js', () => ({ default: { modelView: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] } }));
 
 let owner;
@@ -21,6 +24,9 @@ import {
 	strideReached,
 	printPosition,
 	screenAngle,
+	decalCorners,
+	decalAlpha,
+	FootprintDecal,
 	FootprintStrEffect,
 	FootprintTrail,
 	startFootprints
@@ -63,6 +69,55 @@ describe('footprint geometry', () => {
 		expect(screenAngle([0, 0], [0, 1], flat)).toBeCloseTo(0); // up
 		expect(screenAngle([0, 0], [1, 0], flat)).toBeCloseTo(-90); // right: a quarter turn clockwise
 		expect(screenAngle([0, 0], [-1, 0], flat)).toBeCloseTo(90);
+	});
+});
+
+describe('PNG prints', () => {
+	it('lays a square 2 * scale world units across, its top to the step, on the ground', () => {
+		// Scale 5: a cell from the centre to each side. Walking north from cell
+		// 10, 10, the top runs along y + 1 and the left along x - 1.
+		const c = decalCorners([10, 10], [10, 8], [10, 10], 5, (x, y) => x / 10);
+		const corner = i => Array.from(c.subarray(i * 3, i * 3 + 3));
+		// Drawn at x + 0.5, -(height + 0.4), y + 0.5.
+		expect(corner(0)[0]).toBeCloseTo(9.5); // top left
+		expect(corner(0)[2]).toBeCloseTo(11.5);
+		expect(corner(0)[1]).toBeCloseTo(-(0.9 + 0.4)); // its own ground, plus the lift
+		expect(corner(1)[0]).toBeCloseTo(11.5); // top right
+		expect(corner(1)[1]).toBeCloseTo(-(1.1 + 0.4));
+		expect(corner(3)[2]).toBeCloseTo(9.5); // bottom right
+		// Walking east, the top faces east and the right is south.
+		const e = decalCorners([0, 0], [-1, 0], [0, 0], 5, () => 0);
+		expect(Array.from(e.subarray(3, 6)).map(v => Math.round(v * 10) / 10)).toEqual([1.5, -0.4, -0.5]);
+	});
+
+	it('fades from its alpha out of 255 to nothing over its duration in seconds', () => {
+		expect(decalAlpha(250, 10, 0)).toBeCloseTo(250 / 255);
+		expect(decalAlpha(250, 10, 5000)).toBeCloseTo(125 / 255);
+		expect(decalAlpha(250, 10, 12000)).toBe(0);
+	});
+
+	it('drops the left and right PNGs in turn at the owner\'s feet', () => {
+		const BASE = { type: 3, pngLeft: 'footprint0.png', pngRight: 'footprint1.png', pngScale: 5, pngAlpha: 250, pngDuration: 10, stride: 50, gap: 2 };
+		const trail = new FootprintTrail(owner, BASE);
+		owner.position = [10, 12, 0];
+		trail.render(null, 100);
+		owner.position = [10, 14, 0];
+		trail.render(null, 200);
+		expect(added).toHaveLength(2);
+		const [a, b] = added.map(x => x.effect);
+		expect(a).toBeInstanceOf(FootprintDecal);
+		expect(a.filename).toBe('data/texture/effect/footprint0.png');
+		expect(b.filename).toBe('data/texture/effect/footprint1.png');
+		// Centred on the feet: the gap is in the art.
+		expect((a.corners[0] + a.corners[3]) / 2).toBeCloseTo(10.5);
+		expect([a.startTick, a.alpha, a.duration]).toEqual([100, 250, 10]);
+		expect(added[0].params.Init.ownerAID).toBeNull();
+	});
+
+	it('ends a print once it has faded', () => {
+		const d = new FootprintDecal('footprint0.png', new Float32Array(12), 0, 250, 10);
+		d.render(null, 10000);
+		expect(d.needCleanUp).toBe(true);
 	});
 });
 
