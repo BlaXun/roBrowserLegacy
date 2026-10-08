@@ -22,6 +22,9 @@
  *   seen on screen: the client takes the screen angle of the step, plus 90
  *   degrees, the art being drawn walking up the screen.
  *
+ * - With "View my footprints only" ticked in the client's options (Map
+ *   preference footprintmine here), a trail whose owner is not the player
+ *   drops nothing. The client checks it each frame.
  * - Type 3 (FOOTPRINT_EF_BASE) is a PNG laid flat on the ground at the owner's
  *   feet, the left and right files in turn: Gap goes unused, the art standing
  *   each foot to its side. It is a square 2 * Scale world units across, turned
@@ -43,6 +46,8 @@ import Camera from 'Renderer/Camera.js';
 import SpriteRenderer from 'Renderer/SpriteRenderer.js';
 import Client from 'Core/Client.js';
 import WebGL from 'Utils/WebGL.js';
+import Session from 'Engine/SessionStorage.js';
+import MapPreferences from 'Preferences/Map.js';
 
 /** World units to a cell in the client. */
 const UNITS_PER_CELL = 5;
@@ -333,6 +338,12 @@ export class FootprintTrail {
 		}
 
 		const to = owner.position;
+		// "View my footprints only", which the client checks each frame. The
+		// trail keeps up meanwhile, so turning it off starts from here.
+		if (MapPreferences.footprintmine && owner !== Session.Entity) {
+			this.last = to.slice(0, 3);
+			return;
+		}
 		if (!strideReached(this.last, to, this.info.stride)) {
 			return;
 		}

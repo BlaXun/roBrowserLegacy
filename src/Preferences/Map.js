@@ -68,6 +68,14 @@ export default Preferences.get(
 		aura: 1,
 
 		/**
+		 * Draw only the player's own footprint hat effects, as the official
+		 * client's "View my footprints only" does.
+		 *
+		 * Set in Graphics Settings.
+		 */
+		footprintmine: false,
+
+		/**
 		 * Display different font style ?
 		 *
 		 * Toggle using "/showname" changes font styles.
