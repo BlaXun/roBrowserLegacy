@@ -17,6 +17,10 @@ vi.mock('Renderer/Map/Altitude.js', () => ({ default: { getCellHeight: () => 0 }
 vi.mock('Renderer/SpriteRenderer.js', () => ({ default: { runWithDepth: (t, m, c, fn) => fn() } }));
 vi.mock('Core/Client.js', () => ({ default: { loadFile: () => {} } }));
 vi.mock('Utils/WebGL.js', () => ({ default: {} }));
+const prefs = vi.hoisted(() => ({ footprintmine: false }));
+const session = vi.hoisted(() => ({ Entity: null }));
+vi.mock('Preferences/Map.js', () => ({ default: prefs }));
+vi.mock('Engine/SessionStorage.js', () => ({ default: session }));
 vi.mock('Renderer/Camera.js', () => ({ default: { modelView: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] } }));
 
 let owner;
@@ -48,6 +52,8 @@ const PANDA = {
 
 beforeEach(() => {
 	added.length = 0;
+	prefs.footprintmine = false;
+	session.Entity = null;
 	owner = { GID: 7, position: [10, 10, 0] };
 });
 
@@ -167,6 +173,32 @@ describe('FootprintTrail', () => {
 		owner.position = [10, 12, 0];
 		trail.render(null, 0);
 		expect(added).toHaveLength(1);
+	});
+
+	it("with View my footprints only, drops nothing for another player's trail", () => {
+		prefs.footprintmine = true;
+		const trail = new FootprintTrail(owner, PANDA);
+		owner.position = [10, 12, 0];
+		trail.render(null, 0);
+		expect(added).toHaveLength(0);
+		// The player's own still drop.
+		session.Entity = owner;
+		owner.position = [10, 14, 0];
+		trail.render(null, 100);
+		expect(added).toHaveLength(2);
+	});
+
+	it('starts from where the owner is when View my footprints only goes off', () => {
+		prefs.footprintmine = true;
+		const trail = new FootprintTrail(owner, PANDA);
+		owner.position = [10, 20, 0];
+		trail.render(null, 0);
+		prefs.footprintmine = false;
+		trail.render(null, 100);
+		expect(added).toHaveLength(0);
+		owner.position = [10, 22, 0];
+		trail.render(null, 200);
+		expect(added[0].effect.position[1]).toBeCloseTo(22);
 	});
 
 	it('ends when its owner is gone', () => {

@@ -85,6 +85,7 @@ GraphicsOption.init = function init() {
 
 	bindChange('.details', onUpdateQualityDetails);
 	bindChange('.cursor-option', onToggleGameCursor);
+	bindChange('.footprintmine', onToggleFootprintMine);
 	bindChange('.screensize', onUpdateScreenSize);
 	bindChange('.fpslimit', onUpdateFPSLimit);
 	bindChange('.fps', onToggleFPSDisplay);
@@ -133,6 +134,7 @@ GraphicsOption.onAppend = function onAppend() {
 	root.querySelector('.details').value = GraphicsSettings.quality;
 	root.querySelector('.screensize').value = GraphicsSettings.screensize;
 	root.querySelector('.cursor-option').checked = GraphicsSettings.cursor;
+	root.querySelector('.footprintmine').checked = MapPreferences.footprintmine;
 	root.querySelector('.fpslimit').value = GraphicsSettings.fpslimit;
 	root.querySelector('.fps').checked = FPS._host ? FPS._host.style.display !== 'none' : false;
 	root.querySelector('.pixel-perfect').checked = GraphicsSettings.pixelPerfectSprites;
@@ -264,6 +266,14 @@ function onUpdateBloomIntensity() {
  */
 function onUpdateSmoothLight() {
 	MapPreferences.smoothlight = parseInt(this.value, 10) || 0;
+	MapPreferences.save();
+}
+
+/**
+ * Footprints: draw only the player's own. Each trail checks it as it goes.
+ */
+function onToggleFootprintMine() {
+	MapPreferences.footprintmine = !!this.checked;
 	MapPreferences.save();
 }
 
