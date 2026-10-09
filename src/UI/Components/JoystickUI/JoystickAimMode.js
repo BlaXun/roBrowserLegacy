@@ -13,6 +13,11 @@
  *
  * The ring is drawn on a 2D canvas laid over the game canvas, below the
  * UI windows, by projecting ground points through the camera.
+ *
+ * Only a firm push picks a new target (createRetargetGate). A released
+ * stick springs back past the centre for a frame or two, which reads as
+ * a push the other way; without the gate that swapped the target for a
+ * mob behind the character.
  */
 
 import glMatrix from 'Vendors/gl-matrix.js';
@@ -50,6 +55,15 @@ const QUICK_CAST = {
 const HIT_RADIUS = 0.9;
 const HIT_SPREAD = 0.075;
 
+// Retarget gate: the stick must be pushed at least this far to pick a
+// new target, and after it drops below that, or turns around in one
+// frame, it picks none for RELEASE_LOCK_MS. A dot product of the stick
+// direction with last frame's below FLIP_DOT (about 120 degrees) counts
+// as turning around.
+const RETARGET_MAGNITUDE = 0.5;
+const RELEASE_LOCK_MS = 150;
+const FLIP_DOT = -0.5;
+
 const RING_RADIUS = 0.6; // cells
 const RING_POINTS = 24;
 const RING_FADE_MS = 2000; // the ring fades out over this long after a new target
@@ -59,6 +73,7 @@ const LINE_COLOR_HIT = 'rgba(255, 82, 82, 0.9)';
 const LINE_COLOR_IDLE = 'rgba(255, 215, 64, 0.85)';
 
 let _aimLastHit = null;
+let _aimGate = null; // createRetargetGate(), made on first use
 let _aimOverlay = null;
 let _aimCtx = null;
 let _aimDrawn = false;
@@ -141,6 +156,48 @@ function findFirstHit(origin, dir, entities) {
 		}
 	}
 	return best;
+}
+
+/**
+ * Decides, frame by frame, whether the stick may pick a new target: only
+ * while pushed firmly, and not in the moment after a release or a sudden
+ * turn-around, when the stick is springing back past the centre.
+ *
+ * @return {{step: function(number, number, number): boolean, isLocked: function(number): boolean, reset: function()}}
+ *   step(x, y, now) once per frame, (0, 0) while the stick is in the deadzone
+ */
+function createRetargetGate() {
+	let firm = false;
+	let lastX = 0;
+	let lastY = 0;
+	let lockedUntil = 0;
+
+	return {
+		step(x, y, now) {
+			const magnitude = Math.hypot(x, y);
+			const nowFirm = magnitude >= Math.max(RETARGET_MAGNITUDE, ControlsSettings.joyDeadline || 0);
+
+			if (firm && !nowFirm) {
+				lockedUntil = now + RELEASE_LOCK_MS;
+			} else if (firm && nowFirm && (x * lastX + y * lastY) / magnitude < FLIP_DOT) {
+				lockedUntil = now + RELEASE_LOCK_MS;
+			}
+
+			firm = nowFirm;
+			if (nowFirm) {
+				lastX = x / magnitude;
+				lastY = y / magnitude;
+			}
+			return nowFirm && now >= lockedUntil;
+		},
+		isLocked(now) {
+			return now < lockedUntil;
+		},
+		reset() {
+			firm = false;
+			lockedUntil = 0;
+		}
+	};
 }
 
 /**
@@ -339,6 +396,9 @@ function onMouseMove(event) {
  */
 function release() {
 	_aimLastHit = null;
+	if (_aimGate) {
+		_aimGate.reset();
+	}
 	_aimRingTarget = null;
 	clearOverlay();
 	setCursorHidden(false);
@@ -371,20 +431,30 @@ function update(x, y, held) {
 	const origin = [player.position[0], player.position[1]];
 	let hit = null;
 	let dir = null;
+	let locked = false;
+
+	if (!_aimGate) {
+		_aimGate = createRetargetGate();
+	}
 
 	if (held) {
+		const now = performance.now();
+		const canRetarget = _aimGate.step(x, y, now);
+		locked = _aimGate.isLocked(now);
+
 		dir = stickToMapDirection(x, y, Camera.angle[1]);
 		const candidates = Target.getCycleCandidates(player).filter(isOnScreen);
 		hit = findFirstHit(origin, dir, candidates);
 
-		if (hit && hit.entity !== _aimLastHit) {
+		if (canRetarget && hit && hit.entity !== _aimLastHit) {
 			Target.aimAt(hit.entity);
 			_aimLastHit = hit.entity;
 			_aimRingTarget = hit.entity;
-			_aimRingAt = performance.now();
+			_aimRingAt = now;
 		}
 	} else {
 		_aimLastHit = null;
+		_aimGate.step(0, 0, performance.now());
 	}
 
 	const target = getTarget();
@@ -396,7 +466,8 @@ function update(x, y, held) {
 
 	// Both indicators are off by default (Settings > Gamepad > Aim Settings)
 	let line = null;
-	if (ControlsSettings.joyAimLine && held) {
+	// Not while the gate is locked: the stick is springing back, not aiming
+	if (ControlsSettings.joyAimLine && held && !locked) {
 		line =
 			hit && hit.entity === target
 				? { to: [target.position[0], target.position[1]], color: LINE_COLOR_HIT }
@@ -468,6 +539,7 @@ export default {
 	toggle,
 	stickToMapDirection,
 	findFirstHit,
+	createRetargetGate,
 	project,
 	isOnScreen,
 	drawRing

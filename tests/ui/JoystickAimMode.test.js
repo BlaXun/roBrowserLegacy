@@ -130,3 +130,69 @@ describe('JoystickAimMode.findFirstHit', () => {
 		expect(Aim.findFirstHit(origin, east, [])).toBeNull();
 	});
 });
+
+describe('JoystickAimMode.createRetargetGate', () => {
+	it('lets only a firm push pick a target', () => {
+		const gate = Aim.createRetargetGate();
+		expect(gate.step(0.3, 0, 0)).toBe(false);
+		expect(gate.step(0.8, 0, 16)).toBe(true);
+	});
+
+	it('ignores the spring-back past the centre after a release', () => {
+		const gate = Aim.createRetargetGate();
+		expect(gate.step(1, 0, 0)).toBe(true);
+		expect(gate.step(0.2, 0, 16)).toBe(false); // falling back
+		expect(gate.step(-0.7, 0, 33)).toBe(false); // overshoot the other way
+		expect(gate.isLocked(33)).toBe(true);
+		expect(gate.step(0, 0, 50)).toBe(false);
+	});
+
+	it('also after a release that passed through the deadzone', () => {
+		const gate = Aim.createRetargetGate();
+		gate.step(0, 1, 0);
+		gate.step(0, 0, 16); // in the deadzone
+		expect(gate.step(0, -0.6, 33)).toBe(false);
+	});
+
+	it('ignores a turn-around within one frame at full tilt', () => {
+		const gate = Aim.createRetargetGate();
+		expect(gate.step(1, 0, 0)).toBe(true);
+		expect(gate.step(-0.8, 0.1, 16)).toBe(false);
+	});
+
+	it('picks targets again once the lock has run out', () => {
+		const gate = Aim.createRetargetGate();
+		gate.step(1, 0, 0);
+		gate.step(0, 0, 16);
+		expect(gate.step(-1, 0, 100)).toBe(false);
+		expect(gate.step(-1, 0, 200)).toBe(true);
+		expect(gate.isLocked(200)).toBe(false);
+	});
+
+	it('keeps up with a steady sweep around the stick', () => {
+		const gate = Aim.createRetargetGate();
+		for (let i = 0; i < 12; i++) {
+			const a = (i * Math.PI) / 6; // 30 degrees a frame
+			expect(gate.step(Math.cos(a), Math.sin(a), i * 16)).toBe(true);
+		}
+	});
+
+	it('forgets the lock on reset', () => {
+		const gate = Aim.createRetargetGate();
+		gate.step(1, 0, 0);
+		gate.step(0, 0, 16);
+		gate.reset();
+		expect(gate.step(-1, 0, 33)).toBe(true);
+	});
+
+	it('never asks for less than the deadzone', () => {
+		controls.joyDeadline = 0.6;
+		try {
+			const gate = Aim.createRetargetGate();
+			expect(gate.step(0.55, 0, 0)).toBe(false);
+			expect(gate.step(0.7, 0, 16)).toBe(true);
+		} finally {
+			delete controls.joyDeadline;
+		}
+	});
+});
