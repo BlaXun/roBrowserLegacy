@@ -81,11 +81,17 @@ function calculateSize(self, aura, auraAngle, i) {
 class GroundAura {
 	/**
 	 * @param {object} color optional tint from AuraTiers.auraColor; white when left out
+	 * @param {object} [fallback] makes `textureName` a ready-coloured texture
+	 *   with alpha, drawn as it is (the client's pikapika_<colour>.tga for a hat
+	 *   aura); {textureName, color} is drawn instead by a client without it
 	 */
-	constructor(position, size, distance, textureName, tick, color) {
+	constructor(position, size, distance, textureName, tick, color, fallback) {
 		this.color = color || { r: 1, g: 1, b: 1, dark: false };
 		this.position = position;
 		this.textureName = textureName;
+		this.fallback = fallback || null;
+		// See AuraBlend.js: pikapika2.bmp has no alpha, a ready-coloured texture does.
+		this.shape = this.fallback ? 'alpha' : 'brightness';
 		this.tick = tick;
 		this.distance = distance;
 		this.size = size;
@@ -123,12 +129,26 @@ class GroundAura {
 	 * Initialize instance
 	 */
 	init(gl) {
-		Client.loadFile(`data/texture/effect/${this.textureName}`, buffer => {
-			WebGL.texture(gl, buffer, texture => {
-				this.texture = texture;
-				this.ready = true;
-			});
-		});
+		const onerror = () => {
+			if (!this.fallback) {
+				return;
+			}
+			this.textureName = this.fallback.textureName;
+			this.color = this.fallback.color;
+			this.fallback = null;
+			this.shape = 'brightness';
+			this.init(gl);
+		};
+		Client.loadFile(
+			`data/texture/effect/${this.textureName}`,
+			buffer => {
+				WebGL.texture(gl, buffer, texture => {
+					this.texture = texture;
+					this.ready = true;
+				});
+			},
+			onerror
+		);
 	}
 
 	/**
@@ -184,7 +204,7 @@ class GroundAura {
 
 		gl.uniform3fv(uniform.uWorldPosition, worldPos);
 		const self = this;
-		beginAuraBlend(gl, this.color);
+		beginAuraBlend(gl, this.color, this.shape);
 		SpriteRenderer.runWithDepth(true, false, false, function () {
 			for (let i = 0; i < self.aura.length; i++) {
 				if (!self.aura[i].life) {
@@ -196,8 +216,8 @@ class GroundAura {
 				// Set uniforms - size in SpriteRenderer units (shader converts to world units)
 				gl.uniform2f(uniform.uSize, self.aura[i].size[0], self.aura[i].size[1]);
 				gl.uniform1f(uniform.uAngle, (auraAngle * Math.PI) / 180);
-				gl.uniform4f(uniform.uColor, ...auraUniform(self.color, 0.8));
-				gl.uniform1i(uniform.uDarken, !!(self.color && self.color.dark));
+				gl.uniform4f(uniform.uColor, ...auraUniform(self.color, 0.8, self.shape));
+				gl.uniform1i(uniform.uDarken, !!(self.color && self.color.dark && self.shape !== 'alpha'));
 				gl.uniform1f(uniform.uZIndex, 1 + i);
 
 				gl.drawArrays(gl.TRIANGLES, 0, 6);

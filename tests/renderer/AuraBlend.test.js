@@ -36,6 +36,26 @@ describe('AuraBlend', () => {
 		expect(auraUniform(black, 0.5, 'alpha')).toEqual([black.r, black.g, black.b, 0.5]);
 	});
 
+	it("alpha-blends a hat aura's colour on an alpha-shaped texture, in its own colour", () => {
+		const g = gl();
+		const hat = { ...red, hat: true };
+		beginAuraBlend(g, hat, 'alpha');
+		endAuraBlend(g, hat);
+		expect(g.calls).toEqual([
+			['SRC_ALPHA', 'ONE_MINUS_SRC_ALPHA'],
+			['SRC_ALPHA', 'ONE']
+		]);
+		expect(auraUniform(hat, 0.5, 'alpha')).toEqual([1, 0, 0, 0.5]);
+	});
+
+	it("leaves a hat aura's light colour adding light on a texture with no alpha", () => {
+		const g = gl();
+		const hat = { ...red, hat: true };
+		beginAuraBlend(g, hat);
+		expect(g.calls).toEqual([]);
+		expect(auraUniform(hat, 0.8)).toEqual([1, 0, 0, 0.8]);
+	});
+
 	it('darkens by brightness for a texture with no alpha, as before', () => {
 		const g = gl();
 		beginAuraBlend(g, black);
