@@ -12,9 +12,13 @@ const mocks = vi.hoisted(() => {
 			this.onFocus = () => {};
 			this.onFocusEnd = () => {};
 			this.attachments = { add: () => {}, remove: () => {} };
+			this.hidden = false;
 		}
 		canAttackEntity() {
 			return this.attackable;
+		}
+		isVisible() {
+			return !this.hidden;
 		}
 	}
 	FakeEntity.TYPE_PC = 0;
@@ -185,6 +189,14 @@ describe('JoystickTargetService players', () => {
 		expect(Target.getMarkedPlayer()).toBe(null);
 	});
 
+	it('drops the mark of a player who goes into hiding', () => {
+		const friend = spawn(new FakeEntity(300, FakeEntity.TYPE_PC));
+		Target.aimAt(friend);
+		friend.hidden = true;
+		expect(Target.getMarked()).toBe(null);
+		expect(Target.getMarkedPlayer()).toBe(null);
+	});
+
 	it('drops a marked player when switching to a category without players', () => {
 		mocks.controls.joyCycleMode = CATEGORY.PLAYERS;
 		const friend = spawn(new FakeEntity(300, FakeEntity.TYPE_PC));
@@ -196,3 +208,23 @@ describe('JoystickTargetService players', () => {
 	});
 });
 
+describe('JoystickTargetService hidden mobs', () => {
+	beforeEach(() => {
+		mocks.list.clear();
+		mocks.session.Entity = spawn(new FakeEntity(1, FakeEntity.TYPE_PC));
+		mocks.focus = null;
+		mocks.closest = null;
+	});
+
+	it('a focused mob that hides is no longer the attack target', () => {
+		const mob = spawn(new FakeEntity(100, FakeEntity.TYPE_MOB));
+		const other = spawn(new FakeEntity(101, FakeEntity.TYPE_MOB));
+		mocks.focus = mob;
+		mocks.closest = other;
+
+		mob.hidden = true;
+		expect(Target.isAttackable(mob)).toBe(false);
+		expect(Target.getAttackableFocus()).toBe(null);
+		expect(Target.getEntity()).toBe(other);
+	});
+});

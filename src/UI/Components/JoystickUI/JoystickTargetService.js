@@ -64,7 +64,17 @@ function isPlayer(entity) {
 }
 
 /**
+ * Whether the entity hides from the player: Hiding, Cloaking, Chase Walk,
+ * Shadow Form, ... (EntityState). It can be neither selected nor attacked.
+ */
+function isHidden(entity) {
+	return typeof entity.isVisible === 'function' && !entity.isVisible();
+}
+
+/**
  * What the cycle and aim may select for the current mode, nearest first.
+ * EntityManager already leaves out hidden entities; script-trigger NPCs
+ * go here.
  */
 function getCycleCandidates(player) {
 	return EntityManager.getEntitiesSortedByDistance(player, getCycleTypes(player.constructor)).filter(
@@ -73,12 +83,12 @@ function getCycleCandidates(player) {
 }
 
 /**
- * The marked entity, or null once it was picked up, expired or left the
- * entity list.
+ * The marked entity, or null once it was picked up, expired, left the
+ * entity list or went into hiding.
  */
 function getMarked() {
-	if (_marked && (_marked.remove_tick !== 0 || EntityManager.get(_marked.GID) !== _marked)) {
-		_marked = null;
+	if (_marked && (_marked.remove_tick !== 0 || EntityManager.get(_marked.GID) !== _marked || isHidden(_marked))) {
+		releaseMark();
 	}
 	return _marked;
 }
@@ -148,9 +158,9 @@ function markEntity(item) {
 }
 
 /**
- * Whether the entity is something X may attack: alive, still in the current
- * map's entity list, and a mob, or a player the map state lets us attack
- * (PvP / GvG, the same rule as the mouse's attack cursor).
+ * Whether the entity is something X may attack: alive, not hidden, still in
+ * the current map's entity list, and a mob, or a player the map state lets
+ * us attack (PvP / GvG, the same rule as the mouse's attack cursor).
  *
  * The EntityManager.get() check matters: EntityManager.free() on a warp
  * cleans entities (remove_tick back to 0) but never clears the focus, so a
@@ -163,7 +173,7 @@ function isAttackable(entity) {
 	if (!entity || entity === Session.Entity) {
 		return false;
 	}
-	if (entity.action === entity.ACTION.DIE || entity.remove_tick !== 0) {
+	if (entity.action === entity.ACTION.DIE || entity.remove_tick !== 0 || isHidden(entity)) {
 		return false;
 	}
 	if (EntityManager.get(entity.GID) !== entity) {

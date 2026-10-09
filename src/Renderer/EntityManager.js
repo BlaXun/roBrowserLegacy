@@ -528,7 +528,8 @@ function getClosestEntity(sourceEntity, type) {
 			entity.GID !== sourceEntity.GID &&
 			entity.objecttype === type &&
 			entity.action !== entity.ACTION.DIE &&
-			entity.remove_tick === 0
+			entity.remove_tick === 0 &&
+			!isHidden(entity)
 		) {
 			const dx = entity.position[0] - srcX;
 			const dy = entity.position[1] - srcY;
@@ -582,7 +583,8 @@ function getLowestHpEntity(sourceEntity, type) {
 			entity.life &&
 			entity.life.hp > 0 &&
 			entity.action !== entity.ACTION.DIE &&
-			entity.remove_tick === 0
+			entity.remove_tick === 0 &&
+			!isHidden(entity)
 		) {
 			const dx = entity.position[0] - srcX;
 			const dy = entity.position[1] - srcY;
@@ -604,7 +606,8 @@ function getLowestHpEntity(sourceEntity, type) {
 /**
  * Returns entities of the given type(s) sorted by straight-line distance from
  * the source entity, closest first. Same filters as getClosestEntity: not
- * self, right type, alive, not pending removal, within view range.
+ * self, right type, alive, not pending removal, not hidden, within view
+ * range.
  *
  * Straight-line (dx*dx + dy*dy), not PathFinding.search: running A* for
  * every nearby mob on every cycle step is too expensive, and visual
@@ -627,7 +630,8 @@ function getEntitiesSortedByDistance(sourceEntity, type) {
 			entity.GID !== sourceEntity.GID &&
 			types.includes(entity.objecttype) &&
 			entity.action !== entity.ACTION.DIE &&
-			entity.remove_tick === 0
+			entity.remove_tick === 0 &&
+			!isHidden(entity)
 		) {
 			const dx = entity.position[0] - srcX;
 			const dy = entity.position[1] - srcY;
@@ -641,6 +645,19 @@ function getEntitiesSortedByDistance(sourceEntity, type) {
 	candidates.sort((a, b) => a.distSq - b.distSq);
 
 	return candidates.map(c => c.entity);
+}
+
+/**
+ * Whether the entity is hidden from the player (Hiding, Cloaking, Chase
+ * Walk, invisible, Shadow Form, Camouflage, Stealth Field): the closest
+ * and lowest-HP picks and the sorted list leave it out, as a mouse cannot
+ * click it either.
+ *
+ * @param {entity} entity
+ * @return {boolean}
+ */
+function isHidden(entity) {
+	return typeof entity.isVisible === 'function' && !entity.isVisible();
 }
 
 /**
