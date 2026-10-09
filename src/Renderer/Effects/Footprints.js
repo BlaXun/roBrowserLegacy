@@ -22,23 +22,36 @@
  *   seen on screen: the client takes the screen angle of the step, plus 90
  *   degrees, the art being drawn walking up the screen.
  *
- * Type 3 (FOOTPRINT_EF_BASE: two PNGs laid flat on the ground, fading out over
- * PngDuration) is not drawn yet.
+ * - Type 3 (FOOTPRINT_EF_BASE) is a PNG laid flat on the ground at the owner's
+ *   feet, the left and right files in turn: Gap goes unused, the art standing
+ *   each foot to its side. It is a square 2 * Scale world units across, turned
+ *   so the top of the image faces the direction walked, and each corner sits
+ *   on the ground beneath it, raised 2 world units. It is alpha-blended, and
+ *   its alpha falls from Aplha (sic, out of 255) to nothing over Duration
+ *   seconds.
  *
  * This file is part of ROBrowser, (http://www.robrowser.com/).
  */
 
+import _vertexShader from './FootprintDecal.vs?raw';
+import _fragmentShader from './FootprintDecal.fs?raw';
 import StrEffect from 'Renderer/Effects/StrEffect.js';
 import EffectManager from 'Renderer/EffectManager.js';
 import EntityManager from 'Renderer/EntityManager.js';
 import Altitude from 'Renderer/Map/Altitude.js';
 import Camera from 'Renderer/Camera.js';
+import SpriteRenderer from 'Renderer/SpriteRenderer.js';
+import Client from 'Core/Client.js';
+import WebGL from 'Utils/WebGL.js';
 
 /** World units to a cell in the client. */
 const UNITS_PER_CELL = 5;
 
 /** A footprint's STR scale (world units to a pixel) as a factor of roBrowser's STR size. */
 const STR_SCALE = 35 / UNITS_PER_CELL;
+
+/** How far above the ground a PNG print is drawn, in world units. */
+const DECAL_LIFT = 2;
 
 /**
  * Whether a print is due: the squared distance walked since the last one, in
@@ -122,6 +135,165 @@ export class FootprintStrEffect extends StrEffect {
 	}
 }
 
+/**
+ * A PNG print's corners: a square `scale` world units from the centre to each
+ * side, at `position`, its top facing the step from `from` to `to`. Each corner
+ * stands DECAL_LIFT above `heightAt` it.
+ *
+ * @param {number[]} position x, y in cells
+ * @param {number[]} from
+ * @param {number[]} to
+ * @param {number} scale
+ * @param {function} heightAt (x, y) => ground height there
+ * @return {Float32Array} top left, top right, bottom left, bottom right, each
+ *   x, y, z as roBrowser draws the world: x, -height, y, plus half a cell
+ */
+export function decalCorners(position, from, to, scale, heightAt) {
+	const dx = to[0] - from[0];
+	const dy = to[1] - from[1];
+	const length = Math.sqrt(dx * dx + dy * dy) || 1;
+	const half = scale / UNITS_PER_CELL;
+	// Forward and to the right of the step, a half-width long.
+	const fx = (dx / length) * half;
+	const fy = (dy / length) * half;
+	const rx = fy;
+	const ry = -fx;
+	const corners = new Float32Array(12);
+	[
+		[-1, 1],
+		[1, 1],
+		[-1, -1],
+		[1, -1]
+	].forEach(([u, v], i) => {
+		const x = position[0] + u * rx + v * fx;
+		const y = position[1] + u * ry + v * fy;
+		corners[i * 3 + 0] = x + 0.5;
+		corners[i * 3 + 1] = -(heightAt(x, y) + DECAL_LIFT / UNITS_PER_CELL);
+		corners[i * 3 + 2] = y + 0.5;
+	});
+	return corners;
+}
+
+/**
+ * A PNG print's alpha, out of 1, `elapsed` ms after it was dropped.
+ *
+ * @param {number} alpha out of 255
+ * @param {number} duration in seconds
+ * @param {number} elapsed in ms
+ * @return {number}
+ */
+export function decalAlpha(alpha, duration, elapsed) {
+	return Math.max(0, (alpha / 255) * (1 - elapsed / (duration * 1000)));
+}
+
+let _program = null;
+let _buffer = null;
+
+/**
+ * The PNGs' textures, by path, shared by every print and kept for the session:
+ * Client.loadFile keeps a PNG as a blob URL, which Texture.load revokes once it
+ * has read it, so a second load of the same file never finishes.
+ */
+const _textures = new Map();
+
+function loadTexture(gl, filename) {
+	if (!_textures.has(filename)) {
+		_textures.set(
+			filename,
+			new Promise(resolve => {
+				Client.loadFile(filename, buffer => WebGL.texture(gl, buffer, resolve));
+			})
+		);
+	}
+	return _textures.get(filename);
+}
+
+/**
+ * A PNG print (Type 3), flat on the ground, fading out.
+ */
+export class FootprintDecal {
+	static renderBeforeEntities = true;
+
+	/**
+	 * @param {string} file the PNG, under data/texture/effect/
+	 * @param {Float32Array} corners decalCorners'
+	 * @param {number} startTick
+	 * @param {number} alpha out of 255
+	 * @param {number} duration in seconds
+	 */
+	constructor(file, corners, startTick, alpha, duration) {
+		this.filename = 'data/texture/effect/' + file.replace(/\\/g, '/');
+		this.corners = corners;
+		this.startTick = startTick;
+		this.alpha = alpha;
+		this.duration = duration;
+	}
+
+	init(gl) {
+		loadTexture(gl, this.filename).then(texture => {
+			this.texture = texture;
+			this.ready = true;
+		});
+	}
+
+	render(gl, tick) {
+		const alpha = decalAlpha(this.alpha, this.duration, tick - this.startTick);
+		if (alpha <= 0) {
+			this.needCleanUp = true;
+			return;
+		}
+
+		const uniform = _program.uniform;
+		gl.bindTexture(gl.TEXTURE_2D, this.texture);
+		// WebGL names a uniform array by its first element.
+		gl.uniform3fv(uniform['uCorners[0]'], this.corners);
+		gl.uniform1f(uniform.uAlpha, alpha);
+		SpriteRenderer.runWithDepth(true, false, false, () => gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4));
+	}
+
+	static init(gl) {
+		_program = WebGL.createShaderProgram(gl, _vertexShader, _fragmentShader);
+		_buffer = gl.createBuffer();
+		gl.bindBuffer(gl.ARRAY_BUFFER, _buffer);
+		// Corner, then texture coordinates, in decalCorners' order.
+		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 0, 1, 1, 0, 2, 0, 1, 3, 1, 1]), gl.STATIC_DRAW);
+		this.ready = true;
+	}
+
+	static free(gl) {
+		if (_program) {
+			gl.deleteProgram(_program);
+			_program = null;
+		}
+		if (_buffer) {
+			gl.deleteBuffer(_buffer);
+			_buffer = null;
+		}
+		this.ready = false;
+	}
+
+	static beforeRender(gl, modelView, projection) {
+		const uniform = _program.uniform;
+		const attribute = _program.attribute;
+		gl.useProgram(_program);
+		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+		gl.uniformMatrix4fv(uniform.uModelViewMat, false, modelView);
+		gl.uniformMatrix4fv(uniform.uProjectionMat, false, projection);
+		gl.activeTexture(gl.TEXTURE0);
+		gl.uniform1i(uniform.uDiffuse, 0);
+		gl.bindBuffer(gl.ARRAY_BUFFER, _buffer);
+		gl.enableVertexAttribArray(attribute.aCorner);
+		gl.enableVertexAttribArray(attribute.aTextureCoord);
+		gl.vertexAttribPointer(attribute.aCorner, 1, gl.FLOAT, false, 3 * 4, 0);
+		gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 3 * 4, 4);
+	}
+
+	static afterRender(gl) {
+		gl.disableVertexAttribArray(_program.attribute.aCorner);
+		gl.disableVertexAttribArray(_program.attribute.aTextureCoord);
+	}
+}
+
 /** The path a footprint's STR is loaded by, and its texture folder. */
 function strPath(file) {
 	const path = file.replace(/\\/g, '/');
@@ -173,6 +345,10 @@ export class FootprintTrail {
 	/** One print, for the step from `from` to `to`. */
 	drop(from, to, tick) {
 		const info = this.info;
+		if (info.type === 3) {
+			this.dropPng(from, to, tick);
+			return;
+		}
 		if (info.type !== 4) {
 			return;
 		}
@@ -189,6 +365,17 @@ export class FootprintTrail {
 		if (top && info.scaleTop > 0) {
 			this.spawn(top, [x, y, ground + info.heightTop / UNITS_PER_CELL], tick, info.scaleTop, 0);
 		}
+	}
+
+	dropPng(from, to, tick) {
+		const info = this.info;
+		const file = this.left ? info.pngLeft : info.pngRight;
+		if (!file || info.pngScale <= 0) {
+			return;
+		}
+		const corners = decalCorners(to, from, to, info.pngScale, (x, y) => Altitude.getCellHeight(x, y));
+		const decal = new FootprintDecal(file, corners, tick, info.pngAlpha, info.pngDuration);
+		EffectManager.add(decal, { Inst: { effectID: -1, startTick: tick }, Init: { ownerAID: null } });
 	}
 
 	spawn(file, position, tick, scale, angle) {
