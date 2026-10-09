@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
 		getEntity: vi.fn(),
 		snapCursorToFocus: vi.fn(),
 		getInteractTarget: vi.fn(() => null),
+		getMarkedPlayer: vi.fn(() => null),
 		isAttackable: vi.fn(() => true),
 		cycle: vi.fn(),
 		clearTarget: vi.fn()
@@ -45,7 +46,7 @@ const mocks = vi.hoisted(() => ({
 		clearFocus: vi.fn()
 	},
 	session: {},
-	menuNav: { navigate: vi.fn(() => false) },
+	menuNav: { navigate: vi.fn(() => false), close: vi.fn(() => false) },
 	uiManager: { getComponent: vi.fn(() => null) },
 	sts: {
 		TYPE: { ENEMY: 1, PLACE: 2, FRIEND: 16 },
@@ -391,5 +392,72 @@ describe('JoystickInteractionService D-pad up / down', () => {
 		mocks.cursor.elementAtCursor.mockReturnValue({ tagName: 'DIV' });
 		Interaction.toggleStickMode();
 		expect(mocks.cursor.recenter).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('JoystickInteractionService marked player', () => {
+	function player(room) {
+		return { GID: 500, room: room || null, onContextMenu: vi.fn() };
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mocks.controls.joyQuick = 2;
+		mocks.aim.isActive.mockReturnValue(false);
+		mocks.cursor.elementAtCursor.mockReturnValue(null);
+		mocks.target.getAttackableFocus.mockReturnValue(null);
+		mocks.target.getInteractTarget.mockReturnValue(null);
+		mocks.sts.getFlag.mockReturnValue(0);
+		mocks.category.isSupport.mockReturnValue(false);
+		mocks.support.isPending.mockReturnValue(false);
+	});
+
+	it('A opens the menu of the marked player, at them', () => {
+		const p = player();
+		mocks.target.getMarkedPlayer.mockReturnValue(p);
+		Interaction.leftClick(false);
+		expect(mocks.cursor.moveMouseToEntity).toHaveBeenCalledWith(p);
+		expect(p.onContextMenu).toHaveBeenCalled();
+		expect(mocks.cursor.leftClick).not.toHaveBeenCalled();
+	});
+
+	it('A enters the shop or chat room the marked player has open', () => {
+		const onEnter = vi.fn();
+		const p = player({ display: true, node: { onEnter } });
+		mocks.target.getMarkedPlayer.mockReturnValue(p);
+		Interaction.leftClick(false);
+		expect(onEnter).toHaveBeenCalled();
+		expect(p.onContextMenu).not.toHaveBeenCalled();
+	});
+
+	it('A over a window is a click on the window', () => {
+		mocks.target.getMarkedPlayer.mockReturnValue(player());
+		mocks.cursor.elementAtCursor.mockReturnValue({ tagName: 'DIV' });
+		Interaction.leftClick(false);
+		expect(mocks.cursor.leftClick).toHaveBeenCalled();
+	});
+
+	it('casts a friendly skill on the marked player', () => {
+		const p = player();
+		mocks.target.getMarkedPlayer.mockReturnValue(p);
+		mocks.sts.getFlag.mockReturnValue(mocks.sts.TYPE.FRIEND);
+		Interaction.executeShortcut(0, 0);
+		expect(mocks.support.castOn).toHaveBeenCalledWith(p);
+		expect(mocks.cursor.quickCastClick).not.toHaveBeenCalled();
+	});
+
+	it('leaves an enemy skill to the focus', () => {
+		mocks.target.getMarkedPlayer.mockReturnValue(player());
+		mocks.target.getAttackableFocus.mockReturnValue({ GID: 100 });
+		mocks.sts.getFlag.mockReturnValue(mocks.sts.TYPE.ENEMY);
+		Interaction.executeShortcut(0, 0);
+		expect(mocks.support.castOn).not.toHaveBeenCalled();
+		expect(mocks.sts.intersectEntityId).toHaveBeenCalledWith(100);
+	});
+
+	it('B closes an open player menu first', () => {
+		mocks.menuNav.close.mockReturnValueOnce(true);
+		Interaction.rightClick(false);
+		expect(mocks.cursor.rightClick).not.toHaveBeenCalled();
 	});
 });

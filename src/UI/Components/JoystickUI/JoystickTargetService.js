@@ -25,11 +25,12 @@ const CYCLE_MODE = Category.CATEGORY;
 const HIDDEN_NPC_JOBS = [111, 139, 2337];
 
 /**
- * Non-combat selection: a ground item, NPC or warp portal the cycle or aim
- * is resting on. It is deliberately not the EntityManager focus: that slot
+ * Non-combat selection: a ground item, NPC, warp portal or player the
+ * cycle or aim is resting on. It is deliberately not the EntityManager focus: that slot
  * is the combat lock-on (X attacks it, touch-targeting skills cast on it,
  * onFocusEnd sends CANCEL_LOCKON), so these would leak into those paths.
  * Y picks up a marked item; A talks to a marked NPC or walks into a portal.
+ * A player you may attack (PvP, GvG) gets the focus instead, like a mob.
  */
 let _marked = null;
 
@@ -41,6 +42,10 @@ function getCycleTypes(Entity) {
 			return [Entity.TYPE_MOB, Entity.TYPE_ITEM];
 		case CYCLE_MODE.INTERACT:
 			return [Entity.TYPE_NPC, Entity.TYPE_NPC2, Entity.TYPE_WARP];
+		case CYCLE_MODE.PLAYERS:
+			return [Entity.TYPE_PC];
+		case CYCLE_MODE.PEOPLE:
+			return [Entity.TYPE_NPC, Entity.TYPE_NPC2, Entity.TYPE_WARP, Entity.TYPE_PC];
 		case CYCLE_MODE.SUPPORT:
 			// The party is picked from the radial (JoystickSupportMode)
 			return [];
@@ -52,6 +57,10 @@ function getCycleTypes(Entity) {
 function isInteractable(entity) {
 	const Entity = entity.constructor;
 	return [Entity.TYPE_NPC, Entity.TYPE_NPC2, Entity.TYPE_WARP].includes(entity.objecttype);
+}
+
+function isPlayer(entity) {
+	return entity.objecttype === entity.constructor.TYPE_PC;
 }
 
 /**
@@ -82,6 +91,16 @@ function getCycledItem() {
 function getInteractTarget() {
 	const marked = getMarked();
 	return marked && isInteractable(marked) ? marked : null;
+}
+
+/**
+ * The marked player: one the cycle or aim selected that may not be
+ * attacked. Null if none, or once it can be attacked (a PvP map's rules
+ * changed): then it is the focus's job.
+ */
+function getMarkedPlayer() {
+	const marked = getMarked();
+	return marked && isPlayer(marked) && !isAttackable(marked) ? marked : null;
 }
 
 function releaseMark() {
@@ -233,6 +252,18 @@ function focusTarget(entity) {
 }
 
 /**
+ * Select what the cycle or aim landed on: a mob, or a player you may
+ * attack, becomes the focus (X attacks it); anything else is marked.
+ */
+function select(entity) {
+	if (entity.objecttype === entity.constructor.TYPE_MOB || isAttackable(entity)) {
+		focusTarget(entity);
+	} else {
+		markEntity(entity);
+	}
+}
+
+/**
  * Step the focused target to the next (or previous) mob and/or ground item,
  * depending on ControlsSettings.joyCycleMode, by straight-line distance from
  * the player. Wraps at both ends. If nothing is focused, or the focused
@@ -251,7 +282,6 @@ function cycle(direction) {
 		return;
 	}
 
-	const Entity = player.constructor;
 	const sorted = getCycleCandidates(player);
 	if (sorted.length === 0) {
 		return;
@@ -270,14 +300,7 @@ function cycle(direction) {
 	}
 
 	const target = sorted[newIndex];
-
-	if (target.objecttype !== Entity.TYPE_MOB) {
-		markEntity(target);
-		Cursor.moveMouseToEntity(target);
-		return;
-	}
-
-	focusTarget(target);
+	select(target);
 	Cursor.moveMouseToEntity(target);
 }
 
@@ -332,20 +355,16 @@ export default {
 	getItem: getCycledItem,
 	getMarked: getMarked,
 	getInteractTarget: getInteractTarget,
+	getMarkedPlayer: getMarkedPlayer,
 	releaseMark: releaseMark,
 	getCycleTypes: getCycleTypes,
 	getCycleCandidates: getCycleCandidates,
 	/**
-	 * Select an entity the aim hit: an item, NPC or portal gets the mark, a
-	 * mob the focus. Never attacks and never stops a running attack.
+	 * Select an entity the aim hit: a mob or attackable player gets the
+	 * focus, anything else the mark. Never attacks and never stops a
+	 * running attack.
 	 */
-	aimAt: function (entity) {
-		if (entity.objecttype !== entity.constructor.TYPE_MOB) {
-			markEntity(entity);
-		} else {
-			focusTarget(entity);
-		}
-	},
+	aimAt: select,
 	snapCursorToFocus: function () {
 		const focus = EntityManager.getFocusEntity();
 		if (focus) {

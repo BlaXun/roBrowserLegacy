@@ -2,7 +2,8 @@
  * UI/Components/JoystickUI/JoystickMenuNavigation.js
  *
  * D-pad navigation for windows that are a column of buttons, like the
- * escape menu and the death menu (Escape.showDeathMenu). While one is
+ * escape menu, the death menu (Escape.showDeathMenu) and the right-click
+ * menu on a player (ContextMenu). While one is
  * open, the D-pad steps through its visible buttons: the virtual cursor
  * moves onto the button and it shows its hover image, so A (a click at the
  * cursor) presses it.
@@ -12,9 +13,13 @@ import UIManager from 'UI/UIManager.js';
 import Cursor from './JoystickMouseCursorAdapter.js';
 
 /**
- * Button menus, by UIManager component name and the buttons to step through.
+ * Button menus, by UIManager component name and the buttons to step
+ * through. A closable one is closed by B (close()).
  */
-const MENUS = [{ component: 'Escape', buttons: '.container button' }];
+const MENUS = [
+	{ component: 'Escape', buttons: '.container button' },
+	{ component: 'ContextMenu', buttons: '.menu > div', closable: true }
+];
 
 let _menuCurrent = null; // the menu entry being navigated
 let _menuButton = null; // the highlighted button
@@ -37,6 +42,9 @@ function isVisible(el) {
 }
 
 function hover(el, on) {
+	// A synthetic mouseover does not set :hover; menus without hover
+	// images style this class instead (ContextMenu)
+	el.classList.toggle('pad-hover', on);
 	el.dispatchEvent(new MouseEvent(on ? 'mouseover' : 'mouseout', { bubbles: true, composed: true }));
 }
 
@@ -89,6 +97,25 @@ function navigate(direction) {
 	return true;
 }
 
+/**
+ * B: close an open closable menu.
+ *
+ * @return {boolean} true when one was open and is closed now
+ */
+function close() {
+	for (let i = 0; i < MENUS.length; i++) {
+		const component = getComponent(MENUS[i].component);
+		if (MENUS[i].closable && isShown(component)) {
+			component.remove();
+			_menuCurrent = null;
+			_menuButton = null;
+			return true;
+		}
+	}
+	return false;
+}
+
 export default {
-	navigate
+	navigate,
+	close
 };

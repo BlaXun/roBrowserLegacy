@@ -98,7 +98,7 @@ export default {
 			// Instant: a selected mob gets the skill wherever the cursor is
 			// (it may have walked away from where the cycle left it); ground
 			// skills land where the mob stands at the moment of the click.
-			if (!this.castInSupport(index) && !this.castAtFocus()) {
+			if (!this.castInSupport(index) && !this.castOnMarkedPlayer() && !this.castAtFocus()) {
 				Cursor.quickCastClick(function () {
 					Target.snapCursorToFocus();
 				});
@@ -110,7 +110,7 @@ export default {
 				setTimeout(() => {
 					const buttons = Input.buttonStates;
 					if (ShortcutMapper.getGroup(buttons) !== group) {
-						if (!this.castInSupport(index) && !this.castOnAim()) {
+						if (!this.castInSupport(index) && !this.castOnMarkedPlayer() && !this.castOnAim()) {
 							Cursor.quickCastClick();
 						}
 					} else if (!this.cancelQuick) {
@@ -259,6 +259,26 @@ export default {
 	},
 
 	/**
+	 * A skill that takes a friend or a place waits while a player is
+	 * marked (Players, NPCs & players): cast it on them, a ground skill
+	 * where they stand. Over a window the click is meant for the window.
+	 *
+	 * @return {boolean} whether the skill was cast
+	 */
+	castOnMarkedPlayer: function () {
+		const flag = SkillTargetSelection.getFlag();
+		const player = Target.getMarkedPlayer();
+		if (!flag || !player || !Support.isSupportSkill(flag)) {
+			return false;
+		}
+		const el = Cursor.elementAtCursor();
+		if (el && el.tagName.toLowerCase() !== 'canvas') {
+			return false;
+		}
+		return Support.castOn(player);
+	},
+
+	/**
 	 * A skill waits for a target while the right stick aims: cast it on the
 	 * aimed target. The aim only moves the cursor onto the target while the
 	 * stick is pushed, so a click at the cursor lands where the mob stood
@@ -337,7 +357,9 @@ export default {
 	 * portals" mode) and the cursor over the map, a press talks to the NPC
 	 * or walks into the portal, wherever the cursor is, and clears the
 	 * selection so the next A is an ordinary click again (NPC dialogue
-	 * buttons, for one). Otherwise A is a left click at the cursor; with a
+	 * buttons, for one). With a player selected it opens their shop or chat
+	 * room, or else their menu (whisper, trade, party, ...), which the D-pad
+	 * steps through. Otherwise A is a left click at the cursor; with a
 	 * skill waiting for a target in aim mode, see castOnAim().
 	 *
 	 * @param {boolean} holding A held rather than freshly pressed
@@ -348,8 +370,8 @@ export default {
 			return;
 		}
 
-		// A skill waiting for a target: the aimed one, not the stale cursor
-		if (!holding && this.castOnAim()) {
+		// A skill waiting for a target: a marked player, or the aimed target
+		if (!holding && (this.castOnMarkedPlayer() || this.castOnAim())) {
 			return;
 		}
 
@@ -373,7 +395,35 @@ export default {
 				return;
 			}
 		}
+
+		const player = Target.getMarkedPlayer();
+		if (player && !holding && !SkillTargetSelection.getFlag()) {
+			const el = Cursor.elementAtCursor();
+			if (!el || el.tagName.toLowerCase() === 'canvas') {
+				this.interactWithPlayer(player);
+				return;
+			}
+		}
 		Cursor.leftClick(holding);
+	},
+
+	/**
+	 * A on a marked player: their vending shop, buying store or chat room
+	 * if they have one open, as a click on its sign does; otherwise their
+	 * right-click menu, opened at them. The mark stays, so a skill cast
+	 * next still goes to them.
+	 *
+	 * @param {Entity} player
+	 */
+	interactWithPlayer: function (player) {
+		// The sign over their head is shown and clickable (EntityRoom)
+		const room = player.room;
+		if (room && room.display && room.node && room.node.onEnter) {
+			room.node.onEnter();
+			return;
+		}
+		Cursor.moveMouseToEntity(player);
+		player.onContextMenu();
 	},
 
 	/**
@@ -400,6 +450,10 @@ export default {
 		}
 		// B with the support radial open: close it
 		if (!holding && Support.dismiss()) {
+			return;
+		}
+		// B with a player's menu open: close it
+		if (!holding && MenuNav.close()) {
 			return;
 		}
 		Cursor.rightClick(holding);
