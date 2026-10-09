@@ -15,17 +15,20 @@ import JoystickSelectionUI from './JoystickSelectionUI.js';
 import htmlText from './JoystickUI.html?raw';
 import cssText from './JoystickUI.css?raw';
 import JoystickUIRenderer from './JoystickUIRenderer.js';
+import JoystickSlotDrop from './JoystickSlotDrop.js';
 
 const JoystickUI = new GUIComponent('JoystickUI', cssText);
 JoystickUI.render = () => htmlText;
 
 JoystickUI.onAppend = function () {
 	JoystickUIRenderer.attach(this.ui);
+	JoystickSlotDrop.attach(this.ui[0]);
 	this._host.style.display = 'none';
 	JoystickSelectionUI.append();
 };
 
 JoystickUI.onRemove = function () {
+	JoystickSlotDrop.detach();
 	JoystickModule.dispose();
 };
 

@@ -103,6 +103,18 @@
 	transition: background 0.2s;
 }
 
+#JoystickUI .slot.drop-target {
+	background-color: rgba(255, 215, 64, 0.3);
+	border-color: #ffd740;
+	box-shadow: 0 0 6px rgba(255, 215, 64, 0.8);
+}
+
+/* While a skill or item is dragged the gaps between groups take the drop too,
+   so it doesn't fall through to the map */
+:host(.dragging) #JoystickUI {
+	pointer-events: auto;
+}
+
 #JoystickUI .slot:active {
 	background-color: rgba(144, 238, 144, 0.3);
 	border-color: #90ee90;

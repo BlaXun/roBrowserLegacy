@@ -770,21 +770,66 @@ ShortCut.removeElement = function removeElement(isSkill, ID, row, amount) {
 		return;
 	}
 
-	const root = ShortCut.getRoot();
-
 	for (let i = row * 9, count = Math.min(_list.length, row * 9 + 9); i < count; ++i) {
 		if (_list[i] && _list[i].isSkill == isSkill && _list[i].ID === ID && (!isSkill || _list[i].count == amount)) {
-			const container = root.querySelector(`.container[data-index="${i}"]`);
-			if (container) {
-				container.innerHTML = '';
-			}
-			_list[i].isSkill = 0;
-			_list[i].ID = 0;
-			_list[i].count = 0;
-
-			ShortCut.onChange(i, 0, 0, 0);
+			ShortCut.removeAt(i);
 		}
 	}
+};
+
+/**
+ * Empty one shortcut slot and tell the server
+ *
+ * @param {number} index of the slot
+ */
+ShortCut.removeAt = function removeAt(index) {
+	if (!_list[index]) {
+		return;
+	}
+
+	const container = ShortCut.getRoot().querySelector(`.container[data-index="${index}"]`);
+	if (container) {
+		container.innerHTML = '';
+	}
+	_list[index].isSkill = 0;
+	_list[index].ID = 0;
+	_list[index].count = 0;
+
+	ShortCut.onChange(index, 0, 0, 0);
+};
+
+/**
+ * What a drag payload would put in a shortcut slot
+ *
+ * @param {object} data drag payload ({ type, from, data })
+ * @return {{isSkill: boolean|number, ID: number, count: number}|null} null when it can't go in a slot
+ */
+ShortCut.fromDragData = function fromDragData(data) {
+	// Do not process others things than item and skill
+	if (!data || !data.data || (data.type !== 'item' && data.type !== 'skill')) {
+		return null;
+	}
+
+	const element = data.data;
+
+	switch (data.from) {
+		case 'SkillList':
+		case 'Guild':
+		case 'SkillListMH':
+			return {
+				isSkill: true,
+				ID: element.SKID,
+				count: element.selectedLevel ? element.selectedLevel : element.level
+			};
+
+		case 'Inventory':
+			return { isSkill: false, ID: element.ITID, count: 0 };
+
+		case 'ShortCut':
+			return { isSkill: element.isSkill, ID: element.ID, count: element.count };
+	}
+
+	return null;
 };
 
 /**
@@ -793,7 +838,7 @@ ShortCut.removeElement = function removeElement(isSkill, ID, row, amount) {
  * and skill window to save to shortcut ?
  */
 function onDrop(event, target) {
-	let data, element;
+	let data;
 	const index = parseInt(target.getAttribute('data-index'), 10);
 	const row = Math.floor(index / 9);
 
@@ -802,47 +847,18 @@ function onDrop(event, target) {
 
 	try {
 		data = JSON.parse(event.dataTransfer.getData('Text'));
-		element = data.data;
 	} catch (_e) {
 		return;
 	}
 
-	// Do not process others things than item and skill
-	if (data.type !== 'item' && data.type !== 'skill') {
+	const entry = ShortCut.fromDragData(data);
+	if (!entry) {
 		return;
 	}
 
-	switch (data.from) {
-		case 'SkillList':
-		case 'Guild':
-		case 'SkillListMH':
-			ShortCut.removeElement(
-				true,
-				element.SKID,
-				row,
-				element.selectedLevel ? element.selectedLevel : element.level
-			);
-			ShortCut.addElement(
-				index,
-				true,
-				element.SKID,
-				element.selectedLevel ? element.selectedLevel : element.level
-			);
-			ShortCut.onChange(index, true, element.SKID, element.selectedLevel ? element.selectedLevel : element.level);
-			break;
-
-		case 'Inventory':
-			ShortCut.removeElement(false, element.ITID, row);
-			ShortCut.addElement(index, false, element.ITID, 0);
-			ShortCut.onChange(index, false, element.ITID, 0);
-			break;
-
-		case 'ShortCut':
-			ShortCut.removeElement(element.isSkill, element.ID, row, element.isSkill ? element.count : null);
-			ShortCut.addElement(index, element.isSkill, element.ID, element.count);
-			ShortCut.onChange(index, element.isSkill, element.ID, element.count);
-			break;
-	}
+	ShortCut.removeElement(entry.isSkill, entry.ID, row, entry.isSkill ? entry.count : null);
+	ShortCut.addElement(index, entry.isSkill, entry.ID, entry.count);
+	ShortCut.onChange(index, entry.isSkill, entry.ID, entry.count);
 }
 
 /**
