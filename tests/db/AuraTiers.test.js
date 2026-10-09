@@ -1,10 +1,36 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// The effect classes need WebGL and the client; the table only needs to name them.
-vi.mock('Renderer/Effects/MaxLevelAura.js', () => ({ default: class {} }));
-vi.mock('Renderer/Effects/SwirlingAura.js', () => ({ default: class {} }));
-vi.mock('Renderer/Effects/GroundAura.js', () => ({ default: class {} }));
-vi.mock('Renderer/Effects/Level99Bubble.js', () => ({ default: class {} }));
+// The effect classes need WebGL and the client; the table only needs to name
+// them, and the tests what each part is given.
+vi.mock('Renderer/Effects/MaxLevelAura.js', () => ({
+	default: class MaxLevelAura {
+		constructor(...args) {
+			this.args = args;
+		}
+	}
+}));
+vi.mock('Renderer/Effects/SwirlingAura.js', () => ({
+	default: class SwirlingAura {
+		constructor(...args) {
+			this.args = args;
+		}
+	}
+}));
+vi.mock('Renderer/Effects/GroundAura.js', () => ({
+	default: class GroundAura {
+		constructor(...args) {
+			this.args = args;
+		}
+	}
+}));
+
+/** What each of an entry's parts adds, run with `init` as its Init params. */
+function spawn(entry, init = {}) {
+	const added = [];
+	const Params = { Init: { ownerEntity: { position: [0, 0, 0] }, ...init }, Inst: { startTick: 0 } };
+	entry.forEach(part => part.func.call({ add: effect => added.push(effect) }, Params));
+	return added;
+}
 
 import {
 	auraSettings,
@@ -115,27 +141,71 @@ describe('effect table', () => {
 		for (let id = 1164; id <= 1183; id++) {
 			expect(LevelAuraEffects[id], `effect ${id}`).toBeDefined();
 		}
-		expect(LevelAuraEffects[1164]).toHaveLength(3); // the level-99 aura's three parts
+		expect(LevelAuraEffects[1164]).toHaveLength(2); // CLevel99Effect's ring and ground
 		expect(LevelAuraEffects[1174]).toHaveLength(2); // bubbles and rings
 	});
 
 	it('has the eleven job-coloured level-99 and level-160 hat-effect auras', () => {
 		for (let id = 1325; id <= 1335; id++) {
-			expect(LevelAuraEffects[id], `effect ${id}`).toHaveLength(3);
+			expect(LevelAuraEffects[id], `effect ${id}`).toHaveLength(2);
 			expect(LevelAuraEffects[id + 11], `effect ${id + 11}`).toHaveLength(2);
 		}
 		expect(LevelAuraEffects[1347]).toBeUndefined();
 	});
 
 	it('has the tiger auras', () => {
-		expect(LevelAuraEffects[1291]).toHaveLength(3);
+		expect(LevelAuraEffects[1291]).toHaveLength(2);
 		expect(LevelAuraEffects[1292]).toHaveLength(2);
 	});
 
 	it('has the midnight blue and gray auras, the level-99 midnight blue shared by five hat effects', () => {
-		expect(LevelAuraEffects[2281]).toHaveLength(3);
+		expect(LevelAuraEffects[2281]).toHaveLength(2);
 		expect(LevelAuraEffects[2282]).toHaveLength(2);
-		expect(LevelAuraEffects[2283]).toHaveLength(3);
+		expect(LevelAuraEffects[2283]).toHaveLength(2);
 		expect(LevelAuraEffects[2284]).toHaveLength(2);
+	});
+});
+
+describe('hat auras, as the client draws them', () => {
+	it("draws a coloured level-99 one as a tinted ring and the client's ground texture, alpha-blended", () => {
+		const [ring, ground] = spawn(LevelAuraEffects[1164]);
+		expect(ring.constructor.name).toBe('SwirlingAura');
+		expect(ring.args[4]).toMatchObject({ ...auraColor(NAMED_COLORS.red), hat: true });
+		expect(ground.constructor.name).toBe('GroundAura');
+		expect(ground.args[3]).toBe('pikapika_red.tga');
+		expect(ground.args[5]).toEqual({ r: 1, g: 1, b: 1, dark: false, hat: true }); // untinted
+		// pikapika2.bmp in the colour, for a client without the texture.
+		expect(ground.args[6]).toEqual({
+			textureName: 'pikapika2.bmp',
+			color: { ...auraColor(NAMED_COLORS.red), hat: true }
+		});
+	});
+
+	it("names each colour's ground texture as the client does", () => {
+		const ground = id => spawn(LevelAuraEffects[id])[1].args[3];
+		expect(ground(1172)).toBe('pikapika_black.tga');
+		expect(ground(1325)).toBe('pikapika_rune_knight_red.tga');
+		expect(ground(1335)).toBe('pikapika_genetic_yellowgreen.tga');
+		expect(ground(1291)).toBe('pikapika_tiger.tga');
+		expect(ground(2281)).toBe('pikapika_midnight_blue.tga');
+		expect(ground(2283)).toBe('pikapika_gray.tga');
+	});
+
+	it('tints pikapika2.bmp for a colour the caller passes', () => {
+		const green = auraColor([0, 255, 0]);
+		const [ring, ground] = spawn(LevelAuraEffects[1164], { auraColor: green });
+		expect(ring.args[4]).toEqual({ ...green, hat: true });
+		expect(ground.args[3]).toBe('pikapika2.bmp');
+		expect(ground.args[5]).toEqual({ ...green, hat: true });
+		expect(ground.args[6]).toBeUndefined();
+	});
+
+	it('alpha-blends the level-160 hat auras, and leaves the tier auras and 881 adding light', () => {
+		for (const id of [1174, 1292, 1336, 2282, 2284]) {
+			spawn(LevelAuraEffects[id]).forEach(part => expect(part.args[2].hat, `effect ${id}`).toBe(true));
+		}
+		for (const id of [881, 978, 1022, 1226, 2275]) {
+			spawn(LevelAuraEffects[id]).forEach(part => expect(part.args[2].hat, `effect ${id}`).toBeUndefined());
+		}
 	});
 });
