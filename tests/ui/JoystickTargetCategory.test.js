@@ -15,13 +15,20 @@ describe('JoystickTargetCategory', () => {
 		mocks.controls.joyCycleMode = CATEGORY.MOBS;
 	});
 
-	it('steps Mobs > NPCs > Items > Support and wraps both ways', () => {
+	it('steps Mobs > NPCs > Players > NPCs & players > Items > Support and wraps both ways', () => {
 		const seen = [];
-		for (let i = 0; i < 4; i++) {
+		for (let i = 0; i < 6; i++) {
 			Category.step('down');
 			seen.push(Category.get());
 		}
-		expect(seen).toEqual([CATEGORY.INTERACT, CATEGORY.ITEMS, CATEGORY.SUPPORT, CATEGORY.MOBS]);
+		expect(seen).toEqual([
+			CATEGORY.INTERACT,
+			CATEGORY.PLAYERS,
+			CATEGORY.PEOPLE,
+			CATEGORY.ITEMS,
+			CATEGORY.SUPPORT,
+			CATEGORY.MOBS
+		]);
 
 		Category.step('up');
 		expect(Category.get()).toBe(CATEGORY.SUPPORT);
@@ -53,7 +60,7 @@ describe('JoystickTargetCategory', () => {
 		const list = document.querySelector('.joystick-target-category');
 		expect(list).not.toBeNull();
 		const rows = Array.from(list.children).map(row => row.textContent);
-		expect(rows).toEqual(['Mobs', '▶ NPCs', 'Items', 'Support']);
+		expect(rows).toEqual(['Mobs', '▶ NPCs', 'Players', 'NPCs & players', 'Items', 'Support']);
 		Category.dispose();
 		expect(document.querySelector('.joystick-target-category')).toBeNull();
 	});

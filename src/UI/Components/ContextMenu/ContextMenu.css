@@ -34,6 +34,7 @@
 	height: 14px;
 }
 
-#ContextMenu .menu div:hover {
+#ContextMenu .menu div:hover,
+#ContextMenu .menu div.pad-hover {
 	background-color: #739cef;
 }

@@ -529,10 +529,13 @@ function onUpdateTargetOption() {
  * Roles a single button plays, in the order the mapping panel lists them.
  */
 const MAPPING_ROLES = [
-	[ButtonMap.BUTTON.A, 'Click / confirm (Support radial: cast the waiting skill on the chosen member)'],
+	[
+		ButtonMap.BUTTON.A,
+		'Click / confirm - selected NPC: talk, selected player: shop or menu (Support radial: cast the waiting skill on the chosen member)'
+	],
 	[
 		ButtonMap.BUTTON.B,
-		'Right click (hold on item/skill: options) - Support radial: close it, or cancel the waiting skill'
+		'Right click (hold on item/skill: options) - Support radial: close it, or cancel the waiting skill - player menu: close it'
 	],
 	[ButtonMap.BUTTON.X, 'Attack target'],
 	[ButtonMap.BUTTON.Y, 'Pick up item'],

@@ -44,6 +44,11 @@ function setupUIHide() {
 			return;
 		}
 
+		// A button held over the HUD is the start of dragging one of its icons
+		if (event.buttons && event.composedPath().includes(ui[0])) {
+			return;
+		}
+
 		const deltaX = Math.abs(event.clientX - lastMouseX);
 		const deltaY = Math.abs(event.clientY - lastMouseY);
 
@@ -298,5 +303,6 @@ export default {
 	updateStickMode,
 	updateCategory,
 	show,
-	hide
+	hide,
+	isVisible: _isVisible
 };

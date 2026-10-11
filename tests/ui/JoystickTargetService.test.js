@@ -11,9 +11,14 @@ const mocks = vi.hoisted(() => {
 			this.attackable = !!opts.attackable;
 			this.onFocus = () => {};
 			this.onFocusEnd = () => {};
+			this.attachments = { add: () => {}, remove: () => {} };
+			this.hidden = false;
 		}
 		canAttackEntity() {
 			return this.attackable;
+		}
+		isVisible() {
+			return !this.hidden;
 		}
 	}
 	FakeEntity.TYPE_PC = 0;
@@ -27,7 +32,8 @@ const mocks = vi.hoisted(() => {
 		focus: null,
 		list: new Map(),
 		closest: null,
-		controls: { attackTargetMode: 0, joyCycleMode: 0 }
+		sorted: [],
+		controls: { attackTargetMode: 0, joyCycleMode: 0, save: () => {} }
 	};
 });
 
@@ -41,7 +47,7 @@ vi.mock('Renderer/EntityManager.js', () => ({
 		},
 		getClosestEntity: (src, type) => (mocks.closest && mocks.closest.objecttype === type ? mocks.closest : null),
 		getLowestHpEntity: () => null,
-		getEntitiesSortedByDistance: () => []
+		getEntitiesSortedByDistance: (src, types) => mocks.sorted.filter(e => types.includes(e.objecttype))
 	}
 }));
 vi.mock('Preferences/Controls.js', () => ({ default: mocks.controls }));
@@ -50,6 +56,7 @@ vi.mock('UI/Components/ChatBox/ChatBox.js', () => ({ default: {} }));
 vi.mock('UI/CursorManager.js', () => ({ default: { ACTION: {} } }));
 
 const { default: Target } = await import('UI/Components/JoystickUI/JoystickTargetService.js');
+const { default: Category } = await import('UI/Components/JoystickUI/JoystickTargetCategory.js');
 
 const { FakeEntity } = mocks;
 
@@ -143,5 +150,81 @@ describe('JoystickTargetService categories', () => {
 		Target.clearTarget();
 		expect(mocks.focus).toBeNull();
 		expect(mob.onFocusEnd).toHaveBeenCalled();
+	});
+});
+
+describe('JoystickTargetService players', () => {
+	const CATEGORY = Target.CYCLE_MODE;
+
+	beforeEach(() => {
+		mocks.list.clear();
+		mocks.session.Entity = spawn(new FakeEntity(1, FakeEntity.TYPE_PC));
+		mocks.focus = null;
+		mocks.sorted = [];
+		Target.releaseMark();
+	});
+
+	it('Players takes players only, NPCs & players both', () => {
+		mocks.controls.joyCycleMode = CATEGORY.PLAYERS;
+		expect(Target.getCycleTypes(FakeEntity)).toEqual([FakeEntity.TYPE_PC]);
+
+		mocks.controls.joyCycleMode = CATEGORY.PEOPLE;
+		const types = Target.getCycleTypes(FakeEntity);
+		expect(types).toContain(FakeEntity.TYPE_PC);
+		expect(types).toContain(FakeEntity.TYPE_NPC);
+		expect(types).not.toContain(FakeEntity.TYPE_MOB);
+	});
+
+	it('marks a friendly player the aim hits, without focusing it', () => {
+		const friend = spawn(new FakeEntity(300, FakeEntity.TYPE_PC));
+		Target.aimAt(friend);
+		expect(Target.getMarkedPlayer()).toBe(friend);
+		expect(mocks.focus).toBe(null);
+	});
+
+	it('focuses a player the map lets us attack, so X attacks it', () => {
+		const enemy = spawn(new FakeEntity(301, FakeEntity.TYPE_PC, { attackable: true }));
+		Target.aimAt(enemy);
+		expect(Target.getAttackableFocus()).toBe(enemy);
+		expect(Target.getMarkedPlayer()).toBe(null);
+	});
+
+	it('drops the mark of a player who goes into hiding', () => {
+		const friend = spawn(new FakeEntity(300, FakeEntity.TYPE_PC));
+		Target.aimAt(friend);
+		friend.hidden = true;
+		expect(Target.getMarked()).toBe(null);
+		expect(Target.getMarkedPlayer()).toBe(null);
+	});
+
+	it('drops a marked player when switching to a category without players', () => {
+		mocks.controls.joyCycleMode = CATEGORY.PLAYERS;
+		const friend = spawn(new FakeEntity(300, FakeEntity.TYPE_PC));
+		Target.aimAt(friend);
+		expect(Target.getMarked()).toBe(friend);
+
+		Category.set(CATEGORY.ITEMS);
+		expect(Target.getMarked()).toBe(null);
+	});
+});
+
+describe('JoystickTargetService hidden mobs', () => {
+	beforeEach(() => {
+		mocks.list.clear();
+		mocks.session.Entity = spawn(new FakeEntity(1, FakeEntity.TYPE_PC));
+		mocks.focus = null;
+		mocks.closest = null;
+	});
+
+	it('a focused mob that hides is no longer the attack target', () => {
+		const mob = spawn(new FakeEntity(100, FakeEntity.TYPE_MOB));
+		const other = spawn(new FakeEntity(101, FakeEntity.TYPE_MOB));
+		mocks.focus = mob;
+		mocks.closest = other;
+
+		mob.hidden = true;
+		expect(Target.isAttackable(mob)).toBe(false);
+		expect(Target.getAttackableFocus()).toBe(null);
+		expect(Target.getEntity()).toBe(other);
 	});
 });

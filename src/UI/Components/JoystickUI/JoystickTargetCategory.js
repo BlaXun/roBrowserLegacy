@@ -1,11 +1,12 @@
 /**
  * UI/Components/JoystickUI/JoystickTargetCategory.js
  *
- * What the gamepad targets: mobs, NPCs and portals, ground items, or the
- * party (support). D-pad up / down steps through the categories, wrapping
- * at both ends, and a list on the left of the screen shows all of them
- * with the active one highlighted, for a moment after each step. The HUD's
- * stick-mode pill keeps showing the active one (JoystickUIRenderer).
+ * What the gamepad targets: mobs, NPCs and portals, other players, NPCs
+ * and players together, ground items, or the party (support). D-pad up /
+ * down steps through the categories, wrapping at both ends, and a list on
+ * the left of the screen shows all of them with the active one
+ * highlighted, for a moment after each step. The HUD's stick-mode pill
+ * keeps showing the active one (JoystickUIRenderer).
  *
  * The category is ControlsSettings.joyCycleMode. Its values stay those of
  * the old L3 cycle so saved settings keep their meaning; 2 (mobs and items
@@ -20,20 +21,24 @@ const CATEGORY = {
 	ITEMS: 1,
 	BOTH: 2, // legacy, not in ORDER
 	INTERACT: 3,
-	SUPPORT: 4
+	SUPPORT: 4,
+	PLAYERS: 5,
+	PEOPLE: 6 // NPCs, portals and players
 };
 
 /**
  * The order D-pad up / down walks through, top to bottom on screen.
  */
-const ORDER = [CATEGORY.MOBS, CATEGORY.INTERACT, CATEGORY.ITEMS, CATEGORY.SUPPORT];
+const ORDER = [CATEGORY.MOBS, CATEGORY.INTERACT, CATEGORY.PLAYERS, CATEGORY.PEOPLE, CATEGORY.ITEMS, CATEGORY.SUPPORT];
 
 const NAMES = {
 	[CATEGORY.MOBS]: 'Mobs',
 	[CATEGORY.ITEMS]: 'Items',
 	[CATEGORY.BOTH]: 'Mobs & items',
 	[CATEGORY.INTERACT]: 'NPCs',
-	[CATEGORY.SUPPORT]: 'Support'
+	[CATEGORY.SUPPORT]: 'Support',
+	[CATEGORY.PLAYERS]: 'Players',
+	[CATEGORY.PEOPLE]: 'NPCs & players'
 };
 
 const LIST_VISIBLE_MS = 2000; // the list stays this long after a step, then fades
