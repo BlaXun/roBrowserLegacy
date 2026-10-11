@@ -61,7 +61,7 @@ vi.mock('UI/Components/ContextMenu/ContextMenu.js', () => ({
 	default: { remove: vi.fn(), append: vi.fn(), addElement: vi.fn() }
 }));
 vi.mock('UI/Components/ChatBoxSettings/ChatBoxSettings.js', () => ({
-	default: { updateTab: vi.fn(), getTabs: () => [] }
+	default: { updateTab: vi.fn(), getTabs: () => [], tabOption: [] }
 }));
 
 // KEYS is deliberately NOT mocked: `getDeepActiveElement` is installed with
@@ -70,6 +70,7 @@ vi.mock('UI/Components/ChatBoxSettings/ChatBoxSettings.js', () => ({
 // exactly what this guard depends on.
 const ChatBox = (await import('UI/Components/ChatBox/ChatBox.js')).default;
 const KEYS = (await import('Controls/KeyEventHandler.js')).default;
+const ChatBoxSettings = (await import('UI/Components/ChatBoxSettings/ChatBoxSettings.js')).default;
 
 function mountChatBox() {
 	const host = document.createElement('div');
@@ -218,4 +219,39 @@ describe('ChatBox — height cycle position', () => {
 			expect(hiddenSteps).toBe(2);
 		}
 	);
+});
+
+describe('ChatBox — multiline messages', () => {
+	it('preserves plain-text line breaks without interpreting HTML', () => {
+		document.body.innerHTML = '';
+		const root = mountChatBox();
+		const content = document.createElement('div');
+		content.className = 'content';
+		content.dataset.content = '0';
+		root.querySelector('.contentwrapper').appendChild(content);
+		ChatBox.tabs = [{ name: 'Public' }];
+		ChatBoxSettings.tabOption = [[ChatBox.FILTER.PUBLIC_LOG]];
+		let flush;
+		const frame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+			flush = callback;
+			return 1;
+		});
+
+		try {
+			const text = 'Available Commands:\n/sit : Sit down\n<command> : Literal text';
+			ChatBox.addText(text, ChatBox.TYPE.BLUE, ChatBox.FILTER.PUBLIC_LOG);
+			flush();
+
+			const message = content.firstElementChild;
+			expect(message.textContent).toBe(text);
+			expect(message.childElementCount).toBe(0);
+			// jsdom has no layout; this CSS policy preserves newline characters
+			// while continuing to wrap long lines and collapse extra spaces.
+			expect(getComputedStyle(message).whiteSpace).toBe('pre-line');
+		} finally {
+			frame.mockRestore();
+			ChatBox.tabs = [];
+			ChatBoxSettings.tabOption = [];
+		}
+	});
 });
