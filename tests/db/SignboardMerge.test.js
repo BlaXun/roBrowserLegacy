@@ -29,6 +29,18 @@ describe('mergeSignboards', () => {
 		expect(table.prontera[160][185].icon_location).toBe('nmtrade');
 	});
 
+	it('lets a later row with no icon remove the sign on its cell', () => {
+		const table = mergeSignboards([row('prontera', 146, 89, 'kafra'), row('prontera', 150, 89, 'store')]);
+		mergeSignboards([row('Prontera', 146, 89, null)], table);
+		expect(table.prontera[146][89]).toBeUndefined();
+		expect(table.prontera[150][89].icon_location).toBe('store');
+	});
+
+	it('never keeps a row with no icon', () => {
+		const table = mergeSignboards([row('prontera', 146, 89, null)]);
+		expect(table.prontera?.[146]?.[89]).toBeUndefined();
+	});
+
 	it('skips a row with no map', () => {
 		expect(mergeSignboards([row(null, 1, 1, 'kafra')])).toEqual({});
 	});

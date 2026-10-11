@@ -12,7 +12,9 @@
  *
  * The base SignBoardList.lub is loaded first and each customSignBoardList
  * table after it, so a row on a cell that already has a sign replaces it and
- * every other sign is kept: a table only has to carry its own signs.
+ * every other sign is kept: a table only has to carry its own signs. A row
+ * with no icon removes the sign on its cell instead, so a later table can
+ * take a sign away; such a row is never kept, as there is nothing to draw.
  *
  * @param {Array} signboardArray - rows as AddSignBoard builds them
  * @param {Object} [signboardDict] - signboards already loaded, changed in place
@@ -26,6 +28,10 @@ function mergeSignboards(signboardArray, signboardDict = {}) {
 		const { x, y } = signboard;
 		// MapEngine looks the map up in lower case, and a mod may not write it so.
 		const mapname = signboard.mapname.toLowerCase();
+		if (!signboard.icon_location) {
+			delete signboardDict[mapname]?.[x]?.[y];
+			continue;
+		}
 		if (!signboardDict[mapname]) {
 			signboardDict[mapname] = {};
 		}
