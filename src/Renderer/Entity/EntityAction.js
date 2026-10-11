@@ -124,6 +124,7 @@ function setAction(option) {
 		!this.isFastMoving &&
 		this.walk &&
 		this.walk.total > 0 &&
+		!this.walk.settling &&
 		this.objecttype !== this.constructor.TYPE_FALCON &&
 		this.objecttype !== this.constructor.TYPE_WUG
 	) {

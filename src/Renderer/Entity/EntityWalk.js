@@ -28,6 +28,21 @@ const DIAGONAL_FACTOR = 1.414;
 // network delay: a frame or two, plus the server's own processing.
 const LATENCY_SLACK_MS = 100;
 
+// How far a walk's pace may be stretched to meet the server's arrival time:
+// from twice the walk speed (catching up) to half of it (letting it catch up).
+const MIN_PACE = 0.5;
+const MAX_PACE = 2;
+
+// rAthena's walk request limits (battle_config.max_walk_path, OFFICIAL_WALKPATH):
+// a path of more steps is refused, and over 14 only in a straight line.
+const SERVER_MAX_WALK_PATH = 17;
+const SERVER_MAX_BENT_PATH = 14;
+
+// A STOPMOVE this close to where the entity is drawn glides there instead of
+// jumping, for at most this long.
+const SETTLE_MAX_CELLS = 2;
+const SETTLE_MAX_MS = 200;
+
 // Facing behavior (official-like):
 // - First segment: continuous heading toward next tile center.
 // - Later segments: snap to 8-way direction per segment offset.
@@ -128,6 +143,10 @@ function computeWalkStartTick(nowTick, moveStartTime, pathDuration, maxClamp) {
  * @property {function|null} onEnd Callback fired when entity reaches path end
  * @property {number} index Current segment index in path
  * @property {number} total Total number of coordinate values in path
+ * @property {boolean} settling Gliding to rest on a cell the server named
+ * @property {object|null} predicted A walk the server has not confirmed yet:
+ *   { queue: [[x, y], ...] cells requested, fallback: [x, y] where the server
+ *   has the entity, deadline: tick after which it walks back }
  */
 function WalkStructure() {
 	this.speed = 150;
@@ -141,6 +160,8 @@ function WalkStructure() {
 	this.onEnd = null;
 	this.index = 0;
 	this.total = 0;
+	this.settling = false;
+	this.predicted = null;
 }
 
 /**
@@ -353,10 +374,20 @@ function walkToNonWalkableGround(
  * @param {number} [moveEndTime]
  * @param {boolean} [isFastMove=false]
  * @param {number} [fastSpeed]
+ * @param {boolean} [isPrediction=false] a walk the client starts before the server answers
  */
-function walkTo(from_x, from_y, to_x, to_y, range, moveStartTime, moveEndTime, isFastMove, fastSpeed) {
+function walkTo(from_x, from_y, to_x, to_y, range, moveStartTime, moveEndTime, isFastMove, fastSpeed, isPrediction) {
+	// A reply to a request older than the one being predicted: the newer
+	// request's reply will follow, so keep walking where the player last clicked.
+	if (!isPrediction && this.walk.predicted && answersOlderRequest(this.walk.predicted, to_x, to_y)) {
+		return;
+	}
+
 	// Same position
 	if (from_x === to_x && from_y === to_y) {
+		if (!isPrediction && this.walk.predicted) {
+			this.settleTo(to_x, to_y);
+		}
 		return;
 	}
 
@@ -447,48 +478,39 @@ function walkTo(from_x, from_y, to_x, to_y, range, moveStartTime, moveEndTime, i
 			clientDuration += segDur;
 		}
 
-		// Estimate expected server duration
+		// How long the server takes over its path: the packet's end time when it
+		// has one, else the cost of the server's own path from its start cell.
 		let serverDuration = 0;
-		if (!isFastMove) {
+		if (!isFastMove && !isPrediction) {
 			if (moveEndTime && moveStartTime && moveEndTime > moveStartTime) {
 				serverDuration = moveEndTime - moveStartTime;
+			} else if (!usedFallback && curCellX === from_x && curCellY === from_y) {
+				// Same start cell, so the path above is the server's.
+				serverDuration = gridPathDuration(path, total, this.walk.speed);
 			} else {
-				const sDx = to_x - from_x;
-				const sDy = to_y - from_y;
-				const straight = Math.abs(Math.abs(sDx) - Math.abs(sDy));
-				const diag = Math.min(Math.abs(sDx), Math.abs(sDy));
-				serverDuration = straight * this.walk.speed + diag * this.walk.speed * DIAGONAL_FACTOR;
+				const serverPath = usedFallback ? path : _serverPath;
+				const serverTotal = usedFallback
+					? total
+					: PathFinding.search(from_x | 0, from_y | 0, to_x | 0, to_y | 0, range || 0, serverPath);
+				serverDuration = gridPathDuration(serverPath, serverTotal, this.walk.speed);
 			}
 		}
 
+		// The walk starts from where the entity is drawn, now, never ahead of it:
+		// rolling its start back by the packet's age jumped it forward on every
+		// move packet. Time the server has already walked is made up by pace.
 		const nowTick = Date.now();
-		const isPlayerLike =
-			this.objecttype === this.constructor.TYPE_PC ||
-			this.objecttype === this.constructor.TYPE_DISGUISED ||
-			this.objecttype === this.constructor.TYPE_PET ||
-			this.objecttype === this.constructor.TYPE_HOM ||
-			this.objecttype === this.constructor.TYPE_MERC;
-		const maxFastForward = isFastMove
-			? 0
-			: isPlayerLike
-				? clientDuration
-				: Math.min(clientDuration, this.walk.speed);
-		const startTick = isFastMove
-			? nowTick
-			: computeWalkStartTick(nowTick, moveStartTime, clientDuration, maxFastForward);
-		this.walk.tick = this.walk.prevTick = startTick;
+		this.walk.tick = this.walk.prevTick = nowTick;
 
 		// Ground Truth / Canonical C++ FixPathTime (PathFinder.cpp line 119):
-		// Proportionally adjust segment durations so that the client arrives at destination
-		// at the exact timestamp prescribed by the server, creating smooth rubberbanding without jumping.
-		// Fast movement / Body Relocation skips FixPathTime entirely.
-		if (!isFastMove && numSegments > 0 && serverDuration > 0) {
-			let sub = serverDuration - clientDuration;
-			// Clamp sub to ±2500ms to avoid speed extremes during large desyncs
-			sub = Math.max(-2500, Math.min(2500, sub));
-			const subDiv = sub / numSegments;
+		// stretch the segments so the client arrives when the server does, less
+		// the time the packet took to get here. Scaling keeps the pace even
+		// across segments. Fast movement / Body Relocation skips FixPathTime entirely.
+		if (serverDuration > 0 && numSegments > 0 && clientDuration > 0) {
+			const elapsed = nowTick - computeWalkStartTick(nowTick, moveStartTime, serverDuration, serverDuration);
+			const pace = Math.max(MIN_PACE, Math.min(MAX_PACE, (serverDuration - elapsed) / clientDuration));
 			for (let i = 0; i < numSegments; i++) {
-				this.walk.segmentDurations[i] = Math.max(10, this.walk.segmentDurations[i] + subDiv);
+				this.walk.segmentDurations[i] = Math.max(1, this.walk.segmentDurations[i] * pace);
 			}
 		}
 
@@ -511,6 +533,177 @@ function walkTo(from_x, from_y, to_x, to_y, range, moveStartTime, moveEndTime, i
 			});
 		}
 	}
+}
+
+/**
+ * Scratch path for the server's route when it starts from another cell.
+ */
+const _serverPath = new Int16Array(PathFinding.MAX_WALKPATH * 2);
+
+/**
+ * Walk time of a cell path, as the server counts it.
+ *
+ * @param {Int16Array} path cell pairs
+ * @param {number} total number of cells in path
+ * @param {number} speed ms per cell
+ * @returns {number} ms
+ */
+function gridPathDuration(path, total, speed) {
+	let duration = 0;
+	for (let i = 1; i < total; i++) {
+		const diagonal = path[i * 2] !== path[i * 2 - 2] && path[i * 2 + 1] !== path[i * 2 - 1];
+		duration += diagonal ? speed * DIAGONAL_FACTOR : speed;
+	}
+	return duration;
+}
+
+/**
+ * Whether a move reply answers a request older than the newest one predicted.
+ * Drops the requests it answers, and remembers its destination as where the
+ * server is taking the entity.
+ */
+function answersOlderRequest(predicted, to_x, to_y) {
+	const queue = predicted.queue;
+	for (let i = queue.length - 2; i >= 0; i--) {
+		if (queue[i][0] === to_x && queue[i][1] === to_y) {
+			queue.splice(0, i + 1);
+			predicted.fallback = [to_x, to_y];
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * Start walking to a cell the player clicked, before the server answers.
+ * The server's reply (walkTo) then takes over the walk where it is drawn and
+ * evens out the pace; if no reply comes within `timeout`, the entity walks
+ * back to where the server has it.
+ *
+ * @param {number} to_x
+ * @param {number} to_y
+ * @param {number} timeout ms to wait for the server's reply
+ * @returns {boolean} whether a walk started
+ */
+function predictWalkTo(to_x, to_y, timeout) {
+	const walk = this.walk;
+	const action = this.action;
+
+	// Only from where the server would also start a walk right away.
+	if (
+		this.isFastMoving ||
+		this._bodyState ||
+		(this.cast && this.cast.display) ||
+		(action !== this.ACTION.IDLE && action !== this.ACTION.WALK && action !== this.ACTION.READYFIGHT)
+	) {
+		return false;
+	}
+
+	const curX = Math.round(this.position[0]);
+	const curY = Math.round(this.position[1]);
+	if (curX === to_x && curY === to_y) {
+		return false;
+	}
+
+	// Already on the way there: holding the mouse resends the same cell.
+	if (walk.total > 0 && walk.path[walk.total - 2] === to_x && walk.path[walk.total - 1] === to_y) {
+		return false;
+	}
+
+	// A walk the server would refuse, it should not be seen to start.
+	const steps = PathFinding.search(curX, curY, to_x, to_y, 0, _serverPath) - 1;
+	if (
+		steps < 1 ||
+		steps > SERVER_MAX_WALK_PATH ||
+		(steps > SERVER_MAX_BENT_PATH && !PathFinding.searchLong(curX, curY, to_x, to_y, 0, _serverPath).success)
+	) {
+		return false;
+	}
+
+	// Where the server has the entity until it answers: the end of the walk
+	// it confirmed, or the cell it stands on.
+	const predicted = walk.predicted;
+	const fallback = predicted
+		? predicted.fallback
+		: walk.total > 0
+			? [walk.path[walk.total - 2], walk.path[walk.total - 1]]
+			: [curX, curY];
+	const queue = predicted ? predicted.queue : [];
+
+	this.walkTo(curX, curY, to_x, to_y, 0, undefined, undefined, false, undefined, true);
+	if (!walk.total) {
+		return false;
+	}
+
+	queue.push([to_x, to_y]);
+	walk.predicted = { queue, fallback, deadline: Date.now() + timeout };
+	return true;
+}
+
+/**
+ * Give up a prediction the server never confirmed: walk back to where the
+ * server has the entity.
+ */
+function cancelPrediction() {
+	const fallback = this.walk.predicted.fallback;
+	this.walk.predicted = null;
+
+	const curX = Math.round(this.position[0]);
+	const curY = Math.round(this.position[1]);
+	if (curX === fallback[0] && curY === fallback[1]) {
+		this.settleTo(fallback[0], fallback[1]);
+		return;
+	}
+
+	this.walkTo(curX, curY, fallback[0], fallback[1]);
+	if (!this.walk.total) {
+		this.settleTo(fallback[0], fallback[1]);
+	}
+}
+
+/**
+ * Come to rest on a cell the server named (STOPMOVE). Close by, the entity
+ * glides there, at most at its walk speed and within SETTLE_MAX_MS, rather
+ * than jumping. Whatever action it is in carries on; a walk ends in IDLE on
+ * arrival.
+ *
+ * @param {number} x
+ * @param {number} y
+ * @returns {boolean} true if gliding, false if the entity was placed at once
+ */
+function settleTo(x, y) {
+	const dx = x - this.position[0];
+	const dy = y - this.position[1];
+	const dist = Math.hypot(dx, dy);
+	const canGlide = isFinite(dist) && dist > 0.05 && dist <= SETTLE_MAX_CELLS && this.walk.speed > 0;
+
+	this.resetRoute();
+
+	if (!canGlide) {
+		this.position[0] = x;
+		this.position[1] = y;
+		this.position[2] = Altitude.getCellHeight(x, y);
+		if (this.action === this.ACTION.WALK) {
+			this.setAction({ action: this.ACTION.IDLE, frame: 0, play: true, repeat: true });
+		}
+		return false;
+	}
+
+	const walk = this.walk;
+	walk.path[0] = Math.round(this.position[0]);
+	walk.path[1] = Math.round(this.position[1]);
+	walk.path[2] = x;
+	walk.path[3] = y;
+	walk.index = 2;
+	walk.total = 4;
+	walk.pos.set(this.position);
+	walk.lastPos.set(this.position);
+	walk.segmentDurations[0] = Math.min(dist * walk.speed, SETTLE_MAX_MS);
+	walk.tick = walk.prevTick = Date.now();
+	walk.settling = true;
+	// Face the way it was going: a turn for a fraction of a cell reads as a twitch.
+	this._preserveDirection = true;
+	return true;
 }
 
 /**
@@ -615,9 +808,15 @@ function walkProcess() {
 		return;
 	}
 
+	if (walk.predicted && TICK > walk.predicted.deadline) {
+		this.cancelPrediction();
+		return;
+	}
+
 	if (
 		total > 0 &&
 		!this.isFastMoving &&
+		!walk.settling &&
 		this.action !== this.ACTION.WALK &&
 		this.objecttype !== this.constructor.TYPE_FALCON &&
 		this.objecttype !== this.constructor.TYPE_WUG
@@ -648,6 +847,7 @@ function walkProcess() {
 	if (
 		this.action === this.ACTION.WALK ||
 		this.isFastMoving ||
+		walk.settling ||
 		this.objecttype === this.constructor.TYPE_FALCON ||
 		this.objecttype === this.constructor.TYPE_WUG
 	) {
@@ -695,7 +895,8 @@ function walkProcess() {
 						next: false
 					}
 				});
-			} else if (this.action !== this.ACTION.DIE) {
+			} else if (walk.settling ? this.action === this.ACTION.WALK : this.action !== this.ACTION.DIE) {
+				// A glide to rest leaves whatever the entity started meanwhile, an attack say.
 				this.setAction({
 					action: this.ACTION.IDLE,
 					frame: 0,
@@ -739,6 +940,7 @@ function walkProcess() {
 			walk.prevTick !== TICK &&
 			walk.prevTick > segmentStart &&
 			!this.isFastMoving &&
+			!walk.settling &&
 			this.action !== this.ACTION.WALK &&
 			this.objecttype !== this.constructor.TYPE_FALCON
 		) {
@@ -922,6 +1124,8 @@ function resetRoute(keepDistance) {
 	this.isFastMoving = false;
 	this._fastMoveTrail = false;
 	this._preserveDirection = false;
+	this.walk.settling = false;
+	this.walk.predicted = null;
 	this.walk.tick = 0;
 	this.walk.prevTick = 0;
 	if (!keepDistance) {
@@ -993,7 +1197,7 @@ function distance(entity1, entity2) {
 /**
  * Initialize and export methods
  */
-export { computeWalkStartTick };
+export { computeWalkStartTick, gridPathDuration };
 
 export default function Init() {
 	this.onWalkEnd = function onWalkEnd() {};
@@ -1003,6 +1207,9 @@ export default function Init() {
 	this._enableTrail = false;
 	this.walk = new WalkStructure();
 	this.walkTo = walkTo;
+	this.predictWalkTo = predictWalkTo;
+	this.cancelPrediction = cancelPrediction;
+	this.settleTo = settleTo;
 	this.fastMoveTo = fastMoveTo;
 	this.walkToNonWalkableGround = walkToNonWalkableGround;
 	this.walkProcess = walkProcess;

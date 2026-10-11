@@ -447,19 +447,8 @@ function onEntityMove(pkt) {
 function onEntityStopMove(pkt) {
 	const entity = EntityManager.get(pkt.AID);
 	if (entity) {
-		if (entity.action === entity.ACTION.WALK) {
-			entity.setAction({
-				action: entity.ACTION.IDLE,
-				frame: 0,
-				repeat: true,
-				play: true
-			});
-		}
-
-		entity.resetRoute();
-		entity.position[0] = pkt.xPos;
-		entity.position[1] = pkt.yPos;
-		entity.position[2] = Altitude.getCellHeight(pkt.xPos, pkt.yPos);
+		// Glide the last bit of the way, walking until it gets there, rather than jump.
+		entity.settleTo(pkt.xPos, pkt.yPos);
 	}
 }
 
