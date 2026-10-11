@@ -5038,15 +5038,20 @@ function loadTownInfoFile(filename, callback, onEnd) {
 				const ctx = lua.ctx;
 
 				// create AddTownInfo required functions in context
+				const updatedMaps = new Set();
 				ctx.AddTownInfo = function AddTownInfo(mapName, name, X, Y, TYPE) {
 					mapName = userStringDecoder.decode(mapName);
-					TownInfo[mapName] = [];
+					if (!updatedMaps.has(mapName)) {
+						TownInfo[mapName] = [];
+						updatedMaps.add(mapName);
+					}
 					TownInfo[mapName].push({
 						Name: userStringDecoder.decode(name, userCharpage),
 						X: X,
 						Y: Y,
 						Type: TYPE
 					});
+					return 1;
 				};
 				// mount file
 				lua.mountFile(filename, buffer);
