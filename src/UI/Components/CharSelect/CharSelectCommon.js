@@ -597,7 +597,7 @@ export function createCharSelect(config) {
 
 			Component.updateCharSlot(character.CharNum);
 			ScreenHooks.update('charSelect');
-			redrawOnceDBLoaded();
+			redrawWithLookTables(character);
 			return;
 		}
 
@@ -636,7 +636,7 @@ export function createCharSelect(config) {
 			}
 		}
 		ScreenHooks.update('charSelect');
-		redrawOnceDBLoaded();
+		redrawWithLookTables(character);
 	};
 
 	/**
@@ -659,45 +659,53 @@ export function createCharSelect(config) {
 	 * On a cold start the character list arrives before the client's database
 	 * has loaded (it otherwise starts only on entering the map), when only the
 	 * built-in HatTable/RobeTable are there: a headgear or garment look newer
-	 * than those is not found and the preview is drawn without it. Start the
-	 * load now and build the previews again once it is in.
+	 * than those is not found and the preview is drawn without it. Load just
+	 * those two tables and build the previews again. Not the whole database:
+	 * its item tables are parsed on this thread and froze the screen for
+	 * seconds.
+	 *
+	 * @param {object} character data
 	 */
-	let _dbWait = null;
-	function redrawOnceDBLoaded() {
-		if (DB.isLoaded || _dbWait) {
+	let _lookTablesRequested = false;
+	function redrawWithLookTables(character) {
+		if (DB.isLoaded || _lookTablesRequested || !lookNeedsTables(character)) {
 			return;
 		}
-		if (!DB.startedLazyInit) {
-			DB.lazyInit();
-			DB.startedLazyInit = true;
-		}
-		let tries = 0;
-		_dbWait = setInterval(() => {
-			// The map entry gives up after a minute and reloads; so does this.
-			if (!DB.isLoaded && ++tries < 300) {
-				return;
-			}
-			clearInterval(_dbWait);
-			_dbWait = null;
-			if (!DB.isLoaded) {
-				return;
-			}
-			for (let i = 0; i < _entitySlots.length; ++i) {
-				const old = _entitySlots[i];
-				if (!old || !_slots[i]) {
-					continue;
+		_lookTablesRequested = true;
+		DB.loadLookTables()
+			.catch(error => console.error('[CharSelect] headgear and garment tables:', error))
+			.finally(() => {
+				for (let i = 0; i < _entitySlots.length; ++i) {
+					const old = _entitySlots[i];
+					if (!old || !_slots[i]) {
+						continue;
+					}
+					const entity = createSlotEntity(_slots[i]);
+					entity.setAction({
+						action: old.action,
+						frame: 0,
+						play: true,
+						repeat: true
+					});
+					_entitySlots[i] = entity;
 				}
-				const entity = createSlotEntity(_slots[i]);
-				entity.setAction({
-					action: old.action,
-					frame: 0,
-					play: true,
-					repeat: true
-				});
-				_entitySlots[i] = entity;
-			}
-			ScreenHooks.update('charSelect');
-		}, 200);
+				ScreenHooks.update('charSelect');
+			});
+	}
+
+	/**
+	 * Whether a character wears a headgear or garment the built-in tables
+	 * have no sprite for.
+	 *
+	 * @param {object} character data
+	 * @return {boolean}
+	 */
+	function lookNeedsTables(character) {
+		const hats = [character.accessory, character.accessory2, character.accessory3];
+		return (
+			hats.some(id => id > 0 && !DB.getHatPath(id, character.sex)) ||
+			(character.Robe > 0 && !DB.getRobePath(character.Robe, character.job, character.sex))
+		);
 	}
 
 	/**

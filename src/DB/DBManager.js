@@ -67,6 +67,8 @@ import { escapeHtml } from 'Utils/HtmlHelper.js';
  * @type {Object} lua instance
  */
 let lua;
+/** @type {Promise|null} DB.loadLookTables, once started */
+let lookTables = null;
 let itemPackages = new Map();
 let HO_AI;
 let MER_AI;
@@ -371,8 +373,31 @@ class DB {
 	static isLoaded = false;
 	static count = 0;
 	static index = 0;
+
+	/**
+	 * The headgear and garment sprite names alone, without the rest of the
+	 * database: what character select needs to draw a look newer than the
+	 * built-in HatTable/RobeTable. They take a few milliseconds, where
+	 * lazyInit's item tables hold the page for seconds. lazyInit loads them
+	 * again with everything else.
+	 *
+	 * @return {Promise} settled once both tables are in or have failed
+	 */
+	static loadLookTables() {
+		if (!lookTables) {
+			lookTables = (async () => {
+				if (!lua) {
+					await startLua();
+				}
+				await Promise.all([new Promise(loadHatTable), new Promise(loadRobeTable)]);
+			})();
+		}
+		return lookTables;
+	}
 	static async lazyInit() {
 		console.log('Loading DB files...');
+		// Its tables are read into the Lua state startLua is about to replace.
+		await lookTables?.catch(() => {});
 		await startLua();
 		// Callback
 		DB.index = 0;
@@ -425,28 +450,8 @@ class DB {
 				tryLoadLuaAliases(loadItemInfo, iteminfoNames, null, onLoad());
 			}
 
-			loadLuaTableWithCustom(
-				[DB.LUA_PATH + 'datainfo/accessoryid.lub', DB.LUA_PATH + 'datainfo/accname.lub'],
-				'AccNameTable',
-				'accessory',
-				function (json) {
-					Object.assign(HatTable, json);
-				},
-				onLoad(),
-				null,
-				true
-			);
-			loadLuaTableWithCustom(
-				[DB.LUA_PATH + 'datainfo/spriterobeid.lub', DB.LUA_PATH + 'datainfo/spriterobename.lub'],
-				'RobeNameTable',
-				'robe',
-				function (json) {
-					Object.assign(RobeTable, json);
-				},
-				onLoad(),
-				null,
-				true
-			);
+			loadHatTable(onLoad());
+			loadRobeTable(onLoad());
 
 			if (PACKETVER.value >= 20141008) {
 				// JobNameTable's values are sprite names, not display text: the
@@ -7254,6 +7259,36 @@ function customLuaTables(key) {
  * mod's headgear row existed -- the look was looked up, not found, and never
  * shown. A table that fails says so in the console and the chain goes on.
  */
+/** Headgear sprite names (accessoryid, accname) into HatTable. */
+function loadHatTable(onEnd) {
+	loadLuaTableWithCustom(
+		[DB.LUA_PATH + 'datainfo/accessoryid.lub', DB.LUA_PATH + 'datainfo/accname.lub'],
+		'AccNameTable',
+		'accessory',
+		function (json) {
+			Object.assign(HatTable, json);
+		},
+		onEnd,
+		null,
+		true
+	);
+}
+
+/** Garment sprite names (spriterobeid, spriterobename) into RobeTable. */
+function loadRobeTable(onEnd) {
+	loadLuaTableWithCustom(
+		[DB.LUA_PATH + 'datainfo/spriterobeid.lub', DB.LUA_PATH + 'datainfo/spriterobename.lub'],
+		'RobeNameTable',
+		'robe',
+		function (json) {
+			Object.assign(RobeTable, json);
+		},
+		onEnd,
+		null,
+		true
+	);
+}
+
 function loadLuaTableWithCustom(file_list, table_name, key, callback, onEnd, contextFunc, isResourceTable = false) {
 	const custom = customLuaTables(key);
 	const next = index => {
