@@ -6713,7 +6713,9 @@ function loadSkillInfoList(filename, callback, onEnd) {
 						SkillName: userStringDecoder.decode(skillName, userCharpage),
 						MaxLv: maxLv,
 						SpAmount: toArray(spAmount),
-						bSeperateLv: bSeperateLv,
+						// Absent (nil) is not "no": the pre-renewal translation's table leaves it
+						// out of most skills, Fire Bolt among them, and its level arrows went with it.
+						bSeperateLv: bSeperateLv ?? SkillInfo[skillId]?.bSeperateLv ?? false,
 						AttackRange: toArray(attackRange),
 						SkillScale: skillScale,
 						NeedSkillList: {},
@@ -6779,7 +6781,7 @@ function loadSkillInfoList(filename, callback, onEnd) {
 								local skillName = skillData.SkillName or ""  
 								local maxLv = skillData.MaxLv or 1  
 								local spAmount = skillData.SpAmount or {}  
-								local bSeperateLv = skillData.bSeperateLv or false  
+								local bSeperateLv = skillData.bSeperateLv
 								local attackRange = skillData.AttackRange or {}  
 								local skillScale = skillData.SkillScale or {}  
 
