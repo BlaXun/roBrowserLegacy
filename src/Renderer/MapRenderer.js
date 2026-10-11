@@ -220,8 +220,9 @@ class MapRenderer {
 		SoundManager.stop();
 		BGM.stop();
 
-		// Release WebGL resources for post-processing effects
-		PostProcess.clean(gl);
+		// Post-processing is kept for the next map (PostProcess.clean frees it).
+		// The illusion flip ends with the map, as cleaning it used to do.
+		VerticalFlip.setActive(false);
 
 		Mouse.intersect = false;
 
@@ -588,9 +589,17 @@ function onAnimatedModelComplete(data) {
  * Register PostProcessing Modules in pass order
  */
 function registerPostProcessModules(gl) {
-	if (WebGL.detectBadWebGL(gl)) {
+	const badWebGL = WebGL.detectBadWebGL(gl);
+	if (badWebGL) {
 		GraphicsSettings.bloom = false;
-	} else {
+	}
+
+	// Registered once; they outlive map changes
+	if (PostProcess.isRegistered()) {
+		return;
+	}
+
+	if (!badWebGL) {
 		PostProcess.register(Bloom, gl);
 	}
 	PostProcess.register(GaussianBlur, gl);
