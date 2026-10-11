@@ -16,6 +16,11 @@
  * is removed and the names are reported: the player loses the entries their
  * client cannot show, and keeps the rest.
  *
+ * Limits: only top-level entries are removed (a placeholder nested inside an
+ * entry stays), entries a file adds to a table that already existed are not
+ * cleaned up, only `List.NAME` and `List.NAME[1]` lookups are covered, and
+ * while the file runs a missing name tests as true.
+ *
  * This file is part of ROBrowser, (http://www.robrowser.com/).
  */
 
