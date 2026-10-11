@@ -59,6 +59,7 @@ import PACKET from 'Network/PacketStructure.js';
 import PACKETVER from 'Network/PacketVerManager.js';
 import MemoryManager from 'Core/MemoryManager.js';
 import { escapeHtml } from 'Utils/HtmlHelper.js';
+import LenientEnums from 'DB/LenientEnums.js';
 
 //Pet
 //MapName
@@ -7346,6 +7347,9 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 	const value_table_filename = file_list[1];
 	// Told when the table will not arrive: a file missing, or a Lua error.
 	const fail = typeof onError === 'function' ? onError : function () {};
+	// An entry naming something the id file's lists lack is left out, not
+	// the whole table (LenientEnums).
+	let lenient = null;
 
 	try {
 		console.log('Loading file "' + id_filename + '"...');
@@ -7355,11 +7359,16 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 				const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
 				// mount file
 				lua.mountFile(id_filename, buffer);
-				// execute file
+				// execute file, noting the lists of names it defines
+				lenient = LenientEnums.mark(lua);
 				await lua.doFile(id_filename);
+				LenientEnums.defined(lua, lenient);
 				loadValueTable();
 			} catch (hException) {
 				console.error(`(${id_filename}) error: `, hException);
+				if (lenient) {
+					LenientEnums.finish(lua, lenient, id_filename);
+				}
 				fail(hException);
 			}
 		}, () => fail(new Error(`${id_filename} not found`)));
@@ -7373,13 +7382,21 @@ function loadLuaTable(file_list, table_name, callback, onEnd, contextFunc, isRes
 					// mount file
 					lua.mountFile(value_table_filename, buffer);
 					// execute file
-					await lua.doFile(value_table_filename);
+					LenientEnums.begin(lua, lenient);
+					try {
+						await lua.doFile(value_table_filename);
+					} finally {
+						LenientEnums.finish(lua, lenient, value_table_filename);
+					}
 					parseTable();
 				} catch (hException) {
 					console.error(`(${value_table_filename}) error: `, hException);
 					fail(hException);
 				}
-			}, () => fail(new Error(`${value_table_filename} not found`)));
+			}, () => {
+				LenientEnums.finish(lua, lenient, value_table_filename);
+				fail(new Error(`${value_table_filename} not found`));
+			});
 		}
 
 		function parseTable() {
@@ -7666,7 +7683,13 @@ function loadPetInfo(filename, callback, onEnd) {
 				const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
 
 				lua.mountFile(filename, buffer);
-				await lua.doFile(filename);
+				// Its pets are keyed by npcidentity.lub's jobtbl (LenientEnums).
+				const lenient = LenientEnums.begin(lua, null, ['jobtbl']);
+				try {
+					await lua.doFile(filename);
+				} finally {
+					LenientEnums.finish(lua, lenient, filename);
+				}
 
 				// Read Lua table
 				const readLuaTable = tableName => {
