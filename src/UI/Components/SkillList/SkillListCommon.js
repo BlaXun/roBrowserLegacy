@@ -266,6 +266,11 @@ export function createSkillList({
 			});
 
 			container.addEventListener('click', e => {
+				// The level arrows sit inside the list row's name; they choose the level
+				// to cast at and must not also stage a skill point.
+				if (e.target.closest('.level button')) {
+					return;
+				}
 				const target = e.target.closest('.skillCol .skill .icon, .skill .name');
 				if (target) {
 					onRememberChoice(target, root);

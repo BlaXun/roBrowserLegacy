@@ -443,3 +443,23 @@ describe('SkillListV2 skills added in game', () => {
 		expect(etcSkill(root).querySelector('.current').textContent).toBe('3');
 	});
 });
+
+describe('SkillListV2 level arrows', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+	});
+
+	it('choose the cast level in the list row without staging a skill point', () => {
+		const component = createComponent();
+		const root = component.getRoot();
+
+		component.updateSkill({ SKID: mocks.ids.HEAL, level: 5, type: 1, upgradable: 1, spcost: 13 });
+		const row = root.querySelector(`#minitab2 .skill.id${mocks.ids.HEAL}`);
+		row.querySelector('.currentDown').click();
+		row.querySelector('.currentDown').click();
+
+		expect(component.getSkillById(mocks.ids.HEAL).selectedLevel).toBe(3);
+		expect(row.querySelector('.level').textContent).toBe('Lv : 3 / 5');
+		expect(root.querySelector('.skpoints_count').textContent).toBe('10');
+	});
+});
