@@ -1338,6 +1338,7 @@ function flushMessageBuffer() {
 			const div = document.createElement('div');
 			div.style.color = color;
 			if (!msg.override) {
+				div.style.whiteSpace = 'pre-line';
 				div.textContent = msg.text;
 			} else {
 				div.innerHTML = msg.text;
