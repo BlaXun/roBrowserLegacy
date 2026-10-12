@@ -45,11 +45,10 @@ body.ro-page-zoomed canvas {
 body {
 	background-color: black;
 	font-size: 12px;
-	/* 'SCDream' first: wins only when the server actually serves the client font (loaded via
-	   @font-face in DBManager). When it isn't served it resolves to Arial — the official client's
-	   window UI font for intl/america servicetype (Ragexe draws window text with CreateFontA on the
-	   Gulim/Arial face table). Liberation Sans / Arimo provide Arial metrics on Linux. */
-	font-family: 'SCDream', Arial, 'Liberation Sans', Arimo, sans-serif;
+	/* Arial matches the client's English UI; Liberation Sans / Arimo keep its metrics on Linux.
+	   Korean glyphs use Gulim when installed, then the Windows Korean UI font, and finally
+	   SCDream loaded from the client by DBManager. */
+	font-family: Arial, 'Liberation Sans', Arimo, Gulim, 'Malgun Gothic', 'SCDream', sans-serif;
 	/* Normalize any resolved font's x-height to Arial's (sxHeight 1062 / unitsPerEm 2048 = 0.5186),
 	   so text keeps Arial's apparent size on every OS/font. It's inherited and crosses Shadow DOM
 	   hosts, so it also rescales elements that use a non-Arial face; those opt out with
@@ -79,6 +78,11 @@ body.ro-viewport {
 	min-width: 0;
 	min-height: 0;
 	contain: paint;
+}
+
+/* Window captions override the bold defaults retained in individual components. */
+.titlebar .text {
+	font-weight: normal !important;
 }
 
 .title {
