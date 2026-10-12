@@ -104,6 +104,35 @@ describe('Equipment item events', () => {
 		delete window._OBJ_DRAG_;
 	});
 
+	it('requests every worn item once from either gear tab and waits for server acknowledgement', () => {
+		const root = Equipment.getRoot();
+		const equipment = [
+			[21, EquipLocation.HEAD_TOP | EquipLocation.HEAD_MID],
+			[22, EquipLocation.ARMOR],
+			[23, EquipLocation.COSTUME_HEAD_TOP],
+			[24, EquipLocation.SHADOW_ARMOR],
+			[25, EquipLocation.AMMO]
+		];
+		for (const tab of ['general', 'costume']) {
+			Equipment.onUnEquip.mockClear();
+			for (const [index, location] of equipment) worn(index, location);
+			root.querySelector(`a[href="#${tab}"]`).click();
+			root.querySelector('.remove_equip').click();
+			expect(Equipment.onUnEquip.mock.calls).toEqual(equipment.map(([index]) => [index]));
+			expect(root.querySelectorAll('.item[data-index="21"]')).toHaveLength(2);
+			for (const [index, location] of equipment) Equipment.unEquip(index, location);
+			expect(root.querySelectorAll('.content .item')).toHaveLength(0);
+			root.querySelector('.remove_equip').click();
+			expect(Equipment.onUnEquip).toHaveBeenCalledTimes(equipment.length);
+		}
+		const unequip = root.querySelector('.remove_equip');
+		for (const tab of ['general', 'costume', 'title', 'damageskin', 'general']) {
+			root.querySelector(`a[href="#${tab}"]`).click();
+			expect(unequip.style.display === 'none').toBe(tab === 'title' || tab === 'damageskin');
+		}
+
+	});
+
 	it('takes off a costume on double-click, not only gear on the first tab', () => {
 		worn(7, EquipLocation.COSTUME_HEAD_TOP);
 		worn(3, EquipLocation.HEAD_TOP);
