@@ -141,6 +141,8 @@ class GroundAura {
 		this._lastTick = tick;
 		this._accumTime = 0;
 
+		this.worldPos = [0, 0, 0];
+		this.rgba = [0, 0, 0, 0];
 		this.points = [
 			[0, 0, 0],
 			[0, 0, 0],
@@ -222,7 +224,10 @@ class GroundAura {
 		const groundZ = Altitude.getCellHeight(this.position[0], this.position[1]);
 
 		// World position with small lift to avoid z-fighting
-		const worldPos = [this.position[0], this.position[1], groundZ + 0.05];
+		const worldPos = this.worldPos;
+		worldPos[0] = this.position[0];
+		worldPos[1] = this.position[1];
+		worldPos[2] = groundZ + 0.05;
 
 		if (_batch.active) {
 			this.record(worldPos);
@@ -259,7 +264,7 @@ class GroundAura {
 	 */
 	record(worldPos) {
 		const blend = auraBlend(this.color, this.shape);
-		const color = auraUniform(this.color, 0.8, this.shape);
+		const color = auraUniform(this.color, 0.8, this.shape, this.rgba);
 
 		for (let i = 0; i < this.aura.length; i++) {
 			if (!this.aura[i].life) {

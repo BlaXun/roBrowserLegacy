@@ -123,6 +123,7 @@ class SwirlingAura {
 
 		// Vertex data for a single band (GC evasion uses dynamic vertex data)
 		this.vertices = new Float32Array(VERTICES_PER_BAND * STRIDE);
+		this.rgba = [0, 0, 0, 0];
 
 		// Vertex buffers for each band
 		this.buffers = null;
@@ -325,7 +326,7 @@ class SwirlingAura {
 	record(tick, groundZ) {
 		const process = (tick - this.tick) / 25;
 		const blend = auraBlend(this.color, 'alpha');
-		const color = auraUniform(this.color, this.alphaB, 'alpha');
+		const color = auraUniform(this.color, this.alphaB, 'alpha', this.rgba);
 		const x = this.position[0] + 0.5;
 		const y = -groundZ;
 		const z = this.position[1] + 0.5;

@@ -39,10 +39,16 @@
  * @param {{r: number, g: number, b: number, dark: boolean}} color
  * @param {number} alpha
  * @param {string} [shape] 'alpha' or 'brightness' (the default): see above
+ * @param {number[]} [out] written and returned instead of a new array
  * @return {number[]} r, g, b, a
  */
-export function auraUniform(color, alpha, shape = 'brightness') {
-	return color.dark && shape !== 'alpha' ? [1, 1, 1, alpha] : [color.r, color.g, color.b, alpha];
+export function auraUniform(color, alpha, shape = 'brightness', out = new Array(4)) {
+	const white = color.dark && shape !== 'alpha';
+	out[0] = white ? 1 : color.r;
+	out[1] = white ? 1 : color.g;
+	out[2] = white ? 1 : color.b;
+	out[3] = alpha;
+	return out;
 }
 
 /**
