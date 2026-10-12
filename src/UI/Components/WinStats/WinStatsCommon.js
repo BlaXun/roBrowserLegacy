@@ -32,6 +32,7 @@ export function createWinStats({ name, htmlText, cssText, hasTraits }) {
 	const _preferences = Preferences.get('WinStats', { x: 0, y: 233, show: false, reduce: false }, 1.0);
 
 	let _root;
+	let _activeTooltip;
 
 	// ─── Helpers ───────────────────────────────────────
 
@@ -45,6 +46,38 @@ export function createWinStats({ name, htmlText, cssText, hasTraits }) {
 		if (el) {
 			el.style.opacity = visible ? 1 : 0;
 			el.style.pointerEvents = visible ? 'initial' : 'none';
+		}
+	}
+
+	function hideTooltip() {
+		if (!_activeTooltip) return;
+		_activeTooltip.hidePopover?.();
+		_activeTooltip.style.display = 'none';
+		_activeTooltip = null;
+	}
+
+	function showTooltip(anchor, tooltip) {
+		hideTooltip();
+		if (!tooltip.textContent.trim()) return;
+		_activeTooltip = tooltip;
+		const scale = Component.scale;
+		tooltip.style.display = 'block';
+		tooltip.style.maxWidth = `${Math.min(270, window.innerWidth / scale)}px`;
+		const rect = anchor.getBoundingClientRect();
+		if (typeof tooltip.showPopover === 'function') {
+			// The top layer keeps descriptions above neighboring windows without focusing.
+			tooltip.style.position = 'fixed';
+			tooltip.style.transform = `scale(${scale})`;
+			tooltip.showPopover();
+			const bounds = tooltip.getBoundingClientRect();
+			const above = rect.top - bounds.height - 2 * scale;
+			const top = above >= 0 ? above : rect.bottom + 2 * scale;
+			tooltip.style.left = `${Math.max(0, Math.min(rect.left, window.innerWidth - bounds.width))}px`;
+			tooltip.style.top = `${Math.max(0, Math.min(top, window.innerHeight - bounds.height))}px`;
+		} else {
+			tooltip.style.position = 'absolute';
+			tooltip.style.left = '0';
+			tooltip.style.top = `${anchor.offsetHeight}px`;
 		}
 	}
 
@@ -82,8 +115,13 @@ export function createWinStats({ name, htmlText, cssText, hasTraits }) {
 		// Keep data-text's safe text lookup, then only render formatting in tooltips.
 		_root.querySelectorAll('.desc .hover[data-text]').forEach(tooltip => {
 			const escaped = document.createElement('div');
-			escaped.textContent = DB.getMessage(tooltip.dataset.text, '');
+			escaped.textContent = DB.getMessage(tooltip.dataset.text, '').replace(/\\n/g, '\n');
 			tooltip.innerHTML = DB.formatMsgToHtml(escaped.innerHTML);
+			tooltip.setAttribute('popover', 'manual');
+			tooltip.setAttribute('role', 'tooltip');
+			const anchor = tooltip.parentElement;
+			anchor.addEventListener('mouseenter', () => showTooltip(anchor, tooltip));
+			anchor.addEventListener('mouseleave', hideTooltip);
 		});
 
 		// Base stat up buttons
@@ -112,6 +150,7 @@ export function createWinStats({ name, htmlText, cssText, hasTraits }) {
 			miniBtn.addEventListener('mousedown', e => e.stopImmediatePropagation());
 			miniBtn.addEventListener('click', () => {
 				const panel = _root.querySelector('.panel');
+				hideTooltip();
 				if (panel) panel.style.display = panel.style.display === 'none' ? '' : 'none';
 			});
 		}
@@ -121,6 +160,7 @@ export function createWinStats({ name, htmlText, cssText, hasTraits }) {
 		if (closeBtn) {
 			closeBtn.addEventListener('mousedown', e => e.stopImmediatePropagation());
 			closeBtn.addEventListener('click', () => {
+				hideTooltip();
 				this._host.style.display = 'none';
 			});
 		}
@@ -129,7 +169,7 @@ export function createWinStats({ name, htmlText, cssText, hasTraits }) {
 		if (hasTraits) {
 			const viewTraitsBtn = _root.querySelector('.view_traits');
 			if (viewTraitsBtn) {
-				viewTraitsBtn.addEventListener('mousedown', () => toggleTraits());
+				viewTraitsBtn.addEventListener('click', () => toggleTraits());
 			}
 		}
 	};
@@ -195,6 +235,7 @@ export function createWinStats({ name, htmlText, cssText, hasTraits }) {
 	};
 
 	Component.unembed = function unembed() {
+		hideTooltip();
 		if (_embedStyleEl && _embedStyleEl.parentNode) {
 			_embedStyleEl.parentNode.removeChild(_embedStyleEl);
 		}
@@ -212,6 +253,7 @@ export function createWinStats({ name, htmlText, cssText, hasTraits }) {
 
 	// ─── toggle ────────────────────────────────────────
 	Component.toggle = function toggle() {
+		hideTooltip();
 		// If embedded, unembed instead of normal toggle
 		if (_embedAnchor) {
 			this.unembed();
@@ -382,6 +424,7 @@ export function createWinStats({ name, htmlText, cssText, hasTraits }) {
 	// ─── toggleTraits ─────────────────────────────
 
 	function toggleTraits() {
+		hideTooltip();
 		const traitsEl = _root.querySelector('.traits_component');
 		const selfBtn = _root.querySelector('.view_traits');
 		if (!traitsEl) return;
@@ -408,6 +451,7 @@ export function createWinStats({ name, htmlText, cssText, hasTraits }) {
 	// ─── onRemove ──────────────────────────────────────
 
 	Component.onRemove = function onRemove() {
+		hideTooltip();
 		if (_preferences) {
 			// Don't save embed-relative position/show as standalone preferences
 			if (!_embedAnchor) {
