@@ -197,10 +197,9 @@ export function createBasicInfo(config) {
 	 * Initialize UI
 	 */
 	/**
-	 * Draw the name of the button the pointer is on in one tip below the frame.
+	 * Draw one tooltip above the hovered button, outside the scrolling menu.
 	 *
-	 * Each button used to draw its own name above itself, which the menu, now that it scrolls,
-	 * would clip. The tip sits outside it and takes its text from the button's `.name`.
+	 * The top layer avoids clipping by the scrolling menu or another window.
 	 */
 	function setupMenuTip(root) {
 		const inner = root.querySelector(innerId);
@@ -211,9 +210,12 @@ export function createBasicInfo(config) {
 
 		const tip = document.createElement('div');
 		tip.className = 'menu_tip';
+		tip.setAttribute('role', 'tooltip');
+		tip.setAttribute('popover', 'manual');
 		inner.appendChild(tip);
 
 		const hide = () => {
+			tip.hidePopover?.();
 			tip.style.display = 'none';
 		};
 
@@ -226,6 +228,22 @@ export function createBasicInfo(config) {
 			}
 			tip.textContent = label.textContent;
 			tip.style.display = 'block';
+			const rect = button.getBoundingClientRect();
+			const scale = Component.scale ?? 1;
+			if (typeof tip.showPopover === 'function') {
+				tip.style.position = 'fixed';
+				tip.style.transform = `scale(${scale})`;
+				tip.showPopover();
+				const bounds = tip.getBoundingClientRect();
+				tip.style.left = `${Math.max(0, Math.min(rect.left, window.innerWidth - bounds.width))}px`;
+				tip.style.top = `${Math.max(0, rect.top - bounds.height - 2 * scale)}px`;
+			} else {
+				const origin = inner.getBoundingClientRect();
+				tip.style.position = 'absolute';
+				tip.style.transform = 'none';
+				tip.style.left = `${(rect.left - origin.left) / scale}px`;
+				tip.style.top = `${(rect.top - origin.top - tip.getBoundingClientRect().height) / scale - 2}px`;
+			}
 		});
 		buttons.addEventListener('mouseleave', hide);
 		buttons.addEventListener('scroll', hide);
