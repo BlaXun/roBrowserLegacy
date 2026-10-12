@@ -8,6 +8,7 @@
 #WinStats {
 	position: absolute;
 	width: 280px;
+	font-size: 12px;
 	height: 140px;
 	background-color: transparent;
 	background-repeat: no-repeat;
@@ -55,6 +56,11 @@
 #WinStats .panel {
 	height: 235px;
 }
+#WinStats .common_stats,
+#WinStats .traits_panel {
+	image-rendering: pixelated;
+}
+
 #WinStats .common_stats {
 	height: 123px;
 }
@@ -64,6 +70,7 @@
 }
 #WinStats .group div {
 	height: 16px;
+	line-height: 14px;
 	display: block;
 }
 #WinStats .stats {
@@ -79,14 +86,10 @@
 	width: 12px;
 }
 #WinStats .column1 {
-	top: 23px;
-	right: 88px;
-	text-align: right;
+	top: 22px;
 }
 #WinStats .column2 {
-	top: 23px;
-	right: 5px;
-	text-align: right;
+	top: 22px;
 }
 #WinStats .up {
 	left: 75px;
@@ -144,6 +147,7 @@
 }
 #WinStats .trait div {
 	height: 16px;
+	line-height: 14px;
 	display: block;
 }
 
@@ -163,18 +167,27 @@
 
 #WinStats .t_column1 {
 	top: 3px;
-	right: 92px;
-	text-align: right;
 }
 #WinStats .t_column2 {
 	top: 3px;
-	right: 5px;
+}
+
+/* Both backgrounds end their lines at x=188 and x=274. Inset values by one pixel. */
+#WinStats .group.column1,
+#WinStats .group.t_column1 {
+	right: 92px;
+	text-align: right;
+}
+#WinStats .group.column2,
+#WinStats .group.t_column2 {
+	right: 6px;
 	text-align: right;
 }
 
 #WinStats .trait_point {
 	position: absolute;
-	left: 80px;
+	top: 64px;
+	right: 0;
 }
 
 /* Tooltips */
@@ -200,22 +213,6 @@
 	position: relative;
 }
 
-#WinStats .status_panel_tooltip .hover {
-	position: absolute;
-	display: none;
-	z-index: 1;
-	background-color: rgba(0, 0, 0, 0.6);
-	color: white;
-	padding: 5px;
-	white-space: nowrap;
-	font-size: 0.6rem;
-	pointer-events: none;
-}
-
-#WinStats .status_panel_tooltip div:hover .hover {
-	display: block;
-}
-
 #WinStats .column1_tooltip {
 	position: absolute;
 	width: 87px;
@@ -237,22 +234,6 @@
 #WinStats .column1_tooltip .desc {
 	display: block;
 	position: relative;
-}
-
-#WinStats .column1_tooltip .hover {
-	position: absolute;
-	display: none;
-	z-index: 1;
-	background-color: rgba(0, 0, 0, 0.6);
-	color: white;
-	padding: 5px;
-	white-space: nowrap;
-	font-size: 0.6rem;
-	pointer-events: none;
-}
-
-#WinStats .column1_tooltip div:hover .hover {
-	display: block;
 }
 
 #WinStats .column2_tooltip {
@@ -278,22 +259,6 @@
 	position: relative;
 }
 
-#WinStats .column2_tooltip .hover {
-	position: absolute;
-	display: none;
-	z-index: 1;
-	background-color: rgba(0, 0, 0, 0.6);
-	color: white;
-	padding: 5px;
-	white-space: nowrap;
-	font-size: 0.6rem;
-	pointer-events: none;
-}
-
-#WinStats .column2_tooltip div:hover .hover {
-	display: block;
-}
-
 #WinStats .trait_panel_tooltip {
 	position: relative;
 	width: 75px;
@@ -313,22 +278,6 @@
 #WinStats .trait_panel_tooltip .desc {
 	display: block;
 	position: relative;
-}
-
-#WinStats .trait_panel_tooltip .hover {
-	position: absolute;
-	display: none;
-	z-index: 1;
-	background-color: rgba(0, 0, 0, 0.6);
-	color: white;
-	padding: 5px;
-	white-space: nowrap;
-	font-size: 0.6rem;
-	pointer-events: none;
-}
-
-#WinStats .trait_panel_tooltip div:hover .hover {
-	display: block;
 }
 
 #WinStats .t_column1_tooltip {
@@ -354,22 +303,6 @@
 	position: relative;
 }
 
-#WinStats .t_column1_tooltip .hover {
-	position: absolute;
-	display: none;
-	z-index: 1;
-	background-color: rgba(0, 0, 0, 0.6);
-	color: white;
-	padding: 5px;
-	white-space: nowrap;
-	font-size: 0.6rem;
-	pointer-events: none;
-}
-
-#WinStats .t_column1_tooltip div:hover .hover {
-	display: block;
-}
-
 #WinStats .t_column2_tooltip {
 	position: absolute;
 	width: 85px;
@@ -393,18 +326,26 @@
 	position: relative;
 }
 
-#WinStats .t_column2_tooltip .hover {
-	position: absolute;
+#WinStats .desc .hover {
+	position: fixed;
+	inset: auto;
 	display: none;
-	z-index: 1;
-	background-color: rgba(0, 0, 0, 0.6);
+	margin: 0;
+	border: none;
+	box-sizing: border-box;
+	width: max-content;
+	max-width: 270px;
+	z-index: 900;
+	background: rgba(0, 0, 0, 0.5);
 	color: white;
 	padding: 5px;
-	white-space: nowrap;
-	font-size: 0.6rem;
+	white-space: pre-line;
+	overflow-wrap: break-word;
+	text-wrap: pretty;
+	font-size: 12px;
+	font-weight: normal;
+	line-height: 1.2;
+	text-shadow: 1px 1px black;
+	transform-origin: top left;
 	pointer-events: none;
-}
-
-#WinStats .t_column2_tooltip div:hover .hover {
-	display: block;
 }
