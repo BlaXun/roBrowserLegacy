@@ -22,7 +22,7 @@
 		</div>
 		<div class="clear"></div>
 	</div>
-	<div class="overlay"></div>
+	<div class="overlay" popover="manual" role="tooltip"></div>
 	<div class="tab-manager" id="tabs">
 		<div class="tab">
 			<a href="#general"><span data-text="3158">General</span></a>
@@ -207,19 +207,31 @@
 		</table>
 		<div class="footer" id="equipment_footer" data-background="basic_interface/equipwin_bg2.bmp">
 			<div class="left">
-				<button class="show_equip" data-background="checkbox_0.bmp" data-preload="checkbox_1.bmp"></button>
-				<span data-text="1362">Show Equip</span>
-				<button class="show_costume" data-background="checkbox_1.bmp" data-preload="checkbox_0.bmp"></button>
-				<span data-text="4103">Show Costume</span>
+				<button
+					id="show_equip"
+					class="show_equip"
+					data-background="checkbox_0.bmp"
+					data-preload="checkbox_1.bmp"
+				></button>
+				<label for="show_equip" data-text="1362">Show Equip</label>
+				<button
+					id="show_costume"
+					class="show_costume"
+					data-background="checkbox_1.bmp"
+					data-preload="checkbox_0.bmp"
+				></button>
+				<label for="show_costume" data-text="4103">Show Costume</label>
 			</div>
 			<div class="right">
 				<button
 					class="switch_equip"
+					data-tooltip-id="2986"
 					data-background="basic_interface/btn_e_change_a.bmp"
 					data-hover="basic_interface/btn_e_change_b.bmp"
 				></button>
 				<button
 					class="remove_equip"
+					data-tooltip-id="1590"
 					data-background="basic_interface/btn_e_off_a.bmp"
 					data-hover="basic_interface/btn_e_off_b.bmp"
 				></button>
