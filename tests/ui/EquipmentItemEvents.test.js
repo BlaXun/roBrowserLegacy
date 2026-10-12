@@ -16,6 +16,10 @@ const mocks = vi.hoisted(() => {
 			return this._host;
 		}
 
+		get scale() {
+			return 1;
+		}
+
 		draggable() {}
 
 		focus() {}
@@ -37,7 +41,7 @@ vi.mock('DB/DBManager.js', () => ({
 		INTERFACE_PATH: 'data/texture/',
 		getItemInfo: () => ({ identifiedResourceName: 'item' }),
 		getItemName: item => `item ${item.ITID}`,
-		getMessage: () => '',
+		getMessage: id => ({ 1590: 'Unequip All', 2986: 'Equipment Set' })[id] || '',
 		getTitleString: id => `title ${id}`
 	}
 }));
@@ -84,6 +88,34 @@ const { default: Equipment } = await import('UI/Components/Equipment/EquipmentV4
 const { default: EquipLocation } = await import('DB/Items/EquipmentLocation.js');
 const { default: ItemType } = await import('DB/Items/ItemType.js');
 const { default: Session } = await import('Engine/SessionStorage.js');
+
+describe('Equipment visibility controls', () => {
+	it('toggles equipment and costume visibility from either the box or its label', () => {
+		Equipment.onConfigUpdate = vi.fn();
+		const root = Equipment.getRoot();
+		Equipment.setEquipConfig(false);
+		root.querySelector('.show_equip').nextElementSibling.click();
+		Equipment.setEquipConfig(true);
+		root.querySelector('.show_equip').click();
+		root.querySelector('a[href="#costume"]').click();
+		expect(root.querySelector('.show_equip').nextElementSibling.style.display).toBe('none');
+		expect(root.querySelector('.show_costume').nextElementSibling.style.display).not.toBe('none');
+		Equipment.setCostumeConfig(false);
+		root.querySelector('.show_costume').nextElementSibling.click();
+		Equipment.setCostumeConfig(true);
+		root.querySelector('.show_costume').click();
+		root.querySelector('a[href="#general"]').click();
+		expect(root.querySelector('.show_costume').nextElementSibling.style.display).toBe('none');
+		expect(root.querySelector('.show_equip').nextElementSibling.style.display).not.toBe('none');
+
+		expect(Equipment.onConfigUpdate.mock.calls).toEqual([
+			[0, 1],
+			[0, 0],
+			[5, 1],
+			[5, 0]
+		]);
+	});
+});
 
 function worn(index, location) {
 	const item = { index, ITID: 19500 + index, type: ItemType.ARMOR, IsIdentified: true, location };
@@ -143,6 +175,45 @@ describe('Equipment item events', () => {
 
 		expect(Equipment.onUnEquip).toHaveBeenNthCalledWith(1, 7);
 		expect(Equipment.onUnEquip).toHaveBeenNthCalledWith(2, 3);
+	});
+
+	it('shows equipment tooltips above their targets and dismisses them without changing focus', () => {
+		worn(12, EquipLocation.ARMOR);
+		const root = Equipment.getRoot();
+		const overlay = root.querySelector('.overlay');
+		overlay.showPopover = vi.fn();
+		overlay.hidePopover = vi.fn();
+		overlay.getBoundingClientRect = () => ({ width: 180, height: 24 });
+		const focus = vi.spyOn(Equipment, 'focus');
+		const item = root.querySelector('#general .armor .item button');
+		const rect = () => ({ left: 980, top: 140, right: 1004, bottom: 164, width: 24, height: 24 });
+		item.getBoundingClientRect = rect;
+		item.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+		expect(overlay.textContent).toBe('item 19512');
+		expect(overlay.showPopover).toHaveBeenCalledTimes(1);
+		expect(parseFloat(overlay.style.top)).toBe(114);
+		expect(parseFloat(overlay.style.left)).toBe(window.innerWidth - 180);
+		item.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+		expect(overlay.hidePopover).toHaveBeenCalled();
+		expect(overlay.style.display).toBe('none');
+
+		const button = root.querySelector('.switch_equip');
+		button.getBoundingClientRect = () => ({ ...rect(), left: 200 });
+		button.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+		expect(overlay.textContent).toBe('Equipment Set');
+		expect(overlay.style.left).toBe('200px');
+		button.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+		root.querySelector('.remove_equip').getBoundingClientRect = button.getBoundingClientRect;
+		root.querySelector('.remove_equip').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+		expect(overlay.textContent).toBe('Unequip All');
+		root.querySelector('.close').click();
+		expect(overlay.style.display).toBe('none');
+		expect(focus).not.toHaveBeenCalled();
+		Equipment._host.style.display = '';
+		button.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+		Equipment.toggle();
+		expect(overlay.style.display).toBe('none');
+		focus.mockRestore();
 	});
 
 	it('starts a drag from a worn item, marked as coming from Equipment', () => {

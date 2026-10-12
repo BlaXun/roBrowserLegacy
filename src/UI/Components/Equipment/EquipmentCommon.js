@@ -88,6 +88,8 @@ export function createEquipment({
 	titles = false,
 	costumeConfig = false,
 	damageSkin = false,
+	wordEllipsis = false,
+	floatingTooltips = false,
 	statsDefault = true
 }) {
 	const Component = new GUIComponent(name, cssText);
@@ -119,6 +121,52 @@ export function createEquipment({
 
 	let switchappend;
 	let switchUIopen;
+
+	function fitTabLabels() {
+		if (!wordEllipsis) return;
+		for (const link of Object.values(tabLinks)) {
+			const label = link.querySelector('span');
+			if (!label || !link.clientWidth) continue;
+			const text = (label.dataset.fullText ??= label.textContent);
+			label.textContent = text;
+			label.classList.remove('truncated');
+			delete link.dataset.tooltip;
+			if (label.scrollWidth <= label.clientWidth) continue;
+			link.dataset.tooltip = text;
+			label.classList.add('truncated');
+			const words = text.trim().split(/\s+/);
+			while (words.length > 1) {
+				words.pop();
+				label.textContent = words.join(' ') + '...';
+				if (label.scrollWidth <= label.clientWidth) break;
+			}
+		}
+	}
+
+	function showTooltip(target, text, itemName = false) {
+		const root = Component.getRoot();
+		const overlay = root.querySelector('.overlay');
+		if (!overlay || !text) return;
+		if (itemName) overlay.innerHTML = sanitizeHtml(text);
+		else overlay.textContent = text;
+		overlay.style.display = 'block';
+		const rect = target.getBoundingClientRect();
+		const scale = Component.scale;
+		if (floatingTooltips && typeof overlay.showPopover === 'function') {
+			// The top layer escapes other windows' stacking contexts, without focusing this window.
+			overlay.style.position = 'fixed';
+			overlay.style.transform = `scale(${scale})`;
+			overlay.showPopover();
+			const bounds = overlay.getBoundingClientRect();
+			overlay.style.left = `${Math.max(0, Math.min(rect.left, window.innerWidth - bounds.width))}px`;
+			overlay.style.top = `${Math.max(0, rect.top - bounds.height - 2 * scale)}px`;
+		} else {
+			const origin = (root.querySelector('#' + name) || root).getBoundingClientRect();
+			overlay.style.position = 'absolute';
+			overlay.style.left = `${(rect.left - origin.left) / scale - 22}px`;
+			overlay.style.top = `${(rect.top - origin.top) / scale - 22}px`;
+		}
+	}
 
 	Component.init = function init() {
 		const root = Component.getRoot();
@@ -153,6 +201,22 @@ export function createEquipment({
 			if (idx === 0) tabLinks[id].className = 'tab selected';
 			idx++;
 		}
+
+		if (floatingTooltips) {
+			root.querySelectorAll('[data-tooltip-id]').forEach(button => {
+				button.dataset.tooltip = DB.getMessage(Number(button.dataset.tooltipId));
+			});
+			root.addEventListener('mouseover', e => {
+				const target = e.target.closest('[data-tooltip]');
+				if (target && !target.contains(e.relatedTarget)) showTooltip(target, target.dataset.tooltip);
+			});
+			root.addEventListener('mouseout', e => {
+				const target = e.target.closest('[data-tooltip]');
+				if (target && !target.contains(e.relatedTarget)) onEquipmentOut();
+			});
+		}
+		fitTabLabels();
+		if (wordEllipsis) document.fonts?.ready.then(fitTabLabels);
 
 		idx = 0;
 		for (const id in contentDivs) {
@@ -200,6 +264,7 @@ export function createEquipment({
 		const closeBtn = root.querySelector('.titlebar .close');
 		if (closeBtn) {
 			closeBtn.addEventListener('click', () => {
+				onEquipmentOut();
 				Component._host.style.display = 'none';
 				Renderer.stop(renderCharacter);
 				hideStatus();
@@ -214,10 +279,18 @@ export function createEquipment({
 		const viewStatusBtn = root.querySelector('.view_status');
 		if (viewStatusBtn) viewStatusBtn.addEventListener('mousedown', toggleStatus);
 		const showEquipBtn = root.querySelector('.show_equip');
-		if (showEquipBtn) showEquipBtn.addEventListener('mousedown', toggleEquip);
+		if (showEquipBtn) {
+			showEquipBtn.addEventListener('click', toggleEquip);
+			const label = showEquipBtn.nextElementSibling;
+			if (label?.tagName === 'SPAN') label.addEventListener('click', toggleEquip);
+		}
 		if (costumeConfig) {
 			const showCostumeBtn = root.querySelector('.show_costume');
-			if (showCostumeBtn) showCostumeBtn.addEventListener('mousedown', toggleCostume);
+			if (showCostumeBtn) {
+				showCostumeBtn.addEventListener('click', toggleCostume);
+				const label = showCostumeBtn.nextElementSibling;
+				if (label?.tagName === 'SPAN') label.addEventListener('click', toggleCostume);
+			}
 		}
 		const cartBtn = root.querySelector('.cartitems');
 		if (cartBtn) cartBtn.addEventListener('click', onCartItems);
@@ -276,8 +349,8 @@ export function createEquipment({
 		if (costumeConfig) {
 			const costumeBtn2 = root.querySelector('.show_costume');
 			if (costumeBtn2) costumeBtn2.style.display = 'none';
-			const costumeSpan = costumeBtn2 ? costumeBtn2.nextElementSibling : null;
-			if (costumeSpan && costumeSpan.tagName === 'SPAN') costumeSpan.style.display = 'none';
+			const costumeLabel = costumeBtn2 ? costumeBtn2.nextElementSibling : null;
+			if (costumeLabel) costumeLabel.style.display = 'none';
 		}
 
 		if (damageSkin) {
@@ -317,6 +390,8 @@ export function createEquipment({
 	function showTab() {
 		const selectedId = getHash(this.getAttribute('href'));
 		const root = Component.getRoot();
+
+		onEquipmentOut();
 
 		for (const id in contentDivs) {
 			if (id === selectedId) {
@@ -362,30 +437,30 @@ export function createEquipment({
 				if (currentTabId !== 'general') {
 					const showEquipEl = root.querySelector('.show_equip');
 					if (showEquipEl) showEquipEl.style.display = 'none';
-					const showEquipSpan = showEquipEl ? showEquipEl.nextElementSibling : null;
-					if (showEquipSpan && showEquipSpan.tagName === 'SPAN') showEquipSpan.style.display = 'none';
+					const showEquipLabel = showEquipEl ? showEquipEl.nextElementSibling : null;
+					if (showEquipLabel) showEquipLabel.style.display = 'none';
 
 					if (currentTabId === 'costume') {
 						const costumeEl = root.querySelector('.show_costume');
 						if (costumeEl) costumeEl.style.display = '';
-						const costumeSpan = costumeEl ? costumeEl.nextElementSibling : null;
-						if (costumeSpan && costumeSpan.tagName === 'SPAN') costumeSpan.style.display = '';
+						const costumeLabel = costumeEl ? costumeEl.nextElementSibling : null;
+						if (costumeLabel) costumeLabel.style.display = '';
 					} else {
 						const costumeEl = root.querySelector('.show_costume');
 						if (costumeEl) costumeEl.style.display = 'none';
-						const costumeSpan = costumeEl ? costumeEl.nextElementSibling : null;
-						if (costumeSpan && costumeSpan.tagName === 'SPAN') costumeSpan.style.display = 'none';
+						const costumeLabel = costumeEl ? costumeEl.nextElementSibling : null;
+						if (costumeLabel) costumeLabel.style.display = 'none';
 					}
 				} else {
 					const showEquipEl = root.querySelector('.show_equip');
 					if (showEquipEl) showEquipEl.style.display = '';
-					const showEquipSpan = showEquipEl ? showEquipEl.nextElementSibling : null;
-					if (showEquipSpan && showEquipSpan.tagName === 'SPAN') showEquipSpan.style.display = '';
+					const showEquipLabel = showEquipEl ? showEquipEl.nextElementSibling : null;
+					if (showEquipLabel) showEquipLabel.style.display = '';
 
 					const costumeEl = root.querySelector('.show_costume');
 					if (costumeEl) costumeEl.style.display = 'none';
-					const costumeSpan = costumeEl ? costumeEl.nextElementSibling : null;
-					if (costumeSpan && costumeSpan.tagName === 'SPAN') costumeSpan.style.display = 'none';
+					const costumeLabel = costumeEl ? costumeEl.nextElementSibling : null;
+					if (costumeLabel) costumeLabel.style.display = 'none';
 				}
 			}
 		}
@@ -410,6 +485,7 @@ export function createEquipment({
 	}
 
 	Component.onAppend = function onAppend() {
+		fitTabLabels();
 		const hostRect = this._host.getBoundingClientRect();
 		this._host.style.top = `${Math.min(Math.max(0, _preferences.y), Renderer.height - hostRect.height)}px`;
 		this._host.style.left = `${Math.min(Math.max(0, _preferences.x), Renderer.width - hostRect.width)}px`;
@@ -453,6 +529,7 @@ export function createEquipment({
 	};
 
 	Component.onRemove = function onRemove() {
+		onEquipmentOut();
 		if (UIVersionManager.getEquipmentVersion() > 0 && _btnLevelUp && _btnLevelUp.parentNode) {
 			_btnLevelUp.remove();
 		}
@@ -479,6 +556,7 @@ export function createEquipment({
 	Component.toggle = function toggle() {
 		if (this._host.style.display === 'none') {
 			this._host.style.display = '';
+			fitTabLabels();
 			Renderer.render(renderCharacter);
 			if (UIVersionManager.getEquipmentVersion() > 0) {
 				if (_btnLevelUp && _btnLevelUp.parentNode) _btnLevelUp.remove();
@@ -488,6 +566,7 @@ export function createEquipment({
 			}
 			this.focus();
 		} else {
+			onEquipmentOut();
 			this._host.style.display = 'none';
 			Renderer.stop(renderCharacter);
 			hideStatus();
@@ -925,9 +1004,7 @@ export function createEquipment({
 	function onEquipmentUnEquip() {
 		const index = parseInt(this.getAttribute('data-index'), 10);
 		Component.onUnEquip(index);
-		const root = Component.getRoot();
-		const overlay = root.querySelector('.overlay');
-		if (overlay) overlay.style.display = 'none';
+		onEquipmentOut();
 	}
 
 	// Dragging a worn item onto the inventory takes it off, as double-clicking
@@ -968,29 +1045,16 @@ export function createEquipment({
 		const item = _list[idx];
 		if (!item) return;
 
-		const root = Component.getRoot();
-		const overlay = root.querySelector('.overlay');
-		const rootEl = root.querySelector('#' + name) || root;
-		const btnRect = this.getBoundingClientRect();
-		const rootRect = rootEl.getBoundingClientRect();
-		// Screen distance to window distance (UI/UIScale.js)
-		const scale = Component.scale;
-		const top = (btnRect.top - rootRect.top) / scale;
-		const left = (btnRect.left - rootRect.left) / scale;
-		if (!top && !left) return;
-
-		if (overlay) {
-			overlay.style.display = 'block';
-			overlay.style.top = `${top - 22}px`;
-			overlay.style.left = `${left - 22}px`;
-			overlay.innerHTML = sanitizeHtml(DB.getItemName(item));
-		}
+		showTooltip(this, DB.getItemName(item), true);
 	}
 
 	function onEquipmentOut() {
 		const root = Component.getRoot();
 		const overlay = root.querySelector('.overlay');
-		if (overlay) overlay.style.display = 'none';
+		if (overlay) {
+			if (floatingTooltips && typeof overlay.hidePopover === 'function') overlay.hidePopover();
+			overlay.style.display = 'none';
+		}
 	}
 
 	Component.onUpdateOwnerName = function () {

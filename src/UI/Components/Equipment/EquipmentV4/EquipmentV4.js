@@ -20,5 +20,7 @@ export default createEquipment({
 	switchEquip: true,
 	titles: true,
 	costumeConfig: true,
-	damageSkin: true
+	damageSkin: true,
+	wordEllipsis: true,
+	floatingTooltips: true
 });
