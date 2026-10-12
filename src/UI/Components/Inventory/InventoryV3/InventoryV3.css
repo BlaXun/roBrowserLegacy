@@ -5,6 +5,7 @@
 
 /* ── Root ────────────────────────────────────────────────── */
 #InventoryV3 {
+	font-size: 11px;
 	position: relative;
 	height: 194px;
 	display: flex;
@@ -77,8 +78,7 @@
 	width: 23px;
 	display: flex;
 	flex-direction: column;
-	background-repeat: round;
-	background-size: auto 10px;
+	background-color: white;
 }
 
 #InventoryV3 .tabs button {
@@ -298,6 +298,10 @@
 }
 
 #InventoryV3 .expand {
+	display: flex;
+	align-items: center;
+	line-height: 14px;
+	white-space: pre;
 	left: 30px;
 	top: 3px;
 	width: 60px;
@@ -305,29 +309,31 @@
 }
 
 #InventoryV3 .item_expansion {
-	position: absolute;
+	position: static;
+	flex-shrink: 0;
+	margin-right: 3px;
 	height: 14px;
 	width: 11px;
 }
 
 #InventoryV3 .droplock {
-	left: 90px;
+	left: 96px;
 	top: 4px;
 }
 
 #InventoryV3 .compare {
-	left: 110px;
+	left: 119px;
 	top: 3px;
 }
 
 #InventoryV3 .deallock_on,
 #InventoryV3 .deallock_off {
-	left: 130px;
+	left: 139px;
 	top: 1px;
 }
 
 #InventoryV3 .sort {
-	left: 163px;
+	left: 172px;
 	top: 1px;
 }
 
@@ -353,14 +359,9 @@
 }
 
 /* ── Counter labels ───────────────────────────────────────── */
-#InventoryV3 span.ncnt {
-	left: 12px;
-	position: relative;
-}
-
+#InventoryV3 span.ncnt,
 #InventoryV3 span.mcnt {
-	position: relative;
-	left: 10px;
+	position: static;
 }
 
 /* ── Tooltip names on hover ───────────────────────────────── */
@@ -370,17 +371,17 @@
 
 #InventoryV3 span.name {
 	display: none;
-	/* Hide the span by default */
 	position: absolute;
 	z-index: 1;
-	top: -20px;
-	left: 0px;
+	bottom: 100%;
+	left: 0;
 	background-color: rgba(0, 0, 0, 0.6);
 	text-shadow: 1px 1px black;
-	color: white;
 	padding: 5px;
-	white-space: nowrap;
 	font-size: 0.6rem;
+	color: white;
+	white-space: nowrap;
+	pointer-events: none;
 }
 
 #InventoryV3 .footer div button:hover + .name {
