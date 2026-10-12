@@ -46,4 +46,24 @@ describe('Background transitions', () => {
 		advance(260);
 		expect(overlay()).toBeUndefined();
 	});
+
+	it('fades to black at the usual pace when the map loads while its loading image is fading in', () => {
+		Background.setLoading();
+		advance(500);
+		advance(16);
+		advance(200);
+		const from = Number(overlay().style.opacity);
+		expect(from).toBeGreaterThan(0.3);
+		expect(from).toBeLessThan(0.9);
+
+		const revealed = vi.fn();
+		Background.remove(revealed);
+		advance(250);
+		expect(revealed).not.toHaveBeenCalled();
+		expect(Number(overlay().style.opacity)).toBeLessThan(1);
+		advance(260);
+		expect(revealed).toHaveBeenCalledOnce();
+		advance(510);
+		expect(overlay()).toBeUndefined();
+	});
 });
