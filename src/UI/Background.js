@@ -326,11 +326,26 @@ function transition(callback) {
 		_overlayAnim.stop();
 	}
 
-	_overlay.style.opacity = '0.01';
-	document.body.appendChild(_overlay);
+	// A transition that starts while another is under way carries on from
+	// where the overlay is: when a map loads before the fade to its loading
+	// image is over, Background.remove runs inside that fade's callback, with
+	// the screen already black.
+	let duration = transitionDuration;
+	if (_overlay.parentNode) {
+		const opacity = parseFloat(_overlay.style.opacity) || 0.01;
+		duration = Math.max(1, (duration * (1.0 - opacity)) / 0.99);
+	} else {
+		_overlay.style.opacity = '0.01';
+		document.body.appendChild(_overlay);
+	}
 
-	_overlayAnim = animateElement(_overlay, { opacity: 1.0 }, transitionDuration, () => {
+	const anim = animateElement(_overlay, { opacity: 1.0 }, duration, () => {
 		callback();
+
+		// The callback started a transition of its own, which now fades back
+		if (_overlayAnim !== anim) {
+			return;
+		}
 
 		_overlayAnim = animateElement(_overlay, { opacity: 0.01 }, transitionDuration, () => {
 			if (_overlay.parentNode) {
@@ -338,6 +353,7 @@ function transition(callback) {
 			}
 		});
 	});
+	_overlayAnim = anim;
 }
 
 /**
