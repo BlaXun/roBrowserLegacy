@@ -291,27 +291,23 @@
 	display: none;
 }
 
-/* A button's name is drawn once, centred below the frame, rather than inside the
-   button, where a panel that scrolls would clip it. BasicInfoCommon fills it in. */
+/* The shared tooltip sits above its button, outside the scrolling menu. */
 #BasicInfoV5 .menu_tip {
 	display: none;
-	position: absolute;
-	left: 110px;
-	transform: translateX(-50%);
+	position: fixed;
+	inset: auto;
+	margin: 0;
+	border: none;
+	width: max-content;
+	transform-origin: top left;
 	z-index: 10;
 	pointer-events: none;
 	background-color: rgba(0, 0, 0, 0.6);
 	text-shadow: 1px 1px black;
-	color: white;
 	padding: 5px;
-	white-space: nowrap;
 	font-size: 0.6rem;
-}
-#BasicInfoV5.large .menu_tip {
-	top: 296px; /* the panel is at 160px, 132px tall */
-}
-#BasicInfoV5.small .menu_tip {
-	top: 216px; /* the panel is at 80px, 132px tall */
+	color: white;
+	white-space: nowrap;
 }
 
 #BasicInfoV5 .buttons .btn_overlay {

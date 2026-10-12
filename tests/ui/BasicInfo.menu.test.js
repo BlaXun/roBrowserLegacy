@@ -7,7 +7,7 @@ import { join } from 'node:path';
 // frame 132px tall (Flux159/ragnarokoffline.app#390). One more button wrapped
 // onto a fourth row below the frame, and every mod button would do the same, so
 // the panel scrolls instead. A scrolling panel clips what a button drew above
-// itself, so its name is drawn once, below the frame.
+// itself, so one tooltip sits outside the scrolling panel.
 
 const mocks = vi.hoisted(() => ({ root: null }));
 
@@ -78,18 +78,14 @@ describe.each(Object.entries(VERSIONS))('BasicInfo%s menu panel', (version, spec
 		);
 	});
 
-	it('draws a button name below the frame, centred, and not inside the button', () => {
-		expect(css).not.toMatch(/:hover \.name \{\s*display: table/);
-		const tip = block(`#BasicInfo${version} .menu_tip`);
-		expect(tip).toMatch(/left: 110px;\s*transform: translateX\(-50%\);/); // centred on the 220px frame
-		// The panel's top, its 132px, and a 4px gap.
-		expect(block(`#BasicInfo${version}.large .menu_tip`)).toMatch(new RegExp(`top: ${spec.large + 132 + 4}px`));
-		expect(block(`#BasicInfo${version}.small .menu_tip`)).toMatch(new RegExp(`top: ${spec.small + 132 + 4}px`));
-	});
-
 	it('puts the new-item mark over the button it marks', () => {
 		// The picture's tile starts 6px below its top and flush left. V5 had it 13px up and 7px left.
 		expect(block(`#BasicInfo${version} .buttons .btn_overlay`)).toMatch(/top: -6px;\s*left: 0;/);
+	});
+
+	it('draws the tip without the popover frame the browser gives it', () => {
+		// A [popover] gets `border: solid` and `inset: 0; margin: auto` from the user-agent sheet.
+		expect(block(`#BasicInfo${version} .menu_tip`)).toMatch(/inset: auto;\s*margin: 0;\s*border: none;/);
 	});
 });
 
@@ -112,6 +108,7 @@ function menu(spec, config = { menuTip: true }) {
 	});
 	info.init();
 	return {
+		info,
 		tip: root.querySelector('.menu_tip'),
 		buttons: root.querySelector('.buttons'),
 		over: id => root.querySelector(`#${id} .name`).dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
@@ -123,16 +120,28 @@ describe.each(Object.entries(VERSIONS))('BasicInfo%s button names', (version, sp
 		mocks.root = null;
 	});
 
-	it('appear in one tip below the frame, outside the scrolling panel', () => {
-		const { tip, buttons, over } = menu(spec);
+	it('places one floating tooltip above the hovered icon at its window scale', () => {
+		const { info, tip, buttons, over } = menu(spec);
 		expect(tip.parentElement.id).toBe('inner');
 		expect(buttons.contains(tip)).toBe(false);
-
-		over('b0');
-		expect(tip.textContent).toBe('Status');
-		expect(tip.style.display).toBe('block');
-		over('b1');
-		expect(tip.textContent).toBe('Equipment');
+		tip.showPopover = vi.fn();
+		tip.hidePopover = vi.fn();
+		for (const scale of [1, 2]) {
+			info.scale = scale;
+			tip.getBoundingClientRect = () => ({ width: 100 * scale, height: 24 * scale });
+			for (const [id, text, left] of [['b0', 'Status', 200], ['b1', 'Equipment', window.innerWidth - 10]]) {
+				buttons.querySelector(`#${id}`).getBoundingClientRect = () => ({ left, top: 160 });
+				over(id);
+				expect(tip.textContent).toBe(text);
+				expect(tip.style.position).toBe('fixed');
+				expect(tip.style.transform).toBe(`scale(${scale})`);
+				expect(parseFloat(tip.style.top)).toBe(160 - 26 * scale);
+				expect(parseFloat(tip.style.left)).toBe(Math.min(left, window.innerWidth - 100 * scale));
+			}
+		}
+		expect(tip.showPopover).toHaveBeenCalledTimes(4);
+		buttons.dispatchEvent(new Event('scroll'));
+		expect(tip.hidePopover).toHaveBeenCalled();
 	});
 
 	it('go away when the pointer leaves a button, the panel, or the panel scrolls', () => {

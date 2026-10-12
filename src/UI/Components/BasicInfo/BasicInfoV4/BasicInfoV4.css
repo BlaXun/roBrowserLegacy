@@ -10,7 +10,7 @@
 	width: 220px;
 	height: 135px;
 	font-size: 11px;
-	font-weight: bold;
+	font-weight: normal;
 }
 #BasicInfoV4.small .large {
 	display: none;
@@ -106,9 +106,12 @@
 #BasicInfoV4 .large div.hp_bar_perc,
 #BasicInfoV4 .large div.sp_bar_perc {
 	text-align: center;
-	width: 127px;
+	width: 100%;
+	height: 9px;
+	font-size: 10px;
+	line-height: 9px;
 	position: absolute;
-	top: -1px;
+	top: 0;
 }
 #BasicInfoV4 .large .hp_perc {
 	position: absolute;
@@ -228,27 +231,23 @@
 	display: none;
 }
 
-/* A button's name is drawn once, centred below the frame, rather than inside the
-   button, where a panel that scrolls would clip it. BasicInfoCommon fills it in. */
+/* The shared tooltip sits above its button, outside the scrolling menu. */
 #BasicInfoV4 .menu_tip {
 	display: none;
-	position: absolute;
-	left: 110px;
-	transform: translateX(-50%);
+	position: fixed;
+	inset: auto;
+	margin: 0;
+	border: none;
+	width: max-content;
+	transform-origin: top left;
 	z-index: 10;
 	pointer-events: none;
 	background-color: rgba(0, 0, 0, 0.6);
 	text-shadow: 1px 1px black;
-	color: white;
 	padding: 5px;
-	white-space: nowrap;
 	font-size: 0.6rem;
-}
-#BasicInfoV4.large .menu_tip {
-	top: 280px; /* the panel is at 144px, 132px tall */
-}
-#BasicInfoV4.small .menu_tip {
-	top: 198px; /* the panel is at 62px, 132px tall */
+	color: white;
+	white-space: nowrap;
 }
 
 #BasicInfoV4 .buttons .btn_overlay {
