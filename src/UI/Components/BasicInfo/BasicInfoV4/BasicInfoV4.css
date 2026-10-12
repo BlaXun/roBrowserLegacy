@@ -237,6 +237,7 @@
 	position: fixed;
 	inset: auto;
 	margin: 0;
+	border: none;
 	width: max-content;
 	transform-origin: top left;
 	z-index: 10;

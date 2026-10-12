@@ -82,6 +82,11 @@ describe.each(Object.entries(VERSIONS))('BasicInfo%s menu panel', (version, spec
 		// The picture's tile starts 6px below its top and flush left. V5 had it 13px up and 7px left.
 		expect(block(`#BasicInfo${version} .buttons .btn_overlay`)).toMatch(/top: -6px;\s*left: 0;/);
 	});
+
+	it('draws the tip without the popover frame the browser gives it', () => {
+		// A [popover] gets `border: solid` and `inset: 0; margin: auto` from the user-agent sheet.
+		expect(block(`#BasicInfo${version} .menu_tip`)).toMatch(/inset: auto;\s*margin: 0;\s*border: none;/);
+	});
 });
 
 // The tip itself, in a real DOM.
