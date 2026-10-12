@@ -208,6 +208,9 @@ export function createEquipment({
 
 		const removeOptBtn = root.querySelector('.removeOption');
 		if (removeOptBtn) removeOptBtn.addEventListener('mousedown', onRemoveOption);
+		const unequipAllBtn = root.querySelector('.remove_equip');
+		if (unequipAllBtn) unequipAllBtn.addEventListener('click', onUnequipAll);
+
 		const viewStatusBtn = root.querySelector('.view_status');
 		if (viewStatusBtn) viewStatusBtn.addEventListener('mousedown', toggleStatus);
 		const showEquipBtn = root.querySelector('.show_equip');
@@ -323,6 +326,11 @@ export function createEquipment({
 				tabLinks[id].className = 'tab';
 				if (contentDivs[id]) contentDivs[id].classList.add('content', 'hide');
 			}
+		}
+
+		const unequip = root.querySelector('.remove_equip');
+		if (unequip) {
+			unequip.style.display = selectedId === 'general' || selectedId === 'costume' ? '' : 'none';
 		}
 
 		currentTabId = selectedId;
@@ -905,6 +913,13 @@ export function createEquipment({
 
 		event.stopImmediatePropagation();
 		return false;
+	}
+
+	function onUnequipAll() {
+		for (const index of Object.keys(_list)) {
+			Component.onUnEquip(Number(index));
+		}
+		onEquipmentOut();
 	}
 
 	function onEquipmentUnEquip() {
