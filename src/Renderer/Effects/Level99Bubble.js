@@ -17,11 +17,11 @@
 import _vertexShader from './Level99Bubble.vs?raw';
 import _fragmentShader from './Level99Bubble.fs?raw';
 import WebGL from 'Utils/WebGL.js';
-import Client from 'Core/Client.js';
 import Camera from 'Renderer/Camera.js';
 import Altitude from 'Renderer/Map/Altitude.js';
 import SpriteRenderer from 'Renderer/SpriteRenderer.js';
-import { auraUniform, beginAuraBlend, endAuraBlend } from 'Renderer/Effects/AuraBlend.js';
+import { auraBlend, auraUniform, beginAuraBlend, endAuraBlend } from 'Renderer/Effects/AuraBlend.js';
+import AuraBatch, { QUAD_FAN, sharedTexture, freeSharedTextures } from 'Renderer/Effects/AuraBatch.js';
 
 const DEG_TO_RAD = Math.PI / 180;
 const GAME_TO_WORLD = 0.1 * 2.2;
@@ -73,6 +73,12 @@ const debugConfig = {
 
 let _program;
 let _buffer;
+
+/**
+ * Every bubble's quads, drawn together (AuraBatch.js), and the texture they share.
+ */
+const _batch = new AuraBatch({ fog: true });
+const _textures = new Map();
 
 // Unit square corners for billboard (centered at origin)
 // Order: bottom-left, bottom-right, top-right, top-left
@@ -204,12 +210,9 @@ class Level99Bubble {
 	}
 
 	init(gl) {
-		Client.loadFile(`data/texture/effect/${this.textureName}`, buffer => {
-			WebGL.texture(gl, buffer, texture => {
-				this.texture = texture;
-
-				this.ready = true;
-			});
+		sharedTexture(_textures, gl, this.textureName, texture => {
+			this.texture = texture;
+			this.ready = true;
 		});
 	}
 
@@ -336,7 +339,13 @@ class Level99Bubble {
 		const sinAlpha = Math.sin(alpha);
 		const cosAlpha = Math.cos(alpha);
 
-		gl.bindTexture(gl.TEXTURE_2D, this.texture);
+		const batched = _batch.active;
+		const blend = auraBlend(this.color, 'alpha');
+		const rgb = auraUniform(this.color, 1, 'alpha');
+
+		if (!batched) {
+			gl.bindTexture(gl.TEXTURE_2D, this.texture);
+		}
 
 		// Debug: show spawn volume
 		if (debugConfig.showRedBg) {
@@ -408,6 +417,23 @@ class Level99Bubble {
 				// Compute alpha based on anchor height
 				const alphaValue = this.computeAlpha(anchor.y);
 				if (alphaValue <= 0) {
+					continue;
+				}
+
+				if (batched) {
+					for (let pass = 0; pass < this.passCount; pass++) {
+						_batch.quad(
+							this.texture,
+							blend,
+							this.tmpPoints,
+							QUAD_FAN,
+							rgb[0],
+							rgb[1],
+							rgb[2],
+							alphaValue,
+							0.01 + ec * 0.002 + ai * 0.0001 + pass * 0.00005
+						);
+					}
 					continue;
 				}
 
@@ -503,6 +529,8 @@ class Level99Bubble {
 			gl.deleteBuffer(_buffer);
 			_buffer = null;
 		}
+		_batch.free(gl);
+		freeSharedTextures(_textures, gl);
 		this.ready = false;
 	}
 
@@ -531,9 +559,12 @@ class Level99Bubble {
 		gl.enableVertexAttribArray(attribute.aTextureCoord);
 		gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 5 * 4, 0);
 		gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 5 * 4, 3 * 4);
+
+		_batch.begin(gl, modelView, projection, fog);
 	}
 
 	static afterRender(gl) {
+		_batch.flush(gl);
 		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 		gl.disableVertexAttribArray(_program.attribute.aPosition);
 		gl.disableVertexAttribArray(_program.attribute.aTextureCoord);

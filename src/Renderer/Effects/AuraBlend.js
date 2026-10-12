@@ -54,13 +54,54 @@ export function auraUniform(color, alpha, shape = 'brightness') {
  * @param {string} [shape] 'alpha' or 'brightness' (the default): see above
  */
 export function beginAuraBlend(gl, color, shape = 'brightness') {
+	const blend = auraBlend(color, shape);
+	if (blend !== BLEND_ADD) {
+		setAuraBlend(gl, blend);
+	}
+}
+
+/**
+ * The blendings the auras draw with: BLEND_ADD (SRC_ALPHA, ONE), the one
+ * they share; BLEND_ALPHA (SRC_ALPHA, ONE_MINUS_SRC_ALPHA); BLEND_DARKEN
+ * (ZERO, ONE_MINUS_SRC_COLOR).
+ */
+export const BLEND_ADD = 0;
+export const BLEND_ALPHA = 1;
+export const BLEND_DARKEN = 2;
+
+/**
+ * The blending `color` needs, as beginAuraBlend switches to it.
+ *
+ * @param {{dark: boolean, hat: boolean}} color
+ * @param {string} [shape] 'alpha' or 'brightness' (the default): see above
+ * @return {number} BLEND_ADD, BLEND_ALPHA or BLEND_DARKEN
+ */
+export function auraBlend(color, shape = 'brightness') {
 	if (!color) {
-		return;
+		return BLEND_ADD;
 	}
 	if (shape === 'alpha' && (color.hat || color.dark)) {
+		return BLEND_ALPHA;
+	}
+	if (shape !== 'alpha' && color.dark) {
+		return BLEND_DARKEN;
+	}
+	return BLEND_ADD;
+}
+
+/**
+ * Switch to one of the blendings above.
+ *
+ * @param {WebGL2RenderingContext} gl
+ * @param {number} blend BLEND_ADD, BLEND_ALPHA or BLEND_DARKEN
+ */
+export function setAuraBlend(gl, blend) {
+	if (blend === BLEND_ALPHA) {
 		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-	} else if (shape !== 'alpha' && color.dark) {
+	} else if (blend === BLEND_DARKEN) {
 		gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
+	} else {
+		gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
 	}
 }
 
