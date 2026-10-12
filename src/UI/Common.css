@@ -188,3 +188,70 @@ ui-button {
 .ui-component-root {
 	height: 100%;
 }
+
+/* Tooltip appearance is shared; each component sets placement and wrapping.
+   Scope item overlays so full-screen dialog layers keep their own layout. */
+:is(
+		#InventoryV0,
+		#InventoryV1,
+		#InventoryV2,
+		#InventoryV3,
+		#EquipmentV0,
+		#EquipmentV1,
+		#EquipmentV2,
+		#EquipmentV3,
+		#EquipmentV4,
+		#PlayerViewEquip,
+		#Trade,
+		#CashShop,
+		#LaphineSys,
+		#LaphineUpg,
+		#ItemReform,
+		#Refine,
+		#Enchant,
+		#cartitems,
+		#vending,
+		#vendingshop,
+		#VendingReport,
+		#Storage,
+		#StorageFilter,
+		#ItemListWindowSelection,
+		#ConvertItems,
+		#WriteRodex,
+		#Mail,
+		#ReadMail,
+		#PartyFriends,
+		.EntityRoom,
+		.EntitySignboard
+	)
+	.overlay,
+.overlay.js-overlay,
+.switchoverlay,
+.menu_tip,
+.shortcut-tooltip,
+.enchant_tooltip,
+.tooltiptext,
+.overlay_open,
+.overlay_read,
+.overlay_prev,
+.overlay_next,
+#map-tooltip,
+#moveinfo-tooltip,
+#StatusIcons .state .description,
+#WinStats .desc .hover,
+[role='tooltip'] {
+	background: rgba(0, 0, 0, 0.5) !important;
+	border: none !important;
+	border-radius: 0 !important;
+	box-shadow: none !important;
+	padding: 5px !important;
+	height: auto !important;
+	font-size: 12px !important;
+	font-weight: normal !important;
+	line-height: 1.2 !important;
+	text-shadow: 1px 1px black !important;
+}
+
+#moveinfo-tooltip {
+	color: white;
+}
