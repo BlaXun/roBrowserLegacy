@@ -19,6 +19,7 @@ export default createInventory({
 	htmlText,
 	cssText,
 	defaultHeight: 194,
+	extraRows: 2,
 	favoriteTab: true,
 	equipSwitch: true,
 	hostDropPreventDefault: true,

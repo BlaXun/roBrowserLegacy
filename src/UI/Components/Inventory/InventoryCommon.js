@@ -71,6 +71,7 @@ function _sanitizeHtml(str) {
  * @param {string} config.cssText                  Version CSS
  * @param {number} config.defaultHeight            Default `height` preference value
  * @param {boolean} [config.resizableHeight]       V0: two-dimensional resize (width + height)
+ * @param {number} [config.extraRows]              Extra rows above the default pixel height
  * @param {boolean} [config.tabSprite]             V0: tab highlight via tab_itm sprite (no `selected` class)
  * @param {boolean} [config.favoriteTab]           V1+: favorite tab, footer tools, item compare, count separator
  * @param {boolean} [config.equipSwitch]           V2+: equipment switch list and icons
@@ -88,6 +89,7 @@ export function createInventory(config) {
 		cssText,
 		defaultHeight,
 		resizableHeight = false,
+		extraRows = 0,
 		tabSprite = false,
 		favoriteTab = false,
 		equipSwitch = false,
@@ -403,11 +405,18 @@ export function createInventory(config) {
 		this.magnet.LEFT = _preferences.magnet_left;
 		this.magnet.RIGHT = _preferences.magnet_right;
 
-		// Layout height: the window may be drawn scaled (UI/UIScale.js)
-		_realSize = _preferences.reduce ? 0 : this._host.offsetHeight;
-		const miniBtnAppend = root.querySelector('.titlebar .mini');
-		if (miniBtnAppend) {
-			miniBtnAppend.dispatchEvent(new Event('mousedown'));
+		if (extraRows) {
+			_realSize = 0;
+			const panel = root.querySelector('.panel');
+			if (panel) panel.style.display = 'flex';
+			if (_preferences.reduce) onToggleReduction();
+		} else {
+			// Layout height: the window may be drawn scaled (UI/UIScale.js)
+			_realSize = _preferences.reduce ? 0 : this._host.offsetHeight;
+			const miniBtnAppend = root.querySelector('.titlebar .mini');
+			if (miniBtnAppend) {
+				miniBtnAppend.dispatchEvent(new Event('mousedown'));
+			}
 		}
 	};
 
@@ -436,6 +445,8 @@ export function createInventory(config) {
 		_preferences.width = Math.floor((this._host.offsetWidth - (23 + 16 + 16 - 30)) / 32);
 		if (resizableHeight) {
 			_preferences.height = Math.floor((this._host.offsetHeight - (31 + 19 - 30)) / 32);
+		} else if (extraRows) {
+			_preferences.height = _realSize || parseInt(this._host.style.height, 10) || defaultHeight;
 		}
 		_preferences.magnet_top = this.magnet.TOP;
 		_preferences.magnet_bottom = this.magnet.BOTTOM;
@@ -530,6 +541,11 @@ export function createInventory(config) {
 			this._host.style.height = `${31 + 4 + 27 + height * 32}px`;
 		} else {
 			this._host.style.width = `${23 + 16 + 16 + width * 32}px`;
+			if (extraRows) {
+				const currentHeight = height ?? (parseInt(this._host.style.height, 10) || defaultHeight);
+				const rows = Math.min(Math.max(Math.round((currentHeight - defaultHeight) / 32), 0), extraRows);
+				this._host.style.height = `${defaultHeight + rows * 32}px`;
+			}
 		}
 
 		this.updateScroll();
@@ -1005,6 +1021,8 @@ export function createInventory(config) {
 	function onResize() {
 		const top = Component._host.offsetTop;
 		const left = Component._host.offsetLeft;
+		const startY = Mouse.screen.y;
+		const startHeight = Component._host.offsetHeight;
 		let lastWidth = 0;
 		let lastHeight = 0;
 
@@ -1025,6 +1043,16 @@ export function createInventory(config) {
 					return;
 				}
 
+				Component.resize(w, h);
+				lastWidth = w;
+				lastHeight = h;
+			} else if (extraRows) {
+				const rows = Math.min(
+					Math.max(Math.round((startHeight - defaultHeight + (Mouse.screen.y - startY) / scale) / 32), 0),
+					extraRows
+				);
+				const h = defaultHeight + rows * 32;
+				if (w === lastWidth && h === lastHeight) return;
 				Component.resize(w, h);
 				lastWidth = w;
 				lastHeight = h;
@@ -1104,7 +1132,7 @@ export function createInventory(config) {
 			Component._host.style.height = `${_realSize}px`;
 			_realSize = 0;
 		} else {
-			_realSize = Component._host.offsetHeight;
+			_realSize = extraRows ? parseInt(Component._host.style.height, 10) : Component._host.offsetHeight;
 			Component._host.style.height = '17px';
 			if (panel) {
 				panel.style.display = 'none';
