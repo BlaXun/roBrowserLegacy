@@ -159,21 +159,42 @@ class MapRenderer {
 			// Parse the filename (ugly RO)
 			const filename = mapname.replace(/\.gat$/i, '.rsw');
 
-			Background.setLoading(function () {
-				// Hooking Thread
-				Thread.hook('MAP_PROGRESS', onProgressUpdate.bind(MapRenderer));
-				Thread.hook('MAP_WORLD', onWorldComplete.bind(MapRenderer));
-				Thread.hook('MAP_GROUND', onGroundComplete.bind(MapRenderer));
-				Thread.hook('MAP_ALTITUDE', onAltitudeComplete.bind(MapRenderer));
-				Thread.hook('MAP_MODELS', onModelsComplete.bind(MapRenderer));
-				Thread.hook('MAP_ANIMATED_MODEL', onAnimatedModelComplete.bind(MapRenderer));
-				Thread.hook('MAP_REPLACED_MODELS', models => MapHooks.modelsReady(Renderer.getContext(), models));
+			// The worker starts on the map now, while the screen fades to the
+			// loading image, rather than after the fade. What it sends back
+			// waits until the fade is done and the old map is freed.
+			let faded = false;
+			const waiting = [];
+			const afterFade =
+				fn =>
+				(...args) => {
+					if (faded) {
+						fn(...args);
+					} else {
+						waiting.push(() => fn(...args));
+					}
+				};
 
-				// Start Loading
+			// Hooking Thread
+			Thread.hook('MAP_PROGRESS', afterFade(onProgressUpdate.bind(MapRenderer)));
+			Thread.hook('MAP_WORLD', afterFade(onWorldComplete.bind(MapRenderer)));
+			Thread.hook('MAP_GROUND', afterFade(onGroundComplete.bind(MapRenderer)));
+			Thread.hook('MAP_ALTITUDE', afterFade(onAltitudeComplete.bind(MapRenderer)));
+			Thread.hook('MAP_MODELS', afterFade(onModelsComplete.bind(MapRenderer)));
+			Thread.hook('MAP_ANIMATED_MODEL', afterFade(onAnimatedModelComplete.bind(MapRenderer)));
+			Thread.hook(
+				'MAP_REPLACED_MODELS',
+				afterFade(models => MapHooks.modelsReady(Renderer.getContext(), models))
+			);
+
+			// Start Loading
+			Thread.send('MAP_REPLACE_MODELS', MapHooks.modelNames());
+			Thread.send('LOAD_MAP', filename, afterFade(onMapComplete.bind(MapRenderer)));
+
+			Background.setLoading(function () {
 				MapRenderer.free();
 				Renderer.remove();
-				Thread.send('MAP_REPLACE_MODELS', MapHooks.modelNames());
-				Thread.send('LOAD_MAP', filename, onMapComplete.bind(MapRenderer));
+				faded = true;
+				waiting.splice(0).forEach(fn => fn());
 			});
 
 			return;

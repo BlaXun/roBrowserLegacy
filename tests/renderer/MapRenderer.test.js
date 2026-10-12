@@ -3,10 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	soundManager: { stop: vi.fn() },
 	bgm: { stop: vi.fn() },
-	uiManager: { removeComponents: vi.fn() },
+	uiManager: { removeComponents: vi.fn(), showErrorBox: vi.fn(() => ({ ui: { css: vi.fn() } })) },
 	background: {
 		remove: vi.fn(callback => callback()),
-		setLoading: vi.fn()
+		setLoading: vi.fn(),
+		setPercent: vi.fn()
 	},
 	cursor: {
 		ACTION: { DEFAULT: 0 },
@@ -23,13 +24,14 @@ const mocks = vi.hoisted(() => ({
 	sky: { setUpCloudData: vi.fn() },
 	damage: { free: vi.fn() },
 	joystickUI: { onRestore: vi.fn() },
-	signboards: { free: vi.fn() }
+	signboards: { free: vi.fn() },
+	thread: { hook: vi.fn(), send: vi.fn() }
 }));
 
-vi.mock('Core/Thread.js', () => ({ default: {} }));
+vi.mock('Core/Thread.js', () => ({ default: mocks.thread }));
 vi.mock('Audio/SoundManager.js', () => ({ default: mocks.soundManager }));
 vi.mock('Audio/BGM.js', () => ({ default: mocks.bgm }));
-vi.mock('DB/DBManager.js', () => ({ default: {} }));
+vi.mock('DB/DBManager.js', () => ({ default: { getMap: () => null } }));
 vi.mock('UI/UIManager.js', () => ({ default: mocks.uiManager }));
 vi.mock('UI/Background.js', () => ({ default: mocks.background }));
 vi.mock('UI/CursorManager.js', () => ({ default: mocks.cursor }));
@@ -118,5 +120,40 @@ describe('MapRenderer joystick restoration', () => {
 		expect(MapRenderer.onLoad).not.toHaveBeenCalled();
 		expect(MapRenderer.loading).toBe(true);
 		expect(MapRenderer.currentMap).toBe('geffen.gat');
+	});
+
+	it('asks the worker for the new map before the loading fade, and holds its results until the fade is done', () => {
+		const free = vi.spyOn(MapRenderer, 'free').mockImplementation(() => {});
+		mocks.renderer.remove = vi.fn();
+
+		MapRenderer.setMap('geffen.gat');
+
+		// The worker already has the map...
+		const load = mocks.thread.send.mock.calls.find(([type]) => type === 'LOAD_MAP');
+		expect(load[1]).toBe('geffen.rsw');
+		expect(mocks.thread.send.mock.invocationCallOrder.at(-1)).toBeLessThan(
+			mocks.background.setLoading.mock.invocationCallOrder[0]
+		);
+
+		// ...but what it sends back waits for the fade, then the old map is freed first.
+		const hooks = Object.fromEntries(mocks.thread.hook.mock.calls);
+		const onComplete = load[2];
+		hooks.MAP_PROGRESS(50);
+		onComplete(false, 'nope');
+		expect(mocks.background.setPercent).not.toHaveBeenCalled();
+		expect(mocks.uiManager.showErrorBox).not.toHaveBeenCalled();
+		expect(free).not.toHaveBeenCalled();
+
+		mocks.background.setLoading.mock.calls[0][0]();
+		expect(free).toHaveBeenCalledOnce();
+		expect(mocks.renderer.remove).toHaveBeenCalledOnce();
+		expect(mocks.background.setPercent).toHaveBeenCalledWith(50);
+		expect(mocks.uiManager.showErrorBox).toHaveBeenCalledWith('nope');
+		expect(free.mock.invocationCallOrder[0]).toBeLessThan(mocks.background.setPercent.mock.invocationCallOrder[0]);
+
+		// Results after the fade go straight through.
+		hooks.MAP_PROGRESS(60);
+		expect(mocks.background.setPercent).toHaveBeenLastCalledWith(60);
+		free.mockRestore();
 	});
 });
