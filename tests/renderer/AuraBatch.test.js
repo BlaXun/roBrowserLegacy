@@ -29,6 +29,9 @@ const { default: Configs } = await import('Core/Configs.js');
 const { default: SwirlingAura } = await import('Renderer/Effects/SwirlingAura.js');
 const { default: GroundAura } = await import('Renderer/Effects/GroundAura.js');
 const { default: Level99Bubble } = await import('Renderer/Effects/Level99Bubble.js');
+const { default: MaxLevelAura } = await import('Renderer/Effects/MaxLevelAura.js');
+const { default: AuraBatch } = await import('Renderer/Effects/AuraBatch.js');
+const { BLEND_ADD, BLEND_ALPHA } = await import('Renderer/Effects/AuraBlend.js');
 
 const FOG = { use: false, exist: false, near: 30, far: 180, color: [0.4, 0.6, 0.6] };
 const M = new Float32Array(16);
@@ -85,7 +88,7 @@ describe('AuraBatch', () => {
 
 	beforeEach(() => {
 		({ gl, calls } = fakeGL());
-		[SwirlingAura, GroundAura, Level99Bubble].forEach(Class => {
+		[SwirlingAura, GroundAura, Level99Bubble, MaxLevelAura].forEach(Class => {
 			Class.free(gl);
 			Class.init(gl);
 		});
@@ -153,5 +156,89 @@ describe('AuraBatch', () => {
 		// 5 x 3 bands, 5 x 2 ground quads, and whichever bubbles have fallen into view
 		expect(draws.length).toBeGreaterThanOrEqual(25);
 		expect(calls.some(c => c[0] === 'bindVertexArray')).toBe(false);
+	});
+
+	it('draws a crowd of high-level auras in one call per texture', () => {
+		const list = [];
+		for (let i = 0; i < 40; i++) {
+			const position = [100 + i, 100, 0];
+			// Started apart, so each is on its own frame of the 27
+			list.push(new MaxLevelAura(position, 'bubbles', undefined, i * 37));
+			list.push(new MaxLevelAura(position, 'rings', undefined, i * 37));
+		}
+		list.forEach(effect => effect.init(gl));
+		calls.length = 0;
+		MaxLevelAura.beforeRender(gl, M, M, FOG, 5000);
+		list.forEach(effect => effect.render(gl, 5000));
+		MaxLevelAura.afterRender(gl);
+
+		const draws = calls.filter(c => c[0] === 'drawElements' || c[0] === 'drawArrays');
+		// 27 strip frames and 2 ground rings; 40 x 56 quads a draw each before
+		expect(draws.length).toBe(29);
+		expect(draws.every(c => c[0] === 'drawElements')).toBe(true);
+		expect(draws.reduce((sum, c) => sum + c[1], 0)).toBe(40 * 56 * 6);
+	});
+
+	it('keeps a hat-coloured high-level aura in order', () => {
+		const list = [0, 1].map(i => new MaxLevelAura([100 + i, 100, 0], 'bubbles', hat, 0));
+		list.forEach(effect => effect.init(gl));
+		calls.length = 0;
+		MaxLevelAura.beforeRender(gl, M, M, FOG, 1000);
+		list.forEach(effect => effect.render(gl, 1000));
+		MaxLevelAura.afterRender(gl);
+
+		// Alpha blending depends on the order, so every strip is its own run
+		const draws = calls.filter(c => c[0] === 'drawElements');
+		expect(draws.length).toBe(2 * 54);
+	});
+
+	it('draws each strip on its own with auraBatching off', () => {
+		Configs.set('auraBatching', false);
+		const aura = new MaxLevelAura([100, 100, 0], 'bubbles', undefined, 0);
+		aura.init(gl);
+		calls.length = 0;
+		MaxLevelAura.beforeRender(gl, M, M, FOG, 1000);
+		aura.render(gl, 1000);
+		MaxLevelAura.afterRender(gl);
+
+		expect(calls.filter(c => c[0] === 'drawArrays').length).toBe(54);
+		expect(calls.some(c => c[0] === 'drawElements')).toBe(false);
+	});
+
+	it('merges additive runs by texture and leaves other runs where they are', () => {
+		const batch = new AuraBatch({ fog: true, mergeAdditive: true });
+		batch.begin(gl, M, M, FOG);
+		const points = [
+			[0, 0, 0],
+			[1, 0, 0],
+			[1, 0, 1],
+			[0, 0, 1]
+		];
+		const quad = (texture, blend) => batch.quad(texture, blend, points, [0, 1, 2, 2, 3, 0], 1, 1, 1, 1, 0);
+		quad('a', BLEND_ADD);
+		quad('b', BLEND_ADD);
+		quad('a', BLEND_ADD);
+		quad('c', BLEND_ALPHA);
+		quad('c', BLEND_ALPHA);
+		quad('b', BLEND_ADD);
+		quad('a', BLEND_ADD);
+		quad('b', BLEND_ADD);
+		expect(batch.runCount).toBe(7);
+
+		expect(batch.merge()).toBe(true);
+		const runs = batch.mergedRuns
+			.slice(0, batch.mergedRunCount)
+			.map(run => [run.texture, run.blend, run.first, run.count]);
+		expect(runs).toEqual([
+			['a', BLEND_ADD, 0, 12],
+			['b', BLEND_ADD, 12, 6],
+			['c', BLEND_ALPHA, 18, 12],
+			['b', BLEND_ADD, 30, 12],
+			['a', BLEND_ADD, 42, 6]
+		]);
+		// Quads 0, 2 | 1 | 3, 4 | 5, 7 | 6: each quad's six indices, moved whole
+		const quadOf = Array.from(batch.mergedIndices.subarray(0, 48)).map(index => index >> 2);
+		expect(quadOf.filter((q, i) => i % 6 === 0)).toEqual([0, 2, 1, 3, 4, 5, 7, 6]);
+		expect(Array.from(batch.mergedIndices.subarray(0, 6))).toEqual(Array.from(batch.indices.subarray(0, 6)));
 	});
 });
