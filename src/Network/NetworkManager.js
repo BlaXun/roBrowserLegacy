@@ -155,7 +155,9 @@ function sendPacket(Packet) {
 		);
 	}
 
-	console.log('%c[Network] Send:', 'color:#007070', Packet);
+	// The name goes in as text too: a log that keeps only text (the app's
+	// client.log) gets [object Object] for the packet, and no way to tell them apart.
+	console.log('%c[Network] Send: %s', 'color:#007070', Packet.constructor.name, Packet);
 
 	// Encrypt packet
 	if (_socket && _socket.isZone) {
@@ -312,7 +314,13 @@ function receive(buf) {
 			//	packet.Struct.call(packet.instance, fp, offset); //this causes packet conflicts where the same type of packets following eachother copy the previous packet's variables with the previous values
 			//}
 
-			console.log('%c[Network] Recv:', 'color:#900090', packet.instance, packet.callback ? '' : '(no callback)');
+			console.log(
+				'%c[Network] Recv: %s',
+				'color:#900090',
+				'0x' + id.toString(16) + ' ' + packet.name,
+				packet.instance,
+				packet.callback ? '' : '(no callback)'
+			);
 
 			// Call controller
 			if (packet.callback) {
