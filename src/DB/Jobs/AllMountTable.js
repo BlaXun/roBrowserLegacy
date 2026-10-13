@@ -190,7 +190,7 @@ duplicateEntry(JobId.GENETIC, JobId.GENETIC_H);
 duplicateEntry(JobId.ROYAL_GUARD, JobId.ROYAL_GUARD_H);
 duplicateEntry(JobId.SHADOW_CHASER, JobId.SHADOW_CHASER_H);
 
-duplicateEntry(JobId.ARCHBISHOP, JobId.ARCH_BISHOP_2ND);
+duplicateEntry(JobId.ARCHBISHOP, JobId.ARCHBISHOP_2ND);
 duplicateEntry(JobId.RANGER, JobId.RANGER_2ND);
 duplicateEntry(JobId.WARLOCK, JobId.WARLOCK_2ND);
 duplicateEntry(JobId.MECHANIC, JobId.MECHANIC_2ND);

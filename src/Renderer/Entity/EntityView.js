@@ -359,6 +359,10 @@ function UpdateBody(job) {
 		}
 	}
 
+	// A newer body load (this one, or a body style change after it) supersedes any still in
+	// flight, so a slow file can no longer draw an outdated body over the current one.
+	const bodyLoad = (this._bodyLoadSeq = (this._bodyLoadSeq || 0) + 1);
+
 	// Invisible sprites
 	if (job === 111 || job === 139 || job === 45) {
 		this.files.body.spr = null;
@@ -429,8 +433,10 @@ function UpdateBody(job) {
 
 			// Only update if callback is valid
 			if (!isStaleCallback && job === currentJob) {
-				this.files.body.spr = loaded + '.spr';
-				this.files.body.act = loaded + '.act';
+				if (bodyLoad === this._bodyLoadSeq) {
+					this.files.body.spr = loaded + '.spr';
+					this.files.body.act = loaded + '.act';
+				}
 
 				// Apply head suppression/restoration
 				// Apply head suppression/restoration
@@ -500,7 +506,7 @@ function getBodyVal() {
 		case JobConst.ARCHBISHOP:
 		case JobConst.ARCHBISHOP_H:
 		case JobConst.ARCHBISHOP_B:
-			job = JobConst.ARCH_BISHOP_2ND;
+			job = JobConst.ARCHBISHOP_2ND;
 			break;
 		case JobConst.WINDHAWK:
 		case JobConst.WINDHAWK_H:
@@ -586,6 +592,12 @@ function UpdateBodyStyle(look) {
 	setTimeout(
 		function () {
 			this._body = look;
+
+			// A transformation draws its own body; UpdateBody puts the style back when it ends.
+			if (hasTransformation.call(this)) {
+				return;
+			}
+
 			let job = this._job;
 			let cashMountCostume = false;
 			if (PACKETVER.value <= 20231220) {
@@ -620,11 +632,15 @@ function UpdateBodyStyle(look) {
 			this._bodyStyleJob = styled ? look : null;
 			Entity = this.constructor;
 
-			// Loading
+			// Loading (see UpdateBody: only the newest body load is drawn)
+			const bodyLoad = (this._bodyLoadSeq = (this._bodyLoadSeq || 0) + 1);
 			Client.loadFile(path + '.act');
 			Client.loadFile(
 				path + '.spr',
 				function () {
+					if (bodyLoad !== this._bodyLoadSeq) {
+						return;
+					}
 					this.files.body.spr = path + '.spr';
 					this.files.body.act = path + '.act';
 
