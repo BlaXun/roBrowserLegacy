@@ -796,11 +796,29 @@ function onConnectRequest(entity) {
 	// The char-select list holds plain packet structures, build the player from it.
 	// Done here (instead of on char-list reception) so that characters delivered by
 	// any char-list packet, and freshly created ones, all end up with a Player.
-	Session.Entity = new Player(entity);
+	Session.Entity = buildPlayer(entity);
 	_charBeforeDB = DB.isLoaded ? null : entity;
 	const pkt = new PACKET.CH.SELECT_CHAR();
 	pkt.CharNum = entity.CharNum;
 	Network.sendPacket(pkt);
+}
+
+/**
+ * The player of a char-list entry
+ *
+ * @param {object} entity - char-list entry
+ * @return {Player}
+ */
+function buildPlayer(entity) {
+	const player = new Player(entity);
+
+	// Entity.set() leaves out the body style (alternative outfit), and the map server
+	// only has it in the char list: it does not send it to the player again.
+	if (entity.body > 0) {
+		player.body = entity.body;
+	}
+
+	return player;
 }
 
 /**
@@ -858,7 +876,7 @@ function onReceiveMapInfo(pkt) {
 	// the map server does not send our own look again. Build it once more now
 	// that the client's accessory and robe tables are in.
 	if (_charBeforeDB) {
-		Session.Entity = new Player(_charBeforeDB);
+		Session.Entity = buildPlayer(_charBeforeDB);
 		_charBeforeDB = null;
 	}
 
