@@ -648,6 +648,10 @@ export function createCharSelect(config) {
 	function createSlotEntity(character) {
 		const entity = new Entity();
 		entity.set(character);
+		// Entity.set() leaves out the body style (alternative outfit).
+		if (character.body > 0) {
+			entity.body = character.body;
+		}
 		entity.effectState = entity._effectState & ~StatusConst.EffectState.INVISIBLE;
 		if (gridLayout) {
 			entity.hideShadow = true;
