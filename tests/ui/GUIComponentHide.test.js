@@ -10,7 +10,7 @@
  * Its own file because GUIComponent.test.js does not load in this test
  * environment (no localStorage); this one provides it first.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const store = new Map();
 vi.stubGlobal('localStorage', {
@@ -39,10 +39,13 @@ const GUIComponent = (await import('UI/GUIComponent.js')).default;
 const Mouse = (await import('Controls/MouseEventHandler.js')).default;
 const Session = (await import('Engine/SessionStorage.js')).default;
 
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => {vi.clearAllTimers();vi.useRealTimers();});
+
 let seq = 0;
 function window_() {
 	const component = new GUIComponent(`HideWindow${++seq}`, '');
-	component.render = () => '<div></div>';
+	component.render = () => '<div><button>Action</button></div>';
 	component.append();
 	return component;
 }
@@ -52,6 +55,13 @@ describe('hiding a window under the pointer', () => {
 		Mouse.intersect = true;
 		Session.FreezeUI = false;
 		const skills = window_();
+
+		const mapPress=vi.fn();
+		window.addEventListener('mousedown',mapPress);
+		try {
+			skills.getRoot().querySelector('button').dispatchEvent(new MouseEvent('mousedown',{button:0,bubbles:true,composed:true}));
+			expect(mapPress).not.toHaveBeenCalled();
+		} finally {window.removeEventListener('mousedown',mapPress);}
 
 		skills._host.dispatchEvent(new Event('mouseenter'));
 		expect(Mouse.intersect).toBe(false);

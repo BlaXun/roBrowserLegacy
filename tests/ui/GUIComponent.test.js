@@ -5,7 +5,7 @@
  * replaces it with a stub, so the two behaviours below are held by nothing
  * else in the suite.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	cursor: {
@@ -52,6 +52,10 @@ function mount(html) {
 	component.append();
 	return component;
 }
+
+// The real component schedules scrollbar checks up to 500ms after mounting.
+// Keep jsdom alive until those callbacks finish, including when this file runs alone.
+afterAll(() => new Promise(resolve => setTimeout(resolve, 550)));
 
 beforeEach(() => {
 	document.body.innerHTML = '';
