@@ -23,6 +23,8 @@
  *   takesFocus    an ordinary window, but one the server opens for an NPC or
  *                 a player (storage, shops, trade): it takes the focus when it
  *                 opens, as a dialogue does
+ *   info          it shows what an item or skill is (Y opens it): B closes
+ *                 every such window first, unless a dialogue has the focus
  *   home          where menu navigation starts when nothing else is open
  *   persistent    always open (the shortcut bar): not where it starts
  *   items         selector of more elements to focus
@@ -516,6 +518,12 @@ const PROFILES = [
 	{
 		match: /^(ChatBox(:.*)?|MiniMap(V\d+)?|QuestWindow|SkillTargetSelection|StatusIcons|Announce|ItemObtain|MapName|FPS|PCGoldTimer|Sense|EntityRoom|EntitySignboard)$/,
 		skip: true
+	},
+
+	// What an item or skill is, opened by Y (a right click) and from there: B closes them first
+	{
+		match: /^(ItemInfo|ItemCompare|SkillDescription|CardIllustration|ItemPreview)$/,
+		info: true
 	},
 
 	// The gamepad HUD: a place to put a skill or item that is carried (JoystickSlotDrop)

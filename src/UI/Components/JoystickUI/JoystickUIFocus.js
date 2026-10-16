@@ -6,9 +6,11 @@
  * act on it:
  *
  *   D-pad    move the ring to the nearest element that way; at a window's
- *            edge, into the next window (held: repeats)
+ *            edge, into the next window (held: repeats). On a slider or a
+ *            drop-down list, left and right change its value
  *   A        press it: a button, a row, an item (use / equip), a skill (use)
- *   B        back: the window's cancel or close button, else leave menus
+ *   B        back: an item's or skill's info window first, else the
+ *            window's cancel or close button, else leave menus
  *   X        a tap: what else can be done with it, as a menu (store some,
  *            put on a gamepad slot, drop...); held: pick it up
  *   Y        item or skill info (a right click on it)
@@ -55,6 +57,7 @@ import StickFilter from './JoystickStickFilter.js';
 import Carry from './JoystickCarry.js';
 import Tabs from './JoystickFocusTabs.js';
 import ActionMenu from './JoystickActionMenu.js';
+import ValueInput from './JoystickValueInput.js';
 
 const BTN = ButtonMap.BUTTON;
 
@@ -381,18 +384,26 @@ function handleX(events, now, view) {
 // ---------------------------------------------------------------------------
 
 /**
- * Bring a window to the front, as a click on it does.
+ * The registered component a window is, if any (popups are unregistered clones).
  */
-function raise(win) {
+function componentOf(win) {
 	const components = UIManager.components;
 	for (const name in components) {
 		const component = components[name];
 		if (component && component._host === win.host) {
-			if (component.focus) {
-				component.focus();
-			}
-			return;
+			return component;
 		}
+	}
+	return null;
+}
+
+/**
+ * Bring a window to the front, as a click on it does.
+ */
+function raise(win) {
+	const component = componentOf(win);
+	if (component && component.focus) {
+		component.focus();
 	}
 }
 
@@ -672,6 +683,11 @@ function move(direction) {
 		_hintsAt = -Infinity;
 		return;
 	}
+	// A slider or a drop-down list: left and right change its value
+	if (!_detached && _el && ValueInput.step(_el, direction)) {
+		_hintsAt = -Infinity;
+		return;
+	}
 	if (!_detached && profile.scroll && (direction === 'up' || direction === 'down')) {
 		if (Scan.scrollBy(_win.root.querySelector(profile.scroll), direction)) {
 			return;
@@ -704,6 +720,10 @@ function move(direction) {
 }
 
 function pressGeneric(el) {
+	if (ValueInput.isSlider(el)) {
+		// Left and right move it; there is nothing to press
+		return;
+	}
 	if (el.matches('select')) {
 		if (el.options.length) {
 			el.selectedIndex = (el.selectedIndex + 1) % el.options.length;
@@ -761,10 +781,47 @@ function findClose(win) {
 }
 
 /**
- * B: the profile's back, else the window's cancel or close button, else
- * out of menus (never from a dialogue, which wants an answer).
+ * The info windows open now (an item's, a skill's: what Y opens), when B
+ * would close them: not while a dialogue has the focus, which gets B.
+ */
+function infoToClose() {
+	if (_win && _win.profile.dialog) {
+		return [];
+	}
+	return Scan.listWindows().filter(win => win.profile.info);
+}
+
+/**
+ * Close a window with its own close button, else as its component.
+ */
+function closeWindow(win) {
+	// Gone already: closed with another (ItemInfo takes its compare window along)
+	if (!Scan.isOpen(win)) {
+		return;
+	}
+	const close = findClose(win);
+	if (close) {
+		Events.press(close);
+		return;
+	}
+	const component = componentOf(win);
+	if (component && component.remove) {
+		component.remove();
+	}
+}
+
+/**
+ * B: the info windows Y opened, all at once; else the profile's back, else
+ * the window's cancel or close button, else out of menus (never from a
+ * dialogue, which wants an answer).
  */
 function back() {
+	const popups = infoToClose();
+	if (popups.length) {
+		popups.forEach(closeWindow);
+		_hintsAt = -Infinity;
+		return;
+	}
 	if (!_win) {
 		exit();
 		return;
@@ -975,6 +1032,9 @@ function cancelCarry() {
 // ---------------------------------------------------------------------------
 
 function genericLabel(el) {
+	if (ValueInput.isSlider(el)) {
+		return '';
+	}
 	if (el.matches('input[type="checkbox"], input[type="radio"], .checkbox')) {
 		return 'Toggle';
 	}
@@ -988,6 +1048,9 @@ function genericLabel(el) {
 }
 
 function backLabel() {
+	if (infoToClose().length) {
+		return 'Close info';
+	}
 	const profile = _win.profile;
 	if (profile.backLabel) {
 		return profile.backLabel(_win);
@@ -1021,6 +1084,7 @@ function hints() {
 			label = genericLabel(_el);
 		}
 		list.push([BTN.A, label]);
+		list.push(...ValueInput.hints(_el));
 		if (ActionMenu.entriesFor(_el, _win, actionContext()).length) {
 			list.push([BTN.X, ActionMenu.canMove(_el, _win) ? 'Actions (hold: Move)' : 'Actions']);
 		}
@@ -1108,6 +1172,8 @@ function exit() {
 		claimDown();
 	}
 	Carry.cancel();
+	// A slider's change waiting for its steps to stop goes out now
+	ValueInput.flush();
 	_active = false;
 	_auto = false;
 	_win = null;

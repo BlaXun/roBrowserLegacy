@@ -752,3 +752,117 @@ describe('JoystickUIFocus: X, carrying and tabs', () => {
 		expect(pickSlot).toHaveBeenCalledWith(inv.$('[data-index="0"]'));
 	});
 });
+
+describe('JoystickUIFocus: info windows and sliders', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+		Object.keys(mocks.components).forEach(key => delete mocks.components[key]);
+		vi.clearAllMocks();
+		mocks.controls.joyUIFocus = true;
+		gp = { buttons: Array.from({ length: 17 }, () => ({ pressed: false })), axes: [0, 0, 0, 0] };
+		now = 1000;
+		vi.spyOn(performance, 'now').mockImplementation(() => now);
+		Mouse.state = Mouse.MOUSE_STATE.NORMAL;
+		Mouse.screen.x = 0;
+		Mouse.screen.y = 0;
+		UIFocus.dispose();
+		UIFocus.prepare();
+	});
+
+	afterEach(() => {
+		UIFocus.dispose();
+		vi.restoreAllMocks();
+	});
+
+	function hintText() {
+		return document.querySelector('.joystick-focus-hints').textContent;
+	}
+
+	function wait(ms) {
+		for (let t = 0; t < ms; t += 16) {
+			frame();
+		}
+	}
+
+	it('B closes the info windows Y opened, all at once, before the window they came from', () => {
+		const inv = inventory();
+		const closeInventory = vi.fn();
+		inv.$('.titlebar .close').addEventListener('click', closeInventory);
+		let info = null;
+		let compare = null;
+		inv.$('.content').addEventListener('contextmenu', () => {
+			info = makeWindow('ItemInfo', '<div class="title"><button class="close"></button></div>', 70);
+			place(info.$('.close'), 500, 50, 12, 12);
+			info.$('.close').addEventListener('click', () => info.host.remove());
+			// The compare window has no close button: it goes as its component does
+			compare = makeWindow('ItemCompare', '<div class="title"></div>', 71);
+			mocks.components.ItemCompare = { _host: compare.host, remove: vi.fn(() => compare.host.remove()) };
+		});
+
+		tap(BTN.VIEW);
+		tap(BTN.Y);
+		wait(160);
+		expect(hintText()).toContain('B Close info');
+
+		tap(BTN.B);
+		expect(info.host.isConnected).toBe(false);
+		expect(compare.host.isConnected).toBe(false);
+		expect(closeInventory).not.toHaveBeenCalled();
+		expect(UIFocus.isActive()).toBe(true);
+		expect(focused()).toBe(inv.$('[data-index="0"]'));
+
+		tap(BTN.B);
+		expect(closeInventory).toHaveBeenCalledTimes(1);
+	});
+
+	it('a dialogue keeps B for its answer, even with an info window open', () => {
+		tap(BTN.X); // the pad was used last
+		const info = makeWindow('ItemInfo', '<button class="close"></button>', 70);
+		place(info.$('.close'), 500, 50, 12, 12);
+		const box = makeWindow('WinMSG', '<div class="btns"><button id="yes"></button><button id="no"></button></div>', 100);
+		place(box.$('#yes'), 10, 10, 40, 20);
+		place(box.$('#no'), 60, 10, 40, 20);
+		const no = vi.fn();
+		box.$('#no').addEventListener('click', no);
+
+		settle();
+		expect(UIFocus.getFocus().win.name).toBe('WinMSG');
+		tap(BTN.B);
+		expect(no).toHaveBeenCalledTimes(1);
+		expect(info.host.isConnected).toBe(true);
+	});
+
+	it('left and right change a slider and keep the focus on it; A leaves it alone; up and down move on', () => {
+		const win = makeWindow(
+			'SoundOption',
+			'<input class="bgm" type="range" min="0" max="100" step="1" value="50" /><button class="ok"></button>',
+			60
+		);
+		const slider = win.$('.bgm');
+		place(slider, 100, 100, 120, 16);
+		place(win.$('.ok'), 100, 140, 40, 20);
+		const seen = [];
+		slider.addEventListener('input', () => seen.push('input:' + slider.value));
+		slider.addEventListener('change', () => seen.push('change:' + slider.value));
+		const pressed = vi.fn();
+		slider.addEventListener('mousedown', pressed);
+
+		tap(BTN.VIEW);
+		expect(focused()).toBe(slider);
+		expect(hintText()).toContain('◀▶ Change');
+
+		tap(BTN.RIGHT);
+		tap(BTN.RIGHT);
+		expect(slider.value).toBe('60');
+		expect(focused()).toBe(slider);
+		tap(BTN.A);
+		expect(pressed).not.toHaveBeenCalled();
+
+		tap(BTN.DOWN);
+		expect(focused()).toBe(win.$('.ok'));
+
+		// Menus end: the change that waited for the steps to stop goes out
+		tap(BTN.VIEW);
+		expect(seen).toEqual(['input:55', 'input:60', 'change:60']);
+	});
+});
