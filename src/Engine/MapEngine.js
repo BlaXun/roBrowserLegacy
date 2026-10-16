@@ -91,6 +91,7 @@ import CashShopIcon from 'UI/Components/CashShopIcon/CashShopIcon.js';
 import Achievement from 'UI/Components/Achievement/Achievement.js';
 
 import MainEngine from './MapEngine/Main.js';
+import startMapHeartbeat from './MapEngine/Heartbeat.js';
 import MapStateEngine from './MapEngine/MapState.js';
 import NPCEngine from './MapEngine/NPC.js';
 import EntityEngine, { clearQuestEffects } from './MapEngine/Entity.js';
@@ -128,6 +129,7 @@ let _mapName = '';
  * @type {boolean} is initialized
  */
 let _isInitialised = false;
+let _setMapHeartbeatReady = null;
 
 let _exiting = false;
 let _exitTimer = null;
@@ -154,6 +156,7 @@ class MapEngine {
 	 */
 	static init(ip, port, mapName) {
 		_mapName = mapName;
+		_setMapHeartbeatReady = null;
 		_exiting = false;
 		_exitTimer = null;
 
@@ -209,40 +212,7 @@ class MapEngine {
 					}
 				});
 
-				const hbt = new PACKET.CZ.HBT();
-				const is_sec_hbt = Configs.get('sec_HBT', null);
-
-				// Ping
-				let ping;
-				const SP = Session.ping;
-
-				if (PACKETVER.value >= 20180307) {
-					ping = new PACKET.CZ.REQUEST_TIME2();
-				} else {
-					ping = new PACKET.CZ.REQUEST_TIME();
-				}
-				const startTick = Date.now();
-				// A new connection makes any previous correction meaningless.
-				Session.serverTickSynced = false;
-				Network.setPing(() => {
-					if (is_sec_hbt) {
-						Network.sendPacket(hbt);
-					}
-
-					ping.clientTime = Date.now() - startTick;
-
-					if (!SP.returned && SP.pingTime) {
-						console.warn('[Network] The server did not answer the previous PING!');
-					}
-					SP.pingTime = ping.clientTime;
-					// The base pingTime is measured from, so the pong can be put on
-					// the same clock and subtracted. Without it there is nothing here
-					// for a pong to be compared against.
-					SP.epoch = startTick;
-					SP.returned = false;
-
-					Network.sendPacket(ping);
-				});
+				_setMapHeartbeatReady = startMapHeartbeat();
 
 				Session.Playing = true;
 			},
@@ -640,6 +610,7 @@ function onConnectionRefused(pkt) {
  * @param {object} pkt - PACKET.ZC.NPCACK_MAPMOVE
  */
 function onMapChange(pkt) {
+	_setMapHeartbeatReady?.(false);
 	clearQuestEffects();
 
 	MapRenderer.onLoad = () => {
@@ -774,6 +745,7 @@ function onMapChange(pkt) {
 
 		// Map loaded
 		Network.sendPacket(new PACKET.CZ.NOTIFY_ACTORINIT());
+		_setMapHeartbeatReady?.(true);
 
 		// Rates Info
 		if (Session.ratesInfo) {
