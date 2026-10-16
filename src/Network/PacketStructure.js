@@ -9770,6 +9770,15 @@ PACKET.ZC.PLAY_NPC_BGM = function PACKET_ZC_PLAY_NPC_BGM(fp, end) {
 };
 PACKET.ZC.PLAY_NPC_BGM.size = 26;
 
+// 0xb8c: what servers send in place of 0x7fe from 2022-05-04 clients on
+// (rAthena: PACKETVER_MAIN_NUM >= 20220504). A play type, then the name, of
+// any length. The name is a file name, so it is read as bytes, as 0x7fe reads it.
+PACKET.ZC.PLAY_NPC_BGM2 = function PACKET_ZC_PLAY_NPC_BGM2(fp, end) {
+	this.playType = fp.readUChar();
+	this.Bgm = fp.readBinaryString(end - fp.tell());
+};
+PACKET.ZC.PLAY_NPC_BGM2.size = -1;
+
 // 0x7ff
 PACKET.ZC.DEFINE_CHECK = function PACKET_ZC_DEFINE_CHECK(fp, end) {
 	this.Result = fp.readLong();
