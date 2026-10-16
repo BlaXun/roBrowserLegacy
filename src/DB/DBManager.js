@@ -731,15 +731,35 @@ class DB {
 
 			// Achievements
 			if (Configs.get('enableAchievements') && PACKETVER.value >= 20150513) {
-				loadLuaValue(
-					'System/achievement_list.lub',
-					'achievement_tbl',
-					function (json) {
-						if (json) {
-							Object.assign(AchievementTable, json);
-						}
-					},
-					onLoad()
+				const onAchievementEnd = onLoad();
+				const addAchievements = json => {
+					if (json) {
+						Object.assign(AchievementTable, json);
+					}
+				};
+				// customAchievementInfo: further achievement tables, loaded after the
+				// base in the order given. Each sets its achievements by id over what
+				// came before, so one can add an achievement or reword an existing one
+				// without carrying the whole table.
+				const customAchievementInfo = Configs.get('customAchievementInfo', []);
+				const loadCustomAchievementInfo = (index = 0) => {
+					if (!Array.isArray(customAchievementInfo) || index >= customAchievementInfo.length) {
+						onAchievementEnd();
+						return;
+					}
+					// Every table is read from the same Lua global, so a file that does
+					// not set it would hand back the table before it a second time.
+					try {
+						lua.doStringSync('achievement_tbl = nil');
+					} catch (error) {
+						console.error('[customAchievementInfo] ', error);
+					}
+					loadLuaValue(customAchievementInfo[index], 'achievement_tbl', addAchievements, () =>
+						loadCustomAchievementInfo(index + 1)
+					);
+				};
+				loadLuaValue('System/achievement_list.lub', 'achievement_tbl', addAchievements, () =>
+					loadCustomAchievementInfo()
 				);
 			}
 
