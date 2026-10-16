@@ -3447,6 +3447,8 @@ class DB {
 
 			case JobId.GUNSLINGER:
 			case JobId.NINJA:
+			case JobId.DRUID:
+			case JobId.DRUID_B:
 			case JobId.TAEKWON:
 				return 'Expanded_First_Class';
 
@@ -3483,6 +3485,8 @@ class DB {
 			case JobId.LINKER:
 			case JobId.KAGEROU:
 			case JobId.OBORO:
+			case JobId.KARNOS:
+			case JobId.KARNOS_B:
 			case JobId.REBELLION:
 				return 'Expanded_Second_Class';
 
@@ -3548,6 +3552,7 @@ class DB {
 			case JobId.NIGHT_WATCH:
 			case JobId.HYPER_NOVICE:
 			case JobId.SPIRIT_HANDLER:
+			case JobId.ALITEA:
 			case JobId.SKY_EMPEROR2:
 				return 'Fourth_Class';
 
