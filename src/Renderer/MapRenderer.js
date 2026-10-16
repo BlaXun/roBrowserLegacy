@@ -203,6 +203,8 @@ class MapRenderer {
 		EntityManager.free();
 		Damage.free(gl);
 		EffectManager.free(gl);
+		// The map's signboards are added again once it is set up (MapEngine)
+		SignboardManager.free();
 		JoystickUI.onRestore();
 
 		// Basic TP

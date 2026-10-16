@@ -25,7 +25,8 @@ const mocks = vi.hoisted(() => ({
 	effectManager: { free: vi.fn() },
 	sky: { setUpCloudData: vi.fn() },
 	damage: { free: vi.fn() },
-	joystickUI: { onRestore: vi.fn() }
+	joystickUI: { onRestore: vi.fn() },
+	signboards: { free: vi.fn() }
 }));
 
 vi.mock('Core/Thread.js', () => ({ default: mocks.thread }));
@@ -53,7 +54,7 @@ vi.mock('Renderer/Map/Sounds.js', () => ({ default: {} }));
 vi.mock('Renderer/Map/Effects.js', () => ({ default: {} }));
 vi.mock('Renderer/SpriteRenderer.js', () => ({ default: {} }));
 vi.mock('Renderer/EffectManager.js', () => ({ default: mocks.effectManager }));
-vi.mock('Renderer/SignboardManager.js', () => ({ default: {} }));
+vi.mock('Renderer/SignboardManager.js', () => ({ default: mocks.signboards }));
 vi.mock('Renderer/ScreenEffectManager.js', () => ({ default: {} }));
 vi.mock('Renderer/Effects/Sky.js', () => ({ default: mocks.sky }));
 vi.mock('Renderer/Effects/Damage.js', () => ({ default: mocks.damage }));
@@ -99,6 +100,15 @@ describe('MapRenderer joystick restoration', () => {
 		expect(mocks.joystickUI.onRestore).toHaveBeenCalledOnce();
 		expect(MapRenderer.onLoad).toHaveBeenCalledOnce();
 		expect(mocks.joystickUI.onRestore.mock.invocationCallOrder[0]).toBeLessThan(
+			MapRenderer.onLoad.mock.invocationCallOrder[0]
+		);
+	});
+
+	it('drops the signboards on a same-map teleport, since the map setup adds them again', () => {
+		MapRenderer.setMap('prontera.gat');
+
+		expect(mocks.signboards.free).toHaveBeenCalledOnce();
+		expect(mocks.signboards.free.mock.invocationCallOrder[0]).toBeLessThan(
 			MapRenderer.onLoad.mock.invocationCallOrder[0]
 		);
 	});
