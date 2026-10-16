@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({
 	aim: { isActive: vi.fn(() => false), update: vi.fn(), release: vi.fn() },
 	camera: { update: vi.fn() },
 	support: { update: vi.fn(() => false), release: vi.fn() },
-	uiFocus: { frame: vi.fn(), isActive: vi.fn(() => false), exit: vi.fn(), cursorMoved: vi.fn() }
+	uiFocus: { frame: vi.fn(), isActive: vi.fn(() => false), exit: vi.fn(), cursorMoved: vi.fn() },
+	keyboard: { isOpen: vi.fn(() => false), close: vi.fn() }
 }));
 
 vi.mock('UI/Components/JoystickUI/JoystickMouseCursorAdapter.js', () => ({ default: mocks.cursor }));
@@ -15,6 +16,7 @@ vi.mock('UI/Components/JoystickUI/JoystickAimMode.js', () => ({ default: mocks.a
 vi.mock('UI/Components/JoystickUI/JoystickCameraMotion.js', () => ({ default: mocks.camera }));
 vi.mock('UI/Components/JoystickUI/JoystickSupportMode.js', () => ({ default: mocks.support }));
 vi.mock('UI/Components/JoystickUI/JoystickUIFocus.js', () => ({ default: mocks.uiFocus }));
+vi.mock('UI/Components/JoystickUI/JoystickKeyboard.js', () => ({ default: mocks.keyboard }));
 
 const { default: CursorMotion } = await import('UI/Components/JoystickUI/JoystickCursorMotion.js');
 
@@ -80,6 +82,32 @@ describe('JoystickCursorMotion frame loop', () => {
 		expect(mocks.cursor.moveBy).toHaveBeenCalledTimes(1);
 		expect(mocks.cursor.moveBy.mock.calls[0][0]).toBeGreaterThan(0);
 		expect(queued).toBeTypeOf('function'); // keeps going while the pad is there
+	});
+
+	it('moves neither the cursor nor the camera while the on-screen keyboard is open', () => {
+		CursorMotion.start();
+		pads = [{ axes: [0, 0, 1, 0] }];
+		window.dispatchEvent(new Event('gamepadconnected'));
+		mocks.keyboard.isOpen.mockReturnValue(true);
+		runFrame();
+		expect(mocks.cursor.moveBy).not.toHaveBeenCalled();
+		expect(mocks.camera.update).not.toHaveBeenCalled();
+		// It reads its buttons there
+		expect(mocks.uiFocus.frame).toHaveBeenCalled();
+
+		mocks.keyboard.isOpen.mockReturnValue(false);
+		runFrame();
+		expect(mocks.cursor.moveBy).toHaveBeenCalledTimes(1);
+	});
+
+	it('closes the keyboard when the last pad goes', () => {
+		CursorMotion.start();
+		pads = [{ axes: [0, 0, 0, 0] }];
+		window.dispatchEvent(new Event('gamepadconnected'));
+		pads = [];
+		mocks.keyboard.close.mockClear();
+		runFrame();
+		expect(mocks.keyboard.close).toHaveBeenCalledTimes(1);
 	});
 
 	it('starts when the poll first sees a pad, and only once', () => {

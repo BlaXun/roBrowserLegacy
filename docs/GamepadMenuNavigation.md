@@ -9,7 +9,7 @@ The gamepad moves a focus ring between the buttons, items and rows of the open w
 | View (tap) | Menu navigation on / off |
 | View (hold, alone) | Info of what the cursor or ring is on |
 | D-pad | Move to the nearest element that way; at a window's edge, into the next window. Held: repeats. On a slider or a drop-down list, left / right change its value |
-| A | Press: a button, a row, an item (use / equip, or move it to an open storage, trade or sell list), a skill (use), a shop item (into the deal and back) |
+| A | Press: a button, a row, an item (use / equip, or move it to an open storage, trade or sell list), a skill (use), a shop item (into the deal and back). On a text field: the on-screen keyboard |
 | B | Back: first the item or skill info windows Y opened (all at once), then the window's cancel or close button, else leave menus. A dialogue gets B for its answer even with info open |
 | X (tap) | What else can be done with the item, skill or slot, as a menu (below) |
 | X (hold) | Pick it up (below) |
@@ -39,6 +39,29 @@ X held (or Move…) picks the element up, as starting a drag does. The ring turn
 - A (or X again) puts it down on the focused element, as dropping it there with the mouse does: another window (storage, cart, trade, equipment: equips it, the inventory: takes it), a shortcut slot, an inventory tab (the favourite tab), a mail or refine slot, an NPC shop list. The gamepad HUD can be reached while something is carried, and takes skills and items on its slots.
 - With the ring off every element (the right stick moved the cursor away), A puts it where the cursor is: on the map, that drops an item on the ground.
 - B puts it back. Leaving menus does too.
+
+### Typing: the on-screen keyboard
+
+A on a text field (a search box, a price, a mail, a name, an NPC asking for text) opens a keyboard on screen, and Menu (Enter) opens it on the chat. It has every button and the sticks while it is open; the character stands. The text goes into the field as it is typed.
+
+| Button | On the keyboard |
+|---|---|
+| D-pad, left stick | Grid: move between the keys (held: repeats) |
+| A | Grid: type the key |
+| Left stick + A / B / X / Y | Wheel: the stick picks one of eight groups of four letters, the button the letter at its place |
+| X | Delete the letter before the caret (held: repeats) |
+| Y | Space |
+| LB / RB | Caret left / right |
+| LT | Shift: the next letter, again: all letters, again: off |
+| RT | Next page: letters, signs, accented letters |
+| View | Saved phrases |
+| RS click | Grid / wheel (the last one used is kept) |
+| Menu | Done: the text is entered as Enter enters it (the chat sends it, an NPC takes the answer) |
+| B | Close: the text stays in the field |
+
+On the wheel, X, Y and B are delete, space and close with the stick at rest. The grid's letter rows are QWERTZ for German, QWERTY otherwise. In the chat, an item link already there stays, and the new text goes after it.
+
+Saved phrases (View, or the ★ key): A puts one in at the caret (on the grid the focus then moves to Done, so a second A enters it), ✕ deletes one, "Save text" keeps what has been typed. They start with a few greetings and commands (`@autoloot`, `@go `) and are kept in the browser (`JoystickKeyboard` in local storage).
 
 ### Turning on and off
 

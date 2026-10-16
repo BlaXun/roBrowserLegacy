@@ -205,5 +205,10 @@ export default {
 	showHints,
 	hideHints,
 	hide,
-	dispose
+	dispose,
+	/**
+	 * How far from the bottom of the screen a bar sits to clear the gamepad
+	 * HUD (the hint bar, the on-screen keyboard).
+	 */
+	bottomAboveHud: hintsBottom
 };

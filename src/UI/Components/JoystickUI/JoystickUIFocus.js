@@ -8,7 +8,9 @@
  *   D-pad    move the ring to the nearest element that way; at a window's
  *            edge, into the next window (held: repeats). On a slider or a
  *            drop-down list, left and right change its value
- *   A        press it: a button, a row, an item (use / equip), a skill (use)
+ *   A        press it: a button, a row, an item (use / equip), a skill (use);
+ *            on a text field, the on-screen keyboard (JoystickKeyboard),
+ *            which has every button until it closes
  *   B        back: an item's or skill's info window first, else the
  *            window's cancel or close button, else leave menus
  *   X        a tap: what else can be done with it, as a menu (store some,
@@ -58,6 +60,7 @@ import Carry from './JoystickCarry.js';
 import Tabs from './JoystickFocusTabs.js';
 import ActionMenu from './JoystickActionMenu.js';
 import ValueInput from './JoystickValueInput.js';
+import Keyboard from './JoystickKeyboard.js';
 
 const BTN = ButtonMap.BUTTON;
 
@@ -117,6 +120,7 @@ let _armed = new Set(); // pressed while menus had the buttons: may be a tap or 
 let _repeatButton = -1;
 let _repeatAt = 0;
 let _viewHoldFired = false;
+let _viewArmed = false; // View was pressed where this reads it (not on the on-screen keyboard)
 let _xHoldFired = false; // X was held long enough: it picked something up (or tried)
 let _xTaken = false; // the X press put down what was carried: its release is no tap
 
@@ -250,6 +254,16 @@ function handleView(events, now) {
 	const view = BTN.VIEW;
 	if (events.pressed.indexOf(view) !== -1) {
 		_viewHoldFired = false;
+		_viewArmed = true;
+	}
+	// A press made while the on-screen keyboard had the buttons is not a tap or hold here
+	const release = events.released.find(entry => entry.button === view);
+	const armed = _viewArmed;
+	if (release) {
+		_viewArmed = false;
+	}
+	if (!armed) {
+		return;
 	}
 	if (_down[view] && !_used[view] && !_viewHoldFired && now - _downAt[view] >= HOLD_MS) {
 		_viewHoldFired = true;
@@ -259,7 +273,6 @@ function handleView(events, now) {
 			Cursor.contextMenu();
 		}
 	}
-	const release = events.released.find(entry => entry.button === view);
 	if (release && !release.used && !_viewHoldFired && release.held < HOLD_MS && enabled()) {
 		toggle();
 	}
@@ -735,10 +748,13 @@ function pressGeneric(el) {
 		'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), ' +
 		'textarea, [contenteditable="true"]';
 	if (el.matches(typed)) {
-		// Typed into with a keyboard (Steam + X on a Steam Deck)
-		el.focus();
-		if (el.select) {
-			el.select();
+		// Typed into with the on-screen keyboard; what it does not take (a file
+		// or colour picker) gets the focus, for a real keyboard
+		if (!Keyboard.open(el)) {
+			el.focus();
+			if (el.select) {
+				el.select();
+			}
 		}
 		return;
 	}
@@ -1298,6 +1314,18 @@ function frame(gp, now) {
 	const events = track(down, time);
 	noteActivity(gp, down, time);
 	runAfterRelease();
+
+	// The on-screen keyboard has every button while it is open, menus or not
+	// (it also opens on the chat). What is still held when it closes (Menu
+	// that entered the text, B that closed it) stays away from the map.
+	if (Keyboard.isOpen()) {
+		claimDown();
+		Keyboard.frame(gp, events, down, time);
+		Overlay.hideHints();
+		_hintsAt = -Infinity;
+		return;
+	}
+
 	// Presses act only in menus that were already on: not the A that opened a dialogue
 	const wasActive = _active;
 	if (wasActive) {
@@ -1385,6 +1413,7 @@ function prepare(options) {
 }
 
 function dispose() {
+	Keyboard.close();
 	exit();
 	if (_listening) {
 		window.removeEventListener('mousemove', onMouseMove);
@@ -1408,6 +1437,7 @@ function dispose() {
 	_mouseY = NaN;
 	_skillWait = false;
 	_viewHoldFired = false;
+	_viewArmed = false;
 	_afterRelease = [];
 	_pickSlot = null;
 }

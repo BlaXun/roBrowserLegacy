@@ -866,3 +866,86 @@ describe('JoystickUIFocus: info windows and sliders', () => {
 		expect(seen).toEqual(['input:55', 'input:60', 'change:60']);
 	});
 });
+
+describe('JoystickUIFocus: the on-screen keyboard', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+		Object.keys(mocks.components).forEach(key => delete mocks.components[key]);
+		vi.clearAllMocks();
+		mocks.controls.joyUIFocus = true;
+		gp = { buttons: Array.from({ length: 17 }, () => ({ pressed: false })), axes: [0, 0, 0, 0] };
+		now = 1000;
+		vi.spyOn(performance, 'now').mockImplementation(() => now);
+		Mouse.state = Mouse.MOUSE_STATE.NORMAL;
+		Mouse.screen.x = 0;
+		Mouse.screen.y = 0;
+		localStorage.clear();
+		UIFocus.dispose();
+		UIFocus.prepare();
+	});
+
+	afterEach(() => {
+		UIFocus.dispose();
+		vi.restoreAllMocks();
+	});
+
+	function keyboard() {
+		return document.querySelector('.joystick-keyboard');
+	}
+
+	it('A on a text field opens it; it has the buttons until Menu enters the text; menus go on after', async () => {
+		const { default: Keyboard } = await import('UI/Components/JoystickUI/JoystickKeyboard.js');
+		const win = makeWindow(
+			'Search',
+			'<input id="storage-search-input" type="text" class="search-input" /><button class="search"></button>',
+			60
+		);
+		place(win.$('input'), 100, 100, 120, 18);
+		place(win.$('.search'), 230, 100, 30, 18);
+		const entered = [];
+		const onKey = event => entered.push(event.keyCode);
+		window.addEventListener('keydown', onKey, true);
+
+		tap(BTN.VIEW);
+		expect(focused()).toBe(win.$('input'));
+		expect(document.querySelector('.joystick-focus-hints').textContent).toContain('A Type');
+		tap(BTN.A);
+		expect(Keyboard.isOpen()).toBe(true);
+		expect(keyboard()).not.toBe(null);
+
+		// The D-pad is the keyboard's now: the ring stays on the field
+		tap(BTN.RIGHT);
+		tap(BTN.A);
+		expect(win.$('input').value).toBe('w');
+		expect(focused()).toBe(win.$('input'));
+
+		down(9); // Menu: done
+		expect(Keyboard.isOpen()).toBe(false);
+		expect(entered).toEqual([13]);
+		up(9);
+		expect(UIFocus.isActive()).toBe(true);
+		tap(BTN.RIGHT);
+		expect(focused()).toBe(win.$('.search'));
+		window.removeEventListener('keydown', onKey, true);
+	});
+
+	it('an NPC asking for text starts on its field, where A opens the keyboard', async () => {
+		const { default: Keyboard } = await import('UI/Components/JoystickUI/JoystickKeyboard.js');
+		tap(BTN.X); // the pad was used last
+		const box = makeWindow(
+			'InputBox',
+			'<div id="inputbox"><div class="text"></div><input type="text" /><ui-button></ui-button></div>',
+			100
+		);
+		place(box.$('input'), 100, 100, 160, 18);
+		place(box.$('ui-button'), 200, 130, 40, 20);
+		settle();
+		expect(focused()).toBe(box.$('input'));
+		expect(document.querySelector('.joystick-focus-hints').textContent).toContain('A Type');
+		tap(BTN.A);
+		expect(Keyboard.isOpen()).toBe(true);
+		tap(BTN.B);
+		expect(Keyboard.isOpen()).toBe(false);
+		expect(UIFocus.getFocus().win.name).toBe('InputBox');
+	});
+});

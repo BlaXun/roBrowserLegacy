@@ -16,6 +16,7 @@ import JoystickUIRenderer from './JoystickUIRenderer.js';
 import SelectionUI from './JoystickSelectionUI.js';
 import ControlsSettings from 'Preferences/Controls.js';
 import UIFocus from './JoystickUIFocus.js';
+import Keyboard from './JoystickKeyboard.js';
 
 let clickLock = false;
 const lockTimeout = 200;
@@ -47,6 +48,10 @@ let gridHeld = [];
 // when menus end is not the map's until let go
 const MENU_BUTTONS = [0, 1, 2, 3, 12, 13, 14, 15];
 
+// Every button still down when the on-screen keyboard last had them (JoystickKeyboard): Menu that
+// entered the text would be an Enter, B a right click, once the keyboard is gone
+let keyboardHeld = [];
+
 function setClickLock() {
 	clickLock = true;
 	setTimeout(function () {
@@ -56,6 +61,25 @@ function setClickLock() {
 
 const ButtonInput = {
 	update: function (buttons) {
+		// The on-screen keyboard has every button while it is open (it reads
+		// them every frame, in JoystickUIFocus)
+		if (Keyboard.isOpen()) {
+			keyboardHeld = [];
+			for (let i = 0; i < buttons.length; i++) {
+				if (buttons[i] && buttons[i] !== 'unpressed') {
+					keyboardHeld.push(i);
+				}
+			}
+			menuDownAt = 0;
+			return true;
+		}
+		if (keyboardHeld.length) {
+			keyboardHeld = keyboardHeld.filter(i => buttons[i] && buttons[i] !== 'unpressed');
+			if (keyboardHeld.length) {
+				return false;
+			}
+		}
+
 		// The emote grid has every button while it is open. The Menu hold that
 		// opened it must not end in an Enter when it is let go.
 		if (Interaction.isEmoteGridOpen()) {
@@ -264,7 +288,10 @@ const ButtonInput = {
 
 		if (menuDownAt) {
 			if (!menuHoldFired && !SelectionUI.active()) {
+				const typing = Keyboard.focusedField();
 				Interaction.enter();
+				// Enter opened the chat: type into it with the on-screen keyboard
+				Keyboard.openIfFocused(typing);
 			}
 			menuDownAt = 0;
 			return true;

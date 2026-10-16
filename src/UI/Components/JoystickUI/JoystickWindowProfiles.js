@@ -571,11 +571,13 @@ const PROFILES = [
 		}
 	}),
 
-	// Amounts, prices, NPC input
+	// Amounts, prices, NPC input. A number is counted with the D-pad; a text
+	// answer (a name, a password) is typed: the focus starts on its field,
+	// where A opens the on-screen keyboard
 	{
 		match: /^InputBox$/,
 		dialog: true,
-		initial: ['ui-button', 'input'],
+		initial: ['#inputbox:not(.number) input', 'ui-button', 'input'],
 		onEnter() {
 			Spinner.reset();
 		},
@@ -583,12 +585,16 @@ const PROFILES = [
 			return Spinner.step(win.root, direction);
 		},
 		primary(el, win) {
-			// A is OK wherever the focus is: the field gets typed into, not pressed
+			if (el.matches('input') && !Spinner.numberField(win.root)) {
+				// Typed into: the on-screen keyboard
+				return false;
+			}
+			// A number box: A is OK wherever the focus is
 			pressFirst(win.root, ['ui-button']);
 			return true;
 		},
-		primaryLabel() {
-			return 'OK';
+		primaryLabel(el, win) {
+			return el.matches('input') && !Spinner.numberField(win.root) ? 'Type' : 'OK';
 		},
 		back() {
 			// An NPC waiting for an answer gets one: the persistent box has no cancel
