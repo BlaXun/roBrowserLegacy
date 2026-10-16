@@ -5,14 +5,15 @@
  * replaces it with a stub, so the two behaviours below are held by nothing
  * else in the suite.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	cursor: {
 		ACTION: { DEFAULT: 0, CLICK: 2, NOWALK: 13 },
 		getActualType: vi.fn(() => 0),
 		setType: vi.fn()
-	}
+	},
+	entityManager: { setOverEntity: vi.fn() }
 }));
 
 // GUIComponent imports these lazily and does not await the result, so they are
@@ -30,7 +31,7 @@ vi.mock('Core/Client.js', () => ({
 	}
 }));
 vi.mock('Renderer/Renderer.js', () => ({ default: { width: 1200, height: 800 } }));
-vi.mock('Renderer/EntityManager.js', () => ({ default: { setOverEntity: vi.fn() } }));
+vi.mock('Renderer/EntityManager.js', () => ({ default: mocks.entityManager }));
 vi.mock('UI/Scrollbar.js', () => ({ default: {} }));
 
 const GUIComponent = (await import('UI/GUIComponent.js')).default;
@@ -44,19 +45,25 @@ let seq = 0;
  * so the caller drains the microtask queue before expecting a cursor.
  *
  * @param {string} html - markup for the component body
+ * @param {typeof GUIComponent} [Component] - the class to build it from
  * @return {GUIComponent}
  */
-function mount(html) {
-	const component = new GUIComponent(`TestComponent${++seq}`, '');
+function mount(html, Component = GUIComponent) {
+	const component = new Component(`TestComponent${++seq}`, '');
 	component.render = () => html;
 	component.append();
 	return component;
 }
 
+// prepare() schedules scrollbar checks up to 500 ms out; let the last ones
+// land before jsdom is torn down.
+afterAll(() => new Promise(resolve => setTimeout(resolve, 600)));
+
 beforeEach(() => {
 	document.body.innerHTML = '';
 	mocks.cursor.setType.mockClear();
 	mocks.cursor.getActualType.mockClear();
+	mocks.entityManager.setOverEntity.mockClear();
 });
 
 /**
@@ -85,6 +92,25 @@ describe('clicking a window moves the keyboard into it', () => {
 		component._host.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
 
 		expect(component._shadow.activeElement).toBe(field);
+	});
+});
+
+/**
+ * A window that freezes the map took the cursor back to the arrow, but kept the
+ * entity under it: the snap offset kept pointing at it.
+ */
+describe('a window that freezes the map', () => {
+	it('forgets the entity under the cursor', async () => {
+		mount('<div></div>');
+		await new Promise(resolve => setTimeout(resolve, 0));
+
+		class Frozen extends GUIComponent {
+			mouseMode = GUIComponent.MouseMode.FREEZE;
+		}
+		mount('<div></div>', Frozen);
+
+		expect(mocks.entityManager.setOverEntity).toHaveBeenCalledWith(null);
+		expect(mocks.cursor.setType).toHaveBeenLastCalledWith(mocks.cursor.ACTION.DEFAULT);
 	});
 });
 
@@ -196,5 +222,81 @@ describe('a scaled window', () => {
 		expect(component.scale).toBe(1);
 		expect(component._host.style.getPropertyValue('scale')).toBe('');
 		UIScale.setGlobal(1);
+	});
+});
+
+/**
+ * jsdom has no style queries, so these cases run the fallback style. Its
+ * state is shared per module, so each case loads GUIComponent afresh.
+ */
+describe('the native cursor inside a window', () => {
+	const freshMount = async () => {
+		vi.resetModules();
+		const Fresh = (await import('UI/GUIComponent.js')).default;
+		return mount('<button>OK</button>', Fresh);
+	};
+	const flush = () => Promise.resolve();
+	const fallback = component => component._shadow.querySelector('style[data-no-cursor]');
+	const hidesCursor = component => fallback(component).media === 'all';
+
+	beforeEach(() => {
+		document.body.classList.remove('custom-cursor');
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('shows while the game cursor is off and follows it being toggled', async () => {
+		const component = await freshMount();
+		expect(hidesCursor(component)).toBe(false);
+
+		document.body.classList.add('custom-cursor');
+		await Promise.resolve();
+		expect(hidesCursor(component)).toBe(true);
+
+		document.body.classList.remove('custom-cursor');
+		await Promise.resolve();
+		expect(hidesCursor(component)).toBe(false);
+	});
+
+	it('is hidden in a window opened while the game cursor is on', async () => {
+		document.body.classList.add('custom-cursor');
+		const component = await freshMount();
+
+		expect(hidesCursor(component)).toBe(true);
+	});
+
+	it('lets go of a closed window and catches up when it opens again', async () => {
+		const component = await freshMount();
+		component.remove();
+
+		document.body.classList.add('custom-cursor');
+		await flush();
+		expect(hidesCursor(component)).toBe(false);
+
+		component.append();
+		expect(hidesCursor(component)).toBe(true);
+	});
+
+	// WinStats.embed() attaches its window this way.
+	it('follows a window attached without append()', async () => {
+		vi.resetModules();
+		const Fresh = (await import('UI/GUIComponent.js')).default;
+		const component = new Fresh(`TestComponent${++seq}`, '');
+		component.render = () => '<button>OK</button>';
+		component.prepare();
+		document.body.appendChild(component._host);
+
+		document.body.classList.add('custom-cursor');
+		await flush();
+		expect(hidesCursor(component)).toBe(true);
+	});
+
+	it('is left to Common.css where style queries are supported', async () => {
+		vi.spyOn(window, 'getComputedStyle').mockReturnValueOnce({ color: 'rgb(1, 2, 3)' });
+		const component = await freshMount();
+
+		expect(fallback(component)).toBeNull();
 	});
 });

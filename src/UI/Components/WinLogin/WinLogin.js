@@ -50,9 +50,12 @@ let _hasRedesignArt = null;
  * Call after selectUIVersion(). The result is remembered: a file that failed
  * to load does not always report the failure to a second listener.
  *
+ * Defined on the controller itself: a plain assignment would go through the
+ * controller's proxy and be copied onto the selected window instead.
+ *
  * @param {function} callback
  */
-Controller.selectUIVersionForData = function selectUIVersionForData(callback) {
+function selectUIVersionForData(callback) {
 	const useClassic = () => {
 		// No common[0] entry, so this selects versionInfo.default
 		Controller.selectSpecificUIVersion(0);
@@ -85,6 +88,8 @@ Controller.selectUIVersionForData = function selectUIVersionForData(callback) {
 			useClassic();
 		}
 	);
-};
+}
+
+Object.defineProperty(Controller, 'selectUIVersionForData', { value: selectUIVersionForData });
 
 export default Controller;
