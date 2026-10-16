@@ -1,0 +1,86 @@
+:host {
+	position: absolute;
+	width: 320px;
+	height: 90px;
+}
+.floating-chat {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+.floating-header {
+	height: var(--chat-tab-height);
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 20px;
+	background: linear-gradient(white, white) left bottom / calc(100% - 3px) 1px no-repeat;
+	box-sizing: border-box;
+}
+.floating-title {
+	display: block;
+	flex: 0 1 auto;
+	padding: 0;
+	min-width: 12px;
+	max-width: calc(100% - 57px);
+}
+.floating-title .chat-tab {
+	margin-bottom: -1px;
+}
+.floating-controls {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	margin-left: auto;
+	flex: none;
+}
+.floating-controls button {
+	border: 0;
+	background-color: transparent;
+	background-repeat: no-repeat;
+	padding: 0;
+}
+.settings {
+	width: 9px;
+	height: 9px;
+}
+.dock {
+	width: 14px;
+	height: 9px;
+}
+.delete {
+	width: 8px;
+	height: 8px;
+}
+.floating-body {
+	position: relative;
+	flex: 1;
+	min-height: 0;
+	border-left: 1px solid white;
+	border-right: 1px solid white;
+	background: rgba(0, 0, 0, 0.5);
+}
+.floating-body .chat-log {
+	padding-left: 5px;
+	display: block;
+}
+.floating-footer {
+	height: 13px;
+	flex: none;
+	position: relative;
+	box-sizing: border-box;
+	border: 1px solid white;
+	border-top: 0;
+	border-radius: 0 0 3px 3px;
+	overflow: hidden;
+	background: rgba(0, 0, 0, 0.5);
+}
+.resizer {
+	position: absolute;
+	width: 13px;
+	height: 13px;
+	right: 0;
+	bottom: 0;
+	cursor: pointer;
+	background-repeat: no-repeat;
+}

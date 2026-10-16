@@ -684,6 +684,8 @@ class GUIComponent {
 		if (!handleEl) return this;
 
 		const onStart = event => {
+			if (component.canStartDrag && !component.canStartDrag(event)) return;
+			component.cancelDrag();
 			if (event.type === 'touchstart') {
 				Mouse.screen.x = event.touches[0].pageX;
 				Mouse.screen.y = event.touches[0].pageY;
@@ -741,14 +743,25 @@ class GUIComponent {
 			let currentOpacity = 1.0;
 			let lastMx = Mouse.screen.x;
 			let lastMy = Mouse.screen.y;
+			const startMx = lastMx,
+				startMy = lastMy;
+			let moved = false;
 
 			// Stop drag on mouseup / touchend
-			const onEnd = ev => {
+			const onEnd = (ev, cancelled = false) => {
 				if (ev.type === 'touchend' || ev.which === 1 || ev.isTrigger) {
 					cancelAnimationFrame(drag);
 					window.removeEventListener('mouseup', onEnd);
 					window.removeEventListener('touchend', onEnd);
 					_snapCache = [];
+					window.removeEventListener('blur', cancel);
+					component._cancelDrag = null;
+					component.onDragStop?.(ev, { moved, cancelled });
+					if (cancelled) {
+						host.style.opacity = '1';
+						host.style.transition = '';
+						return;
+					}
 
 					if (component.gridSnap) {
 						const gw = component.gridSnap.width;
@@ -792,6 +805,9 @@ class GUIComponent {
 				}
 			};
 
+			const cancel = () => onEnd({ isTrigger: true }, true);
+			component._cancelDrag = cancel;
+			if (component.canStartDrag) window.addEventListener('blur', cancel);
 			window.addEventListener('mouseup', onEnd);
 			window.addEventListener('touchend', onEnd);
 
@@ -805,12 +821,21 @@ class GUIComponent {
 					drag = requestAnimationFrame(dragging);
 					return;
 				}
+				if (component.canStartDrag && !component.canStartDrag(event)) {
+					cancel();
+					return;
+				}
+				if (!moved && Math.hypot(mx - startMx, my - startMy) < (component.dragThreshold || 0)) {
+					drag = requestAnimationFrame(dragging);
+					return;
+				}
+				moved = true;
 				lastMx = mx;
 				lastMy = my;
 
 				let x_ = mx + x;
 				let y_ = my + y;
-				currentOpacity = Math.max(currentOpacity - 0.02, 0.7);
+				currentOpacity = component.dragOpacity ?? Math.max(currentOpacity - 0.02, 0.7);
 
 				// Reset magnet
 				if (component.magnet) {
@@ -891,9 +916,25 @@ class GUIComponent {
 			};
 			drag = requestAnimationFrame(dragging);
 		};
+		this._dragHandleDisposers ||= new Set();
+		this._dragHandleDisposers.add(() => {
+			handleEl.removeEventListener('mousedown', onStart);
+			handleEl.removeEventListener('touchstart', onStart);
+		});
 		handleEl.addEventListener('mousedown', onStart);
 		handleEl.addEventListener('touchstart', onStart);
 		return this;
+	}
+
+	cancelDrag() {
+		this._cancelDrag?.();
+	}
+
+	// Ephemeral components release handles that may have been moved into another view.
+	disposeDragging() {
+		this.cancelDrag();
+		this._dragHandleDisposers?.forEach(dispose => dispose());
+		this._dragHandleDisposers?.clear();
 	}
 
 	// ─── Mouse intersection setup ──────────────────────────
@@ -1069,6 +1110,8 @@ class GUIComponent {
 		}
 
 		if (this.mouseMode !== GUIComponent.MouseMode.CROSS) {
+			// A UI press must not reach the map, even if an older hover guard restored intersection.
+			element.addEventListener('mousedown', event => event.stopPropagation());
 			element.addEventListener('touchstart', e => e.stopImmediatePropagation());
 		}
 		// Shadow DOM cursor events (clickable hover detection)
