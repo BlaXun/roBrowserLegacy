@@ -1420,5 +1420,5 @@ export default {
 	WERERAPTOR: 1680,
 
 	//Technical - must be largest value
-	MAX: 1450
+	MAX: 1681
 };
