@@ -1221,7 +1221,7 @@ function renderLayer(layer, spr, pal, size, pos, type, isBlendModeOne) {
 		SpriteRenderer.color[3] = layer.color[3];
 	}
 
-	// apply disapear
+	// apply disappear
 	if (this.remove_tick) {
 		SpriteRenderer.color[3] *= 1 - (Date.now() - this.remove_tick) / this.remove_delay;
 	}

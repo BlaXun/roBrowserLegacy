@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+	thread: { hook: vi.fn(), send: vi.fn() },
 	soundManager: { stop: vi.fn() },
 	bgm: { stop: vi.fn() },
 	uiManager: { removeComponents: vi.fn() },
 	background: {
 		remove: vi.fn(callback => callback()),
-		setLoading: vi.fn()
+		setLoading: vi.fn(),
+		setPercent: vi.fn()
 	},
 	cursor: {
 		ACTION: { DEFAULT: 0 },
@@ -15,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 	mouse: { intersect: true },
 	renderer: {
 		stop: vi.fn(),
+		remove: vi.fn(),
 		getContext: vi.fn(() => ({})),
 		render: vi.fn()
 	},
@@ -25,7 +28,7 @@ const mocks = vi.hoisted(() => ({
 	joystickUI: { onRestore: vi.fn() }
 }));
 
-vi.mock('Core/Thread.js', () => ({ default: {} }));
+vi.mock('Core/Thread.js', () => ({ default: mocks.thread }));
 vi.mock('Audio/SoundManager.js', () => ({ default: mocks.soundManager }));
 vi.mock('Audio/BGM.js', () => ({ default: mocks.bgm }));
 vi.mock('DB/DBManager.js', () => ({ default: {} }));
@@ -108,5 +111,133 @@ describe('MapRenderer joystick restoration', () => {
 		expect(MapRenderer.onLoad).not.toHaveBeenCalled();
 		expect(MapRenderer.loading).toBe(true);
 		expect(MapRenderer.currentMap).toBe('geffen.gat');
+	});
+});
+
+describe('MapRenderer.cancelLoad', () => {
+	let originalOnLoad;
+	let originalFree;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		originalOnLoad = MapRenderer.onLoad;
+		originalFree = MapRenderer.free;
+		MapRenderer.loading = false;
+		MapRenderer.currentMap = 'prontera.gat';
+		MapRenderer.onLoad = vi.fn();
+		MapRenderer.free = vi.fn();
+	});
+
+	afterEach(() => {
+		MapRenderer.onLoad = originalOnLoad;
+		MapRenderer.free = originalFree;
+	});
+
+	it('does not start the worker once cancelled before the loading screen is up', () => {
+		let showLoading;
+		mocks.background.setLoading.mockImplementationOnce(callback => {
+			showLoading = callback;
+		});
+
+		MapRenderer.setMap('geffen.gat');
+		MapRenderer.cancelLoad();
+		showLoading();
+
+		expect(mocks.thread.send).not.toHaveBeenCalled();
+		expect(MapRenderer.loading).toBe(false);
+	});
+
+	it('ignores the worker answers of a cancelled load', () => {
+		mocks.background.setLoading.mockImplementationOnce(callback => callback());
+
+		MapRenderer.setMap('geffen.gat');
+		const [, , onMapComplete] = mocks.thread.send.mock.calls.find(([name]) => name === 'LOAD_MAP');
+		const onProgress = mocks.thread.hook.mock.calls.find(([name]) => name === 'MAP_PROGRESS')[1];
+
+		const [request] = mocks.thread.send.mock.results.map(result => result.value);
+
+		MapRenderer.cancelLoad();
+		onProgress(50, request);
+		onMapComplete(true);
+
+		expect(mocks.background.setPercent).not.toHaveBeenCalled();
+		expect(mocks.background.remove).not.toHaveBeenCalled();
+		expect(MapRenderer.onLoad).not.toHaveBeenCalled();
+		expect(MapRenderer.loading).toBe(false);
+	});
+
+	it('keeps the late worker events of a cancelled load out of the next one', () => {
+		mocks.background.setLoading.mockImplementation(callback => callback());
+		const requests = [7, 8];
+		mocks.thread.send.mockImplementation(name => (name === 'LOAD_MAP' ? requests.shift() : undefined));
+
+		MapRenderer.setMap('geffen.gat');
+		MapRenderer.cancelLoad();
+		MapRenderer.setMap('payon.gat');
+		const onProgress = mocks.thread.hook.mock.calls.filter(([name]) => name === 'MAP_PROGRESS').at(-1)[1];
+
+		onProgress(80, 7);
+		expect(mocks.background.setPercent).not.toHaveBeenCalled();
+
+		onProgress(30, 8);
+		expect(mocks.background.setPercent).toHaveBeenCalledWith(30);
+
+		mocks.background.setLoading.mockReset();
+		mocks.thread.send.mockReset();
+	});
+
+	it('does not re-enter the map when a same-map teleport is cancelled during its fade', () => {
+		let fadeDone;
+		mocks.background.remove.mockImplementationOnce(callback => {
+			fadeDone = callback;
+		});
+
+		MapRenderer.setMap('prontera.gat');
+		MapRenderer.cancelLoad();
+		fadeDone();
+
+		expect(MapRenderer.onLoad).not.toHaveBeenCalled();
+		expect(mocks.renderer.render).not.toHaveBeenCalled();
+	});
+
+	it('lets the next map load after a cancel', () => {
+		MapRenderer.setMap('geffen.gat');
+		MapRenderer.cancelLoad();
+		MapRenderer.setMap('payon.gat');
+
+		expect(mocks.background.setLoading).toHaveBeenCalledTimes(2);
+		expect(MapRenderer.currentMap).toBe('payon.gat');
+	});
+});
+
+describe('MapRenderer.free', () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		mocks.entityManager.clearLifeCache = vi.fn();
+		const freed = await Promise.all(
+			[
+				'Renderer/Map/GridSelector.js',
+				'Renderer/Map/Sounds.js',
+				'Renderer/Map/Effects.js',
+				'Renderer/Map/Ground.js',
+				'Renderer/Map/Water.js',
+				'Renderer/Map/Models.js',
+				'Renderer/Map/AnimatedModels.js',
+				'Renderer/Map/OccluderFade.js',
+				'Renderer/GR2/GR2ModelRenderer.js',
+				'Renderer/SignboardManager.js'
+			].map(path => import(path))
+		);
+		freed.forEach(module => {
+			module.default.free = vi.fn();
+		});
+		const { default: PostProcess } = await import('Renderer/Effects/PostProcess.js');
+		PostProcess.clean = vi.fn();
+	});
+
+	it('puts the cursor back to the default arrow when leaving the map', () => {
+		MapRenderer.free();
+
+		expect(mocks.cursor.setType).toHaveBeenCalledWith(mocks.cursor.ACTION.DEFAULT);
 	});
 });

@@ -27,8 +27,23 @@ const mocks = vi.hoisted(() => {
 		parseHTML() {}
 	}
 
+	// A controller, as UIVersionManager.getUIController makes them: getUI(), and
+	// everything else passed on to the selected window.
+	const controller = selected =>
+		new Proxy(
+			{ getUI: selected },
+			{
+				get: (target, prop) => (prop in target ? target[prop] : selected()[prop]),
+				set: (target, prop, value) => {
+					selected()[prop] = value;
+					return true;
+				}
+			}
+		);
+
 	return {
 		MockGUIComponent,
+		controller,
 		inventory: {
 			equippedItems: [],
 			isInEquipSwitchList: () => true
@@ -79,9 +94,11 @@ vi.mock('UI/Elements/Elements.js', () => ({}));
 vi.mock('UI/Components/ItemInfo/ItemInfo.js', () => ({ default: {} }));
 vi.mock('UI/Components/CartItems/CartItems.js', () => ({ default: {} }));
 vi.mock('UI/Components/SwitchEquip/SwitchEquip.js', () => ({ default: { equip: vi.fn(), ui: null } }));
-vi.mock('UI/Components/WinStats/WinStats.js', () => ({ default: { getUI: () => ({ isEmbedded: () => false }) } }));
+vi.mock('UI/Components/WinStats/WinStats.js', () => ({
+	default: mocks.controller(() => ({ isEmbedded: () => false }))
+}));
 vi.mock('Preferences/Graphics.js', () => ({ default: { damageSkin: 0, save: vi.fn() } }));
-vi.mock('UI/Components/Inventory/Inventory.js', () => ({ default: { getUI: () => mocks.inventory } }));
+vi.mock('UI/Components/Inventory/Inventory.js', () => ({ default: mocks.controller(() => mocks.inventory) }));
 vi.mock('Renderer/Entity/Entity.js', () => ({ default: class {} }));
 
 const { default: Equipment } = await import('UI/Components/Equipment/EquipmentV4/EquipmentV4.js');
