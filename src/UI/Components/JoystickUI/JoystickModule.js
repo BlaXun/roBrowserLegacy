@@ -23,7 +23,8 @@ export default {
 		ShortcutMapper.prepare();
 		InputService.prepare();
 		Interaction.prepare();
-		UIFocus.prepare();
+		// X's "Gamepad slot…" in menus opens the same slot picker as a held right click
+		UIFocus.prepare({ pickSlot: el => Interaction.openSelectionWindow(el) });
 		Polling.start();
 		CursorMotion.start();
 		JoystickUIRenderer.hide();

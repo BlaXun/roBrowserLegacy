@@ -533,13 +533,13 @@ function onUpdateTargetOption() {
 const MAPPING_ROLES = [
 	[
 		ButtonMap.BUTTON.A,
-		'Click / confirm - selected NPC: talk, selected player: shop or menu (Support radial: cast the waiting skill on the chosen member) - menus: press, use, equip'
+		'Click / confirm - selected NPC: talk, selected player: shop or menu (Support radial: cast the waiting skill on the chosen member) - menus: press, use, equip, put down what is carried'
 	],
 	[
 		ButtonMap.BUTTON.B,
-		'Right click (hold on item/skill: options) - Support radial: close it, or cancel the waiting skill - menus: back, cancel, close'
+		'Right click (hold on item/skill: options) - Support radial: close it, or cancel the waiting skill - menus: back, cancel, close, put back what is carried'
 	],
-	[ButtonMap.BUTTON.X, 'Attack target'],
+	[ButtonMap.BUTTON.X, 'Attack target - menus: tap: more actions, hold: pick up'],
 	[ButtonMap.BUTTON.Y, 'Pick up item - menus: item / skill info'],
 	[ButtonMap.BUTTON.LEFT, 'Previous target (Support: party member; grid left on items)'],
 	[ButtonMap.BUTTON.RIGHT, 'Next target (Support: party member, lowest HP first; grid right on items)'],
@@ -552,9 +552,9 @@ const MAPPING_ROLES = [
 	],
 	[ButtonMap.BUTTON.MENU, 'Tap: Enter - Hold: emotes'],
 	[ButtonMap.BUTTON.VIEW, 'Tap: menu navigation - Hold: info at the cursor - Camera & window modifier'],
-	[ButtonMap.BUTTON.LB, 'Shortcuts: skill bar 1, slots 1-4'],
+	[ButtonMap.BUTTON.LB, 'Shortcuts: skill bar 1, slots 1-4 - menus (tap): previous tab'],
 	[ButtonMap.BUTTON.LT, 'Shortcuts: skill bar 1, slots 5-8'],
-	[ButtonMap.BUTTON.RB, 'Shortcuts: skill bar 2, slots 1-4'],
+	[ButtonMap.BUTTON.RB, 'Shortcuts: skill bar 2, slots 1-4 - menus (tap): next tab'],
 	[ButtonMap.BUTTON.RT, 'Shortcuts: skill bar 2, slots 5-8']
 ];
 
@@ -587,6 +587,15 @@ function getMappingCombos() {
 			'Move between buttons, items and windows'
 		],
 		[n(B.LT) + ' / ' + n(B.RT) + ' (tap, menus)', 'Previous / next window'],
+		[n(B.LB) + ' / ' + n(B.RB) + ' (tap, menus)', 'Previous / next tab'],
+		[
+			n(B.X) + ' (menus)',
+			'Tap: more actions (store some, gamepad slot, drop...) - Hold: pick up; ' +
+				n(B.A) +
+				' puts it down, ' +
+				n(B.B) +
+				' puts it back'
+		],
 		[
 			n(B.LB) + ' / ' + n(B.RB) + ' / ' + n(B.LT) + ' / ' + n(B.RT) + ' + ' + faces + ' (hold)',
 			'Support: the support skill on yourself'

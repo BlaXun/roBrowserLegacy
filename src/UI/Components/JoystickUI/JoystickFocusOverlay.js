@@ -1,10 +1,10 @@
 /**
  * UI/Components/JoystickUI/JoystickFocusOverlay.js
  *
- * What menu navigation draws: a ring around the focused element, and a bar
- * of button hints ("A Equip · Y Info · B Close") at the bottom of the
- * screen, above the gamepad HUD. Both are in the page, above every window,
- * and never take the mouse.
+ * What menu navigation draws: a ring around the focused element (yellow,
+ * blue while something is carried), and a bar of button hints ("A Equip ·
+ * Y Info · B Close") at the bottom of the screen, above the gamepad HUD.
+ * Both are in the page, above every window, and never take the mouse.
  */
 
 import ButtonMap from './JoystickButtonMap.js';
@@ -12,6 +12,20 @@ import ButtonMap from './JoystickButtonMap.js';
 const Z_INDEX = 10000;
 const RING_PAD = 2; // px between the element and the ring
 const HINT_GAP = 6; // px between the hint bar and the HUD under it
+
+/**
+ * The ring's look: focusing, or carrying something to put down.
+ */
+const RING_STYLES = {
+	focus: {
+		borderColor: '#ffd740',
+		boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 6px rgba(255, 215, 64, 0.8)'
+	},
+	carry: {
+		borderColor: '#4fc3f7',
+		boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 8px rgba(79, 195, 247, 0.9)'
+	}
+};
 
 let _ring = null;
 let _hints = null;
@@ -76,17 +90,19 @@ function getHints() {
  * Put the ring around a rectangle on screen.
  *
  * @param {{left: number, top: number, width: number, height: number}} rect
+ * @param {string} [mode] 'focus' (default) or 'carry'
  */
-function showRing(rect) {
+function showRing(rect, mode = 'focus') {
 	const ring = getRing();
 	if (!ring || !rect) {
 		return;
 	}
+	const look = RING_STYLES[mode] || RING_STYLES.focus;
 	const left = Math.round(rect.left - RING_PAD);
 	const top = Math.round(rect.top - RING_PAD);
 	const width = Math.round(rect.width + RING_PAD * 2);
 	const height = Math.round(rect.height + RING_PAD * 2);
-	const key = left + ',' + top + ',' + width + ',' + height;
+	const key = left + ',' + top + ',' + width + ',' + height + ',' + mode;
 	if (key === _ringKey && ring.style.display !== 'none') {
 		return;
 	}
@@ -95,6 +111,9 @@ function showRing(rect) {
 	ring.style.top = top + 'px';
 	ring.style.width = width + 'px';
 	ring.style.height = height + 'px';
+	ring.style.borderColor = look.borderColor;
+	ring.style.boxShadow = look.boxShadow;
+	ring.dataset.mode = mode;
 	ring.style.display = 'block';
 }
 

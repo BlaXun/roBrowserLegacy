@@ -56,12 +56,17 @@ describe('JoystickFocusScan windows', () => {
 		const front = makeWindow('Equipment', '');
 		front.host.style.zIndex = '52';
 		makeWindow('Hidden', '').host.style.display = 'none';
-		makeWindow('JoystickUI', '');
+		makeWindow('JoystickSelectionUI', '');
 		const plain = document.createElement('div');
 		plain.attachShadow({ mode: 'open' });
 		document.body.appendChild(plain);
 
 		expect(Scan.listWindows().map(win => win.name)).toEqual(['Equipment', 'Inventory']);
+	});
+
+	it('lists the gamepad HUD, which its profile passes by but as a place to put things', () => {
+		makeWindow('JoystickUI', '');
+		expect(Scan.listWindows().map(win => win.name)).toEqual(['JoystickUI']);
 	});
 
 	it('finds the window an element belongs to, through a window nested in it', () => {
@@ -164,6 +169,25 @@ describe('JoystickFocusScan focusable elements', () => {
 		place(win.$('#below'), 0, 200, 34, 34);
 
 		expect(ids(Scan.focusables(Scan.listWindows()[0]))).toEqual(['shown', 'below']);
+	});
+
+	it("takes a profile's drop zones only while something is carried", async () => {
+		const { default: Carry } = await import('UI/Components/JoystickUI/JoystickCarry.js');
+		const win = makeWindow(
+			'Mail',
+			'<div class="container_item"></div><button id="send"></button><div class="item" draggable="true" data-index="2"></div>'
+		);
+		place(win.$('.container_item'), 0, 0, 100, 40);
+		place(win.$('#send'), 0, 50, 40, 20);
+		place(win.$('.item'), 0, 80, 32, 32);
+		win.shadow.addEventListener('dragstart', event => event.dataTransfer.setData('Text', '{"type":"item"}'));
+		mocks.profiles.Mail = { dropZones: '.container_item' };
+
+		expect(ids(Scan.focusables(Scan.listWindows()[0]))).toEqual(['send', 'item']);
+		Carry.pickUp(win.$('.item'));
+		expect(ids(Scan.focusables(Scan.listWindows()[0]))).toEqual(['container_item', 'send', 'item']);
+		Carry.cancel();
+		expect(ids(Scan.focusables(Scan.listWindows()[0]))).toEqual(['send', 'item']);
 	});
 
 	it('finds elements in a window nested in the window (SwitchEquip in Equipment)', () => {

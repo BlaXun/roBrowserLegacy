@@ -18,10 +18,13 @@
  * disabled and invisible ones (opacity 0, no pointer events, clipped away
  * by an `overflow: hidden` parent) are left out; ones scrolled out of a
  * list stay in, and are scrolled into view when the focus reaches them.
+ * While something is carried (JoystickCarry), a profile's drop zones count
+ * too: the places a window takes a drop that have nothing to focus in them.
  */
 
 import { deepElementFromPoint } from 'UI/TouchDrag.js';
 import Profiles from './JoystickWindowProfiles.js';
+import Carry from './JoystickCarry.js';
 
 /**
  * Elements a mouse user would click.
@@ -48,9 +51,11 @@ const FOCUSABLE = [
 const NEVER = ['.ro-custom-scrollbar', '.ro-custom-scrollbar *', '.titlebar .base'].join(',');
 
 /**
- * Hosts that are no window to navigate: the gamepad's own HUD and slot picker.
+ * Hosts that are no window to navigate: the gamepad's slot picker, which
+ * reads the pad itself. (The gamepad HUD is one, skipped by its profile
+ * except as a place to put what is carried.)
  */
-const NOT_WINDOWS = new Set(['JoystickUI', 'JoystickSelectionUI']);
+const NOT_WINDOWS = new Set(['JoystickSelectionUI']);
 
 /**
  * Data attributes that name an element in its window, best first.
@@ -290,6 +295,20 @@ function isRedundantLabel(el, root, host, cache) {
 }
 
 /**
+ * What to take in a window, and what to leave out, by its profile.
+ *
+ * @param {object} profile
+ * @return {{selector: string, exclude: string}}
+ */
+function selectorsOf(profile) {
+	let selector = profile.only || (profile.items ? FOCUSABLE + ',' + profile.items : FOCUSABLE);
+	if (profile.dropZones && Carry.isCarrying()) {
+		selector += ',' + profile.dropZones;
+	}
+	return { selector, exclude: profile.exclude ? NEVER + ',' + profile.exclude : NEVER };
+}
+
+/**
  * The focusable elements of a window, in page order.
  *
  * @param {object} win from listWindows() / windowOf()
@@ -299,9 +318,7 @@ function focusables(win) {
 	if (!win || !win.root) {
 		return [];
 	}
-	const profile = win.profile || {};
-	const selector = profile.only || (profile.items ? FOCUSABLE + ',' + profile.items : FOCUSABLE);
-	const exclude = profile.exclude ? NEVER + ',' + profile.exclude : NEVER;
+	const { selector, exclude } = selectorsOf(win.profile || {});
 	const cache = new Map();
 
 	const seen = new Set();
@@ -368,9 +385,7 @@ function focusableAt(x, y) {
 	if (!win) {
 		return null;
 	}
-	const profile = win.profile || {};
-	const selector = profile.only || (profile.items ? FOCUSABLE + ',' + profile.items : FOCUSABLE);
-	const exclude = profile.exclude ? NEVER + ',' + profile.exclude : NEVER;
+	const { selector, exclude } = selectorsOf(win.profile || {});
 	const cache = new Map();
 
 	let node = hit;
