@@ -6737,9 +6737,9 @@ PACKET.ZC.PROPERTY_PET.size = 37;
 // 0x1a3
 PACKET.ZC.FEED_PET = function PACKET_ZC_FEED_PET(fp, end) {
 	this.cRet = fp.readChar();
-	this.ITID = fp.readUShort();
+	this.ITID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 };
-PACKET.ZC.FEED_PET.size = 5;
+PACKET.ZC.FEED_PET.size = PACKETVER.value >= 20181121 ? 7 : 5;
 
 // 0x1a4
 PACKET.ZC.CHANGESTATE_PET = function PACKET_ZC_CHANGESTATE_PET(fp, end) {
@@ -7812,9 +7812,9 @@ PACKET.ZC.PROPERTY_HOMUN.size = 71;
 //0x22f
 PACKET.ZC.FEED_MER = function PACKET_ZC_FEED_MER(fp, end) {
 	this.cRet = fp.readChar();
-	this.ITID = fp.readUShort();
+	this.ITID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 };
-PACKET.ZC.FEED_MER.size = 5;
+PACKET.ZC.FEED_MER.size = PACKETVER.value >= 20181121 ? 7 : 5;
 
 // 0x230
 PACKET.ZC.CHANGESTATE_MER = function PACKET_ZC_CHANGESTATE_MER(fp, end) {
