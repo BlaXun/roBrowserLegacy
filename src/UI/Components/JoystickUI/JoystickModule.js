@@ -16,12 +16,14 @@ import ShortcutMapper from './JoystickShortcutMapper.js';
 import JoystickUIRenderer from './JoystickUIRenderer.js';
 import EmoteGrid from './JoystickEmoteGrid.js';
 import Category from './JoystickTargetCategory.js';
+import UIFocus from './JoystickUIFocus.js';
 
 export default {
 	prepare: function () {
 		ShortcutMapper.prepare();
 		InputService.prepare();
 		Interaction.prepare();
+		UIFocus.prepare();
 		Polling.start();
 		CursorMotion.start();
 		JoystickUIRenderer.hide();
@@ -30,6 +32,7 @@ export default {
 		Polling.stop();
 		CursorMotion.stop();
 		Interaction.dispose();
+		UIFocus.dispose();
 		InputService.dispose();
 		JoystickUIRenderer.dispose();
 		EmoteGrid.dispose();

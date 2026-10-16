@@ -39,6 +39,7 @@ export default Preferences.get(
 		joyStickCenter: null, // calibrated rest position [lx, ly, rx, ry]; null = none
 		joyCameraSpeed: 90, // View + D-pad left/right, degrees per second
 		joyDisableVirtualMouse: false,
+		joyUIFocus: true, // menu navigation: View tap, and dialogues take the D-pad (JoystickUIFocus)
 		joyAutoHide: false,
 		joyReverseStick: false,
 		joySense: 25.0

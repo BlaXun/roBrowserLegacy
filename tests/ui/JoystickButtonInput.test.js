@@ -23,7 +23,8 @@ const mocks = vi.hoisted(() => ({
 	shortcuts: { getGroup: vi.fn(() => ''), getShortcutIndex: vi.fn(() => -1) },
 	renderer: { updateVisuals: vi.fn(), updateSetIndicator: vi.fn(), sync: vi.fn() },
 	selection: { active: vi.fn(() => false) },
-	controls: { joyAimEnabled: false }
+	controls: { joyAimEnabled: false },
+	uiFocus: { isClaimed: vi.fn(() => false) }
 }));
 
 vi.mock('UI/Components/JoystickUI/JoystickInteractionService.js', () => ({ default: mocks.interaction }));
@@ -32,6 +33,7 @@ vi.mock('UI/Components/JoystickUI/JoystickShortcutMapper.js', () => ({ default: 
 vi.mock('UI/Components/JoystickUI/JoystickUIRenderer.js', () => ({ default: mocks.renderer }));
 vi.mock('UI/Components/JoystickUI/JoystickSelectionUI.js', () => ({ default: mocks.selection }));
 vi.mock('Preferences/Controls.js', () => ({ default: mocks.controls }));
+vi.mock('UI/Components/JoystickUI/JoystickUIFocus.js', () => ({ default: mocks.uiFocus }));
 
 const { default: ButtonInput } = await import('UI/Components/JoystickUI/JoystickButtonInput.js');
 
@@ -217,5 +219,59 @@ describe('JoystickButtonInput after the emote grid', () => {
 		expect(mocks.interaction.leftClick).toHaveBeenCalledTimes(1);
 		vi.advanceTimersByTime(1000);
 		ButtonInput.update(buttons({}));
+	});
+});
+
+describe('JoystickButtonInput with menu navigation on', () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		mocks.controls.joyAimEnabled = false;
+		mocks.interaction.isEmoteGridOpen.mockReturnValue(false);
+		// A click lock an earlier test set runs on real time (200 ms): let it run out
+		vi.useRealTimers();
+		await new Promise(resolve => setTimeout(resolve, 250));
+		ButtonInput.update(buttons({}));
+		// Menu navigation has A, B, X, Y and the D-pad
+		mocks.uiFocus.isClaimed.mockImplementation(index => [0, 1, 2, 3, 12, 13, 14, 15].includes(index));
+	});
+
+	afterEach(() => {
+		mocks.uiFocus.isClaimed.mockImplementation(() => false);
+		mocks.shortcuts.getGroup.mockImplementation(() => '');
+		mocks.shortcuts.getShortcutIndex.mockImplementation(() => -1);
+	});
+
+	it('keeps A, B, X, Y and the D-pad off the map', async () => {
+		ButtonInput.update(buttons({ 0: 'pressed' }));
+		ButtonInput.update(buttons({ 1: 'pressed' }));
+		ButtonInput.update(buttons({ 2: 'pressed' }));
+		ButtonInput.update(buttons({ 3: 'pressed' }));
+		ButtonInput.update(buttons({ 12: 'pressed' }));
+		ButtonInput.update(buttons({ 15: 'pressed' }));
+		expect(mocks.interaction.leftClick).not.toHaveBeenCalled();
+		expect(mocks.interaction.rightClick).not.toHaveBeenCalled();
+		expect(mocks.interaction.navigateDpad).not.toHaveBeenCalled();
+		expect(mocks.interaction.cycleTarget).not.toHaveBeenCalled();
+	});
+
+	it('still fires shortcut combos', () => {
+		mocks.shortcuts.getGroup.mockImplementation(btn => (btn[4] === 'holding' ? 'L1' : ''));
+		mocks.shortcuts.getShortcutIndex.mockImplementation(btn => (btn[4] === 'holding' && btn[0] === 'pressed' ? 3 : -1));
+		mocks.interaction.executeShortcut = vi.fn();
+		ButtonInput.update(buttons({ 4: 'holding', 0: 'pressed' }));
+		expect(mocks.interaction.executeShortcut).toHaveBeenCalledWith(3, 'L1');
+	});
+
+	it('still opens windows with View + a face button', () => {
+		mocks.interaction.toggleWindow = vi.fn();
+		ButtonInput.update(buttons({ 8: 'holding', 0: 'pressed' }));
+		expect(mocks.interaction.toggleWindow).toHaveBeenCalledWith('Inventory');
+	});
+
+	it('View alone is left to menu navigation: no info from here', () => {
+		mocks.uiFocus.isClaimed.mockImplementation(() => false);
+		ButtonInput.update(buttons({ 8: 'pressed' }));
+		ButtonInput.update(buttons({ 8: 'holding' }));
+		expect(mocks.interaction.showinfo).not.toHaveBeenCalled();
 	});
 });
