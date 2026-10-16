@@ -1176,7 +1176,7 @@ function updateEntityStyle(entity) {
 
 function onTitleChangeAck(pkt) {
 	if (pkt.result === 0) {
-		const comp = Equipment.getUI();
+		const comp = Equipment;
 		if (comp && typeof comp.setTitle === 'function') {
 			comp.setTitle(pkt.title_id);
 		}
@@ -1373,7 +1373,7 @@ function onEntityViewChange(pkt) {
 						ui.append();
 					}
 					// Update UI for all client versions
-					BasicInfo.getUI().update('job', pkt.value);
+					BasicInfo.update('job', pkt.value);
 				}
 			}
 			break;
@@ -2735,9 +2735,9 @@ function onNotifyExp(pkt) {
  */
 
 function onMarkMvp(pkt) {
-	MiniMap.getUI().removeNpcMark('mvp'); //hack for mark system (todo: debug this)
+	MiniMap.removeNpcMark('mvp'); //hack for mark system (todo: debug this)
 	if (pkt.infoType == 1) {
-		MiniMap.getUI().addNpcMark('mvp', pkt.xPos, pkt.yPos, 0x0ff0000, Infinity);
+		MiniMap.addNpcMark('mvp', pkt.xPos, pkt.yPos, 0x0ff0000, Infinity);
 		/**if(!MiniMap.isNpcMarkExist('mvp')) {    // wtf marker is pushed with delay??
 				ChatBox.addText( pkt.name+' is already spawned at ('+pkt.xPos+','+pkt.yPos+')', null, ChatBox.FILTER.PUBLIC_LOG, '#FFFF63');
 			}*/
@@ -2842,7 +2842,7 @@ function onEntityWillBeHitSub(pkt, dstEntity) {
  * Does player have a Token of Siegfried?
  */
 function haveSiegfriedItem() {
-	const itemInfo = Inventory.getUI().getItemById(7621);
+	const itemInfo = Inventory.getItemById(7621);
 
 	if (Session.IsPKZone || Session.IsSiegeMode || Session.IsEventPVPMode) {
 		return false;

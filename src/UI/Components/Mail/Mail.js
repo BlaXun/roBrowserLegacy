@@ -759,7 +759,7 @@ function onDrop(event) {
 			Mail.parseMailWinopen(1);
 
 			if (data.from == 'Inventory') {
-				Inventory.getUI().removeItem(item.index, parseInt(count, 10));
+				Inventory.removeItem(item.index, parseInt(count, 10));
 			}
 
 			Mail.parseMailSetattach(item.index, parseInt(count, 10));
@@ -771,7 +771,7 @@ function onDrop(event) {
 	}
 
 	if (data.from == 'Inventory') {
-		Inventory.getUI().removeItem(item.index, 1);
+		Inventory.removeItem(item.index, 1);
 	}
 	Mail.parseMailWinopen(1);
 

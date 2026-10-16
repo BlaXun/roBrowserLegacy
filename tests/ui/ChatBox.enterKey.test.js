@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => {
 	class MockGUIComponent {
 		constructor(name) {
 			this.name = name;
+			this.magnet = {};
 			this._host = document.createElement('div');
 			this.ui = { show: vi.fn(), hide: vi.fn(), is: vi.fn(() => true) };
 		}
@@ -52,16 +53,16 @@ vi.mock('Core/Preferences.js', () => ({
 vi.mock('Core/Configs.js', () => ({ default: { get: vi.fn() } }));
 vi.mock('Controls/MouseEventHandler.js', () => ({ default: { screen: { x: 0, y: 0 } } }));
 vi.mock('Controls/BattleMode.js', () => ({ default: { process: vi.fn(() => false) } }));
-vi.mock('Controls/ProcessCommand.js', () => ({ default: vi.fn() }));
+vi.mock('Controls/ProcessCommand.js', () => ({ default: { add: vi.fn(), processCommand: vi.fn() } }));
 vi.mock('UI/CursorManager.js', () => ({ default: { setType: vi.fn(), ACTION: {} } }));
 vi.mock('UI/GUIComponent.js', () => ({ default: mocks.MockGUIComponent }));
 vi.mock('UI/UIManager.js', () => ({ default: { addComponent: c => c, showMessageBox: vi.fn() } }));
 vi.mock('UI/Elements/Elements.js', () => ({}));
 vi.mock('UI/Components/ContextMenu/ContextMenu.js', () => ({
-	default: { remove: vi.fn(), append: vi.fn(), addElement: vi.fn() }
+	default: { __loaded: true, remove: vi.fn(), append: vi.fn(), addElement: vi.fn() }
 }));
 vi.mock('UI/Components/ChatBoxSettings/ChatBoxSettings.js', () => ({
-	default: { updateTab: vi.fn(), getTabs: () => [], tabOption: [] }
+	default: { append: vi.fn(), updateTab: vi.fn(), getTabs: () => [], tabOption: [] }
 }));
 
 // KEYS is deliberately NOT mocked: `getDeepActiveElement` is installed with
@@ -71,6 +72,8 @@ vi.mock('UI/Components/ChatBoxSettings/ChatBoxSettings.js', () => ({
 const ChatBox = (await import('UI/Components/ChatBox/ChatBox.js')).default;
 const KEYS = (await import('Controls/KeyEventHandler.js')).default;
 const ChatBoxSettings = (await import('UI/Components/ChatBoxSettings/ChatBoxSettings.js')).default;
+const Configs = (await import('Core/Configs.js')).default;
+const Events = (await import('Core/Events.js')).default;
 
 function mountChatBox() {
 	const host = document.createElement('div');
@@ -160,10 +163,10 @@ describe('ChatBox — height cycle position', () => {
 		[400, 1, false],
 		[800, 1, true],
 		[400, 1, true],
-		[800, 2, false],
-		[400, 2, false],
-		[800, 2, true],
-		[400, 2, true]
+		[800, 3, false],
+		[400, 3, false],
+		[800, 3, true],
+		[400, 3, true]
 	])(
 		'preserves bottom %ipx at scale %f (battle mode: %s) across repeated F10 cycles',
 		(bottom, scale, battleMode) => {
@@ -180,10 +183,10 @@ describe('ChatBox — height cycle position', () => {
 			// jsdom has no layout. Model the CSS dimensions and the browser's
 			// zero rectangle for descendants of a display:none host.
 			const height = () => {
-				const headerHeight = header.style.display === 'none' ? 0 : 17;
-				const bodyHeight = body.style.display === 'none' ? 0 : parseInt(content.style.height, 10) + 19;
-				const inputMargin = !battleMode && input.classList.contains('fix') ? 29 : 0;
-				return (headerHeight + bodyHeight + inputMargin + 25) * scale;
+				const headerHeight = header.style.display === 'none' ? 0 : 21;
+				const bodyHeight = body.style.display === 'none' ? 0 : parseInt(content.style.height, 10);
+				const toolbarRow = host.querySelector('#chatbox').classList.contains('minimal') ? 21 : 0;
+				return (headerHeight + bodyHeight + toolbarRow + 24) * scale;
 			};
 			for (const element of [input, battle]) {
 				element.getBoundingClientRect = () => ({
@@ -253,5 +256,35 @@ describe('ChatBox — multiline messages', () => {
 			ChatBox.tabs = [];
 			ChatBoxSettings.tabOption = [];
 		}
+	});
+});
+
+describe('ChatBox — opening the input bar', () => {
+	it('focuses the message field from the ellipsis and keeps Enter toggling usable', () => {
+		document.body.innerHTML = '';
+		const root = mountChatBox();
+		ChatBox.tabs = [];
+		ChatBoxSettings.tabOption = [];
+		Configs.get.mockImplementation((name, fallback) => (name === 'restoreChatFocus' ? true : fallback));
+		ChatBox.init();
+		ChatBox.onAppend();
+
+		root.querySelector('.bmtoggle').click();
+		const message = root.querySelector('.input-chatbox');
+		expect(KEYS.getDeepActiveElement()).toBe(message);
+		expect(root.querySelector('.input').style.display).toBe('block');
+		expect(root.querySelector('.battlemode').style.display).toBe('none');
+
+		Events.setTimeout.mockClear();
+		ChatBox.onKeyDown(enterEvent(message));
+		expect(Events.setTimeout).not.toHaveBeenCalled();
+		expect(root.querySelector('.input').style.display).toBe('none');
+		expect(root.querySelector('.battlemode').style.display).toBe('block');
+		expect(KEYS.getDeepActiveElement()).not.toBe(message);
+
+		ChatBox.onKeyDown(enterEvent(document.body));
+		expect(KEYS.getDeepActiveElement()).toBe(message);
+		expect(root.querySelector('.input').style.display).toBe('block');
+		Configs.get.mockReset();
 	});
 });

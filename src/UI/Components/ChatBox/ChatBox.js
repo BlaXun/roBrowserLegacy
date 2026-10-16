@@ -179,7 +179,8 @@ ChatBox.sendTo = ChatBox.TYPE.PUBLIC;
  */
 ChatBox.PrivateMessageStorage = {
 	nick: '',
-	msg: ''
+	msg: '',
+	blockNicks: []
 };
 
 const views = new Map();
@@ -300,9 +301,9 @@ ChatBox.init = function init() {
 
 	if (Configs.get('restoreChatFocus', false) && inputChatbox) {
 		inputChatbox.addEventListener('blur', () => {
-			// Escape is an explicit request to leave the chat, don't pull focus back
-			if (inputChatbox.dataset.escapeBlur) {
-				delete inputChatbox.dataset.escapeBlur;
+			// An explicit request to leave the chat must not restore focus.
+			if (inputChatbox.dataset.skipRestoreFocus) {
+				delete inputChatbox.dataset.skipRestoreFocus;
 				return;
 			}
 			Events.setTimeout(() => {
@@ -566,12 +567,7 @@ ChatBox.init = function init() {
 
 	const bmtoggle = root.querySelector('.battlemode .bmtoggle');
 	if (bmtoggle) {
-		bmtoggle.addEventListener('click', () => {
-			const inputEl = root.querySelector('.input');
-			const bmEl = root.querySelector('.battlemode');
-			if (inputEl) inputEl.style.display = inputEl.style.display === 'none' ? 'block' : 'none';
-			if (bmEl) bmEl.style.display = bmEl.style.display === 'none' ? 'block' : 'none';
-		});
+		bmtoggle.addEventListener('click', () => this.setInputActive(true));
 	}
 
 	root.querySelector('.battleopt2').addEventListener('click', () => {
@@ -1079,11 +1075,7 @@ ChatBox.onAppend = function OnAppend() {
 	if (!views.size && this.tabStore.count) restoreTabViews();
 	for (const id of this.tabStore.dockedOrder) layoutCaption(id);
 	const root = _root();
-	const inputEl = root.querySelector('.input');
-	if (inputEl) inputEl.style.display = 'none';
-
-	const bmEl = root.querySelector('.battlemode');
-	if (bmEl) bmEl.style.display = 'block';
+	this.setInputActive(false);
 
 	const content = root.querySelector('.content.active');
 	if (content) content.scrollTop = content.scrollHeight;
@@ -1251,7 +1243,7 @@ ChatBox.onKeyDown = function OnKeyDown(event) {
 
 				// Escape leaves the chat input so Alt hotkeys (e.g. Option+Q) open their windows again
 				if (event.which === KEYS.ESCAPE || event.key === 'Escape') {
-					activeElement.dataset.escapeBlur = '1';
+					activeElement.dataset.skipRestoreFocus = '1';
 					activeElement.blur();
 					event.stopImmediatePropagation();
 					return false;
@@ -1348,15 +1340,7 @@ ChatBox.onKeyDown = function OnKeyDown(event) {
 				return false;
 			}
 
-			const input = root.querySelector('.input');
-			if (input && input.style.display === 'none') {
-				input.style.display = 'block';
-				const bmEl = root.querySelector('.battlemode');
-				if (bmEl) bmEl.style.display = 'none';
-			}
-
-			messageBox.focus();
-			setCaretToEnd(messageBox);
+			this.setInputActive(true);
 			event.stopImmediatePropagation();
 			return false;
 		}
@@ -1384,6 +1368,36 @@ ChatBox.toggleChat = function toggleChat() {
 };
 
 /**
+ * Switch the shared input slot without changing the chat frame's geometry.
+ */
+ChatBox.setInputActive = function setInputActive(active) {
+	const root = _root();
+	const input = root.querySelector('.input');
+	const battle = root.querySelector('.battlemode');
+	const message = root.querySelector('.input-chatbox');
+	const focused = KEYS.getDeepActiveElement();
+
+	if (!active && focused && input?.contains(focused)) {
+		if (focused === message) focused.dataset.skipRestoreFocus = '1';
+		focused.blur();
+		delete focused.dataset.skipRestoreFocus;
+	}
+
+	if (input) input.style.display = active ? 'block' : 'none';
+	if (battle) battle.style.display = active ? 'none' : 'block';
+
+	if (active && message) {
+		message.focus();
+		setCaretToEnd(message);
+	}
+
+	Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/chatmode_${active ? 'on' : 'off'}.bmp`, data => {
+		const button = root.querySelector('.chat-function .chatmode');
+		if (button) button.style.backgroundImage = `url(${data})`;
+	});
+};
+
+/**
  * Process ChatBox message
  */
 ChatBox.submit = function Submit() {
@@ -1395,23 +1409,10 @@ ChatBox.submit = function Submit() {
 	const user = $user ? $user.value : '';
 	const text = extractChatMessage($text);
 	const trimmedText = text.replace(/\u00A0/g, ' ').trim();
-	let isChatOn = false;
 
 	// Battle mode
 	if (!trimmedText.length) {
-		const bmEl = root.querySelector('.battlemode');
-		if (inputEl) inputEl.style.display = inputEl.style.display === 'none' ? 'block' : 'none';
-		if (bmEl) bmEl.style.display = bmEl.style.display === 'none' ? 'block' : 'none';
-
-		if (inputEl && inputEl.style.display !== 'none') {
-			isChatOn = true;
-			$text.focus();
-		}
-		const chatmode = isChatOn ? 'on' : 'off';
-		Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/chatmode_${chatmode}.bmp`, data => {
-			const chatmodeBtn = root.querySelector('.chat-function .chatmode');
-			if (chatmodeBtn) chatmodeBtn.style.backgroundImage = `url(${data})`;
-		});
+		this.setInputActive(inputEl?.style.display === 'none');
 
 		return;
 	}
@@ -1486,19 +1487,53 @@ function extractChatMessage(inputEl) {
 	return result;
 }
 
+const ITEM_LINK = /(<ITEMLINK>.*?<\/ITEMLINK>|<ITEML>.*?<\/ITEML>|<ITEM>.*?<\/ITEM>)/i;
+
+/**
+ * Escape text for use in HTML content and quoted attributes.
+ * @param {string} text
+ * @returns {string}
+ */
+ChatBox.escapeHTML = function escapeHTML(text) {
+	return text.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+};
+
+/**
+ * Render a received message as HTML: colour codes dropped, item links clickable, the rest as text.
+ *
+ * @param {string} text
+ * @returns {string}
+ * @see docs/reference/chat/text-parsing.md
+ */
+ChatBox.messageToHTML = function messageToHTML(text) {
+	return text
+		.replace(/\^[0-9A-Fa-f]{6}/g, '')
+		.split(ITEM_LINK)
+		.map((part, i) => {
+			if (!(i % 2)) {
+				return ChatBox.escapeHTML(part);
+			}
+			const item = DB.parseItemLink(part);
+			return (
+				`<span data-item="${ChatBox.escapeHTML(part)}" class="item-link" style="color:#FFFF63; cursor:pointer;">` +
+				`&lt;${ChatBox.escapeHTML(item.name)}&gt;</span>`
+			);
+		})
+		.join('');
+};
+
 /**
  * Add text to chatbox
+ *
+ * @see docs/reference/chat/text-parsing.md
  */
 ChatBox.addText = function addText(text, colorType, filterType, color, override) {
-	text = text.replace(/<ITEMLINK>.*?<\/ITEMLINK>|<ITEML>.*?<\/ITEML>|<ITEM>.*?<\/ITEM>/gi, function (match) {
-		const item = DB.parseItemLink(match);
-		const span = `<span data-item="${match}" class="item-link" style="color:#FFFF63;">&lt;${item.name}&gt;</span>`;
-		override = true;
-		return span;
-	});
+	// The client drops ^RRGGBB codes: a chat line has one colour.
+	text = text.replace(/\^[0-9A-Fa-f]{6}/g, '');
 
-	// Auto-detect client-generated HTML (nickname links in whispers)
-	if (!override && /<span\s+class="nickname-link"/.test(text)) {
+	// An item link turns the line into HTML: the text around it must stay text.
+	if (!override && ITEM_LINK.test(text)) {
+		text = ChatBox.messageToHTML(text);
 		override = true;
 	}
 
@@ -1593,7 +1628,8 @@ ChatBox.updateHeight = function changeHeight(AlwaysVisible) {
 
 	const header = root.querySelector('.header');
 	const body = root.querySelector('.body');
-	const inputEl = root.querySelector('.input');
+	const chatbox = root.querySelector('#chatbox');
+	chatbox?.classList.toggle('minimal', _heightIndex === 1);
 
 	switch (_heightIndex) {
 		case 0:
@@ -1605,11 +1641,9 @@ ChatBox.updateHeight = function changeHeight(AlwaysVisible) {
 			this._host.style.display = 'block';
 			if (header) header.style.display = 'none';
 			if (body) body.style.display = 'none';
-			if (inputEl) inputEl.classList.add('fix');
 			break;
 
 		default:
-			if (inputEl) inputEl.classList.remove('fix');
 			if (header) header.style.display = '';
 			if (body) body.style.display = '';
 			break;
