@@ -63,7 +63,7 @@ vi.mock('UI/Background.js', () => ({ default: mocks.background }));
 vi.mock('UI/Components/WinList/WinList.js', () => ({ default: {} }));
 vi.mock('UI/Components/WinPopup/WinPopup.js', () => ({ default: { clone: () => ({}) } }));
 vi.mock('UI/Components/WinLogin/WinLogin.js', () => ({
-	default: Object.assign(mocks.winLogin, { selectUIVersion: vi.fn() })
+	default: Object.assign(mocks.winLogin, { selectUIVersion: vi.fn(), selectUIVersionForData: vi.fn(callback => callback()) })
 }));
 vi.mock('UI/Components/SkillTargetSelection/SkillTargetSelection.js', () => ({ default: mocks.skillTarget }));
 vi.mock('Vendors/spark-md5.min.js', () => ({ default: {} }));

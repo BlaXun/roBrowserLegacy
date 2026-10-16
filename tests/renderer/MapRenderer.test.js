@@ -151,7 +151,7 @@ describe('MapRenderer.cancelLoad', () => {
 		mocks.background.setLoading.mockImplementationOnce(callback => callback());
 
 		MapRenderer.setMap('geffen.gat');
-		const [, , onMapComplete] = mocks.thread.send.mock.calls[0];
+		const [, , onMapComplete] = mocks.thread.send.mock.calls.find(([name]) => name === 'LOAD_MAP');
 		const onProgress = mocks.thread.hook.mock.calls.find(([name]) => name === 'MAP_PROGRESS')[1];
 
 		const [request] = mocks.thread.send.mock.results.map(result => result.value);
@@ -168,7 +168,8 @@ describe('MapRenderer.cancelLoad', () => {
 
 	it('keeps the late worker events of a cancelled load out of the next one', () => {
 		mocks.background.setLoading.mockImplementation(callback => callback());
-		mocks.thread.send.mockReturnValueOnce(7).mockReturnValueOnce(8);
+		const requests = [7, 8];
+		mocks.thread.send.mockImplementation(name => (name === 'LOAD_MAP' ? requests.shift() : undefined));
 
 		MapRenderer.setMap('geffen.gat');
 		MapRenderer.cancelLoad();
@@ -182,6 +183,7 @@ describe('MapRenderer.cancelLoad', () => {
 		expect(mocks.background.setPercent).toHaveBeenCalledWith(30);
 
 		mocks.background.setLoading.mockReset();
+		mocks.thread.send.mockReset();
 	});
 
 	it('does not re-enter the map when a same-map teleport is cancelled during its fade', () => {
