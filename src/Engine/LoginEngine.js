@@ -943,8 +943,8 @@ function onServerClosed(pkt) {
 			MapRenderer.free();
 			BGM.play('01.mp3');
 			UIManager.removeComponents();
-			Background.setLoginBackground();
-			WinLogin.append();
+			// The login dialog waits for the login background to cover the map
+			Background.setLoginBackground(() => WinLogin.append());
 		},
 		true
 	);

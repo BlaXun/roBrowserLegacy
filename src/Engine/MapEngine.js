@@ -880,6 +880,7 @@ function onExitSuccess() {
 	UIManager.removeComponents();
 	Network.close();
 	Renderer.stop();
+	MapRenderer.cancelLoad();
 	MapRenderer.free();
 	SoundManager.stop();
 	BGM.stop();
@@ -922,6 +923,7 @@ function onRestartAnswer(pkt) {
 		// Have to wait 10sec
 		ChatBox.addText(DB.getMessage(502), ChatBox.TYPE.ERROR, ChatBox.FILTER.PUBLIC_LOG);
 	} else {
+		MapRenderer.cancelLoad();
 		GuildEngine.guild_id = 0;
 		Session.Achievement = null;
 		Mouse.intersect = false;

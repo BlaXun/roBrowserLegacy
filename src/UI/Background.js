@@ -89,6 +89,11 @@ class Background {
 	static _removal = null;
 
 	/**
+	 * @var {number} latest image request, bumped when a background is replaced or removed
+	 */
+	static _imageId = 0;
+
+	/**
 	 * Initialize Background component
 	 *
 	 * @param {Array} loading - Array of loading filenames stored in clientinfo.xml
@@ -134,6 +139,7 @@ class Background {
 	 * @param {function} callback once the image is loaded (optional)
 	 */
 	static setImage(filename, callback) {
+		const imageId = ++Background._imageId;
 		const exist = !!_container.parentNode;
 		Background._progress = -1;
 		Background._removal = null;
@@ -166,6 +172,9 @@ class Background {
 				Client.loadFile(
 					fullPath,
 					url => {
+						if (imageId !== Background._imageId) {
+							return;
+						}
 						divs[index].style.backgroundImage = `url(${url})`;
 
 						loadedCount++;
@@ -174,6 +183,9 @@ class Background {
 						}
 					},
 					() => {
+						if (imageId !== Background._imageId) {
+							return;
+						}
 						loadedCount++;
 						if (loadedCount === total) {
 							if (exist && callback) callback();
@@ -187,6 +199,9 @@ class Background {
 			Client.loadFile(
 				fullPath,
 				url => {
+					if (imageId !== Background._imageId) {
+						return;
+					}
 					Object.assign(_container.style, {
 						backgroundImage: `url(${url})`,
 						backgroundSize: '100% 100%'
@@ -194,6 +209,9 @@ class Background {
 					if (exist && callback) callback();
 				},
 				() => {
+					if (imageId !== Background._imageId) {
+						return;
+					}
 					if (exist && callback) callback();
 				}
 			);
@@ -202,6 +220,9 @@ class Background {
 		// Add transition only if the background isn't here
 		if (!exist) {
 			transition(() => {
+				if (imageId !== Background._imageId) {
+					return;
+				}
 				document.body.appendChild(_container);
 				document.body.appendChild(_canvas);
 				if (callback) {
@@ -270,6 +291,7 @@ class Background {
 	 * @param {function} callback once the overlay hide the window (optional)
 	 */
 	static remove(callback) {
+		Background._imageId++;
 		const removal = {};
 		Background._removal = removal;
 

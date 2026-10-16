@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => {
 		renderer: { width: 1200, height: 800, stop: record('Renderer.stop') },
 		mapRenderer: { cancelLoad: record('MapRenderer.cancelLoad'), free: record('MapRenderer.free') },
 		background: {
-			setLoginBackground: record('Background.setLoginBackground'),
+			setLoginBackground: vi.fn(callback => {
+				calls.push('Background.setLoginBackground');
+				callback?.();
+			}),
 			init: vi.fn(),
 			resize: vi.fn(),
 			setPercent: vi.fn()
