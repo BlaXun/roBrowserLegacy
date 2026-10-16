@@ -1512,7 +1512,8 @@ ChatBox.addText = function addText(text, colorType, filterType, color, override)
 function queueChatMessage(message) {
 	retainExportUrl(message.exportUrl);
 	_messageBuffer.push(message);
-	if (_messageFrame !== null) return;
+	// Loose check: a synchronous requestAnimationFrame (as in tests) leaves it undefined.
+	if (_messageFrame != null) return;
 	const generation = _messageGeneration;
 	_messageFrame = requestAnimationFrame(() => {
 		if (generation !== _messageGeneration) return;
@@ -1523,7 +1524,7 @@ function queueChatMessage(message) {
 
 function cancelMessageDelivery() {
 	_messageGeneration++;
-	if (_messageFrame !== null) cancelAnimationFrame(_messageFrame);
+	if (_messageFrame != null) cancelAnimationFrame(_messageFrame);
 	_messageFrame = null;
 	for (const message of _messageBuffer) releaseExportUrl(message.exportUrl);
 	_messageBuffer = [];
