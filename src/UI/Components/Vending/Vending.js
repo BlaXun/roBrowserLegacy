@@ -107,14 +107,7 @@ Vending.init = function init() {
 		cancelBtn.addEventListener('mousedown', e => e.stopImmediatePropagation());
 		cancelBtn.addEventListener('click', e => {
 			e.stopImmediatePropagation();
-			let pkt;
-			if (_type === Vending.Type.VENDING_STORE) {
-				pkt = new PACKET.CZ.REQ_OPENSTORE2();
-			} else {
-				pkt = new PACKET.CZ.REQ_OPEN_BUYING_STORE();
-			}
-			submitNetworkPacket(pkt);
-			Vending.onRemove();
+			Vending.onCancel();
 		});
 	}
 
@@ -304,18 +297,14 @@ Vending.onRemove = function onRemove() {
 };
 
 Vending.onKeyDown = function onKeyDown(event) {
-	if (this.isEditableFocused()) {
-		if (event.which === KEYS.ESCAPE || event.key === 'Escape') {
-			this.remove();
-			event.stopImmediatePropagation();
-			return false;
-		}
+	if ((event.which === KEYS.ESCAPE || event.key === 'Escape') && this.isOpen && this._host.style.display !== 'none') {
+		this.onCancel();
 		event.stopImmediatePropagation();
-		return true;
+		return false;
 	}
 
-	if ((event.which === KEYS.ESCAPE || event.key === 'Escape') && this._host.style.display !== 'none') {
-		this.remove();
+	if (this.isEditableFocused()) {
+		event.stopImmediatePropagation();
 	}
 
 	return true;
@@ -745,6 +734,18 @@ Vending.onBuyingSkill = function onBuyingSkill(pkt) {
 	this._fixPositionOverflow();
 
 	Vending.isOpen = true;
+};
+
+// Only an explicit user cancellation tells the server to leave store setup.
+Vending.onCancel = function onCancel() {
+	if (!this.isOpen) {
+		return;
+	}
+
+	const pkt =
+		_type === Vending.Type.VENDING_STORE ? new PACKET.CZ.REQ_OPENSTORE2() : new PACKET.CZ.REQ_OPEN_BUYING_STORE();
+	submitNetworkPacket(pkt);
+	this.onRemove();
 };
 
 Vending.onClose = function onClose() {
