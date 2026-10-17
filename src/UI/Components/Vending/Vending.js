@@ -199,19 +199,19 @@ Vending.init = function init() {
 		});
 	});
 
-	// Make sub-windows independently draggable
-	if (inputWin) {
-		this.draggable.call(
-			{ _host: inputWin, _shadow: null, _container: inputWin, magnet: {}, needFocus: false, manager: null },
-			inputWin.querySelector('.titlebar')
-		);
-	}
-	if (outputWin) {
-		this.draggable.call(
-			{ _host: outputWin, _shadow: null, _container: outputWin, magnet: {}, needFocus: false, manager: null },
-			outputWin.querySelector('.titlebar')
-		);
-	}
+	// Each sub-window owns its GUI drag state; Vending retains it across reopening.
+	this._windowDrags = [inputWin, outputWin].filter(Boolean).map(win => {
+		const drag = Object.assign(Object.create(GUIComponent.prototype), {
+			_host: win,
+			_shadow: null,
+			_container: win,
+			magnet: {},
+			needFocus: false,
+			manager: null
+		});
+		drag.draggable(win.querySelector('.titlebar'));
+		return drag;
+	});
 
 	Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/itemwin_mid.bmp`, data => {
 		Vending.itemBg = data;
@@ -274,7 +274,14 @@ function resize(content, height) {
 	content.style.height = `${height * 32}px`;
 }
 
+// Cancel active movement without disposing the handles bound once in init().
+Vending.cancelDrag = function cancelDrag() {
+	GUIComponent.prototype.cancelDrag.call(this);
+	this._windowDrags?.forEach(drag => drag.cancelDrag());
+};
+
 Vending.onRemove = function onRemove() {
+	this.cancelDrag();
 	VendingModelMessage.onRemove();
 
 	const root = Vending.getRoot();
@@ -748,6 +755,7 @@ Vending.onBuyingSkill = function onBuyingSkill(pkt) {
 };
 
 Vending.onClose = function onClose() {
+	this.cancelDrag();
 	this._host.style.display = 'none';
 	Vending.isOpen = false;
 };
