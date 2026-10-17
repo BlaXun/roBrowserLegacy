@@ -19,12 +19,12 @@ function strRenderer(file = { fps: 60, maxKey: 60, layernum: 0 }) {
     });
     return { StrEffect: context.StrEffect, setFile: value => { currentFile = value; } };
 }
-function manager() {
+function manager(bindings = {}) {
     const context = load(source('Renderer/EffectManager.js').replace('export default EffectManager;', 'this.EffectManager = EffectManager; this.list = _list;'), {
         SU: {}, SkillEffect: {}, SkillUnit: {}, EffectDB: {},
         Session: { Entity: { position: [0, 0, 0] } },
         GraphicsSettings: { performanceMode: false }, Renderer: { tick: 1000 },
-        EntityManager: { get: () => null }
+        EntityManager: { get: () => null }, ...bindings
     });
     return context;
 }
@@ -35,6 +35,48 @@ function attachmentManager() {
 
 // No game data, network, server, or graphics context is required.
 describe('effect lifetime and attachment direction', () => {
+    it('honors BSON sound replay without silencing fresh or legacy effects', () => {
+        const db = source('DB/DBManager.js');
+        const start = db.indexOf('function loadBSONFile(');
+        const end = db.indexOf('function loadAttendanceFile(');
+        assert.ok(start >= 0 && end > start, 'BSON merge source boundaries');
+        const definitions = {};
+        const merge = load(db.slice(start, end), {
+            Ez2streffect: {
+                quiet_loop: { FilePath: 'quiet.str', SoundPath: 'quiet.wav', IsInfinite: true, IsSoundLoop: false },
+                sounding_loop: { FilePath: 'sounding.str', SoundPath: 'sounding.wav', IsInfinite: true, IsSoundLoop: true }
+            },
+            SKID: {}
+        });
+        merge.mergeEz2Effects(definitions, {});
+        definitions.legacy = [{ type: 'STR', file: 'legacy', wav: 'legacy', repeat: true }];
+
+        for (const [name, repeatedSounds, filename] of [
+            ['quiet_loop', 1, 'quiet.wav'],
+            ['sounding_loop', 2, 'sounding.wav'],
+            ['legacy', 2, 'legacy.wav']
+        ]) {
+            const played = [];
+            const { StrEffect } = strRenderer();
+            const context = manager({
+                StrEffect, Preferences: { effect: true },
+                Sound: { playPosition: filename => played.push(filename) },
+                Events: { setTimeout: run => run() }
+            });
+            const { EffectManager, EffectDB, list, Renderer } = context;
+            EffectDB[name] = definitions[name];
+            EffectManager.spam({ effectId: name, position: [0, 0, 0] });
+            assert.deepEqual(played, [filename], name + ': first instance plays');
+            list.StrEffect[0].render({}, 2000);
+            Renderer.tick = 2000;
+            vm.runInContext('repeatEffect(list.StrEffect[0])', context);
+            assert.equal(list.StrEffect.length, 2, name + ': visual cycle still repeats');
+            assert.equal(played.length, repeatedSounds, name + ': metadata controls audio replay');
+            Renderer.tick = 3000;
+            EffectManager.spam({ effectId: name, position: [0, 0, 0] });
+            assert.equal(played.length, repeatedSounds + 1, name + ': fresh independent instance plays');
+        }
+    });
     it('stops only the selected effect and owner, including scheduled repeats', () => {
         const { EffectManager, list } = manager();
         class Effect {}

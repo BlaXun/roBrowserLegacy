@@ -654,8 +654,8 @@ class EffectManager {
 		Params.Inst.repeatEnd = Params.Init.repeatEnd ? Params.Init.repeatEnd : Params.effect.repeatEnd || 0; // Main has priority
 		Params.Inst.repeatDelay = Params.effect.repeatDelay ? Params.effect.repeatDelay : Params.Init.repeatDelay; // Instance has priority
 
-		// Play sound
-		if (Params.effect.wav) {
+		// BSON sound events repeat only when requested; legacy effects keep replaying.
+		if (Params.effect.wav && !(Params.Inst.noDelay && Params.effect.soundLoop === false)) {
 			filename = Params.effect.wav;
 
 			if (Params.effect.rand) {
