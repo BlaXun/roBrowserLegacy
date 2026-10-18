@@ -15877,12 +15877,12 @@ PACKET.ZC.ACK_OPEN_ROULETTE = function PACKET_ZC_ACK_OPEN_ROULETTE(fp, end) {
 	this.serial = fp.readLong(); // 4 bytes - Serial
 	this.step = fp.readChar(); // 1 byte - Step
 	this.idx = fp.readChar(); // 1 byte - Idx
-	this.additionItemID = fp.readUShort(); // 2 bytes - AdditionItemID
+	this.additionItemID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 	this.goldPoint = fp.readLong(); // 4 bytes - Gold points
 	this.silverPoint = fp.readLong(); // 4 bytes - Silver points
 	this.bronzePoint = fp.readLong(); // 4 bytes - Bronze points
 };
-PACKET.ZC.ACK_OPEN_ROULETTE.size = 23;
+PACKET.ZC.ACK_OPEN_ROULETTE.size = PACKETVER.value >= 20181121 ? 25 : 23;
 
 // 0xA1B - CZ_REQ_ROULETTE_INFO (request roulette item list)
 PACKET.CZ.REQ_ROULETTE_INFO = function PACKET_CZ_REQ_ROULETTE_INFO() {};
@@ -15895,16 +15895,20 @@ PACKET.CZ.REQ_ROULETTE_INFO.prototype.build = function () {
 
 // 0xA1C - ZC_ACK_ROULETTE_INFO (roulette item list)
 PACKET.ZC.ACK_ROULETTE_INFO = function PACKET_ZC_ACK_ROULETTE_INFO(fp, end) {
-	fp.readUShort(); // 2 bytes - packet length
+	// NetworkManager has consumed the opcode and variable-length header.
 	this.serial = fp.readULong(); // 4 bytes - RouletteSerial
 	this.items = [];
-	// Read items until end of packet (42 items max)
-	while (fp.tell() < end) {
+	// Read complete rows within the packet (42 items max).
+	const rowSize = PACKETVER.value >= 20180511 ? 12 : 8;
+	while (fp.tell() + rowSize <= end) {
 		const item = {};
 		item.row = fp.readUShort(); // 2 bytes
 		item.position = fp.readUShort(); // 2 bytes
-		item.itemId = fp.readUShort(); // 2 bytes
+		item.itemId = PACKETVER.value >= 20180511 ? fp.readULong() : fp.readUShort();
 		item.count = fp.readUShort(); // 2 bytes
+		if (PACKETVER.value >= 20180511) {
+			fp.readUShort(); // unused
+		}
 		this.items.push(item);
 	}
 };
@@ -15939,12 +15943,12 @@ PACKET.ZC.ACK_GENERATE_ROULETTE = function PACKET_ZC_ACK_GENERATE_ROULETTE(fp, e
 	this.result = fp.readUChar(); // 1 byte - Result
 	this.step = fp.readUShort(); // 2 bytes - Step
 	this.idx = fp.readUShort(); // 2 bytes - Idx
-	this.additionItemID = fp.readUShort(); // 2 bytes - AdditionItemID
+	this.additionItemID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 	this.remainGold = fp.readLong(); // 4 bytes - RemainGold
 	this.remainSilver = fp.readLong(); // 4 bytes - RemainSilver
 	this.remainBronze = fp.readLong(); // 4 bytes - RemainBronze
 };
-PACKET.ZC.ACK_GENERATE_ROULETTE.size = 21;
+PACKET.ZC.ACK_GENERATE_ROULETTE.size = PACKETVER.value >= 20181121 ? 23 : 21;
 
 // 0xA21 - CZ_RECV_ROULETTE_ITEM (request to receive roulette item)
 PACKET.CZ.RECV_ROULETTE_ITEM = function PACKET_CZ_RECV_ROULETTE_ITEM() {
@@ -15961,9 +15965,9 @@ PACKET.CZ.RECV_ROULETTE_ITEM.prototype.build = function () {
 // 0xA22 - ZC_RECV_ROULETTE_ITEM (receive roulette item result)
 PACKET.ZC.RECV_ROULETTE_ITEM = function PACKET_ZC_RECV_ROULETTE_ITEM(fp, end) {
 	this.result = fp.readUChar(); // 1 byte - Result (0=success, 1=failed, 2=overcount, 3=overweight)
-	this.additionItemID = fp.readUShort(); // 2 bytes - AdditionItemID
+	this.additionItemID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 };
-PACKET.ZC.RECV_ROULETTE_ITEM.size = 5;
+PACKET.ZC.RECV_ROULETTE_ITEM.size = PACKETVER.value >= 20181121 ? 7 : 5;
 
 // 0x097f - ZC_SELECTCART
 PACKET.ZC.SELECTCART = function PACKET_ZC_SELECTCART(fp, end) {

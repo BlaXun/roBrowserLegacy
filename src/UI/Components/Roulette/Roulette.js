@@ -57,9 +57,69 @@ const _rouletteInfo = {
 };
 
 /**
- * @var {boolean} Is spinning
+ * Pending requests, prize and the server spin/claim stall
  */
-let _isSpinning = false;
+let _pending = null;
+let _requestTimer = null;
+let _spinTimer = null;
+let _cooldownUntil = 0;
+let _prize = null;
+let _nextStep = 0;
+let _status = '';
+let _rotation = 0;
+
+function isBusy() {
+	return _pending !== null || Date.now() < _cooldownUntil;
+}
+
+function finishRequest() {
+	clearTimeout(_requestTimer);
+	_requestTimer = null;
+	_pending = null;
+}
+
+function sendRequest(packet, kind) {
+	finishRequest();
+	_pending = kind;
+	_requestTimer = setTimeout(() => {
+		finishRequest();
+		_status = 'No response. Close and reopen Roulette to refresh.';
+		Roulette.updateUI();
+	}, 10000);
+	Network.sendPacket(packet);
+	Roulette.updateUI();
+}
+
+function hasPrizePosition(pkt) {
+	return pkt.step >= 0 && pkt.step < 7 && pkt.idx >= 0 && pkt.idx < 9 - pkt.step;
+}
+
+function startingStep() {
+	return _rouletteInfo.bronzePoint > 0
+		? 0
+		: _rouletteInfo.silverPoint >= 10
+			? 2
+			: _rouletteInfo.goldPoint >= 10
+				? 4
+				: 0;
+}
+
+function setItem(element, item) {
+	element.style.backgroundImage = '';
+	element.textContent = '';
+	element.title = '';
+	if (!item) {
+		return;
+	}
+	const info = DB.getItemInfo(item.itemId);
+	element.title = `${info.identifiedDisplayName} ×${item.count}`;
+	element.textContent = element.title;
+	Client.loadFile(`${DB.INTERFACE_PATH}item/${info.identifiedResourceName}.bmp`, data => {
+		if (element.isConnected && element.title === `${info.identifiedDisplayName} ×${item.count}`) {
+			element.style.backgroundImage = `url(${data})`;
+		}
+	});
+}
 
 /**
  * Initialize UI
@@ -71,12 +131,12 @@ Roulette.init = function init() {
 		Roulette.onClose();
 	});
 
-	root.querySelector('.btn-close').addEventListener('click', () => {
-		Roulette.onClose();
+	root.querySelector('.btn-claim').addEventListener('click', () => {
+		Roulette.requestReceiveItem();
 	});
 
 	root.querySelector('.btn-spin').addEventListener('click', () => {
-		if (!_isSpinning) {
+		if (!isBusy()) {
 			Roulette.onSpin();
 		}
 	});
@@ -89,11 +149,6 @@ Roulette.init = function init() {
 };
 
 /**
- * @var {number} Timeout ID for server response
- */
-let _responseTimeout = null;
-
-/**
  * Click on roulette icon
  */
 function onClickIcon() {
@@ -101,17 +156,9 @@ function onClickIcon() {
 		Roulette.onClose();
 		return;
 	}
-
-	const pkt = new PACKET.CZ.REQ_OPEN_ROULETTE();
-	Network.sendPacket(pkt);
-
-	if (_responseTimeout) {
-		clearTimeout(_responseTimeout);
+	if (_pending !== 'open') {
+		sendRequest(new PACKET.CZ.REQ_OPEN_ROULETTE(), 'open');
 	}
-
-	_responseTimeout = setTimeout(() => {
-		_responseTimeout = null;
-	}, 2000);
 }
 
 /**
@@ -121,9 +168,7 @@ Roulette.onAppend = function onAppend() {
 	this._host.style.top = Math.min(Math.max(0, _preferences.y), Renderer.height - this._host.offsetHeight) + 'px';
 	this._host.style.left = Math.min(Math.max(0, _preferences.x), Renderer.width - this._host.offsetWidth) + 'px';
 
-	if (!_preferences.show) {
-		this._host.style.display = 'none';
-	}
+	this._host.style.display = 'none';
 
 	if (ROConfig.enableRoulette === false) {
 		return;
@@ -150,6 +195,9 @@ function addRouletteIcon() {
 	}
 	_iconBtn = document.createElement('button');
 	_iconBtn.className = 'rouletteIcon';
+	_iconBtn.title = 'Roulette';
+	_iconBtn.setAttribute('aria-label', 'Roulette');
+	_iconBtn.textContent = 'Roulette';
 	Object.assign(_iconBtn.style, {
 		position: 'absolute',
 		top: '74px',
@@ -187,23 +235,35 @@ Roulette.onRemove = function onRemove() {
 	_preferences.x = parseInt(this._host.style.left, 10);
 	_preferences.y = parseInt(this._host.style.top, 10);
 	_preferences.save();
+	finishRequest();
+	clearTimeout(_spinTimer);
+	_spinTimer = null;
+	_cooldownUntil = 0;
+	_prize = null;
+	_rouletteInfo.items = [];
+	_status = '';
 };
 
 /**
  * Open Roulette Window
  */
 Roulette.onOpen = function onOpen(pkt) {
-	if (pkt) {
-		_rouletteInfo.step = pkt.step || 0;
-		_rouletteInfo.idx = pkt.idx || 0;
-		_rouletteInfo.goldPoint = pkt.goldPoint || 0;
-		_rouletteInfo.silverPoint = pkt.silverPoint || 0;
-		_rouletteInfo.bronzePoint = pkt.bronzePoint || 0;
-		_rouletteInfo.additionItemID = pkt.additionItemID || 0;
+	finishRequest();
+	setItem(this.getRoot().querySelector('.result-item'), null);
+	Object.assign(_rouletteInfo, pkt);
+	_nextStep = startingStep();
+	_prize = hasPrizePosition(pkt) ? { row: pkt.step, position: pkt.idx, losing: false } : null;
+	// Reopening does not carry the server's remaining stall. Wait conservatively
+	// when a prize survived a close, rather than sending a silently ignored claim.
+	if (_prize && Date.now() >= _cooldownUntil) {
+		this.startSpin(_prize.position, Math.max(0, _prize.row));
 	}
-
+	_status = _prize ? 'Prize ready after the wheel stops.' : 'Spin, then collect your prize or spin again.';
+	if (pkt.idx >= 0 && !_prize) {
+		_status = 'Invalid reward position. Close and reopen Roulette to refresh.';
+	}
 	this._host.style.display = '';
-	this.updateUI();
+	this.onInfo();
 	this.focus();
 };
 
@@ -221,12 +281,11 @@ Roulette.onClose = function onClose() {
  * Request to spin the roulette
  */
 Roulette.onSpin = function onSpin() {
-	if (_isSpinning) {
+	if (isBusy()) {
 		return;
 	}
-
-	const pkt = new PACKET.CZ.REQ_GENERATE_ROULETTE();
-	Network.sendPacket(pkt);
+	_status = 'Waiting for spin result…';
+	sendRequest(new PACKET.CZ.REQ_GENERATE_ROULETTE(), 'spin');
 };
 
 /**
@@ -238,14 +297,15 @@ Roulette.onRouletteInfo = function onRouletteInfo(pkt) {
 		_rouletteInfo.serial = pkt.serial;
 	}
 
-	Roulette.generateWheelSlots();
+	Roulette.updateUI();
 };
 
 /**
- * Show info window
+ * Refresh the configured reward list
  */
 Roulette.onInfo = function onInfo() {
-	// TODO: Show information about roulette
+	Network.sendPacket(new PACKET.CZ.REQ_ROULETTE_INFO());
+	this.updateUI();
 };
 
 /**
@@ -253,12 +313,14 @@ Roulette.onInfo = function onInfo() {
  */
 Roulette.updateUI = function updateUI() {
 	const root = this.getRoot();
-
 	this.generateWheelSlots();
-
-	const btnSpin = root.querySelector('.btn-spin');
-	if (btnSpin) {
-		btnSpin.disabled = _isSpinning;
+	root.querySelector('.points-value').textContent =
+		`Gold: ${_rouletteInfo.goldPoint} · Silver: ${_rouletteInfo.silverPoint} · Bronze: ${_rouletteInfo.bronzePoint}`;
+	root.querySelector('.status').textContent = _status;
+	root.querySelector('.btn-spin').disabled = isBusy();
+	root.querySelector('.btn-claim').disabled = isBusy() || !_prize;
+	if (_prize && Date.now() >= _cooldownUntil) {
+		this.showResult();
 	}
 };
 
@@ -273,8 +335,10 @@ Roulette.generateWheelSlots = function generateWheelSlots() {
 	}
 	wheelSlots.innerHTML = '';
 
-	const items = _rouletteInfo.items || [];
-	const numSlots = items.length || 10;
+	const row = _prize?.row >= 0 ? _prize.row : _nextStep;
+	const items = _rouletteInfo.items.filter(item => item.row === row).sort((a, b) => a.position - b.position);
+	const numSlots = items.length;
+	root.querySelector('.row-label').textContent = `Reward level ${row + 1}`;
 
 	for (let i = 0; i < numSlots; i++) {
 		const angle = (360 / numSlots) * i;
@@ -291,127 +355,103 @@ Roulette.generateWheelSlots = function generateWheelSlots() {
 			transform: `translate(${x}px, ${y}px) rotate(${angle}deg)`
 		});
 
-		if (items[i]) {
-			const itemId = items[i].itemId || items[i].item_id || items[i].ItemID;
-			if (itemId) {
-				Client.loadFile(DB.INTERFACE_PATH + `item/${itemId}.bmp`, function (data) {
-					const icon = document.createElement('div');
-					icon.className = 'item-icon';
-					icon.style.backgroundImage = `url(${data})`;
-					slot.appendChild(icon);
-				});
-			}
-		}
-
+		const icon = document.createElement('div');
+		icon.className = 'item-icon';
+		slot.appendChild(icon);
 		wheelSlots.appendChild(slot);
+		setItem(icon, items[i]);
+		const count = document.createElement('span');
+		count.className = 'item-count';
+		count.textContent = `×${items[i].count}`;
+		slot.appendChild(count);
 	}
 };
 
 /**
  * Start spinning animation
  */
-Roulette.startSpin = function startSpin(resultIndex) {
-	if (_isSpinning) {
-		return;
-	}
-
-	_isSpinning = true;
-	const root = this.getRoot();
-	const btnSpin = root.querySelector('.btn-spin');
-	if (btnSpin) {
-		btnSpin.disabled = true;
-	}
-
-	const wheelSlots = root.querySelector('.wheel-slots');
-	if (!wheelSlots) {
-		_isSpinning = false;
-		if (btnSpin) {
-			btnSpin.disabled = false;
+Roulette.startSpin = function startSpin(resultIndex, row) {
+	clearTimeout(_spinTimer);
+	// rAthena ignores spin/claim requests until max(1, 9 - row - 3) seconds.
+	const duration = Math.max(1, 6 - row) * 1000;
+	_cooldownUntil = Date.now() + duration;
+	const wheel = this.getRoot().querySelector('.wheel-slots');
+	const slots = _rouletteInfo.items.filter(item => item.row === row).length || 9 - row;
+	_rotation += 1800 + ((360 - (resultIndex * 360) / slots - (_rotation % 360)) % 360);
+	wheel.style.transitionDuration = `${duration}ms`;
+	wheel.style.transform = `translate(-50%, -50%) rotate(${_rotation}deg)`;
+	setItem(this.getRoot().querySelector('.result-item'), null);
+	_spinTimer = setTimeout(function finishSpin() {
+		// Timer and wall clocks can cross the deadline on different updates.
+		const remaining = _cooldownUntil - Date.now();
+		if (remaining > 0) {
+			_spinTimer = setTimeout(finishSpin, remaining);
+			return;
 		}
-		return;
-	}
-	const numSlots = _rouletteInfo.items.length || 10;
-	const degreesPerSlot = 360 / numSlots;
-
-	const targetRotation = 360 * 5 + resultIndex * degreesPerSlot;
-
-	wheelSlots.style.transform = `translate(-50%, -50%) rotate(${targetRotation}deg)`;
-
-	setTimeout(() => {
-		_isSpinning = false;
-		const r = Roulette.getRoot();
-		const btn = r.querySelector('.btn-spin');
-		if (btn) {
-			btn.disabled = false;
-		}
-		Roulette.showResult(resultIndex);
-	}, 3000);
+		_spinTimer = null;
+		_status = _prize?.losing
+			? 'Round ended. Collect this prize or start a new round.'
+			: 'Collect your prize or spin again.';
+		Roulette.updateUI();
+	}, duration);
 };
 
-/**
- * Show result after spin
- */
-Roulette.showResult = function showResult(resultIndex) {
-	const root = this.getRoot();
-	const resultDisplay = root.querySelector('.result-item');
-	if (!resultDisplay) {
-		return;
-	}
-	resultDisplay.innerHTML = '';
-
-	if (_rouletteInfo.items[resultIndex]) {
-		const item = _rouletteInfo.items[resultIndex];
-		const itemId = item.itemId || item.item_id || item.ItemID;
-
-		if (itemId) {
-			Client.loadFile(DB.INTERFACE_PATH + `item/${itemId}.bmp`, function (data) {
-				resultDisplay.style.backgroundImage = `url(${data})`;
-			});
-		}
-	}
+Roulette.showResult = function showResult() {
+	const reward = _rouletteInfo.items.find(item => item.row === _prize?.row && item.position === _prize?.position);
+	setItem(this.getRoot().querySelector('.result-item'), reward);
 };
 
-/**
- * Handle roulette result from server
- */
 Roulette.onResult = function onResult(pkt) {
-	if (pkt.step !== undefined) {
-		_rouletteInfo.step = pkt.step;
+	finishRequest();
+	for (const [field, reply] of [
+		['goldPoint', 'remainGold'],
+		['silverPoint', 'remainSilver'],
+		['bronzePoint', 'remainBronze']
+	]) {
+		if (pkt[reply] !== undefined) {
+			_rouletteInfo[field] = pkt[reply];
+		}
 	}
-
-	if (pkt.idx !== undefined) {
-		_rouletteInfo.idx = pkt.idx;
+	if ((pkt.result === 0 || pkt.result === 3) && hasPrizePosition(pkt)) {
+		_prize = { row: pkt.step, position: pkt.idx, losing: pkt.result === 3 };
+		_nextStep = startingStep();
+		_status = 'Spinning…';
+		this.startSpin(pkt.idx, pkt.step);
+	} else {
+		// The server claims the old prize before checking points for this spin.
+		_prize = null;
+		_nextStep = startingStep();
+		setItem(this.getRoot().querySelector('.result-item'), null);
+		_status = pkt.result === 2 ? 'Not enough roulette points.' : 'The spin failed. Close and reopen to refresh.';
 	}
-
-	if (pkt.remainGold !== undefined) {
-		_rouletteInfo.goldPoint = pkt.remainGold;
-	}
-	if (pkt.remainSilver !== undefined) {
-		_rouletteInfo.silverPoint = pkt.remainSilver;
-	}
-	if (pkt.remainBronze !== undefined) {
-		_rouletteInfo.bronzePoint = pkt.remainBronze;
-	}
-
-	if (pkt.idx !== undefined) {
-		Roulette.startSpin(pkt.idx);
-	}
+	this.updateUI();
 };
 
-/**
- * Handle item received from server
- */
-Roulette.onItemReceived = function onItemReceived(_pkt) {
-	Roulette.updateUI();
+Roulette.onItemReceived = function onItemReceived(pkt) {
+	finishRequest();
+	// rAthena clears the pending prize even when adding it to inventory fails.
+	_prize = null;
+	_nextStep = startingStep();
+	_rouletteInfo.additionItemID = pkt.additionItemID;
+	const messages = [
+		'Prize collected.',
+		'Could not collect the prize.',
+		'Inventory item limit exceeded.',
+		'Inventory weight limit exceeded.'
+	];
+	_status = messages[pkt.result] || messages[1];
+	setItem(this.getRoot().querySelector('.result-item'), null);
+	this.updateUI();
 };
 
-/**
- * Request to receive the roulette item
- */
-Roulette.requestReceiveItem = function requestReceiveItem(condition) {
+Roulette.requestReceiveItem = function requestReceiveItem() {
+	if (isBusy() || !_prize) {
+		return;
+	}
 	const pkt = new PACKET.CZ.RECV_ROULETTE_ITEM();
-	pkt.condition = condition || 0;
-	Network.sendPacket(pkt);
+	pkt.condition = _prize.losing ? 1 : 0;
+	_status = 'Collecting prize…';
+	sendRequest(pkt, 'claim');
 };
 
 /**
