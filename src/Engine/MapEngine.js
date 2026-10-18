@@ -128,6 +128,7 @@ let _mapName = '';
  * @type {boolean} is initialized
  */
 let _isInitialised = false;
+let _mapReady = false;
 
 let _exiting = false;
 let _exitTimer = null;
@@ -154,6 +155,7 @@ class MapEngine {
 	 */
 	static init(ip, port, mapName) {
 		_mapName = mapName;
+		_mapReady = false;
 		_exiting = false;
 		_exitTimer = null;
 
@@ -215,6 +217,8 @@ class MapEngine {
 				// Ping
 				let ping;
 				const SP = Session.ping;
+				SP.pingTime = 0;
+				SP.returned = false;
 
 				if (PACKETVER.value >= 20180307) {
 					ping = new PACKET.CZ.REQUEST_TIME2();
@@ -227,6 +231,11 @@ class MapEngine {
 				Network.setPing(() => {
 					if (is_sec_hbt) {
 						Network.sendPacket(hbt);
+					}
+
+					// The server accepts time requests only after the map-load acknowledgement.
+					if (!_mapReady) {
+						return;
 					}
 
 					ping.clientTime = Date.now() - startTick;
@@ -640,6 +649,10 @@ function onConnectionRefused(pkt) {
  * @param {object} pkt - PACKET.ZC.NPCACK_MAPMOVE
  */
 function onMapChange(pkt) {
+	_mapReady = false;
+	// A map transition can leave an in-flight time request unanswered.
+	Session.ping.pingTime = 0;
+	Session.ping.returned = false;
 	clearQuestEffects();
 
 	MapRenderer.onLoad = () => {
@@ -774,6 +787,7 @@ function onMapChange(pkt) {
 
 		// Map loaded
 		Network.sendPacket(new PACKET.CZ.NOTIFY_ACTORINIT());
+		_mapReady = true;
 
 		// Rates Info
 		if (Session.ratesInfo) {
