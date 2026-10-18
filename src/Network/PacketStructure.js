@@ -10043,6 +10043,19 @@ PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE = function PACKET_ZC_UPDATE_ITEM_FROM_BU
 };
 PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE.size = 10;
 
+// 0x9e6; amount is purchased quantity, not remaining wanted stock.
+PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE2 = function PACKET_ZC_UPDATE_ITEM_FROM_BUYING_STORE2(fp, end) {
+	this.ITID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
+	this.count = fp.readUShort();
+	this.zeny = fp.readULong();
+	this.limitZeny = fp.readULong();
+	this.charId = fp.readULong();
+	this.updateTime = fp.readULong();
+};
+Object.defineProperty(PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE2, 'size', {
+	get: () => (PACKETVER.value >= 20181121 ? 24 : 22)
+});
+
 // 0x81c
 PACKET.ZC.ITEM_DELETE_BUYING_STORE = function PACKET_ZC_ITEM_DELETE_BUYING_STORE(fp, end) {
 	this.index = fp.readShort();

@@ -163,6 +163,24 @@ VendingShop.setType = function setType(type) {
 	_type = type;
 };
 
+/** Apply a buyer notification by item ID, rather than its inventory index. */
+VendingShop.updateBuyingItem = function updateBuyingItem(itemId, count) {
+	if (_type !== VendingShop.Type.BUYING_LIST || count <= 0) {
+		return;
+	}
+	const item = this.getItemById(itemId);
+	if (item) {
+		this.updateItem(item.index, item.count - count);
+	}
+};
+
+/** The server already closed this store; do not send a second close request. */
+VendingShop.closeBuyingStore = function closeBuyingStore() {
+	if (_type === VendingShop.Type.BUYING_LIST) {
+		this.remove();
+	}
+};
+
 /**
  * Remove Inventory from window (and so clean up items)
  */
