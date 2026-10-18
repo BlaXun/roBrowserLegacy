@@ -43,13 +43,13 @@ describe('effect lifetime and attachment direction', () => {
         const definitions = {};
         const merge = load(db.slice(start, end), {
             Ez2streffect: {
-                quiet_loop: { FilePath: 'quiet.str', SoundPath: 'quiet.wav', IsInfinite: true, IsSoundLoop: false },
-                sounding_loop: { FilePath: 'sounding.str', SoundPath: 'sounding.wav', IsInfinite: true, IsSoundLoop: true }
+                quiet_loop: { FilePath: 'quiet.str', SoundPath: 'quiet.wav', IsInfinite: true, IsSoundLoop: 0 },
+                sounding_loop: { FilePath: 'sounding.str', SoundPath: 'sounding.wav', IsInfinite: true, IsSoundLoop: 1 },
+                legacy: { FilePath: 'legacy.str', SoundPath: 'legacy.wav', IsInfinite: true }
             },
             SKID: {}
         });
         merge.mergeEz2Effects(definitions, {});
-        definitions.legacy = [{ type: 'STR', file: 'legacy', wav: 'legacy', repeat: true }];
 
         for (const [name, repeatedSounds, filename] of [
             ['quiet_loop', 1, 'quiet.wav'],
@@ -76,6 +76,39 @@ describe('effect lifetime and attachment direction', () => {
             EffectManager.spam({ effectId: name, position: [0, 0, 0] });
             assert.equal(played.length, repeatedSounds + 1, name + ': fresh independent instance plays');
         }
+    });
+    it('delays only the initial BSON visual cycle', () => {
+        const { StrEffect } = strRenderer();
+        const managerContext = manager({
+            StrEffect, Preferences: { effect: true },
+            Sound: { playPosition() {} },
+            Events: { setTimeout: run => run() }
+        });
+        const { EffectManager, list, EffectDB, Renderer } = managerContext;
+        const db = source('DB/DBManager.js');
+        const definitions = {};
+        const records = { delayed_loop: {
+            FilePath: 'example\\delayed.str', SoundPath: 'effect\\delayed.wav',
+            StartDelayTime: 150, IsInfinite: true, IsSoundLoop: true
+        } };
+        const start = db.indexOf('function loadBSONFile(');
+        const end = db.indexOf('function loadAttendanceFile(');
+        assert.ok(start >= 0 && end > start, 'BSON merge source boundaries');
+        const merge = load(db.slice(start, end), {
+            Ez2streffect: records, SKID: {}, setNamedEffectKeys() {}
+        });
+        merge.mergeEz2Effects(definitions, {});
+        EffectDB.delayed_loop = definitions.delayed_loop;
+        EffectManager.spam({ effectId: 'delayed_loop', position: [0, 0, 0] });
+        const first = list.StrEffect[0];
+        assert.equal(first.startTick, 1150);
+        first.render({}, 1149);
+        assert.equal(first.needCleanUp, undefined);
+        first.render({}, 2150);
+        assert.equal(first.needCleanUp, true);
+        Renderer.tick = 2150;
+        vm.runInContext('repeatEffect(list.StrEffect[0])', managerContext);
+        assert.equal(list.StrEffect[1].startTick, 2150);
     });
     it('stops only the selected effect and owner, including scheduled repeats', () => {
         const { EffectManager, list } = manager();
