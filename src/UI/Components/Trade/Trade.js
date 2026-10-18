@@ -266,7 +266,7 @@ Trade.addItemFromInventory = function addItemFromInventory(index, success) {
 	Client.loadFile(
 		`${DB.INTERFACE_PATH}item/${item.IsIdentified ? it.identifiedResourceName : it.unidentifiedResourceName}.bmp`,
 		data => {
-			const icon = root.querySelector(`.item[data-index="${idx}"] .icon`);
+			const icon = itemDiv.querySelector('.icon');
 			if (icon && icon.closest('.box.send')) {
 				icon.style.backgroundImage = `url(${data})`;
 			}
@@ -307,7 +307,7 @@ Trade.addItem = function addItem(item) {
 	Client.loadFile(
 		`${DB.INTERFACE_PATH}item/${item.IsIdentified ? it.identifiedResourceName : it.unidentifiedResourceName}.bmp`,
 		data => {
-			const icon = root.querySelector(`.item[data-index="${idx}"] .icon`);
+			const icon = itemDiv.querySelector('.icon');
 			if (icon && icon.closest('.box.recv')) {
 				icon.style.backgroundImage = `url(${data})`;
 			}
