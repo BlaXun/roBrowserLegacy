@@ -91,7 +91,7 @@ let _logScheduled = false;
 
 function _scheduleLogCallback(cb) {
 	if (typeof window !== 'undefined' && window.requestIdleCallback) {
-		requestIdleCallback(cb);
+		requestIdleCallback(cb, { timeout: 1000 });
 	} else {
 		setTimeout(() => cb({ timeRemaining: () => 0, didTimeout: true }));
 	}
