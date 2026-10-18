@@ -339,7 +339,7 @@ function onRequestAddItem(index, count) {
 	}
 
 	// You cannot trade more than 10 types of items per trade.
-	if (_send.length >= 10) {
+	if (index !== 0 && _send.length >= 10) {
 		ChatBox.addText(DB.getMessage(297), ChatBox.TYPE.ERROR, ChatBox.FILTER.PUBLIC_LOG);
 		return;
 	}
