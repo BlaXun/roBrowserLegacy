@@ -4818,7 +4818,8 @@ function mergeEz2Effects(EffectTable, SkillEffect) {
 				xOffset: entry.PosX || 0,
 				yOffset: entry.PosY || 0,
 				wav: entry.SoundPath ? entry.SoundPath.replace(/\\/g, '/').replace(/\.wav$/i, '') : null,
-				delayLate: entry.StartDelayTime || 0,
+				soundLoop: entry.IsSoundLoop == null ? undefined : !!entry.IsSoundLoop,
+				delayStart: entry.StartDelayTime || 0,
 				repeat: !!entry.IsInfinite,
 				attachedEntity: true
 			}
