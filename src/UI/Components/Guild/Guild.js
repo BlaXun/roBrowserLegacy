@@ -1012,7 +1012,12 @@ Guild.setGuildInformations = function setGuildInformations(info) {
 	general.querySelector('.exp').classList.toggle('maxlevel', atMaxLevel);
 
 	Guild.updateSession(info);
-	Guild.onRequestGuildEmblem(info.GDID, info.emblemVersion, Guild.setEmblem.bind(this));
+	const owner = Session.Entity;
+	Guild.onRequestGuildEmblem(info.GDID, info.emblemVersion, image => {
+		if (Session.Entity === owner && owner.GUID === info.GDID && owner.GEmblemVer !== 0) {
+			Guild.setEmblem(image);
+		}
+	});
 
 	updateEmblemControls(root);
 	updateDisbandButton(root, getActiveTab(root));
