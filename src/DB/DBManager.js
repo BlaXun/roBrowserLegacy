@@ -77,6 +77,18 @@ let default_HO_AI;
 let default_MER_AI;
 
 /**
+ * Whether the archive ships the halter-lead mounts' own palettes; undefined
+ * until it answers.
+ */
+let mountPalettes;
+
+/**
+ * The sentinel request on its way, if any; `stale` once DB.init has loaded
+ * another client, whose archive it was not asked of.
+ */
+let mountPalettesProbe = null;
+
+/**
  * @const {Array} message string
  */
 const MsgStringTable = [];
@@ -299,6 +311,17 @@ class DB {
 		DB.isLoaded = false;
 		DB.count = 0;
 		DB.index = 0;
+
+		// The client loaded after a server switch may be another archive: ask
+		// it again, and drop the previous answer the file cache keeps by name.
+		// A request still on its way would land in the file cache under that
+		// name: it is dropped once it lands instead.
+		mountPalettes = undefined;
+		if (mountPalettesProbe) {
+			mountPalettesProbe.stale = true;
+		} else {
+			MemoryManager.remove(null, DB.getBodyPalPath(JobId.PIG_CREATOR, 1, 0));
+		}
 
 		// Callback
 		let index = 0,
@@ -708,15 +731,35 @@ class DB {
 
 			// Achievements
 			if (Configs.get('enableAchievements') && PACKETVER.value >= 20150513) {
-				loadLuaValue(
-					'System/achievement_list.lub',
-					'achievement_tbl',
-					function (json) {
-						if (json) {
-							Object.assign(AchievementTable, json);
-						}
-					},
-					onLoad()
+				const onAchievementEnd = onLoad();
+				const addAchievements = json => {
+					if (json) {
+						Object.assign(AchievementTable, json);
+					}
+				};
+				// customAchievementInfo: further achievement tables, loaded after the
+				// base in the order given. Each sets its achievements by id over what
+				// came before, so one can add an achievement or reword an existing one
+				// without carrying the whole table.
+				const customAchievementInfo = Configs.get('customAchievementInfo', []);
+				const loadCustomAchievementInfo = (index = 0) => {
+					if (!Array.isArray(customAchievementInfo) || index >= customAchievementInfo.length) {
+						onAchievementEnd();
+						return;
+					}
+					// Every table is read from the same Lua global, so a file that does
+					// not set it would hand back the table before it a second time.
+					try {
+						lua.doStringSync('achievement_tbl = nil');
+					} catch (error) {
+						console.error('[customAchievementInfo] ', error);
+					}
+					loadLuaValue(customAchievementInfo[index], 'achievement_tbl', addAchievements, () =>
+						loadCustomAchievementInfo(index + 1)
+					);
+				};
+				loadLuaValue('System/achievement_list.lub', 'achievement_tbl', addAchievements, () =>
+					loadCustomAchievementInfo()
 				);
 			}
 
@@ -1404,6 +1447,41 @@ class DB {
 			'/\xbf\xee\xbf\xb5\xc0\xda_' +
 			SexTable[sex]
 		);
+	}
+
+	/**
+	 * Whether the archive ships the halter-lead mounts' own palettes, read off
+	 * a file only those archives have: asked once per archive.
+	 *
+	 * @param {function} onAnswer - called once the archive answers, if it has not yet
+	 * @return {boolean|undefined} undefined until the archive answers
+	 */
+	static hasMountPalettes(onAnswer) {
+		if (mountPalettes === undefined) {
+			const sentinel = DB.getBodyPalPath(JobId.PIG_CREATOR, 1, 0);
+			if (!mountPalettesProbe) {
+				mountPalettesProbe = { stale: false };
+			}
+			const probe = mountPalettesProbe;
+			const answer = present => {
+				if (probe === mountPalettesProbe) {
+					mountPalettesProbe = null;
+					if (probe.stale) {
+						// It answered for the previous client: onAnswer asks this one.
+						MemoryManager.remove(null, sentinel);
+					} else {
+						mountPalettes = present;
+					}
+				}
+				onAnswer();
+			};
+			Client.loadFile(
+				sentinel,
+				() => answer(true),
+				() => answer(false)
+			);
+		}
+		return mountPalettes;
 	}
 
 	/**
@@ -3389,6 +3467,8 @@ class DB {
 
 			case JobId.GUNSLINGER:
 			case JobId.NINJA:
+			case JobId.DRUID:
+			case JobId.DRUID_B:
 			case JobId.TAEKWON:
 				return 'Expanded_First_Class';
 
@@ -3425,6 +3505,8 @@ class DB {
 			case JobId.LINKER:
 			case JobId.KAGEROU:
 			case JobId.OBORO:
+			case JobId.KARNOS:
+			case JobId.KARNOS_B:
 			case JobId.REBELLION:
 				return 'Expanded_Second_Class';
 
@@ -3490,6 +3572,7 @@ class DB {
 			case JobId.NIGHT_WATCH:
 			case JobId.HYPER_NOVICE:
 			case JobId.SPIRIT_HANDLER:
+			case JobId.ALITEA:
 			case JobId.SKY_EMPEROR2:
 				return 'Fourth_Class';
 
@@ -4735,7 +4818,8 @@ function mergeEz2Effects(EffectTable, SkillEffect) {
 				xOffset: entry.PosX || 0,
 				yOffset: entry.PosY || 0,
 				wav: entry.SoundPath ? entry.SoundPath.replace(/\\/g, '/').replace(/\.wav$/i, '') : null,
-				delayLate: entry.StartDelayTime || 0,
+				soundLoop: entry.IsSoundLoop == null ? undefined : !!entry.IsSoundLoop,
+				delayStart: entry.StartDelayTime || 0,
 				repeat: !!entry.IsInfinite,
 				attachedEntity: true
 			}

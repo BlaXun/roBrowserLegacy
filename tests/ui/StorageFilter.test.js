@@ -1,53 +1,46 @@
+/**
+ * tests/ui/StorageFilter.test.js
+ *
+ * The window the expanded Storage opens for a filter tab or a search.
+ */
 import { describe, expect, it, vi } from 'vitest';
 
-/**
- * StorageFilter inherits from GUIComponent, which is an ES6 class. It must not
- * be constructed by calling the parent as a function, because calling a class
- * without `new` is a TypeError and takes the storage search down with it.
- *
- * The real GUIComponent is used deliberately -- it is the half of the
- * relationship under test. Only StorageFilter's other imports are stubbed.
- */
-
+vi.mock('UI/CursorManager.js', () => ({ default: { ACTION: {}, getActualType: vi.fn(), setType: vi.fn() } }));
 vi.mock('DB/DBManager.js', () => ({
 	default: {
 		INTERFACE_PATH: '',
-		getItemInfo: () => ({ identifiedResourceName: '', unidentifiedResourceName: '' }),
-		getItemName: () => '',
-		getMessage: () => ''
+		getItemInfo: () => ({ identifiedResourceName: 'apple' }),
+		getItemName: item => item.name
 	}
 }));
-vi.mock('Core/Client.js', () => ({ default: { loadFile: () => {} } }));
-vi.mock('Core/Preferences.js', () => ({
-	default: { get: (name, defaults) => ({ ...defaults, save: () => {} }) }
-}));
-vi.mock('Renderer/Renderer.js', () => ({ default: { width: 800, height: 600 } }));
-vi.mock('Controls/MouseEventHandler.js', () => ({ default: { screen: { x: 0, y: 0 } } }));
+vi.mock('Core/Client.js', () => ({ default: { loadFile: vi.fn(), loadFiles: vi.fn() } }));
+vi.mock('Core/Preferences.js', () => ({ default: { get: (_name, defaults) => ({ ...defaults, save: vi.fn() }) } }));
+vi.mock('Renderer/Renderer.js', () => ({ default: { width: 1200, height: 800 } }));
+vi.mock('Renderer/EntityManager.js', () => ({ default: { setOverEntity: vi.fn() } }));
+vi.mock('UI/Scrollbar.js', () => ({ default: {} }));
 vi.mock('UI/Elements/Elements.js', () => ({}));
-vi.mock('UI/Components/ItemInfo/ItemInfo.js', () => ({
-	default: { uid: -1, append: () => {}, remove: () => {}, setItem: () => {} }
-}));
+vi.mock('UI/Components/ItemInfo/ItemInfo.js', () => ({ default: {} }));
 
-import GUIComponent from 'UI/GUIComponent.js';
-import StorageFilter from 'UI/Components/Storage/StorageV3/StorageFilter.js';
+const GUIComponent = (await import('UI/GUIComponent.js')).default;
+const StorageFilter = (await import('UI/Components/Storage/StorageV3/StorageFilter.js')).default;
 
 describe('StorageFilter', () => {
-	it('can be constructed', () => {
-		expect(() => new StorageFilter(0)).not.toThrow();
+	it('builds as a GUIComponent', () => {
+		const filter = new StorageFilter(99);
+
+		expect(filter).toBeInstanceOf(GUIComponent);
+		expect(filter.name).toBe('StorageFilter_99');
 	});
 
-	it('is a GUIComponent', () => {
-		expect(new StorageFilter(0)).toBeInstanceOf(GUIComponent);
-	});
+	it('lists the items it is given under its title', () => {
+		const filter = new StorageFilter(99);
+		filter.prepare();
 
-	it('keeps its own name per tab', () => {
-		expect(new StorageFilter(3).name).toBe('StorageFilter_3');
-	});
+		filter.setItems('Search', [{ index: 2, ITID: 512, count: 3, IsIdentified: true, name: 'Apple' }], 99);
 
-	it('still carries the prototype methods and mouse mode', () => {
-		const filter = new StorageFilter(0);
-		expect(typeof filter.setItems).toBe('function');
-		expect(typeof filter.renderItem).toBe('function');
-		expect(filter.mouseMode).toBe(GUIComponent.MouseMode.STOP);
+		const root = filter.getRoot();
+		expect(root.querySelector('.titlebar .text').textContent).toBe('Search');
+		expect(root.querySelector('.item[data-index="2"] .name').textContent).toBe('Apple');
+		expect(root.querySelector('.item[data-index="2"] .count').textContent).toBe('3');
 	});
 });

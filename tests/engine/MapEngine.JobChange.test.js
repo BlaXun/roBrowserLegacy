@@ -23,16 +23,34 @@ const stub = vi.hoisted(() => () => ({ default: {} }));
 vi.mock('Network/NetworkManager.js', () => ({
 	default: { hookPacket: (struct, fn) => mocks.hooks.set(struct, fn), sendPacket: vi.fn() }
 }));
+// A controller, as UIVersionManager.getUIController makes them: what it does not
+// have itself is passed on to the selected window.
+const controller = vi.hoisted(() => (own, selected) =>
+	new Proxy(own, {
+		get: (target, prop) => (prop in target ? target[prop] : selected()[prop]),
+		set: (target, prop, value) => {
+			(prop in target ? target : selected())[prop] = value;
+			return true;
+		}
+	})
+);
 vi.mock('UI/Components/BasicInfo/BasicInfo.js', () => ({
-	default: {
-		getUI: () => mocks.uiAfterSwitch || mocks.ui,
-		selectUIVersionWithJob: vi.fn(() => {
-			mocks.uiAfterSwitch = mocks.switchTo || null;
-		})
-	}
+	default: controller(
+		{
+			getUI: () => mocks.uiAfterSwitch || mocks.ui,
+			selectUIVersionWithJob: vi.fn(() => {
+				mocks.uiAfterSwitch = mocks.switchTo || null;
+			})
+		},
+		() => mocks.uiAfterSwitch || mocks.ui
+	)
 }));
-vi.mock('UI/Components/SkillList/SkillList.js', () => ({ default: { getUI: () => mocks.skillList } }));
-vi.mock('UI/Components/WinStats/WinStats.js', () => ({ default: { getUI: () => ({ update: vi.fn() }) } }));
+vi.mock('UI/Components/SkillList/SkillList.js', () => ({
+	default: controller({ getUI: () => mocks.skillList }, () => mocks.skillList)
+}));
+vi.mock('UI/Components/WinStats/WinStats.js', () => ({
+	default: controller({ getUI: () => ({ update: vi.fn() }) }, () => ({ update: vi.fn() }))
+}));
 vi.mock('DB/DBManager.js', () => ({ default: { getJobClass: job => (job >= 4252 ? 'Fourth_Class' : 'default') } }));
 vi.mock('Renderer/EntityManager.js', () => ({ default: { get: () => mocks.entity, forEach: vi.fn() } }));
 vi.mock('Renderer/Entity/Entity.js', () => ({

@@ -6196,7 +6196,7 @@ PACKET.ZC.GUILD_INFO.size = 110;
 PACKET.ZC.GUILD_EMBLEM_IMG = function PACKET_ZC_GUILD_EMBLEM_IMG(fp, end) {
 	this.GDID = fp.readLong();
 	this.emblemVersion = fp.readLong();
-	this.img = new Uint8Array(fp.buffer, fp.offset, end - fp.offset);
+	this.img = new Uint8Array(fp.view.buffer, fp.view.byteOffset + fp.offset, end - fp.offset);
 };
 PACKET.ZC.GUILD_EMBLEM_IMG.size = -1;
 
@@ -6737,9 +6737,9 @@ PACKET.ZC.PROPERTY_PET.size = 37;
 // 0x1a3
 PACKET.ZC.FEED_PET = function PACKET_ZC_FEED_PET(fp, end) {
 	this.cRet = fp.readChar();
-	this.ITID = fp.readUShort();
+	this.ITID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 };
-PACKET.ZC.FEED_PET.size = 5;
+PACKET.ZC.FEED_PET.size = PACKETVER.value >= 20181121 ? 7 : 5;
 
 // 0x1a4
 PACKET.ZC.CHANGESTATE_PET = function PACKET_ZC_CHANGESTATE_PET(fp, end) {
@@ -7812,9 +7812,9 @@ PACKET.ZC.PROPERTY_HOMUN.size = 71;
 //0x22f
 PACKET.ZC.FEED_MER = function PACKET_ZC_FEED_MER(fp, end) {
 	this.cRet = fp.readChar();
-	this.ITID = fp.readUShort();
+	this.ITID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 };
-PACKET.ZC.FEED_MER.size = 5;
+PACKET.ZC.FEED_MER.size = PACKETVER.value >= 20181121 ? 7 : 5;
 
 // 0x230
 PACKET.ZC.CHANGESTATE_MER = function PACKET_ZC_CHANGESTATE_MER(fp, end) {
@@ -9770,6 +9770,15 @@ PACKET.ZC.PLAY_NPC_BGM = function PACKET_ZC_PLAY_NPC_BGM(fp, end) {
 };
 PACKET.ZC.PLAY_NPC_BGM.size = 26;
 
+// 0xb8c: what servers send in place of 0x7fe from 2022-05-04 clients on
+// (rAthena: PACKETVER_MAIN_NUM >= 20220504). A play type, then the name, of
+// any length. The name is a file name, so it is read as bytes, as 0x7fe reads it.
+PACKET.ZC.PLAY_NPC_BGM2 = function PACKET_ZC_PLAY_NPC_BGM2(fp, end) {
+	this.playType = fp.readUChar();
+	this.Bgm = fp.readBinaryString(end - fp.tell());
+};
+PACKET.ZC.PLAY_NPC_BGM2.size = -1;
+
 // 0x7ff
 PACKET.ZC.DEFINE_CHECK = function PACKET_ZC_DEFINE_CHECK(fp, end) {
 	this.Result = fp.readLong();
@@ -10033,6 +10042,19 @@ PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE = function PACKET_ZC_UPDATE_ITEM_FROM_BU
 	this.limitZeny = fp.readLong();
 };
 PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE.size = 10;
+
+// 0x9e6; amount is purchased quantity, not remaining wanted stock.
+PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE2 = function PACKET_ZC_UPDATE_ITEM_FROM_BUYING_STORE2(fp, end) {
+	this.ITID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
+	this.count = fp.readUShort();
+	this.zeny = fp.readULong();
+	this.limitZeny = fp.readULong();
+	this.charId = fp.readULong();
+	this.updateTime = fp.readULong();
+};
+Object.defineProperty(PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE2, 'size', {
+	get: () => (PACKETVER.value >= 20181121 ? 24 : 22)
+});
 
 // 0x81c
 PACKET.ZC.ITEM_DELETE_BUYING_STORE = function PACKET_ZC_ITEM_DELETE_BUYING_STORE(fp, end) {

@@ -294,17 +294,17 @@ function onMinimapMarker(pkt) {
 	switch (pkt.type) {
 		// Add a mark for 15 seconds
 		case 0:
-			MiniMap.getUI().addNpcMark(pkt.id, pkt.xPos, pkt.yPos, pkt.color, 15000);
+			MiniMap.addNpcMark(pkt.id, pkt.xPos, pkt.yPos, pkt.color, 15000);
 			break;
 
 		// Add a mark
 		case 1:
-			MiniMap.getUI().addNpcMark(pkt.id, pkt.xPos, pkt.yPos, pkt.color, Infinity);
+			MiniMap.addNpcMark(pkt.id, pkt.xPos, pkt.yPos, pkt.color, Infinity);
 			break;
 
 		// Remove a mark
 		case 2:
-			MiniMap.getUI().removeNpcMark(pkt.id);
+			MiniMap.removeNpcMark(pkt.id);
 			break;
 	}
 }
@@ -364,7 +364,7 @@ function onSound(pkt) {
 /**
  * Received bgm from npc
  *
- * @param {object} pkt - PACKET.ZC.PLAY_NPC_BGM
+ * @param {object} pkt - PACKET.ZC.PLAY_NPC_BGM or PACKET.ZC.PLAY_NPC_BGM2
  */
 function onBGM(pkt) {
 	if (!pkt.Bgm.match(/\.mp3$/i)) {
@@ -416,6 +416,7 @@ export default function NPCEngine() {
 	Network.hookPacket(PACKET.ZC.PROGRESS_CANCEL, onProgressBarStop);
 	Network.hookPacket(PACKET.ZC.SOUND, onSound);
 	Network.hookPacket(PACKET.ZC.PLAY_NPC_BGM, onBGM);
+	Network.hookPacket(PACKET.ZC.PLAY_NPC_BGM2, onBGM);
 	Network.hookPacket(PACKET.ZC.CLOSE_SCRIPT, onCloseScript);
 	Network.hookPacket(PACKET.ZC.DYNAMICNPC_CREATE_RESULT, onDynamicNPCCreateRequest);
 }

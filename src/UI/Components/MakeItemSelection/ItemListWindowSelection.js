@@ -120,14 +120,14 @@ ItemListWindowSelection.init = function init() {
 
 	this.draggable(root.querySelector('.titlebar'));
 
-	this.setList(Inventory.getUI().list);
+	this.setList(Inventory.list);
 };
 
 /**
  * Apply preferences once append to body
  */
 ItemListWindowSelection.onAppend = function OnAppend() {
-	this.setList(Inventory.getUI().list);
+	this.setList(Inventory.list);
 	ConvertItems.append();
 };
 

@@ -37,6 +37,15 @@ let _buffer = null;
 const _bufferData = new Float32Array(4 * 4);
 
 /**
+ * The classes that share _program and _buffer: StrEffect and its subclasses
+ * (FootprintStrEffect). EffectManager keeps a list per class and calls the
+ * class's free() when its list empties, so the shared resources go only once
+ * no class is using them; freeing them for one class while another still draws
+ * leaves that one with a null program.
+ */
+const _users = new Set();
+
+/**
  * @var mat4 matrix to generate rotation
  */
 const _matrix = mat4.create();
@@ -462,6 +471,7 @@ class StrEffect {
 		D3DBLEND[14] = gl.CONSTANT_COLOR;
 		D3DBLEND[15] = gl.ONE_MINUS_CONSTANT_ALPHA;
 
+		_users.add(this);
 		this.ready = true;
 	}
 
@@ -471,6 +481,12 @@ class StrEffect {
 	 * @param {object} webgl context
 	 */
 	static free(gl) {
+		this.ready = false;
+		_users.delete(this);
+		if (_users.size) {
+			return;
+		}
+
 		if (_program) {
 			gl.deleteProgram(_program);
 			_program = null;
@@ -480,8 +496,6 @@ class StrEffect {
 			gl.deleteBuffer(_buffer);
 			_buffer = null;
 		}
-
-		this.ready = false;
 	}
 
 	/**

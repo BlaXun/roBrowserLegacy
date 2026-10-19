@@ -91,3 +91,35 @@ describe('a drag out of a window', () => {
 		inventory._host.dispatchEvent(new Event('mouseleave'));
 	});
 });
+
+
+it('honors an opt-in drag guard while an ordinary window still moves', () => {
+	const frames=[];
+	vi.stubGlobal('requestAnimationFrame', callback=>frames.push(callback));
+	vi.stubGlobal('cancelAnimationFrame',()=>{});
+	const box=window_(()=>false);
+	box._host.style.left='100px';
+	box.draggable();
+	box.canStartDrag=()=>false;
+	const start=new MouseEvent('mousedown',{button:0,bubbles:true});
+	Object.defineProperty(start,'which',{value:1});
+	Mouse.screen.x=100;Mouse.screen.y=100;
+	box._host.dispatchEvent(start);
+	Mouse.screen.x=250;Mouse.screen.y=200;
+	frames.splice(0).forEach(callback=>callback());
+	expect(box._host.style.left).toBe('100px');
+	const stop=new MouseEvent('mouseup',{button:0});
+	Object.defineProperty(stop,'which',{value:1});
+	window.dispatchEvent(stop);
+	const ordinary=window_(()=>false);
+	ordinary._host.style.left='100px';
+	ordinary.draggable();
+	Mouse.screen.x=100;Mouse.screen.y=100;
+	ordinary._host.dispatchEvent(start);
+	Mouse.screen.x=220;Mouse.screen.y=200;
+	frames.splice(0).forEach(callback=>callback());
+	expect(ordinary._host.style.left).not.toBe('100px');
+	window.dispatchEvent(stop);
+	box.remove();ordinary.remove();
+	vi.unstubAllGlobals();
+});

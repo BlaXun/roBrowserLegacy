@@ -98,9 +98,7 @@ CartItems.init = function Init() {
 	this._host.addEventListener('drop', onDrop);
 	this._host.addEventListener('dragover', e => {
 		e.stopImmediatePropagation();
-		// A drop only fires on a target whose dragover cancelled the event.
-		// Without this the cart is never a drop target and onDrop never runs.
-		e.preventDefault();
+		e.preventDefault(); // without it the browser never fires 'drop' here
 	});
 
 	// Items event (delegation)
@@ -598,7 +596,7 @@ function onDrop(event) {
 					break;
 
 				case 'Inventory':
-					Inventory.getUI().reqMoveItemToCart(item.index, parseInt(count, 10));
+					Inventory.reqMoveItemToCart(item.index, parseInt(count, 10));
 					break;
 			}
 		};
@@ -611,7 +609,7 @@ function onDrop(event) {
 			break;
 
 		case 'Inventory':
-			Inventory.getUI().reqMoveItemToCart(item.index, 1);
+			Inventory.reqMoveItemToCart(item.index, 1);
 			break;
 	}
 
@@ -767,10 +765,10 @@ function onItemInfo(event) {
 	ItemInfo.setItem(item);
 
 	// Check if there is an equipped item in the same location
-	const compareItem = Equipment.getUI().isInEquipList(item.location);
+	const compareItem = Equipment.isInEquipList(item.location);
 
 	// If a comparison item is found, display comparison
-	if (compareItem && Inventory.getUI().itemcomp) {
+	if (compareItem && Inventory.itemcomp) {
 		ItemCompare.prepare();
 		ItemCompare.append();
 		ItemCompare.uid = compareItem.ITID;
@@ -784,10 +782,14 @@ function onItemInfo(event) {
  * Alt Right Click Request Transfer
  */
 function transferItemToOtherUI(item) {
-	const storageUI = Storage.getUI();
-	const inventoryUI = Inventory.getUI();
-	const isStorageOpen = storageUI._host ? storageUI._host.style.display !== 'none' : false;
-	const isInventoryOpen = inventoryUI._host ? inventoryUI._host.style.display !== 'none' : false;
+	const storageUI = Storage;
+	const inventoryUI = Inventory;
+	const isStorageOpen = storageUI._host
+		? storageUI._host.isConnected && storageUI._host.style.display !== 'none'
+		: false;
+	const isInventoryOpen = inventoryUI._host
+		? inventoryUI._host.isConnected && inventoryUI._host.style.display !== 'none'
+		: false;
 
 	if (!item) {
 		return false;
