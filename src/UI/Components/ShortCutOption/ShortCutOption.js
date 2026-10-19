@@ -45,7 +45,8 @@ const JOY_CHECKBOXES = [
 	'joyAimHideCursor',
 	'joyReverseStick',
 	'joyAutoHide',
-	'joyDisableVirtualMouse'
+	'joyDisableVirtualMouse',
+	'joyUIFocus'
 ];
 
 const ShortCutOption = new GUIComponent('ShortCutOption', cssText);
@@ -180,6 +181,7 @@ ShortCutOption.init = function () {
 	bindChange('.joyReverseStick', onUpdateReverseStick);
 	bindChange('.joyAutoHide', onUpdateAutoHide);
 	bindChange('.joyDisableVirtualMouse', onUpdateDisableVirtualMouse);
+	bindChange('.joyUIFocus', onUpdateUIFocus);
 
 	const resetBtn = root.querySelector('.button.reset');
 	if (resetBtn) {
@@ -531,25 +533,25 @@ function onUpdateTargetOption() {
 const MAPPING_ROLES = [
 	[
 		ButtonMap.BUTTON.A,
-		'Click / confirm - selected NPC: talk, selected player: shop or menu (Support radial: cast the waiting skill on the chosen member)'
+		'Click / confirm - selected NPC: talk, selected player: shop or menu (Support radial: cast the waiting skill on the chosen member) - menus: press, use, equip'
 	],
 	[
 		ButtonMap.BUTTON.B,
-		'Right click (hold on item/skill: options) - Support radial: close it, or cancel the waiting skill - player menu: close it'
+		'Right click (hold on item/skill: options) - Support radial: close it, or cancel the waiting skill - menus: back, cancel, close'
 	],
 	[ButtonMap.BUTTON.X, 'Attack target'],
-	[ButtonMap.BUTTON.Y, 'Pick up item'],
+	[ButtonMap.BUTTON.Y, 'Pick up item - menus: item / skill info'],
 	[ButtonMap.BUTTON.LEFT, 'Previous target (Support: party member; grid left on items)'],
 	[ButtonMap.BUTTON.RIGHT, 'Next target (Support: party member, lowest HP first; grid right on items)'],
-	[ButtonMap.BUTTON.UP, 'Previous target category (up in item grids and NPC menus)'],
-	[ButtonMap.BUTTON.DOWN, 'Next target category (down in item grids and NPC menus)'],
+	[ButtonMap.BUTTON.UP, 'Previous target category (menus: move up)'],
+	[ButtonMap.BUTTON.DOWN, 'Next target category (menus: move down)'],
 	[ButtonMap.BUTTON.LS, 'Tap: clear target - Hold: sit / stand'],
 	[
 		ButtonMap.BUTTON.RS,
 		() => (Controls.joyAimEnabled ? 'Tap: right stick aim/cursor - Hold: recenter cursor' : 'Recenter cursor')
 	],
 	[ButtonMap.BUTTON.MENU, 'Tap: Enter - Hold: emotes'],
-	[ButtonMap.BUTTON.VIEW, 'Camera & menu modifier'],
+	[ButtonMap.BUTTON.VIEW, 'Tap: menu navigation - Hold: info at the cursor - Camera & window modifier'],
 	[ButtonMap.BUTTON.LB, 'Shortcuts: skill bar 1, slots 1-4'],
 	[ButtonMap.BUTTON.LT, 'Shortcuts: skill bar 1, slots 5-8'],
 	[ButtonMap.BUTTON.RB, 'Shortcuts: skill bar 2, slots 1-4'],
@@ -578,7 +580,13 @@ function getMappingCombos() {
 		[n(B.VIEW) + ' + ' + n(B.LT) + ' / ' + n(B.RT), 'Turn camera 90 degrees left / right'],
 		[n(B.VIEW) + ' + ' + n(B.MENU), 'Escape'],
 		[n(B.VIEW) + ' + ' + [n(B.A), n(B.B), n(B.X), n(B.Y)].join(' / '), 'Inventory / equipment / skills / status'],
-		[n(B.VIEW) + ' (cursor on item/skill)', 'Context menu'],
+		[n(B.VIEW) + ' (hold, cursor on item/skill)', 'Item / skill info'],
+		[n(B.VIEW) + ' (tap)', 'Menu navigation on / off'],
+		[
+			[n(B.UP), n(B.DOWN), n(B.LEFT), n(B.RIGHT)].join(' / ') + ' (menus)',
+			'Move between buttons, items and windows'
+		],
+		[n(B.LT) + ' / ' + n(B.RT) + ' (tap, menus)', 'Previous / next window'],
 		[
 			n(B.LB) + ' / ' + n(B.RB) + ' / ' + n(B.LT) + ' / ' + n(B.RT) + ' + ' + faces + ' (hold)',
 			'Support: the support skill on yourself'
@@ -829,6 +837,11 @@ function onUpdateReverseStick() {
 
 function onUpdateDisableVirtualMouse() {
 	Controls.joyDisableVirtualMouse = !!this.checked;
+	Controls.save();
+}
+
+function onUpdateUIFocus() {
+	Controls.joyUIFocus = !!this.checked;
 	Controls.save();
 }
 

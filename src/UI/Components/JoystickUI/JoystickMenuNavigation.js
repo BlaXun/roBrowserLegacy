@@ -7,6 +7,9 @@
  * open, the D-pad steps through its visible buttons: the virtual cursor
  * moves onto the button and it shows its hover image, so A (a click at the
  * cursor) presses it.
+ *
+ * With menu navigation on (Settings > Gamepad, JoystickUIFocus) these menus
+ * are navigated there, with every other window; this covers it turned off.
  */
 
 import UIManager from 'UI/UIManager.js';

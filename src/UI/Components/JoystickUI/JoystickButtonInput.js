@@ -15,6 +15,7 @@ import SetManager from './JoystickSetManager.js';
 import JoystickUIRenderer from './JoystickUIRenderer.js';
 import SelectionUI from './JoystickSelectionUI.js';
 import ControlsSettings from 'Preferences/Controls.js';
+import UIFocus from './JoystickUIFocus.js';
 
 let clickLock = false;
 const lockTimeout = 200;
@@ -41,6 +42,10 @@ let menuHoldFired = false;
 // belonged to the grid, and must not reach the map as a click until it is let go.
 const GRID_BUTTONS = [0, 1, 2, 3, 4, 5];
 let gridHeld = [];
+
+// A, B, X, Y and the D-pad: in menus (JoystickUIFocus) they are the menus', and one still held
+// when menus end is not the map's until let go
+const MENU_BUTTONS = [0, 1, 2, 3, 12, 13, 14, 15];
 
 function setClickLock() {
 	clickLock = true;
@@ -85,21 +90,42 @@ const ButtonInput = {
 
 		JoystickUIRenderer.updateVisuals(buttons);
 
+		// What the map may use: not what menu navigation has
+		const world = this._withoutMenuButtons(buttons);
+
 		// special buttons
-		pressed |= this._handleSpecial(buttons);
+		pressed |= this._handleSpecial(buttons, world);
 
 		// set switching
 		pressed |= this._handleSetChange(buttons);
 
 		if (!pressed) {
 			// basic actions (Left Click, Attack, etc)
-			pressed |= this._handleWorldActions(buttons);
+			pressed |= this._handleWorldActions(world);
 
-			// skills/items
+			// skills/items: shortcut combos work in menus too
 			pressed |= this._handleShortcuts(buttons);
 		}
 
 		return pressed;
+	},
+
+	/**
+	 * The button states with A, B, X, Y and the D-pad let go while menu
+	 * navigation has them (JoystickUIFocus): it reads them itself, every frame.
+	 */
+	_withoutMenuButtons: function (buttons) {
+		let out = buttons;
+		for (let i = 0; i < MENU_BUTTONS.length; i++) {
+			const index = MENU_BUTTONS[i];
+			if (buttons[index] && buttons[index] !== 'unpressed' && UIFocus.isClaimed(index)) {
+				if (out === buttons) {
+					out = buttons.slice();
+				}
+				out[index] = 'unpressed';
+			}
+		}
+		return out;
 	},
 
 	_handleWorldActions: function (btn) {
@@ -261,7 +287,13 @@ const ButtonInput = {
 		return false;
 	},
 
-	_handleSpecial: function (buttons) {
+	/**
+	 * View combos, and the D-pad.
+	 *
+	 * @param {Array<string>} buttons button states
+	 * @param {Array<string>} [world] the same without what menu navigation has
+	 */
+	_handleSpecial: function (buttons, world = buttons) {
 		let pressed = false;
 		const selectPressed = buttons[8] === 'holding';
 
@@ -303,9 +335,8 @@ const ButtonInput = {
 			} else if (buttons[3] === 'pressed') {
 				Interaction.toggleWindow('WinStats');
 				pressed = true;
-			} else {
-				pressed = Interaction.showinfo();
 			}
+			// View alone: a tap is menu navigation, a hold the info at the cursor (JoystickUIFocus)
 
 			if (pressed) {
 				setClickLock();
@@ -313,20 +344,20 @@ const ButtonInput = {
 			}
 		}
 
-		// D-Pad
-		if (buttons[12] !== 'unpressed') {
+		// D-Pad (in menus, JoystickUIFocus moves the focus with it)
+		if (world[12] !== 'unpressed') {
 			// D-pad Up: previous target category (or a window's own navigation)
 			Interaction.navigateDpad('up');
 			pressed = true;
-		} else if (buttons[13] !== 'unpressed') {
+		} else if (world[13] !== 'unpressed') {
 			// D-pad Down: next target category (or a window's own navigation)
 			Interaction.navigateDpad('down');
 			pressed = true;
-		} else if (buttons[14] !== 'unpressed') {
+		} else if (world[14] !== 'unpressed') {
 			// D-pad Left: cycle to the previous nearby mob/item (or grid nav over a UI)
 			Interaction.cycleTarget('prev');
 			pressed = true;
-		} else if (buttons[15] !== 'unpressed') {
+		} else if (world[15] !== 'unpressed') {
 			// D-pad Right: cycle to the next nearby mob/item (or grid nav over a UI)
 			Interaction.cycleTarget('next');
 			pressed = true;
