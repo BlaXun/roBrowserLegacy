@@ -4377,38 +4377,27 @@ PACKET.CZ.SEARCH_STORE_INFO = function PACKET_CZ_SEARCH_STORE_INFO() {
 	this.StoreType = 0;
 	this.maxPrice = 0;
 	this.minPrice = 0;
-	this.ItemIDList = 0;
-	this.CardIDList = 0;
+	this.ItemIDList = [];
+	this.CardIDList = [];
 };
 PACKET.CZ.SEARCH_STORE_INFO.prototype.build = function () {
-	let i, count, offset;
 	const ver = this.getPacketVersion();
-	const pkt = new BinaryWriter(ver[2]);
-
+	const width = PACKETVER.value >= 20181121 ? 4 : 2;
+	const length = ver[9] + width * (this.ItemIDList.length + this.CardIDList.length);
+	const pkt = new BinaryWriter(length);
 	pkt.writeShort(ver[1]);
-	pkt.view.setInt16(
-		ver[3],
-		2 + 2 + 1 + 4 + 4 + 1 + 1 + this.ItemIDList.length * 2 + this.CardIDList.length * 2,
-		true
-	);
-	pkt.view.setUint8(ver[4], this.StoreType, true);
+	pkt.view.setUint16(ver[3], length, true);
+	pkt.view.setUint8(ver[4], this.StoreType);
 	pkt.view.setUint32(ver[5], this.maxPrice, true);
 	pkt.view.setUint32(ver[6], this.minPrice, true);
-	pkt.view.setUint8(ver[7], this.ItemIDList.length, true);
-	pkt.view.setUint8(ver[8], this.CardIDList.length, true);
-
-	offset = ver[9];
-
-	for (i = 0, count = this.ItemIDList.length; i < count; ++i) {
-		pkt.view.setUint16(offset, this.ItemIDList[i], true);
-		offset += 2;
+	pkt.view.setUint8(ver[7], this.ItemIDList.length);
+	pkt.view.setUint8(ver[8], this.CardIDList.length);
+	let offset = ver[9];
+	for (const id of [...this.ItemIDList, ...this.CardIDList]) {
+		if (width === 4) pkt.view.setUint32(offset, id, true);
+		else pkt.view.setUint16(offset, id, true);
+		offset += width;
 	}
-
-	for (i = 0, count = this.CardIDList.length; i < count; ++i) {
-		pkt.view.setUint16(offset, this.CardIDList[i], true);
-		offset += 2;
-	}
-
 	return pkt;
 };
 
@@ -4440,13 +4429,13 @@ PACKET.CZ.SSILIST_ITEM_CLICK = function PACKET_CZ_SSILIST_ITEM_CLICK() {
 };
 PACKET.CZ.SSILIST_ITEM_CLICK.prototype.build = function () {
 	const ver = this.getPacketVersion();
-	const pkt = new BinaryWriter(ver[2]);
-
+	const modern = PACKETVER.value >= 20181121;
+	const pkt = new BinaryWriter(modern ? 14 : 12);
 	pkt.writeShort(ver[1]);
-	pkt.view.setUint32(ver[3], this.AID, true);
-	pkt.view.setULong(ver[4], this.SSI_ID, true);
-	pkt.view.setUShort(ver[5], this.ITID, true);
-
+	pkt.writeULong(this.AID);
+	pkt.writeULong(this.SSI_ID);
+	if (modern) pkt.writeULong(this.ITID);
+	else pkt.writeUShort(this.ITID);
 	return pkt;
 };
 
@@ -10181,6 +10170,35 @@ PACKET.ZC.SEARCH_STORE_INFO_ACK = function PACKET_ZC_SEARCH_STORE_INFO_ACK(fp, e
 	})();
 };
 PACKET.ZC.SEARCH_STORE_INFO_ACK.size = -1;
+
+// 0x0b64: modern store-search rows, main clients from 2020-09-16.
+PACKET.ZC.SEARCH_STORE_INFO_ACK2 = function PACKET_ZC_SEARCH_STORE_INFO_ACK2(fp, end) {
+	this.IsFirstPage = fp.readUChar();
+	this.IsNexPage = fp.readUChar();
+	this.RemainedSearchCnt = fp.readUChar();
+	this.SSI_List = [];
+	while (fp.tell() + 142 <= end) {
+		const item = {};
+		item.SSI_ID = fp.readULong();
+		item.AID = fp.readULong();
+		item.StoreName = fp.readString(80);
+		item.ITID = fp.readULong();
+		item.type = fp.readUChar();
+		item.price = fp.readULong();
+		item.count = fp.readUShort();
+		item.slot = {};
+		for (let i = 1; i <= 4; i++) item.slot[`card${i}`] = fp.readULong();
+		item.Options = [];
+		for (let i = 1; i <= 5; i++) {
+			item.Options[i] = { index: fp.readShort(), value: fp.readShort(), param: fp.readUChar() };
+		}
+		item.RefiningLevel = fp.readUChar();
+		item.enchantgrade = fp.readUChar();
+		item.IsIdentified = 1;
+		this.SSI_List.push(item);
+	}
+};
+PACKET.ZC.SEARCH_STORE_INFO_ACK2.size = -1;
 
 // 0x837
 PACKET.ZC.SEARCH_STORE_INFO_FAILED = function PACKET_ZC_SEARCH_STORE_INFO_FAILED(fp, end) {

@@ -106,6 +106,7 @@ import PetEngine from './MapEngine/Pet.js';
 import HomunEngine from './MapEngine/Homun.js';
 import MercenaryEngine from './MapEngine/Mercenary.js';
 import StoreEngine from './MapEngine/Store.js';
+import StoreSearchEngine, { resetStoreSearch } from './MapEngine/StoreSearch.js';
 import TradeEngine from './MapEngine/Trade.js';
 import FriendsEngine from './MapEngine/Friends.js';
 import UIOpenEngine, { openPendingUI } from './MapEngine/UIOpen.js';
@@ -154,6 +155,8 @@ class MapEngine {
 	 * @param {string} mapName
 	 */
 	static init(ip, port, mapName) {
+		resetStoreSearch(true);
+		Network.onDisconnect = onMapDisconnect;
 		_mapName = mapName;
 		_mapReady = false;
 		_exiting = false;
@@ -325,6 +328,7 @@ class MapEngine {
 			HomunEngine();
 			MercenaryEngine();
 			StoreEngine();
+			StoreSearchEngine();
 			TradeEngine();
 			FriendsEngine.init();
 			UIOpenEngine();
@@ -649,6 +653,7 @@ function onConnectionRefused(pkt) {
  * @param {object} pkt - PACKET.ZC.NPCACK_MAPMOVE
  */
 function onMapChange(pkt) {
+	resetStoreSearch();
 	_mapReady = false;
 	// A map transition can leave an in-flight time request unanswered.
 	Session.ping.pingTime = 0;
@@ -820,10 +825,23 @@ function onServerChange(pkt) {
 }
 
 /**
+ * The map socket closed: drop the catalog with it, then show the same
+ * message NetworkManager shows when no disconnect handler is set.
+ */
+function onMapDisconnect() {
+	resetStoreSearch(true);
+	UIManager.showErrorBox('Disconnected from Server.');
+}
+
+/**
  * Resets the per-character UI state shared by the exit and restart flows.
  * Components that were never prepared have no root element to clean.
  */
 function cleanGameUI() {
+	resetStoreSearch(true);
+	if (Network.onDisconnect === onMapDisconnect) {
+		Network.onDisconnect = null;
+	}
 	WhisperBox.clearAll();
 
 	const tasks = [
@@ -1339,6 +1357,10 @@ function onConfigUpdate(type, val) {
  * Go back from map-server to char-server
  */
 function onRestart() {
+	resetStoreSearch(true);
+	if (Network.onDisconnect === onMapDisconnect) {
+		Network.onDisconnect = null;
+	}
 	// The map stays drawn under the fade and goes once the screen is black
 	import('Engine/CharEngine.js').then(m =>
 		m.default.reload(() => {
