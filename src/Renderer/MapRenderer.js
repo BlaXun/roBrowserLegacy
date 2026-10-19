@@ -107,6 +107,16 @@ class MapRenderer {
 	static loading = false;
 
 	/**
+	 * @var {number} id of the latest map load, bumped to cancel the one in progress
+	 */
+	static _loadId = 0;
+
+	/**
+	 * @var {number} worker request of the map load in progress, 0 when none
+	 */
+	static _loadRequest = 0;
+
+	/**
 	 * @var {Float32Array} diffuse Modified diffuse color
 	 */
 	static diffuse = null;
@@ -140,6 +150,8 @@ class MapRenderer {
 			.replace(/^(\d{3})(\d@)/, '$2') // 0061@tower   -> 1@tower
 			.replace(/^\d{3}#/, ''); // 003#prontera -> prontera
 
+		const loadId = ++this._loadId;
+
 		// Clean objects
 		SoundManager.stop();
 		Renderer.stop();
@@ -161,7 +173,8 @@ class MapRenderer {
 
 			// The worker starts on the map now, while the screen fades to the
 			// loading image, rather than after the fade. What it sends back
-			// waits until the fade is done and the old map is freed.
+			// waits until the fade is done and the old map is freed, and is
+			// dropped if the load is cancelled meanwhile (loadStep, loadEvent).
 			let faded = false;
 			const waiting = [];
 			const afterFade =
@@ -175,22 +188,28 @@ class MapRenderer {
 				};
 
 			// Hooking Thread
-			Thread.hook('MAP_PROGRESS', afterFade(onProgressUpdate.bind(MapRenderer)));
-			Thread.hook('MAP_WORLD', afterFade(onWorldComplete.bind(MapRenderer)));
-			Thread.hook('MAP_GROUND', afterFade(onGroundComplete.bind(MapRenderer)));
-			Thread.hook('MAP_ALTITUDE', afterFade(onAltitudeComplete.bind(MapRenderer)));
-			Thread.hook('MAP_MODELS', afterFade(onModelsComplete.bind(MapRenderer)));
-			Thread.hook('MAP_ANIMATED_MODEL', afterFade(onAnimatedModelComplete.bind(MapRenderer)));
+			Thread.hook('MAP_PROGRESS', afterFade(loadEvent(onProgressUpdate)));
+			Thread.hook('MAP_WORLD', afterFade(loadEvent(onWorldComplete)));
+			Thread.hook('MAP_GROUND', afterFade(loadEvent(onGroundComplete)));
+			Thread.hook('MAP_ALTITUDE', afterFade(loadEvent(onAltitudeComplete)));
+			Thread.hook('MAP_MODELS', afterFade(loadEvent(onModelsComplete)));
+			Thread.hook('MAP_ANIMATED_MODEL', afterFade(loadEvent(onAnimatedModelComplete)));
 			Thread.hook(
 				'MAP_REPLACED_MODELS',
-				afterFade(models => MapHooks.modelsReady(Renderer.getContext(), models))
+				afterFade(loadEvent(models => MapHooks.modelsReady(Renderer.getContext(), models)))
 			);
 
 			// Start Loading
 			Thread.send('MAP_REPLACE_MODELS', MapHooks.modelNames());
-			Thread.send('LOAD_MAP', filename, afterFade(onMapComplete.bind(MapRenderer)));
+			MapRenderer._loadRequest = Thread.send('LOAD_MAP', filename, afterFade(loadStep(loadId, onMapComplete)));
 
 			Background.setLoading(function () {
+				// Cancelled while the loading screen was coming up
+				if (loadId !== MapRenderer._loadId) {
+					waiting.length = 0;
+					return;
+				}
+
 				MapRenderer.free();
 				Renderer.remove();
 				faded = true;
@@ -211,12 +230,25 @@ class MapRenderer {
 		// Basic TP
 		Mouse.intersect = false;
 		Background.remove(() => {
+			if (loadId !== MapRenderer._loadId) {
+				return;
+			}
+
 			MapRenderer.onLoad();
 			Sky.setUpCloudData();
 
 			Renderer.render(MapRenderer.onRender);
 			Mouse.intersect = true;
 		});
+	}
+
+	/**
+	 * Cancel the map load in progress, if any: its remaining steps do nothing
+	 */
+	static cancelLoad() {
+		this._loadId++;
+		this._loadRequest = 0;
+		this.loading = false;
 	}
 
 	/**
@@ -243,10 +275,12 @@ class MapRenderer {
 		SoundManager.stop();
 		BGM.stop();
 
-		// Release WebGL resources for post-processing effects
-		PostProcess.clean(gl);
+		// Post-processing is kept for the next map (PostProcess.clean frees it).
+		// The illusion flip ends with the map, as cleaning it used to do.
+		VerticalFlip.setActive(false);
 
 		Mouse.intersect = false;
+		Cursor.setType(Cursor.ACTION.DEFAULT);
 
 		this.light = null;
 		this.water = null;
@@ -334,6 +368,9 @@ class MapRenderer {
 		OccluderFade.beginFrame(gl, modelView, tick);
 		Models.render(gl, modelView, projection, normalMat, fog, light);
 		AnimatedModels.render(gl, modelView, projection, normalMat, fog, light, tick);
+		// Entities out of the view area, decided once for both the GR2 and the entity passes
+		EntityManager.cull();
+
 		// GR2 mobs render here with the opaque world models, before EntityManager.render below
 		// -- hence the 1-frame lag documented in GR2ModelRenderer.render (syncFromEntity reads the
 		// entity pose one frame stale). Ordering is intentional (opaque geometry pass).
@@ -406,6 +443,33 @@ class MapRenderer {
 	 * Callback to execute once the map is loaded
 	 */
 	static onLoad() {}
+}
+
+/**
+ * Bind a map load step to its load, so that it does nothing once the load is cancelled
+ *
+ * @param {number} loadId
+ * @param {function} step
+ */
+function loadStep(loadId, step) {
+	return (...args) => {
+		if (loadId === MapRenderer._loadId) {
+			step.apply(MapRenderer, args);
+		}
+	};
+}
+
+/**
+ * Bind a worker event of map loading, so that it only reaches the load whose request sent it
+ *
+ * @param {function} step
+ */
+function loadEvent(step) {
+	return (data, request) => {
+		if (request === MapRenderer._loadRequest) {
+			step.call(MapRenderer, data);
+		}
+	};
 }
 
 /**
@@ -611,9 +675,17 @@ function onAnimatedModelComplete(data) {
  * Register PostProcessing Modules in pass order
  */
 function registerPostProcessModules(gl) {
-	if (WebGL.detectBadWebGL(gl)) {
+	const badWebGL = WebGL.detectBadWebGL(gl);
+	if (badWebGL) {
 		GraphicsSettings.bloom = false;
-	} else {
+	}
+
+	// Registered once; they outlive map changes
+	if (PostProcess.isRegistered()) {
+		return;
+	}
+
+	if (!badWebGL) {
 		PostProcess.register(Bloom, gl);
 	}
 	PostProcess.register(GaussianBlur, gl);
@@ -635,6 +707,7 @@ function registerPostProcessModules(gl) {
  * Once the map finished to load
  */
 function onMapComplete(success, error) {
+	const loadId = MapRenderer._loadId;
 	const worldResource = this.currentMap.replace(/\.gat$/i, '.rsw');
 	const mapInfo = DB.getMap(worldResource);
 
@@ -672,6 +745,10 @@ function onMapComplete(success, error) {
 
 	// Starting to render
 	Background.remove(() => {
+		if (loadId !== MapRenderer._loadId) {
+			return;
+		}
+
 		MapRenderer.loading = false;
 
 		MapRenderer.onLoad();

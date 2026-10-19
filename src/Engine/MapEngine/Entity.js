@@ -123,6 +123,20 @@ const QuestMarkColors = {
 	3: 0x800080 // QMARK_PURPLE
 };
 
+function requestEntityGuildEmblem(entity) {
+	const actorId = entity.GID;
+	const guildId = entity.GUID;
+	Guild.requestGuildEmblem(guildId, entity.GEmblemVer, (image, gif) => {
+		if (EntityManager.get(actorId) !== entity || entity.GUID !== guildId || entity.GEmblemVer === 0) {
+			return;
+		}
+		entity.setEntityGuildEmblem(image, gif);
+		if (Session.mapState.isSiege && guildId !== Session.Entity?.GUID) {
+			entity.emblem.display = true;
+		}
+	});
+}
+
 /**
  * Spam an entity on the map
  * Generic packet handler
@@ -285,12 +299,7 @@ function onEntitySpam(pkt) {
 	}
 
 	if (entity.GUID) {
-		Guild.requestGuildEmblem(entity.GUID, entity.GEmblemVer, (image, gif) => {
-			entity.setEntityGuildEmblem(image, gif);
-			if (Session.mapState.isSiege && entity.GUID !== Session.Entity.GUID) {
-				entity.emblem.display = true;
-			}
-		});
+		requestEntityGuildEmblem(entity);
 	}
 
 	// load others aura
@@ -1123,12 +1132,7 @@ function onEntityIdentity(pkt) {
 		entity.display.load = entity.display.TYPE.COMPLETE;
 
 		if (entity.GUID) {
-			Guild.requestGuildEmblem(entity.GUID, entity.GEmblemVer, (image, gif) => {
-				entity.setEntityGuildEmblem(image, gif);
-				if (Session.mapState.isSiege && entity.GUID !== Session.Entity.GUID) {
-					entity.emblem.display = true;
-				}
-			});
+			requestEntityGuildEmblem(entity);
 		} else if (pkt.GID) {
 			DB.loadGroupEmblem(pkt.GID, image => {
 				entity.setEntityGuildEmblem(image);
@@ -1176,7 +1180,7 @@ function updateEntityStyle(entity) {
 
 function onTitleChangeAck(pkt) {
 	if (pkt.result === 0) {
-		const comp = Equipment.getUI();
+		const comp = Equipment;
 		if (comp && typeof comp.setTitle === 'function') {
 			comp.setTitle(pkt.title_id);
 		}
@@ -1373,7 +1377,7 @@ function onEntityViewChange(pkt) {
 						ui.append();
 					}
 					// Update UI for all client versions
-					BasicInfo.getUI().update('job', pkt.value);
+					BasicInfo.update('job', pkt.value);
 				}
 			}
 			break;
@@ -2735,9 +2739,9 @@ function onNotifyExp(pkt) {
  */
 
 function onMarkMvp(pkt) {
-	MiniMap.getUI().removeNpcMark('mvp'); //hack for mark system (todo: debug this)
+	MiniMap.removeNpcMark('mvp'); //hack for mark system (todo: debug this)
 	if (pkt.infoType == 1) {
-		MiniMap.getUI().addNpcMark('mvp', pkt.xPos, pkt.yPos, 0x0ff0000, Infinity);
+		MiniMap.addNpcMark('mvp', pkt.xPos, pkt.yPos, 0x0ff0000, Infinity);
 		/**if(!MiniMap.isNpcMarkExist('mvp')) {    // wtf marker is pushed with delay??
 				ChatBox.addText( pkt.name+' is already spawned at ('+pkt.xPos+','+pkt.yPos+')', null, ChatBox.FILTER.PUBLIC_LOG, '#FFFF63');
 			}*/
@@ -2842,7 +2846,7 @@ function onEntityWillBeHitSub(pkt, dstEntity) {
  * Does player have a Token of Siegfried?
  */
 function haveSiegfriedItem() {
-	const itemInfo = Inventory.getUI().getItemById(7621);
+	const itemInfo = Inventory.getItemById(7621);
 
 	if (Session.IsPKZone || Session.IsSiegeMode || Session.IsEventPVPMode) {
 		return false;

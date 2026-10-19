@@ -3,7 +3,8 @@
  *
  * Moves the virtual cursor with the right stick once per animation frame,
  * and gives the same frame to the View + D-pad camera
- * (JoystickCameraMotion). Stick values pass JoystickStickFilter first.
+ * (JoystickCameraMotion) and to menu navigation (JoystickUIFocus), which
+ * reads the buttons here. Stick values pass JoystickStickFilter first.
  *
  * The button/left-stick poll runs at 10 Hz (JoystickPollingLoop), which is
  * fine for discrete actions but made the cursor jump joySense pixels ten
@@ -24,6 +25,8 @@ import Aim from './JoystickAimMode.js';
 import StickFilter from './JoystickStickFilter.js';
 import CameraMotion from './JoystickCameraMotion.js';
 import Support from './JoystickSupportMode.js';
+import UIFocus from './JoystickUIFocus.js';
+import Keyboard from './JoystickKeyboard.js';
 
 // Old behaviour moved joySense px per 100 ms poll at full deflection.
 const SENSE_TO_PX_PER_SEC = 10;
@@ -52,6 +55,8 @@ function frame(time) {
 		// Last pad gone: stop until one connects again
 		Aim.release();
 		Support.release();
+		Keyboard.close();
+		UIFocus.exit();
 		frameHandle = null;
 		return;
 	}
@@ -61,8 +66,19 @@ function frame(time) {
 	const dt = Math.min(MAX_DT, (time - lastTime) / 1000);
 	lastTime = time;
 
-	if (dt > 0) {
+	// The on-screen keyboard has the buttons and the sticks: no camera, no cursor
+	const typing = Keyboard.isOpen();
+	if (dt > 0 && !typing) {
 		CameraMotion.update(gp, dt);
+	}
+
+	// Menu navigation reads the buttons every frame: a quick D-pad tap falls between two polls
+	UIFocus.frame(gp, time);
+
+	if (typing) {
+		Aim.release();
+		Support.release();
+		return;
 	}
 
 	if (gp.axes.length < 4 || dt <= 0) {
@@ -83,14 +99,18 @@ function frame(time) {
 	const magnitude = Math.hypot(x, y);
 	const deadzone = ControlsSettings.joyDeadline;
 
-	// Support: the right stick picks a party member on the radial
-	if (Support.update(x, y, magnitude, deadzone)) {
+	// In menus the right stick is the cursor: no radial, no aim
+	if (UIFocus.isActive()) {
+		Aim.release();
+		Support.release();
+	} else if (Support.update(x, y, magnitude, deadzone)) {
+		// Support: the right stick picks a party member on the radial
 		Aim.release();
 		return;
 	}
 
 	// Aim mode: the right stick picks a target instead
-	if (Aim.isActive()) {
+	if (!UIFocus.isActive() && Aim.isActive()) {
 		Aim.update(x, y, magnitude > deadzone);
 		return;
 	}
@@ -104,6 +124,11 @@ function frame(time) {
 	const step = (speed * dt) / magnitude;
 
 	Cursor.moveBy(x * step, y * step);
+
+	// In menus the ring follows the cursor onto what it rests on
+	if (UIFocus.isActive()) {
+		UIFocus.cursorMoved();
+	}
 }
 
 /**
@@ -154,5 +179,6 @@ export default {
 		// Gamepad UI gone: no ring left behind, and the cursor visible again
 		Aim.release();
 		Support.release();
+		UIFocus.exit();
 	}
 };

@@ -294,7 +294,7 @@ function onOpenLaphineUpgUI(pkt) {
  * Updates the Laphine UI with the current state information.
  */
 function onUpdateLaphineUpgUI() {
-	const item = Inventory.getUI().getItemById(LaphineUpgUIState.itemId);
+	const item = Inventory.getItemById(LaphineUpgUIState.itemId);
 
 	if (!item) {
 		return false;
@@ -313,7 +313,7 @@ function onUpdateLaphineUpgUI() {
  */
 function GetInventoryItemsById(id) {
 	const items = [];
-	const list = Inventory.getUI().list;
+	const list = Inventory.list;
 
 	for (let i = 0, count = list.length; i < count; ++i) {
 		if (list[i].ITID === id) {
@@ -435,7 +435,7 @@ function onRequestLaphineUpgClose() {
  */
 function onItemSelect(e) {
 	const idx = parseInt(this.getAttribute('data-index'), 10);
-	const item = Inventory.getUI().getItemByIndex(idx);
+	const item = Inventory.getItemByIndex(idx);
 
 	if (!item) {
 		e.preventDefault();
@@ -465,7 +465,7 @@ function onSubmitItem() {
 		idx = parseInt(this.getAttribute('data-index'), 10);
 	}
 
-	const item = Inventory.getUI().getItemByIndex(idx);
+	const item = Inventory.getItemByIndex(idx);
 
 	if (!item) {
 		return;
@@ -547,7 +547,7 @@ function onCheckSubmittedItem(item) {
  */
 function onItemRemove() {
 	const idx = parseInt(this.getAttribute('data-index'), 10);
-	const item = Inventory.getUI().getItemByIndex(idx);
+	const item = Inventory.getItemByIndex(idx);
 
 	if (item) {
 		onRemoveItemSubmitList(item, this);
@@ -590,7 +590,7 @@ function updateAvailableMatList(itemId, itemIndex, remove) {
 
 	availableMatList.querySelectorAll('.item').forEach(el => {
 		const idx = parseInt(el.getAttribute('data-index'), 10);
-		const item = Inventory.getUI().getItemByIndex(idx);
+		const item = Inventory.getItemByIndex(idx);
 
 		if (item.ITID === itemId && idx === itemIndex) {
 			itemExists = true;
@@ -601,7 +601,7 @@ function updateAvailableMatList(itemId, itemIndex, remove) {
 	});
 
 	if (!remove && !itemExists) {
-		const item = Inventory.getUI().getItemByIndex(itemIndex);
+		const item = Inventory.getItemByIndex(itemIndex);
 		if (item) {
 			const targetItem = LaphineUpgUIState.targetItems.find(ti => ti.id === itemId);
 			if (targetItem) {
@@ -638,7 +638,7 @@ function showMessage(message) {
  * Handles the upgrade request by preparing and sending the packet.
  */
 function onRequestLaphineUpg() {
-	const item = Inventory.getUI().getItemByIndex(LaphineUpg.submittedIndex);
+	const item = Inventory.getItemByIndex(LaphineUpg.submittedIndex);
 
 	if (!item) {
 		return;
@@ -659,7 +659,7 @@ function onRequestLaphineUpg() {
  */
 function onItemOver() {
 	const idx = parseInt(this.getAttribute('data-index'), 10);
-	const item = Inventory.getUI().getItemByIndex(idx);
+	const item = Inventory.getItemByIndex(idx);
 
 	if (!item) {
 		return;
@@ -714,7 +714,7 @@ function stopPropagation(event) {
  */
 function onItemDragStart(event) {
 	const index = parseInt(this.getAttribute('data-index'), 10);
-	const item = Inventory.getUI().getItemByIndex(index);
+	const item = Inventory.getItemByIndex(index);
 
 	if (!item) {
 		return;
@@ -834,7 +834,7 @@ function onItemInfo(event) {
 	event.preventDefault();
 
 	const idx = parseInt(this.getAttribute('data-index'), 10);
-	const item = Inventory.getUI().getItemByIndex(idx);
+	const item = Inventory.getItemByIndex(idx);
 
 	if (!item) {
 		return;
@@ -856,9 +856,9 @@ function onItemInfo(event) {
 	ItemInfo.uid = item.ITID;
 	ItemInfo.setItem(item);
 
-	const compareItem = Equipment.getUI().isInEquipList(item.location);
+	const compareItem = Equipment.isInEquipList(item.location);
 
-	if (compareItem && Inventory.getUI().itemcomp) {
+	if (compareItem && Inventory.itemcomp) {
 		ItemCompare.prepare();
 		ItemCompare.append();
 		ItemCompare.uid = compareItem.ITID;

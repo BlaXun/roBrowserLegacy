@@ -1,69 +1,74 @@
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('DB/DBManager.js', () => ({ default: { INTERFACE_PATH: 'data/texture/' } }));
-vi.mock('Core/Client.js', () => ({ default: { loadFile: vi.fn((path, onload) => onload('blob:' + path)) } }));
-vi.mock('Core/Configs.js', () => ({ default: { get: () => undefined } }));
-vi.mock('Network/PacketVerManager.js', () => ({ default: { value: 20221005 } }));
-
-// Frames by hand: the overlay's opacity is checked at chosen times
-let now = 0;
-const frames = [];
-vi.spyOn(performance, 'now').mockImplementation(() => now);
-vi.stubGlobal('requestAnimationFrame', fn => frames.push(fn));
-const ctx = new Proxy({}, { get: () => () => ({ width: 0 }) });
-const getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx);
-
-function advance(ms) {
-	now += ms;
-	frames.splice(0).forEach(fn => fn(now));
-}
-
-const { default: Background } = await import('UI/Background.js');
-const overlay = () => [...document.body.children].find(el => el.style.zIndex === '1000');
-
-afterAll(() => {
-	getContext.mockRestore();
-	vi.unstubAllGlobals();
-});
-
-describe('Background transitions', () => {
-	it('fades back in from black when the map loads before the fade to its loading image is over', () => {
-		const revealed = vi.fn();
-
-		// The map was already loaded: it is set up in setLoading's callback
-		Background.setLoading(() => Background.remove(revealed));
-
-		advance(250);
-		expect(Number(overlay().style.opacity)).toBeCloseTo(0.505, 2);
-		advance(250);
-		advance(16);
-		expect(revealed).toHaveBeenCalledOnce();
-
-		// One fade back from black, not two fighting over the overlay
-		advance(250);
-		expect(Number(overlay().style.opacity)).toBeGreaterThan(0.4);
-		expect(Number(overlay().style.opacity)).toBeLessThan(0.6);
-		advance(260);
-		expect(overlay()).toBeUndefined();
+const mocks = vi.hoisted(() => {
+	// jsdom has no 2D canvas; the background draws its progress bar on one
+	HTMLCanvasElement.prototype.getContext = () => ({
+		clearRect() {},
+		fillRect() {},
+		fillText() {},
+		measureText: () => ({ width: 0 })
 	});
 
-	it('fades to black at the usual pace when the map loads while its loading image is fading in', () => {
-		Background.setLoading();
-		advance(500);
-		advance(16);
-		advance(200);
-		const from = Number(overlay().style.opacity);
-		expect(from).toBeGreaterThan(0.3);
-		expect(from).toBeLessThan(0.9);
+	return { animations: [] };
+});
 
-		const revealed = vi.fn();
-		Background.remove(revealed);
-		advance(250);
-		expect(revealed).not.toHaveBeenCalled();
-		expect(Number(overlay().style.opacity)).toBeLessThan(1);
-		advance(260);
-		expect(revealed).toHaveBeenCalledOnce();
-		advance(510);
-		expect(overlay()).toBeUndefined();
+vi.mock('DB/DBManager.js', () => ({ default: { INTERFACE_PATH: '' } }));
+vi.mock('Core/Client.js', () => ({ default: { loadFile: vi.fn() } }));
+vi.mock('Core/Configs.js', () => ({ default: { get: vi.fn() } }));
+vi.mock('Network/PacketVerManager.js', () => ({ default: { value: 20120410 } }));
+vi.mock('Utils/HtmlHelper.js', () => ({
+	animateElement: vi.fn((element, props, duration, callback) => {
+		mocks.animations.push({ element, props, callback });
+		return { stop: vi.fn() };
+	})
+}));
+
+import Background from 'UI/Background.js';
+
+function finishAnimation() {
+	mocks.animations.shift().callback();
+}
+
+describe('Background.remove', () => {
+	beforeEach(() => {
+		mocks.animations.length = 0;
+		document.body.innerHTML = '';
+	});
+
+	it('fades through black before the callback when no background is displayed', () => {
+		const callback = vi.fn();
+
+		Background.remove(callback);
+
+		expect(mocks.animations).toHaveLength(1);
+		expect(mocks.animations[0].props).toEqual({ opacity: 1.0 });
+		expect(mocks.animations[0].element.parentNode).toBe(document.body);
+		expect(callback).not.toHaveBeenCalled();
+
+		finishAnimation();
+
+		expect(callback).toHaveBeenCalledOnce();
+		expect(mocks.animations[0].props).toEqual({ opacity: 0.01 });
+
+		const overlay = mocks.animations[0].element;
+		finishAnimation();
+
+		expect(overlay.parentNode).toBeNull();
+	});
+
+	it('keeps a background set while its fade is running', () => {
+		Background.setImage('bgi_temp.bmp');
+		finishAnimation();
+		finishAnimation();
+		const background = [...document.body.children].find(el => el.tagName === 'DIV' && el.style.zIndex !== '1000');
+		expect(background).toBeDefined();
+
+		const callback = vi.fn();
+		Background.remove(callback);
+		Background.setImage('bgi_temp.bmp');
+		finishAnimation();
+
+		expect(callback).toHaveBeenCalledOnce();
+		expect(background.parentNode).toBe(document.body);
 	});
 });

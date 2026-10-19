@@ -171,8 +171,23 @@ class ScrollBar {
 	 * @param {HTMLElement} element
 	 */
 	static applyDOMScrollbar(element) {
+		if (!ScrollBar.complete) {
+			setTimeout(() => {
+				ScrollBar.applyDOMScrollbar(element);
+			}, 100);
+			return;
+		}
+
+		const shadowRoot = element.getRootNode();
+		if (shadowRoot instanceof ShadowRoot && !shadowRoot.querySelector('style[data-scrollbar]')) {
+			const scrollbarStyle = document.createElement('style');
+			scrollbarStyle.setAttribute('data-scrollbar', '');
+			scrollbarStyle.textContent = ScrollBar._cssText;
+			shadowRoot.appendChild(scrollbarStyle);
+		}
+
 		if (element._roScrollbarApplied) {
-			const wrapper = element.querySelector(':scope > .ro-custom-scrollbar');
+			const wrapper = Array.from(element.children).find(child => child.classList.contains('ro-custom-scrollbar'));
 			if (!wrapper) {
 				element._roScrollbarApplied = false;
 			} else {
@@ -190,21 +205,7 @@ class ScrollBar {
 			}
 		}
 
-		if (!ScrollBar.complete) {
-			setTimeout(() => {
-				ScrollBar.applyDOMScrollbar(element);
-			}, 100);
-			return;
-		}
-
 		element._roScrollbarApplied = true;
-		const shadowRoot = element.getRootNode();
-		if (shadowRoot instanceof ShadowRoot && !shadowRoot.querySelector('style[data-scrollbar]')) {
-			const scrollbarStyle = document.createElement('style');
-			scrollbarStyle.setAttribute('data-scrollbar', '');
-			scrollbarStyle.textContent = ScrollBar._cssText;
-			shadowRoot.appendChild(scrollbarStyle);
-		}
 
 		const skinName = element.dataset.scrollbarSkin || 'default';
 		const skin = ScrollBar.skins[skinName] || ScrollBar.skins['default'];

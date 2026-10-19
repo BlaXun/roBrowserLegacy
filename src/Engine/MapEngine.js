@@ -28,6 +28,7 @@ import MapControl from 'Controls/MapControl.js';
 import Mouse from 'Controls/MouseEventHandler.js';
 import KEYS from 'Controls/KeyEventHandler.js';
 import UIManager from 'UI/UIManager.js';
+import UIVersionManager from 'UI/UIVersionManager.js';
 import EffectManager from 'Renderer/EffectManager.js';
 import Escape from 'UI/Components/Escape/Escape.js';
 import ChatBox from 'UI/Components/ChatBox/ChatBox.js';
@@ -36,7 +37,6 @@ import StatusConst from 'DB/Status/StatusState.js';
 import CheckAttendance from 'UI/Components/CheckAttendance/CheckAttendance.js';
 import WinStats from 'UI/Components/WinStats/WinStats.js';
 import Inventory from 'UI/Components/Inventory/Inventory.js';
-import Storage from 'UI/Components/Storage/Storage.js';
 import CartItems from 'UI/Components/CartItems/CartItems.js';
 import Vending from 'UI/Components/Vending/Vending.js';
 import VendingReport from 'UI/Components/VendingReport/VendingReport.js';
@@ -106,6 +106,7 @@ import PetEngine from './MapEngine/Pet.js';
 import HomunEngine from './MapEngine/Homun.js';
 import MercenaryEngine from './MapEngine/Mercenary.js';
 import StoreEngine from './MapEngine/Store.js';
+import StoreSearchEngine, { resetStoreSearch } from './MapEngine/StoreSearch.js';
 import TradeEngine from './MapEngine/Trade.js';
 import FriendsEngine from './MapEngine/Friends.js';
 import UIOpenEngine, { openPendingUI } from './MapEngine/UIOpen.js';
@@ -128,6 +129,7 @@ let _mapName = '';
  * @type {boolean} is initialized
  */
 let _isInitialised = false;
+let _mapReady = false;
 
 let _exiting = false;
 let _exitTimer = null;
@@ -153,7 +155,10 @@ class MapEngine {
 	 * @param {string} mapName
 	 */
 	static init(ip, port, mapName) {
+		resetStoreSearch(true);
+		Network.onDisconnect = onMapDisconnect;
 		_mapName = mapName;
+		_mapReady = false;
 		_exiting = false;
 		_exitTimer = null;
 
@@ -215,6 +220,8 @@ class MapEngine {
 				// Ping
 				let ping;
 				const SP = Session.ping;
+				SP.pingTime = 0;
+				SP.returned = false;
 
 				if (PACKETVER.value >= 20180307) {
 					ping = new PACKET.CZ.REQUEST_TIME2();
@@ -227,6 +234,11 @@ class MapEngine {
 				Network.setPing(() => {
 					if (is_sec_hbt) {
 						Network.sendPacket(hbt);
+					}
+
+					// The server accepts time requests only after the map-load acknowledgement.
+					if (!_mapReady) {
+						return;
 					}
 
 					ping.clientTime = Date.now() - startTick;
@@ -254,15 +266,8 @@ class MapEngine {
 			if (PACKETVER.value < 20200520) {
 				BasicInfo.selectUIVersion();
 			}
-			MiniMap.selectUIVersion();
-			SkillList.selectUIVersion();
-			Quest.selectUIVersion();
-			Equipment.selectUIVersion();
-			PlayerViewEquip.selectUIVersion();
-			WinStats.selectUIVersion();
-			Inventory.selectUIVersion();
-			Storage.selectUIVersion();
-			PartyFriends.selectUIVersion();
+			// Batch-select all map-phase versioned UIs (skips BasicInfo — job-based)
+			UIVersionManager.selectAll();
 		}
 
 		// Do not hook multiple time
@@ -323,6 +328,7 @@ class MapEngine {
 			HomunEngine();
 			MercenaryEngine();
 			StoreEngine();
+			StoreSearchEngine();
 			TradeEngine();
 			FriendsEngine.init();
 			UIOpenEngine();
@@ -348,17 +354,17 @@ class MapEngine {
 			Escape.prepare();
 			PvPTimer.prepare();
 			PvPCount.prepare();
-			Inventory.getUI().prepare();
+			Inventory.prepare();
 			CartItems.prepare();
 			Vending.prepare();
 			ChangeCart.prepare();
-			Equipment.getUI().prepare();
+			Equipment.prepare();
 			ShortCuts.prepare();
 			ShortCut.prepare();
 			ChatRoomCreate.prepare();
 			Emoticons.prepare();
 			FPS.prepare();
-			PartyFriends.getUI().prepare();
+			PartyFriends.prepare();
 			StatusIcons.prepare();
 			ChatBox.prepare();
 			ChatBoxSettings.prepare();
@@ -447,24 +453,24 @@ class MapEngine {
 		// Init selected UIs when needed
 		if (MapEngine.needsUIVerUpdate || !_isInitialised) {
 			// Prepare UIs
-			MiniMap.getUI().prepare();
-			SkillList.getUI().prepare();
+			MiniMap.prepare();
+			SkillList.prepare();
 			if (PACKETVER.value < 20200520) {
-				BasicInfo.getUI().prepare();
+				BasicInfo.prepare();
 			}
-			Equipment.getUI().prepare();
-			Quest.getUI().prepare();
-			WinStats.getUI().prepare();
+			Equipment.prepare();
+			Quest.prepare();
+			WinStats.prepare();
 			PartyFriends.selectUIVersion();
 
 			// Bind UIs
-			WinStats.getUI().onRequestUpdate = onRequestStatUpdate;
-			Equipment.getUI().onUnEquip = onUnEquip;
-			Equipment.getUI().onConfigUpdate = onConfigUpdate;
-			Equipment.getUI().onEquipItem = onEquipItem;
-			Equipment.getUI().onRemoveOption = onRemoveOption;
-			Inventory.getUI().onUseItem = onUseItem;
-			Inventory.getUI().onEquipItem = onEquipItem;
+			WinStats.onRequestUpdate = onRequestStatUpdate;
+			Equipment.onUnEquip = onUnEquip;
+			Equipment.onConfigUpdate = onConfigUpdate;
+			Equipment.onEquipItem = onEquipItem;
+			Equipment.onRemoveOption = onRemoveOption;
+			Inventory.onUseItem = onUseItem;
+			Inventory.onEquipItem = onEquipItem;
 
 			// Avoid zone server change init
 			MapEngine.needsUIVerUpdate = false;
@@ -506,7 +512,7 @@ function onPingLive(pkt) {
 function onConfig(pkt) {
 	switch (pkt.Config) {
 		case 0:
-			Equipment.getUI().setEquipConfig(pkt.Value);
+			Equipment.setEquipConfig(pkt.Value);
 			ChatBox.addText(DB.getMessage(1358 + (pkt.Value ? 1 : 0)), ChatBox.TYPE.INFO, ChatBox.FILTER.PUBLIC_LOG);
 			break;
 		case 1:
@@ -522,7 +528,7 @@ function onConfig(pkt) {
 			ChatBox.addText(DB.getMessage(3282 + (pkt.Value ? 0 : 1)), ChatBox.TYPE.INFO, ChatBox.FILTER.PUBLIC_LOG);
 			break;
 		case 5:
-			Equipment.getUI().setCostumeConfig(pkt.Value);
+			Equipment.setCostumeConfig(pkt.Value);
 			break;
 		default:
 			console.error('[PACKET_ZC_CONFIG] Unknown Config Type %d (value:%d)', pkt.Config, pkt.Value);
@@ -536,7 +542,7 @@ function onConfig(pkt) {
  */
 function onConfigNotify(pkt) {
 	if (typeof pkt.show_eq_flag !== 'undefined') {
-		Equipment.getUI().setEquipConfig(pkt.show_eq_flag);
+		Equipment.setEquipConfig(pkt.show_eq_flag);
 		ChatBox.addText(DB.getMessage(1358 + (pkt.show_eq_flag ? 1 : 0)), ChatBox.TYPE.INFO, ChatBox.FILTER.PUBLIC_LOG);
 	}
 	if (typeof pkt.pet_autofeeding_flag !== 'undefined') {
@@ -591,6 +597,9 @@ function onConnectionAccepted(pkt) {
 	Session.guildPermission = 0;
 	GuildEngine.resetForNewCharacter();
 
+	// No reply comes for an /ex or /in sent on the previous connection
+	ChatBox.PrivateMessageStorage.blockNicks.length = 0;
+
 	Session.homunId = 0;
 
 	// clevel is already populated by Entity.set() in the Player constructor
@@ -612,14 +621,14 @@ function onConnectionAccepted(pkt) {
 
 	if (PACKETVER.value >= 20200520) {
 		BasicInfo.selectUIVersionWithJob(DB.getJobClass(Session.Entity.job));
-		BasicInfo.getUI().prepare();
+		BasicInfo.prepare();
 	}
 
-	BasicInfo.getUI().update('blvl', Session.Entity.clevel);
-	BasicInfo.getUI().update('jlvl', Session.Entity.joblevel);
-	BasicInfo.getUI().update('zeny', Session.Entity.money);
-	BasicInfo.getUI().update('name', Session.Entity.display.name);
-	BasicInfo.getUI().update('job', Session.Entity.job);
+	BasicInfo.update('blvl', Session.Entity.clevel);
+	BasicInfo.update('jlvl', Session.Entity.joblevel);
+	BasicInfo.update('zeny', Session.Entity.money);
+	BasicInfo.update('name', Session.Entity.display.name);
+	BasicInfo.update('job', Session.Entity.job);
 
 	// Fix http://forum.robrowser.com/?topic=32177.0
 	onMapChange({
@@ -644,6 +653,11 @@ function onConnectionRefused(pkt) {
  * @param {object} pkt - PACKET.ZC.NPCACK_MAPMOVE
  */
 function onMapChange(pkt) {
+	resetStoreSearch();
+	_mapReady = false;
+	// A map transition can leave an in-flight time request unanswered.
+	Session.ping.pingTime = 0;
+	Session.ping.returned = false;
 	clearQuestEffects();
 
 	MapRenderer.onLoad = () => {
@@ -719,30 +733,30 @@ function onMapChange(pkt) {
 		Camera.init();
 
 		// Add Game UI
-		MiniMap.getUI().append();
-		MiniMap.getUI().setMap(MapRenderer.currentMap);
+		MiniMap.append();
+		MiniMap.setMap(MapRenderer.currentMap);
 		if (Configs.get('enableMapName')) {
 			MapName.setMap(MapRenderer.currentMap);
 			MapName.append();
 		}
 		ChatBox.append();
 		ChatBoxSettings.append();
-		BasicInfo.getUI().append();
+		BasicInfo.append();
 		Escape.append();
-		Inventory.getUI().append();
+		Inventory.append();
 		CartItems.append();
 		Vending.append();
 		ChangeCart.append();
 		CartDecoration.append();
-		Equipment.getUI().append();
+		Equipment.append();
 		ShortCuts.append();
 		StatusIcons.append();
 		ShortCut.append();
 		ChatRoomCreate.append();
 		Emoticons.append();
-		SkillList.getUI().append();
+		SkillList.append();
 		FPS.append();
-		PartyFriends.getUI().append();
+		PartyFriends.append();
 		Guild.append();
 		WorldMap.append();
 		SkillListMH.homunculus.append();
@@ -759,9 +773,9 @@ function onMapChange(pkt) {
 			PCGoldTimer.append();
 		}
 
-		WinStats.getUI().append();
+		WinStats.append();
 
-		Quest.getUI().append();
+		Quest.append();
 
 		if (Configs.get('enableCashShop')) {
 			CashShopIcon.append();
@@ -778,6 +792,7 @@ function onMapChange(pkt) {
 
 		// Map loaded
 		Network.sendPacket(new PACKET.CZ.NOTIFY_ACTORINIT());
+		_mapReady = true;
 
 		// Rates Info
 		if (Session.ratesInfo) {
@@ -810,10 +825,23 @@ function onServerChange(pkt) {
 }
 
 /**
+ * The map socket closed: drop the catalog with it, then show the same
+ * message NetworkManager shows when no disconnect handler is set.
+ */
+function onMapDisconnect() {
+	resetStoreSearch(true);
+	UIManager.showErrorBox('Disconnected from Server.');
+}
+
+/**
  * Resets the per-character UI state shared by the exit and restart flows.
  * Components that were never prepared have no root element to clean.
  */
 function cleanGameUI() {
+	resetStoreSearch(true);
+	if (Network.onDisconnect === onMapDisconnect) {
+		Network.onDisconnect = null;
+	}
 	WhisperBox.clearAll();
 
 	const tasks = [
@@ -828,10 +856,8 @@ function cleanGameUI() {
 	];
 
 	for (const [target, method] of tasks) {
-		const component = typeof target.getUI === 'function' ? target.getUI() : target;
-
-		if (component && component.__loaded && typeof component[method] === 'function') {
-			component[method]();
+		if (target && target.__loaded && typeof target[method] === 'function') {
+			target[method]();
 		}
 	}
 }
@@ -886,6 +912,7 @@ function onExitSuccess() {
 	UIManager.removeComponents();
 	Network.close();
 	Renderer.stop();
+	MapRenderer.cancelLoad();
 	MapRenderer.free();
 	SoundManager.stop();
 	BGM.stop();
@@ -928,12 +955,10 @@ function onRestartAnswer(pkt) {
 		// Have to wait 10sec
 		ChatBox.addText(DB.getMessage(502), ChatBox.TYPE.ERROR, ChatBox.FILTER.PUBLIC_LOG);
 	} else {
+		MapRenderer.cancelLoad();
 		GuildEngine.guild_id = 0;
-		cleanGameUI();
 		Session.Achievement = null;
 		Mouse.intersect = false;
-		MapRenderer.free();
-		Renderer.stop();
 		onRestart();
 	}
 }
@@ -1025,7 +1050,7 @@ function onRequestTalk(user, text, target) {
 
 	//Super Novice Chant
 	if (chatLines > 7 && DB.isSuperNovice(Session.Entity._job)) {
-		if (Math.floor((BasicInfo.getUI().base_exp / BasicInfo.getUI().base_exp_next) * 1000.0) % 100 == 0) {
+		if (Math.floor((BasicInfo.base_exp / BasicInfo.base_exp_next) * 1000.0) % 100 == 0) {
 			if (text == DB.getMessage(790)) {
 				snCounter = 1;
 			} else if (
@@ -1332,7 +1357,18 @@ function onConfigUpdate(type, val) {
  * Go back from map-server to char-server
  */
 function onRestart() {
-	import('Engine/CharEngine.js').then(m => m.default.reload());
+	resetStoreSearch(true);
+	if (Network.onDisconnect === onMapDisconnect) {
+		Network.onDisconnect = null;
+	}
+	// The map stays drawn under the fade and goes once the screen is black
+	import('Engine/CharEngine.js').then(m =>
+		m.default.reload(() => {
+			cleanGameUI();
+			MapRenderer.free();
+			Renderer.stop();
+		})
+	);
 }
 
 /**

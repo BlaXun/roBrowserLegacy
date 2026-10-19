@@ -177,7 +177,15 @@ class AttachmentManager {
 	 * Render attachments filtered by renderBefore flag
 	 */
 	_renderFiltered(tick, renderBeforeEntity) {
-		if (!this.list.some(item => item.renderBefore === renderBeforeEntity)) {
+		// A loop, not list.some(): a callback closure per entity per frame is garbage.
+		let any = false;
+		for (let i = 0; i < this.list.length; ++i) {
+			if (this.list[i].renderBefore === renderBeforeEntity) {
+				any = true;
+				break;
+			}
+		}
+		if (!any) {
 			return;
 		}
 

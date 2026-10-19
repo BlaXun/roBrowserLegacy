@@ -132,7 +132,7 @@ function getMembers() {
 
 	let party = [];
 	try {
-		party = (Session.hasParty && PartyFriends.getPartyMembers()) || [];
+		party = (Session.hasParty && PartyFriends.getPartyMembers?.()) || [];
 	} catch {
 		party = [];
 	}

@@ -29,6 +29,7 @@ import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTarget
 import Category from './JoystickTargetCategory.js';
 import Support from './JoystickSupportMode.js';
 import EmoteGrid from './JoystickEmoteGrid.js';
+import UIFocus from './JoystickUIFocus.js';
 
 // Support: holding a skill's face button this long casts it on yourself
 // instead of the focused member.
@@ -72,7 +73,7 @@ export default {
 		}
 
 		if (!shortcut.isSkill) {
-			const item = InventoryUI.getUI().getItemById(shortcut.ID);
+			const item = InventoryUI.getItemById(shortcut.ID);
 			if (!item || item.count === 0) {
 				return;
 			}
@@ -313,7 +314,7 @@ export default {
 		let itemData;
 
 		if (!isSkill) {
-			const item = InventoryUI.getUI().getItemByIndex(index);
+			const item = InventoryUI.getItemByIndex(index);
 			if (item) {
 				if (
 					item.type === ItemType.UNKNOWN ||
@@ -428,6 +429,7 @@ export default {
 
 	/**
 	 * Open or close a window, as its keyboard shortcut does (Alt+E, ...).
+	 * A window opened this way gets the menu focus (JoystickUIFocus).
 	 *
 	 * @param {string} name UIManager component name
 	 */
@@ -436,6 +438,7 @@ export default {
 			const component = UIManager.getComponent(name);
 			if (component && component.onShortCut) {
 				component.onShortCut({ cmd: 'TOGGLE' });
+				UIFocus.focusComponent(component);
 			}
 		} catch {
 			// Component not available in this client version

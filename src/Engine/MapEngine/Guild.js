@@ -175,21 +175,22 @@ class GuildEngine {
 		if (!_emblems[guild_id]) {
 			_emblems[guild_id] = {
 				version: -1,
+				ready: false,
 				image: new Image(),
 				gif: null,
 				callback: []
 			};
 		}
 
-		if (Session.Entity.GUID === guild_id) {
+		if (Session.Entity?.GUID === guild_id) {
 			GuildEngine.guild_id = guild_id;
 		}
 		const emblem = _emblems[guild_id];
 
 		// Lower version, update it to the current
-		if (version <= emblem.version) {
+		if (version <= emblem.version && emblem.ready) {
 			EntityManager.forEach(entity => {
-				if (entity.GUID === guild_id) {
+				if (entity.GUID === guild_id && entity.GEmblemVer !== 0) {
 					entity.setEntityGuildEmblem(emblem.image, emblem.gif);
 				}
 			});
@@ -252,15 +253,16 @@ class GuildEngine {
 					return;
 				}
 
-				if (version > emblem.version) {
+				if (version > emblem.version || !emblem.ready) {
 					emblem.version = version;
 					emblem.image = img;
 					emblem.gif = gifCanvas;
+					emblem.ready = true;
 				}
 
 				callback(emblem.image, emblem.gif);
 				EntityManager.forEach(entity => {
-					if (entity.GUID === guild_id) {
+					if (entity.GUID === guild_id && entity.GEmblemVer !== 0) {
 						entity.setEntityGuildEmblem(emblem.image, emblem.gif);
 					}
 				});
@@ -570,6 +572,8 @@ class GuildEngine {
 	 * @see docs/reference/guild/emblem-picker.md
 	 */
 	static sendEmblem(data) {
+		const owner = Session.Entity;
+		const guildId = owner.GUID;
 		if (PACKETVER.value >= 20170315) {
 			function getFileType(_data) {
 				// "GI" Magic Bytes check (same from src)
@@ -580,7 +584,7 @@ class GuildEngine {
 			}
 			const fileInfo = getFileType(data);
 			const formData = new FormData();
-			formData.append('GDID', Session.Entity.GUID);
+			formData.append('GDID', guildId);
 			formData.append('WorldName', Session.ServerName);
 			formData.append('AuthToken', Session.WebToken);
 			formData.append('AID', Session.AID);
@@ -603,6 +607,9 @@ class GuildEngine {
 				}
 				try {
 					const response = JSON.parse(xhr.responseText);
+					if (!isCurrentGuildOwner(owner, guildId)) {
+						return;
+					}
 					console.log('Emblem uploaded successfully, version:', response.version);
 
 					// The web server only writes the image; it never tells the map
@@ -610,13 +617,15 @@ class GuildEngine {
 					// @see docs/reference/guild/emblem-picker.md
 					if (PACKETVER.value >= 20190724) {
 						const pkt = new PACKET.CZ.REQ_ADD_NEW_EMBLEM();
-						pkt.GDID = Session.Entity.GUID;
+						pkt.GDID = guildId;
 						pkt.version = response.version;
 						Network.sendPacket(pkt);
 					}
 
-					GuildEngine.requestGuildEmblem(Session.Entity.GUID, response.version, (image, _gif) => {
-						Guild.setEmblem(image);
+					GuildEngine.requestGuildEmblem(guildId, response.version, (image, _gif) => {
+						if (isCurrentGuildOwner(owner, guildId) && owner.GEmblemVer !== 0) {
+							Guild.setEmblem(image);
+						}
 					});
 				} catch (e) {
 					console.error('Error parsing emblem upload response:', e);
@@ -673,9 +682,9 @@ function onMemberTalk(pkt) {
 function onMemberMove(pkt) {
 	// Server remove mark with "-1" as position
 	if (pkt.xPos < 0 || pkt.yPos < 0) {
-		MiniMap.getUI().removeGuildMemberMark(pkt.AID);
+		MiniMap.removeGuildMemberMark(pkt.AID);
 	} else {
-		MiniMap.getUI().addGuildMemberMark(pkt.AID, pkt.xPos, pkt.yPos);
+		MiniMap.addGuildMemberMark(pkt.AID, pkt.xPos, pkt.yPos);
 	}
 }
 
@@ -695,6 +704,10 @@ function onGuildInfo(pkt) {
  */
 function onGuildAccess(pkt) {
 	Guild.setAccess(pkt.guildMemuFlag);
+}
+
+function isCurrentGuildOwner(entity, guildId) {
+	return !!entity && Session.Entity === entity && entity.GUID === guildId;
 }
 
 /**
@@ -747,9 +760,12 @@ function onGuildOwnInfo(pkt) {
 	}
 
 	// Request emblem for the player's own entity
+	const owner = Session.Entity;
 	if (pkt.GDID && pkt.emblemVersion) {
 		GuildEngine.requestGuildEmblem(pkt.GDID, pkt.emblemVersion, (image, gif) => {
-			Session.Entity.setEntityGuildEmblem(image, gif);
+			if (isCurrentGuildOwner(owner, pkt.GDID) && owner.GEmblemVer !== 0) {
+				owner.setEntityGuildEmblem(image, gif);
+			}
 		});
 	}
 }
@@ -776,6 +792,7 @@ const onGuildEmblem = (function onGuildEmblemClosure() {
 		if (!_emblems[pkt.GDID]) {
 			_emblems[pkt.GDID] = {
 				version: -1,
+				ready: false,
 				image: new Image(),
 				gif: null,
 				callback: []
@@ -787,11 +804,13 @@ const onGuildEmblem = (function onGuildEmblemClosure() {
 		const len = inflate.getBytes(data);
 		const src = URL.createObjectURL(new Blob([data.subarray(0, len).buffer], { type: 'image/bmp' }));
 		const emblem = _emblems[pkt.GDID];
+		const owner = Session.Entity;
 
 		// Prepare our emblem image
 		const img = new Image();
 		img.onload = renderEmblem;
 		emblem.version = pkt.emblemVersion;
+		emblem.ready = false;
 		img.decoding = 'async';
 
 		// Load the emblem, remove magenta, free blob from memory
@@ -803,9 +822,10 @@ const onGuildEmblem = (function onGuildEmblemClosure() {
 		function renderEmblem() {
 			emblem.image = this;
 			emblem.gif = null;
+			emblem.ready = true;
 
 			// Update our guild emblem
-			if (pkt.GDID === GuildEngine.guild_id) {
+			if (isCurrentGuildOwner(owner, pkt.GDID) && owner.GEmblemVer !== 0) {
 				Guild.setEmblem(this);
 			}
 
@@ -816,7 +836,7 @@ const onGuildEmblem = (function onGuildEmblemClosure() {
 
 			// Update display name of entities
 			EntityManager.forEach(entity => {
-				if (entity.GUID === pkt.GDID) {
+				if (entity.GUID === pkt.GDID && entity.GEmblemVer !== 0) {
 					entity.setEntityGuildEmblem(img);
 				}
 			});
@@ -834,6 +854,31 @@ const onGuildEmblem = (function onGuildEmblemClosure() {
  * @param {object} pkt - PACKET.ZC.CHANGE_GUILD | PACKET.ZC.CHANGE_GUILD2
  */
 function onGuildEmblemChanged(pkt) {
+	// This is also the actor's membership update. Apply it before the shared
+	// image request is deduplicated, including joining without an emblem or leaving.
+	const entity = pkt.AID === undefined ? null : EntityManager.get(pkt.AID);
+	if (entity) {
+		const changedGuild = entity.GUID !== pkt.GDID;
+		entity.GUID = pkt.GDID;
+		entity.GEmblemVer = pkt.emblemVersion;
+		if (changedGuild || !pkt.GDID || !pkt.emblemVersion) {
+			entity.setEntityGuildEmblem(null, null);
+			if (entity.emblem) {
+				entity.emblem.display = false;
+			}
+		}
+		const emblem = _emblems[pkt.GDID];
+		if (pkt.GDID && pkt.emblemVersion && emblem?.ready && emblem.version >= pkt.emblemVersion) {
+			entity.setEntityGuildEmblem(emblem.image, emblem.gif);
+		}
+	}
+
+	const owner = Session.Entity;
+	if (owner?.GUID === pkt.GDID) {
+		// The short historical form has no actor id, but still refreshes our version.
+		owner.GEmblemVer = pkt.emblemVersion;
+	}
+
 	if (!pkt.GDID || !pkt.emblemVersion) {
 		return;
 	}
@@ -846,11 +891,6 @@ function onGuildEmblemChanged(pkt) {
 	}
 	_emblemNotified[pkt.GDID] = pkt.emblemVersion;
 
-	const isOwnGuild = pkt.GDID === Session.Entity.GUID;
-	if (isOwnGuild) {
-		Session.Entity.GEmblemVer = pkt.emblemVersion;
-	}
-
 	// The fetch repaints the entities on the map by itself. An open window is a
 	// separate surface and has to be told, or it keeps the old emblem until
 	// something else happens to rebuild the Info tab. Our own guild only: another
@@ -860,7 +900,7 @@ function onGuildEmblemChanged(pkt) {
 		pkt.GDID,
 		pkt.emblemVersion,
 		image => {
-			if (isOwnGuild) {
+			if (isCurrentGuildOwner(owner, pkt.GDID) && owner.GEmblemVer !== 0) {
 				Guild.setEmblem(image);
 			}
 		},

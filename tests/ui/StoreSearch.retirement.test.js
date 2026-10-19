@@ -1,0 +1,60 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import PACKET from 'Network/PacketStructure.js';
+const state = vi.hoisted(() => ({ packets: [], hooks: new Map(), marks: new Map(), detail: null, retired: 0, shop: null }));
+vi.mock('Core/Client.js', () => ({ default: { loadFile: (path, done) => done(`asset:${path}`) } }));
+vi.mock('DB/Items/ItemTable.js', () => ({ default: Object.fromEntries(Array.from({length: 22}, (_, i) => [100100+i, { identifiedDisplayName: i < 2 ? 'Sword' : `Item ${i}`, identifiedResourceName: 'sword', slotCount: i === 0 ? 1 : 2 }])) }));
+vi.mock('DB/DBManager.js', () => ({ default: { INTERFACE_PATH: 'data/texture/', getItemInfo: id => ({identifiedDisplayName: `Item ${id}`, identifiedResourceName: 'sword'}), getItemName: item => `+${item.RefiningLevel} Item ${item.ITID}`, getMessage: () => '' } }));
+vi.mock('Network/NetworkManager.js', () => ({ default: { sendPacket: packet => state.packets.push(packet), hookPacket: (type, fn) => state.hooks.set(type, fn) } }));
+vi.mock('Renderer/Renderer.js', () => ({ default: { width:1200, height:800 } }));
+vi.mock('UI/CursorManager.js', () => ({default:{setType(){},ACTION:{DEFAULT:0}}}));
+vi.mock('Renderer/EntityManager.js', () => ({default:{get:()=>null,setOverEntity(){}}}));
+vi.mock('UI/Scrollbar.js', () => ({default:{}}));
+vi.mock('UI/UIManager.js', () => ({default:{addComponent: c => c}}));
+vi.mock('UI/Components/ItemInfo/ItemInfo.js', () => ({default:{append(){}, setItem: item => {state.detail=item;}}}));
+vi.mock('UI/Components/MiniMap/MiniMap.js', () => ({default:{getUI: () => ({addNpcMark: (key,x,y) => state.marks.set(key,[x,y]),removeNpcMark: key => state.marks.delete(key)})}}));
+const stub = vi.hoisted(() => () => ({default:{}}));
+vi.mock('UI/Components/Inventory/Inventory.js', () => ({default:{getUI:()=>({getItemById:()=>null})}}));
+vi.mock('UI/Components/Vending/Vending.js', stub);
+vi.mock('UI/Components/VendingReport/VendingReport.js', stub);
+vi.mock('UI/Components/VendingShop/VendingShop.js', stub);
+vi.mock('UI/Components/ChatBox/ChatBox.js', stub);
+const Store = (await import('Engine/MapEngine/Store.js')).default;
+const NpcStore = (await import('UI/Components/NpcStore/NpcStore.js')).default;
+const Search = (await import('UI/Components/StoreSearch/StoreSearch.js')).default;
+const { default: initialize, resetStoreSearch } = await import('Engine/MapEngine/StoreSearch.js');
+const receive = (type,p) => state.hooks.get(type)(p);
+const root = () => Search.getRoot();
+const el = selector => root().querySelector(selector);
+const open = (effect=0) => receive(PACKET.ZC.OPEN_SEARCH_STORE_INFO,{openType:effect,SearchCntMax:10});
+const choose = (query='Sword', field='items', index=0) => {
+ const input=el(`[data-picker="${field}"] input`); input.value=query; input.dispatchEvent(new Event('input'));
+ root().querySelectorAll(`[data-picker="${field}"] .candidates button`)[index].click();
+};
+const search = () => { choose(); el('.search').click(); };
+const row = (id=100100) => ({SSI_ID:42,AID:200001,ITID:id,StoreName:'<img src=x onerror=alert(1)>',price:50,count:2,RefiningLevel:7,enchantgrade:3,slot:{card1:4001},Options:[undefined,{index:5,value:-12,param:0}],IsIdentified:1});
+const ack = (rows=[row()], first=1,next=0,uses=9) => receive(PACKET.ZC.SEARCH_STORE_INFO_ACK2,{IsFirstPage:first,IsNexPage:next,RemainedSearchCnt:uses,SSI_List:rows});
+beforeEach(() => { vi.useFakeTimers(); resetStoreSearch(true); state.packets=[]; state.marks.clear(); state.detail=null; state.retired=0; initialize(); Store(); });
+afterEach(() => {resetStoreSearch(true);NpcStore.remove();InputBox.remove();vi.clearAllTimers();vi.useRealTimers();});
+const InputBox = (await import('UI/Components/InputBox/InputBox.js')).default;
+const Session = (await import('Engine/SessionStorage.js')).default;
+const PACKETVER = (await import('Network/PacketVerManager.js')).default;
+describe('catalog-owned nested shop widgets', () => {
+ it('retires the real quantity prompt and overlay with its remote shop without sending an NPC close', () => {
+  const version = PACKETVER.value; PACKETVER.value=20260930;
+  Session.zeny=1000000;Session.Entity={weight:0,max_weight:1000000};
+  try {
+   open(1);search();ack();el('.visit').click();
+   receive(PACKET.ZC.PC_PURCHASE_ITEMLIST_FROMMC3,Object.assign(Object.create(PACKET.ZC.PC_PURCHASE_ITEMLIST_FROMMC3.prototype),{AID:200001,UniqueID:42,itemList:[{ITID:501,index:0,type:0,price:50,count:10,weight:70}]}));
+   const drop=new Event('drop',{bubbles:true});
+   Object.defineProperty(drop,'dataTransfer',{value:{getData:()=>JSON.stringify({type:'item',from:'NpcStore',container:'InputWindow',index:0})}});
+   NpcStore.getRoot().querySelector('.OutputWindow').dispatchEvent(drop);
+   expect(InputBox.__active).toBe(true);expect(InputBox._overlay.isConnected).toBe(true);expect(Session.FreezeUI).toBe(true);
+   const count=state.packets.length;
+   el('.close').click();
+   expect(NpcStore.__active).toBe(false);expect(InputBox.__active).toBe(false);
+   expect(InputBox._host.isConnected).toBe(false);expect(InputBox._overlay.isConnected).toBe(false);expect(Session.FreezeUI).toBe(false);
+   expect(state.packets.slice(count)).toHaveLength(1);
+   expect(state.packets.at(-1)).toBeInstanceOf(PACKET.CZ.CLOSE_SEARCH_STORE_INFO);
+  } finally { NpcStore.remove();InputBox.remove();PACKETVER.value=version; }
+ });
+});

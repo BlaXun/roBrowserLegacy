@@ -11,6 +11,7 @@
 import Interaction from './JoystickInteractionService.js';
 import ControlsSettings from 'Preferences/Controls.js';
 import JoystickUIRenderer from './JoystickUIRenderer.js';
+import Keyboard from './JoystickKeyboard.js';
 
 // A released stick springs back past centre for a moment. If a poll lands
 // on that overshoot it reads as a small push the other way, and the
@@ -42,6 +43,12 @@ function isRebound(x, y) {
 
 export default {
 	update: function (axes) {
+		// The on-screen keyboard has the sticks: the character stands while it is open
+		if (Keyboard.isOpen()) {
+			Interaction.releaseStick();
+			return true;
+		}
+
 		let active = false;
 
 		// Left stick = movement

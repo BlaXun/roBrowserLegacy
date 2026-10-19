@@ -1,0 +1,72 @@
+:host {
+	--chat-tab-height: 23px;
+}
+.chat-log {
+	box-sizing: border-box;
+	text-shadow: 1px 1px 0 black;
+	height: 100%;
+	overflow-y: auto;
+	line-height: 14px;
+}
+.chat-log a {
+	color: inherit;
+	text-decoration: underline;
+}
+.chat-log a,
+.chat-log .item-link,
+.chat-log .nickname-link {
+	cursor: pointer;
+}
+:is(.chat-tab, #chatbox .header .tab div.chat-tab) {
+	position: relative;
+	box-sizing: border-box;
+	height: var(--chat-tab-height);
+	padding: 3px 5px;
+	border-radius: 3px 3px 0 0;
+	background: rgba(0, 0, 0, 0.75);
+	border: 1px solid #959595;
+	border-bottom-color: white;
+}
+:is(.chat-tab.on, #chatbox .header .tab div.chat-tab.on) {
+	z-index: 1;
+	background: rgba(0, 0, 0, 0.5);
+	border-color: white;
+	border-bottom-color: transparent;
+}
+:is(.chat-tab, #chatbox .header .tab div.chat-tab) input {
+	box-sizing: border-box;
+	display: block;
+	border: none;
+	padding: 0;
+	background-color: transparent;
+	color: white;
+	width: 100%;
+	min-width: 0;
+	text-overflow: ellipsis;
+	overflow: hidden;
+	height: 15px;
+	line-height: 15px;
+	text-align: center;
+}
+
+/* Finish the header rule with the same rounded frame corner in both chat views. */
+.chat-frame-corner {
+	border-top-right-radius: 3px;
+}
+.chat-frame-corner::before {
+	content: '';
+	position: absolute;
+	top: -1px;
+	right: -1px;
+	width: 3px;
+	height: 3px;
+	box-sizing: border-box;
+	border-top: 1px solid white;
+	border-right: 1px solid white;
+	border-top-right-radius: 3px;
+	pointer-events: none;
+}
+
+.chat-tab input[type='button'] {
+	cursor: pointer;
+}

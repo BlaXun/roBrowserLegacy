@@ -1,0 +1,81 @@
+#chatbox {
+	--chat-header-height: var(--chat-tab-height);
+}
+
+/** Tabs **/
+#chatbox .header {
+	margin-left: 0;
+	table-layout: fixed;
+	height: var(--chat-header-height);
+	width: 100%;
+}
+
+#chatbox .header td {
+	padding: 0;
+}
+
+#chatbox .header .tab {
+	width: auto;
+	color: white;
+	text-align: center;
+}
+
+/* Overlap shared borders so both top corners keep their shape. */
+#chatbox .header .tab + .tab div {
+	margin-left: -1px;
+}
+
+#chatbox .header .options {
+	box-sizing: border-box;
+	border-bottom: 1px solid white;
+	margin-right: 3px;
+	height: var(--chat-header-height);
+}
+
+#chatbox .body {
+	position: relative;
+}
+
+#chatbox .chat-function {
+	padding: 0;
+	margin: 0;
+	position: absolute;
+	right: 0;
+	top: 0;
+	height: var(--chat-header-height);
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	z-index: 2;
+}
+#chatbox .chat-function button,
+#chatbox .chat-function .cfunc {
+	background-size: auto;
+	border: 0;
+	background-repeat: no-repeat;
+	background-color: transparent;
+}
+#chatbox .chat-function .chatmode {
+	width: 14px;
+	height: 9px;
+}
+#chatbox .chat-function .battleopt {
+	width: 9px;
+	height: 9px;
+}
+#chatbox .chat-function .stickfucn {
+	width: 14px;
+	height: 9px;
+}
+#chatbox .chat-function .battleopt2 {
+	width: 8px;
+	height: 8px;
+}
+#chatbox .chat-function .wndminib {
+	width: 8px;
+	height: 8px;
+}
+#chatbox .chat-function .lockdragwnd {
+	width: 9px;
+	height: 9px;
+}
