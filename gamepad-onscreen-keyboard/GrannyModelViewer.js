@@ -240931,16 +240931,20 @@ function prefs() {
 			mode: "grid"
 		}, 1);
 		if (!Array.isArray(_prefs.phrases)) _prefs.phrases = DEFAULT_PHRASES.slice();
+		_prefs.phrases = cleanPhrases(_prefs.phrases);
 		if (_prefs.mode !== "wheel") _prefs.mode = "grid";
 	}
 	return _prefs;
+}
+function cleanPhrases(list) {
+	return list.filter((phrase) => typeof phrase === "string" && phrase.length > 0).map((phrase) => phrase.slice(0, PHRASE_LENGTH_MAX)).slice(0, PHRASES_MAX);
 }
 function phrases() {
 	return prefs().phrases;
 }
 function storePhrases(list) {
 	const stored = prefs();
-	stored.phrases = list.slice(0, PHRASES_MAX);
+	stored.phrases = cleanPhrases(list);
 	stored.save();
 }
 function mode() {
@@ -241155,7 +241159,15 @@ function currentRows() {
 			label: "✕",
 			width: 1.5
 		}]);
-		rows.push([
+		rows.push(_password ? [{
+			action: "letters",
+			label: PAGE_LABEL[_lastPage],
+			width: 5
+		}, {
+			action: "done",
+			label: "Done",
+			width: 5
+		}] : [
 			{
 				action: "letters",
 				label: PAGE_LABEL[_lastPage],
@@ -241291,7 +241303,7 @@ function deletePhrase(index) {
 * Keep the typed text as a phrase, first in the list.
 */
 function saveText() {
-	if (!_text.trim()) return;
+	if (_password || !_text.trim()) return;
 	storePhrases([_text].concat(phrases().filter((phrase) => phrase !== _text)));
 	render$9();
 }
@@ -241829,7 +241841,7 @@ function focusedField() {
 	const el = deepActive();
 	return isTextField(el) ? el : null;
 }
-var BTN$1, REPEAT_DELAY_MS$1, REPEAT_EVERY_MS$1, STICK_PUSH, PHRASES_SHOWN, PHRASES_MAX, DEFAULT_PHRASES, TEXT_FIELD, NUMBER_FIELD, PAGE_ORDER, PAGE_LABEL, WHEEL, FACE_SLOT, SLOT_COLOR, DIRECTIONS, _open$1, _field, _kind, _node, _prefix, _text, _caret, _numeric, _password, _page$1, _lastPage, _shift, _row, _col, _petal, _panel, _nextAt, _stickDir, _stickNextAt, _prefs, JoystickKeyboard_default;
+var BTN$1, REPEAT_DELAY_MS$1, REPEAT_EVERY_MS$1, STICK_PUSH, PHRASES_SHOWN, PHRASES_MAX, PHRASE_LENGTH_MAX, DEFAULT_PHRASES, TEXT_FIELD, NUMBER_FIELD, PAGE_ORDER, PAGE_LABEL, WHEEL, FACE_SLOT, SLOT_COLOR, DIRECTIONS, _open$1, _field, _kind, _node, _prefix, _text, _caret, _numeric, _password, _page$1, _lastPage, _shift, _row, _col, _petal, _panel, _nextAt, _stickDir, _stickNextAt, _prefs, JoystickKeyboard_default;
 var init_JoystickKeyboard = __esmMin((() => {
 	init_Controls();
 	init_Preferences$1();
@@ -241842,6 +241854,7 @@ var init_JoystickKeyboard = __esmMin((() => {
 	STICK_PUSH = .5;
 	PHRASES_SHOWN = 6;
 	PHRASES_MAX = 30;
+	PHRASE_LENGTH_MAX = 255;
 	DEFAULT_PHRASES = [
 		"Hi!",
 		"Thanks!",
@@ -242087,7 +242100,10 @@ function handleView(events, now) {
 		if (_active$3 && _el && !_detached) info();
 		else JoystickMouseCursorAdapter_default.contextMenu();
 	}
-	if (release && !release.used && !_viewHoldFired && release.held < HOLD_MS && enabled$1()) toggle();
+	if (release && !release.used && !_viewHoldFired && release.held < HOLD_MS) {
+		if (enabled$1()) toggle();
+		else JoystickMouseCursorAdapter_default.contextMenu();
+	}
 }
 /**
 * Whether a release ends a tap that belongs to menus.
