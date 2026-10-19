@@ -33,8 +33,12 @@ import Thread from 'Core/Thread.js';
 /** Body palettes, data/palette/몸/, in the client's codepage. */
 const BODY_DIR = 'data/palette/\xb8\xf6/';
 
-/** <job>_<sex>_<n>.pal, or <job>_<sex>_<n>_1.pal for a costume_1 body. */
-const NAME = /^(.*_)(\d+)(_1)?\.pal$/i;
+/**
+ * <job>_<sex>_<n>.pal, or <job>_<sex>_<n>_1.pal for a costume_1 body. The
+ * prefix is the shortest that fits, so a costume's _<n>_1 is not read as
+ * colour 1 of a job named <job>_<sex>_<n>.
+ */
+const NAME = /^(.*?_)(\d+)(_1)?\.pal$/i;
 
 /** The job's own palettes that are compared, when they exist. */
 const SIBLINGS = [1, 2, 3];

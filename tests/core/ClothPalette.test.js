@@ -87,4 +87,15 @@ describe('ClothPalette', () => {
 		const built = await run(ClothPalette.build, prefix + '5.pal');
 		expect(built).toEqual(ClothPalette.recolour([1, 2, 3].map(n => files.get(prefix + n + '.pal')), 5));
 	});
+
+	it('reads a costume_1 body palette, <job>_<sex>_<n>_1.pal, as colour n', async () => {
+		const plain = job('job');
+		const prefix = BODY + 'costume_1/job_' + MALE + '_';
+		for (const n of [0, 1, 2, 3]) {
+			files.set(prefix + n + '_1.pal', files.get(plain + n + '.pal'));
+		}
+		const built = await run(ClothPalette.build, prefix + '5_1.pal');
+		expect(rgb(built, 10)).toEqual([200, 40, 40]);
+		expect(rgb(built, 12)).toEqual([250, 120, 120]);
+	});
 });
