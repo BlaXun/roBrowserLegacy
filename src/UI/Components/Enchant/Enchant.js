@@ -813,7 +813,7 @@ function hasEnoughMaterials(materials) {
 	if (!materials || !materials.length) {
 		return true;
 	}
-	const inventoryUI = Inventory.getUI && Inventory.getUI();
+	const inventoryUI = Inventory;
 	if (!inventoryUI || !inventoryUI.getItemById) {
 		return false;
 	}
@@ -853,7 +853,7 @@ function renderMaterials(materials) {
 	if (!materials || !materials.length) {
 		return;
 	}
-	const inventoryUI = Inventory.getUI && Inventory.getUI();
+
 	materials.forEach(mat => {
 		const entry = document.createElement('div');
 		entry.className = 'material';
@@ -867,8 +867,8 @@ function renderMaterials(materials) {
 		const label = matId ? getItemDisplayName(matId, mat.base) : mat.base || 'Unknown';
 		let current = 0;
 		const required = Number(mat.count) || 0;
-		if (matId && inventoryUI && inventoryUI.getItemById) {
-			const inventoryItem = inventoryUI.getItemById(matId);
+		if (matId && Inventory.getItemById) {
+			const inventoryItem = Inventory.getItemById(matId);
 			current = inventoryItem ? inventoryItem.count : 0;
 		}
 		nameEl.textContent = label;
@@ -959,8 +959,7 @@ function renderItemList() {
 		return;
 	}
 
-	const inventoryUI = Inventory.getUI && Inventory.getUI();
-	const items = inventoryUI && inventoryUI.list ? inventoryUI.list : [];
+	const items = Inventory && Inventory.list ? Inventory.list : [];
 	let selectedIndex = EnchantState.item ? EnchantState.item.index : 0;
 	let selectedValid = false;
 	const candidates = [];
@@ -1399,8 +1398,7 @@ function validateItem(item) {
 }
 
 function getInventoryItemByIndex(index) {
-	const inventoryUI = Inventory.getUI && Inventory.getUI();
-	return inventoryUI && inventoryUI.getItemByIndex ? inventoryUI.getItemByIndex(index) : null;
+	return Inventory.getItemByIndex(index);
 }
 
 function resolveItemContext(target) {
@@ -1549,8 +1547,7 @@ function onItemSelect(event) {
 	if (isNaN(index)) {
 		return;
 	}
-	const inventoryUI = Inventory.getUI && Inventory.getUI();
-	const item = inventoryUI && inventoryUI.getItemByIndex ? inventoryUI.getItemByIndex(index) : null;
+	const item = Inventory.getItemByIndex(index);
 	if (!item) {
 		return;
 	}

@@ -56,6 +56,78 @@ function _ensureDeps() {
 	return _depsPromise;
 }
 
+let _noCursorStyles;
+let _noCursorMedia = 'not all';
+
+function _supportsStyleQueries() {
+	const probe = document.createElement('div');
+	probe.innerHTML = '<style>@container style(--ro-probe: 1) { i { color: rgb(1, 2, 3); } }</style><i></i>';
+	probe.style.setProperty('--ro-probe', '1');
+	document.body.appendChild(probe);
+	const supported = getComputedStyle(probe.lastChild).color === 'rgb(1, 2, 3)';
+	probe.remove();
+	return supported;
+}
+
+function _syncNoCursorStyles() {
+	const media = document.body.classList.contains('custom-cursor') ? 'all' : 'not all';
+	if (media === _noCursorMedia) {
+		return;
+	}
+	_noCursorMedia = media;
+	for (let i = 0; i < _noCursorStyles.length; i++) {
+		_noCursorStyles[i].media = media;
+	}
+}
+
+/**
+ * Hides the native cursor in a shadow root where CSS style queries are
+ * missing, following body.custom-cursor; null where Common.css handles it.
+ * remove() lets go of it, so a closed window is not held.
+ *
+ * @param {ShadowRoot} shadow
+ * @return {?HTMLStyleElement}
+ */
+function _addNoCursorFallback(shadow) {
+	if (_noCursorStyles === undefined) {
+		_noCursorStyles = _supportsStyleQueries() ? null : [];
+		if (_noCursorStyles) {
+			_syncNoCursorStyles();
+			new MutationObserver(_syncNoCursorStyles).observe(document.body, {
+				attributes: true,
+				attributeFilter: ['class']
+			});
+		}
+	}
+	if (!_noCursorStyles) {
+		return null;
+	}
+
+	// `media` rather than `disabled`: a style element's sheet, and with it
+	// `disabled`, is rebuilt each time the window is appended again.
+	const style = document.createElement('style');
+	style.setAttribute('data-no-cursor', '');
+	style.media = _noCursorMedia;
+	style.textContent = '* { cursor: none !important; }';
+	shadow.appendChild(style);
+	_noCursorStyles.push(style);
+	return style;
+}
+
+function _trackNoCursorStyle(style) {
+	style.media = _noCursorMedia;
+	if (_noCursorStyles.indexOf(style) === -1) {
+		_noCursorStyles.push(style);
+	}
+}
+
+function _untrackNoCursorStyle(style) {
+	const index = _noCursorStyles.indexOf(style);
+	if (index !== -1) {
+		_noCursorStyles.splice(index, 1);
+	}
+}
+
 /**
  * Snap cache shared across all draggable instances (same as UIComponent)
  */
@@ -207,6 +279,9 @@ class GUIComponent {
 		commonStyle.textContent = CommonCSS;
 		this._shadow.appendChild(commonStyle);
 
+		// Hide native cursor where style queries are missing
+		this._noCursorStyle = _addNoCursorFallback(this._shadow);
+
 		// Inject component CSS (hot-reloadable)
 		const compStyle = document.createElement('style');
 		compStyle.setAttribute('data-component', this.name);
@@ -268,6 +343,9 @@ class GUIComponent {
 		}
 
 		parent.appendChild(this._host);
+		if (this._noCursorStyle) {
+			_trackNoCursorStyle(this._noCursorStyle);
+		}
 
 		// Bind keydown
 		if (this.onKeyDown) {
@@ -279,6 +357,7 @@ class GUIComponent {
 			_frozenBy.add(this);
 			Mouse.intersect = false;
 			Session.FreezeUI = true;
+			_EntityManager?.setOverEntity(null);
 			_Cursor?.setType(_Cursor?.ACTION?.DEFAULT ?? 0);
 		}
 
@@ -344,6 +423,9 @@ class GUIComponent {
 			// Detach from DOM
 			this._host.remove();
 			UIScale.detach(this);
+			if (this._noCursorStyle) {
+				_untrackNoCursorStyle(this._noCursorStyle);
+			}
 
 			// Freeze mode cleanup: only once no frozen window is left. A shop
 			// asks for an amount in an InputBox, and both freeze; closing the
@@ -602,6 +684,8 @@ class GUIComponent {
 		if (!handleEl) return this;
 
 		const onStart = event => {
+			if (component.canStartDrag && !component.canStartDrag(event)) return;
+			component.cancelDrag();
 			if (event.type === 'touchstart') {
 				Mouse.screen.x = event.touches[0].pageX;
 				Mouse.screen.y = event.touches[0].pageY;
@@ -659,14 +743,25 @@ class GUIComponent {
 			let currentOpacity = 1.0;
 			let lastMx = Mouse.screen.x;
 			let lastMy = Mouse.screen.y;
+			const startMx = lastMx,
+				startMy = lastMy;
+			let moved = false;
 
 			// Stop drag on mouseup / touchend
-			const onEnd = ev => {
+			const onEnd = (ev, cancelled = false) => {
 				if (ev.type === 'touchend' || ev.which === 1 || ev.isTrigger) {
 					cancelAnimationFrame(drag);
 					window.removeEventListener('mouseup', onEnd);
 					window.removeEventListener('touchend', onEnd);
 					_snapCache = [];
+					window.removeEventListener('blur', cancel);
+					component._cancelDrag = null;
+					component.onDragStop?.(ev, { moved, cancelled });
+					if (cancelled) {
+						host.style.opacity = '1';
+						host.style.transition = '';
+						return;
+					}
 
 					if (component.gridSnap) {
 						const gw = component.gridSnap.width;
@@ -710,6 +805,9 @@ class GUIComponent {
 				}
 			};
 
+			const cancel = () => onEnd({ isTrigger: true }, true);
+			component._cancelDrag = cancel;
+			if (component.canStartDrag) window.addEventListener('blur', cancel);
 			window.addEventListener('mouseup', onEnd);
 			window.addEventListener('touchend', onEnd);
 
@@ -723,12 +821,21 @@ class GUIComponent {
 					drag = requestAnimationFrame(dragging);
 					return;
 				}
+				if (component.canStartDrag && !component.canStartDrag(event)) {
+					cancel();
+					return;
+				}
+				if (!moved && Math.hypot(mx - startMx, my - startMy) < (component.dragThreshold || 0)) {
+					drag = requestAnimationFrame(dragging);
+					return;
+				}
+				moved = true;
 				lastMx = mx;
 				lastMy = my;
 
 				let x_ = mx + x;
 				let y_ = my + y;
-				currentOpacity = Math.max(currentOpacity - 0.02, 0.7);
+				currentOpacity = component.dragOpacity ?? Math.max(currentOpacity - 0.02, 0.7);
 
 				// Reset magnet
 				if (component.magnet) {
@@ -809,9 +916,25 @@ class GUIComponent {
 			};
 			drag = requestAnimationFrame(dragging);
 		};
+		this._dragHandleDisposers ||= new Set();
+		this._dragHandleDisposers.add(() => {
+			handleEl.removeEventListener('mousedown', onStart);
+			handleEl.removeEventListener('touchstart', onStart);
+		});
 		handleEl.addEventListener('mousedown', onStart);
 		handleEl.addEventListener('touchstart', onStart);
 		return this;
+	}
+
+	cancelDrag() {
+		this._cancelDrag?.();
+	}
+
+	// Ephemeral components release handles that may have been moved into another view.
+	disposeDragging() {
+		this.cancelDrag();
+		this._dragHandleDisposers?.forEach(dispose => dispose());
+		this._dragHandleDisposers?.clear();
 	}
 
 	// ─── Mouse intersection setup ──────────────────────────
@@ -987,6 +1110,8 @@ class GUIComponent {
 		}
 
 		if (this.mouseMode !== GUIComponent.MouseMode.CROSS) {
+			// A UI press must not reach the map, even if an older hover guard restored intersection.
+			element.addEventListener('mousedown', event => event.stopPropagation());
 			element.addEventListener('touchstart', e => e.stopImmediatePropagation());
 		}
 		// Shadow DOM cursor events (clickable hover detection)

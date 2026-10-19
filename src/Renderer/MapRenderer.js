@@ -107,6 +107,16 @@ class MapRenderer {
 	static loading = false;
 
 	/**
+	 * @var {number} id of the latest map load, bumped to cancel the one in progress
+	 */
+	static _loadId = 0;
+
+	/**
+	 * @var {number} worker request of the map load in progress, 0 when none
+	 */
+	static _loadRequest = 0;
+
+	/**
 	 * @var {Float32Array} diffuse Modified diffuse color
 	 */
 	static diffuse = null;
@@ -140,6 +150,8 @@ class MapRenderer {
 			.replace(/^(\d{3})(\d@)/, '$2') // 0061@tower   -> 1@tower
 			.replace(/^\d{3}#/, ''); // 003#prontera -> prontera
 
+		const loadId = ++this._loadId;
+
 		// Clean objects
 		SoundManager.stop();
 		Renderer.stop();
@@ -160,20 +172,28 @@ class MapRenderer {
 			const filename = mapname.replace(/\.gat$/i, '.rsw');
 
 			Background.setLoading(function () {
+				// Cancelled while the loading screen was coming up
+				if (loadId !== MapRenderer._loadId) {
+					return;
+				}
+
 				// Hooking Thread
-				Thread.hook('MAP_PROGRESS', onProgressUpdate.bind(MapRenderer));
-				Thread.hook('MAP_WORLD', onWorldComplete.bind(MapRenderer));
-				Thread.hook('MAP_GROUND', onGroundComplete.bind(MapRenderer));
-				Thread.hook('MAP_ALTITUDE', onAltitudeComplete.bind(MapRenderer));
-				Thread.hook('MAP_MODELS', onModelsComplete.bind(MapRenderer));
-				Thread.hook('MAP_ANIMATED_MODEL', onAnimatedModelComplete.bind(MapRenderer));
-				Thread.hook('MAP_REPLACED_MODELS', models => MapHooks.modelsReady(Renderer.getContext(), models));
+				Thread.hook('MAP_PROGRESS', loadEvent(onProgressUpdate));
+				Thread.hook('MAP_WORLD', loadEvent(onWorldComplete));
+				Thread.hook('MAP_GROUND', loadEvent(onGroundComplete));
+				Thread.hook('MAP_ALTITUDE', loadEvent(onAltitudeComplete));
+				Thread.hook('MAP_MODELS', loadEvent(onModelsComplete));
+				Thread.hook('MAP_ANIMATED_MODEL', loadEvent(onAnimatedModelComplete));
+				Thread.hook(
+					'MAP_REPLACED_MODELS',
+					loadEvent(models => MapHooks.modelsReady(Renderer.getContext(), models))
+				);
 
 				// Start Loading
 				MapRenderer.free();
 				Renderer.remove();
 				Thread.send('MAP_REPLACE_MODELS', MapHooks.modelNames());
-				Thread.send('LOAD_MAP', filename, onMapComplete.bind(MapRenderer));
+				MapRenderer._loadRequest = Thread.send('LOAD_MAP', filename, loadStep(loadId, onMapComplete));
 			});
 
 			return;
@@ -183,17 +203,32 @@ class MapRenderer {
 		EntityManager.free();
 		Damage.free(gl);
 		EffectManager.free(gl);
+		// The map's signboards are added again once it is set up (MapEngine)
+		SignboardManager.free();
 		JoystickUI.onRestore();
 
 		// Basic TP
 		Mouse.intersect = false;
 		Background.remove(() => {
+			if (loadId !== MapRenderer._loadId) {
+				return;
+			}
+
 			MapRenderer.onLoad();
 			Sky.setUpCloudData();
 
 			Renderer.render(MapRenderer.onRender);
 			Mouse.intersect = true;
 		});
+	}
+
+	/**
+	 * Cancel the map load in progress, if any: its remaining steps do nothing
+	 */
+	static cancelLoad() {
+		this._loadId++;
+		this._loadRequest = 0;
+		this.loading = false;
 	}
 
 	/**
@@ -224,6 +259,7 @@ class MapRenderer {
 		PostProcess.clean(gl);
 
 		Mouse.intersect = false;
+		Cursor.setType(Cursor.ACTION.DEFAULT);
 
 		this.light = null;
 		this.water = null;
@@ -311,6 +347,9 @@ class MapRenderer {
 		OccluderFade.beginFrame(gl, modelView, tick);
 		Models.render(gl, modelView, projection, normalMat, fog, light);
 		AnimatedModels.render(gl, modelView, projection, normalMat, fog, light, tick);
+		// Entities out of the view area, decided once for both the GR2 and the entity passes
+		EntityManager.cull();
+
 		// GR2 mobs render here with the opaque world models, before EntityManager.render below
 		// -- hence the 1-frame lag documented in GR2ModelRenderer.render (syncFromEntity reads the
 		// entity pose one frame stale). Ordering is intentional (opaque geometry pass).
@@ -383,6 +422,33 @@ class MapRenderer {
 	 * Callback to execute once the map is loaded
 	 */
 	static onLoad() {}
+}
+
+/**
+ * Bind a map load step to its load, so that it does nothing once the load is cancelled
+ *
+ * @param {number} loadId
+ * @param {function} step
+ */
+function loadStep(loadId, step) {
+	return (...args) => {
+		if (loadId === MapRenderer._loadId) {
+			step.apply(MapRenderer, args);
+		}
+	};
+}
+
+/**
+ * Bind a worker event of map loading, so that it only reaches the load whose request sent it
+ *
+ * @param {function} step
+ */
+function loadEvent(step) {
+	return (data, request) => {
+		if (request === MapRenderer._loadRequest) {
+			step.call(MapRenderer, data);
+		}
+	};
 }
 
 /**
@@ -612,6 +678,7 @@ function registerPostProcessModules(gl) {
  * Once the map finished to load
  */
 function onMapComplete(success, error) {
+	const loadId = MapRenderer._loadId;
 	const worldResource = this.currentMap.replace(/\.gat$/i, '.rsw');
 	const mapInfo = DB.getMap(worldResource);
 
@@ -649,6 +716,10 @@ function onMapComplete(success, error) {
 
 	// Starting to render
 	Background.remove(() => {
+		if (loadId !== MapRenderer._loadId) {
+			return;
+		}
+
 		MapRenderer.loading = false;
 
 		MapRenderer.onLoad();

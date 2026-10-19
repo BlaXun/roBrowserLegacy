@@ -23,9 +23,11 @@ import PACKETVER from 'Network/PacketVerManager.js';
 import PACKET from 'Network/PacketStructure.js';
 import PluginManager from 'Plugins/PluginManager.js';
 import Renderer from 'Renderer/Renderer.js';
+import MapRenderer from 'Renderer/MapRenderer.js';
 import UIManager from 'UI/UIManager.js';
 import WinList from 'UI/Components/WinList/WinList.js';
 import WinPopup from 'UI/Components/WinPopup/WinPopup.js';
+import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTargetSelection.js';
 import Queue from 'Utils/Queue.js';
 import Background from 'UI/Background.js';
 import MD5 from 'Vendors/spark-md5.min.js';
@@ -145,8 +147,8 @@ class LoginEngine {
 		WinLogin.selectUIVersion();
 		Background.setLoginBackground();
 
-		WinLogin.getUI().onConnectionRequest = onConnectionRequest;
-		WinLogin.getUI().onExitRequest = onExitRequest;
+		WinLogin.onConnectionRequest = onConnectionRequest;
+		WinLogin.onExitRequest = onExitRequest;
 
 		// Handle unexpected disconnects during login phase
 		Network.onDisconnect = () => {
@@ -155,7 +157,7 @@ class LoginEngine {
 				'ok',
 				() => {
 					UIManager.removeComponents();
-					WinLogin.getUI().append();
+					WinLogin.append();
 				},
 				true
 			);
@@ -169,9 +171,7 @@ class LoginEngine {
 			q.add(function () {
 				// The window chosen above may have no art in this client's data
 				WinLogin.selectUIVersionForData(() => {
-					WinLogin.getUI().onConnectionRequest = onConnectionRequest;
-					WinLogin.getUI().onExitRequest = onExitRequest;
-					WinLogin.getUI().append();
+					WinLogin.append();
 				});
 			});
 		}
@@ -208,9 +208,9 @@ class LoginEngine {
 	 */
 	static reload() {
 		UIManager.removeComponents();
-		WinLogin.getUI().onConnectionRequest = onConnectionRequest;
-		WinLogin.getUI().onExitRequest = onExitRequest;
-		WinLogin.getUI().append();
+		WinLogin.onConnectionRequest = onConnectionRequest;
+		WinLogin.onExitRequest = onExitRequest;
+		WinLogin.append();
 
 		Network.close();
 	}
@@ -238,7 +238,7 @@ function onConnectionRequest(username, password) {
 
 	// Add the loading screen
 	// Store the ID to use for the ping
-	WinLogin.getUI().remove();
+	WinLogin.remove();
 	WinLoading.append();
 	_loginID = username;
 
@@ -251,7 +251,7 @@ function onConnectionRequest(username, password) {
 				'ok',
 				() => {
 					UIManager.removeComponents();
-					WinLogin.getUI().append();
+					WinLogin.append();
 				},
 				true
 			);
@@ -425,7 +425,7 @@ function onConnectionAccepted(pkt) {
 		WinList.onExitRequest = () => {
 			Network.close();
 			WinList.remove();
-			WinLogin.getUI().append();
+			WinLogin.append();
 		};
 		WinList.append();
 		WinList.setList(list);
@@ -488,7 +488,7 @@ function onTarenConnectionRefused(pkt) {
 		'ok',
 		() => {
 			UIManager.removeComponents();
-			WinLogin.getUI().append();
+			WinLogin.append();
 		},
 		true
 	);
@@ -547,7 +547,7 @@ function onTarenConnectionRefused2(pkt) {
 		'ok',
 		() => {
 			UIManager.removeComponents();
-			WinLogin.getUI().append();
+			WinLogin.append();
 		},
 		true
 	);
@@ -614,7 +614,7 @@ function onInternationalConnectionRefused(pkt) {
 		'ok',
 		() => {
 			UIManager.removeComponents();
-			WinLogin.getUI().append();
+			WinLogin.append();
 		},
 		true
 	);
@@ -824,7 +824,7 @@ function onConnectionRefused(pkt) {
 		'ok',
 		() => {
 			UIManager.removeComponents();
-			WinLogin.getUI().append();
+			WinLogin.append();
 		},
 		true
 	);
@@ -931,12 +931,20 @@ function onServerClosed(pkt) {
 			break; // MSI_BAN_NOT_ALLOWED_JOBCLASS = Sorry the character you are trying to use is banned for testing connection.
 	}
 
+	// A skill waiting for its target would keep the cursor on it under the box
+	SkillTargetSelection.remove();
 	UIManager.showMessageBox(
 		DB.getMessage(msg_id),
 		'ok',
 		() => {
+			// The ban can arrive in game: stop the map before showing the login screen
+			Renderer.stop();
+			MapRenderer.cancelLoad();
+			MapRenderer.free();
+			BGM.play('01.mp3');
 			UIManager.removeComponents();
-			WinLogin.getUI().append();
+			// The login dialog waits for the login background to cover the map
+			Background.setLoginBackground(() => WinLogin.append());
 		},
 		true
 	);

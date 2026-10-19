@@ -87,6 +87,7 @@ MapViewer.init = function Init() {
 
 					case 'stop': {
 						const gl = Renderer.getContext();
+						MapRenderer.cancelLoad();
 						MapRenderer.free();
 						Renderer.stop();
 						gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);

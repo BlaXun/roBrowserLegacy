@@ -133,6 +133,14 @@ class UIManager {
 		return component;
 	}
 
+	/** Remove an ephemeral component without unregistering a newer same-name instance. */
+	static removeComponent(component) {
+		if (this.components[component.name] !== component) return false;
+		delete this.components[component.name];
+		component.remove();
+		return true;
+	}
+
 	/**
 	 * Get component stored in manager
 	 *
@@ -160,7 +168,7 @@ class UIManager {
 		const count = keys.length;
 
 		for (let i = 0; i < count; ++i) {
-			this.components[keys[i]].remove();
+			this.components[keys[i]]?.remove();
 		}
 	}
 
@@ -191,6 +199,9 @@ class UIManager {
 	 * @param {string} error message
 	 */
 	static showErrorBox(text) {
+		// The game ends with this box: a skill waiting for its target would keep the cursor on it
+		this.components.SkillTargetSelection?.remove();
+
 		const WinError = this.getComponent('WinPopup').clone('WinError');
 		// eslint-disable-next-line
 		let overlay;

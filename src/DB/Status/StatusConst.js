@@ -1415,6 +1415,10 @@ export default {
 	RESIST_PLUS: 1448,
 	PVP_DUN_BUFF: 1449,
 
+	// Druid shapeshift forms (EFST_WEREWOLF / EFST_WERERAPTOR)
+	WEREWOLF: 1675,
+	WERERAPTOR: 1680,
+
 	//Technical - must be largest value
-	MAX: 1450
+	MAX: 1681
 };

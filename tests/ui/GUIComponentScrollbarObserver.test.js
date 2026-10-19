@@ -19,14 +19,17 @@ vi.stubGlobal('localStorage', {
 	removeItem: key => store.delete(key)
 });
 
-// Counts the observers that are watching something
+// Counts the observers that are watching a window. The one GUIComponent keeps
+// on document.body for the whole session (the native cursor) is not counted.
 const live = new Set();
 class CountingObserver {
 	constructor(callback) {
 		this._inner = new globalThis.__RealMutationObserver(callback);
 	}
 	observe(target, options) {
-		live.add(this);
+		if (target !== document.body) {
+			live.add(this);
+		}
 		this._inner.observe(target, options);
 	}
 	disconnect() {

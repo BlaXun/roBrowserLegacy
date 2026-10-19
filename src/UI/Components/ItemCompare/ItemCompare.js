@@ -262,6 +262,8 @@ ItemCompare.setItem = function setItem(item) {
 	}
 
 	if (descInner) {
+		const rawDesc = item.IsIdentified ? it.identifiedDescriptionName : it.unidentifiedDescriptionName;
+		descInner.innerHTML = DB.formatMsgToHtml(_escapeHTML(rawDesc));
 		resize(descInner.offsetHeight + 45);
 	}
 };

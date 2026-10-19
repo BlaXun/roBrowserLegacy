@@ -165,6 +165,7 @@ class GameEngine {
 	 * Reload the game
 	 */
 	static reload() {
+		MapRenderer.cancelLoad();
 		BGM.setAvailableExtensions(Configs.get('BGMFileExtension', ['mp3']));
 		BGM.play('01.mp3');
 
@@ -204,6 +205,7 @@ function onReload() {
 		WinList.setList(list);
 	}
 	Renderer.stop();
+	MapRenderer.cancelLoad();
 	MapRenderer.free();
 	BGM.play('01.mp3');
 }
