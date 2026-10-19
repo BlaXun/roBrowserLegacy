@@ -648,6 +648,15 @@ function cancelPrediction() {
 	const fallback = this.walk.predicted.fallback;
 	this.walk.predicted = null;
 
+	// Dead or sitting: put it where the server has it, without a walk.
+	if (this.action === this.ACTION.DIE || this.action === this.ACTION.SIT) {
+		this.resetRoute();
+		this.position[0] = fallback[0];
+		this.position[1] = fallback[1];
+		this.position[2] = Altitude.getCellHeight(fallback[0], fallback[1]);
+		return;
+	}
+
 	const curX = Math.round(this.position[0]);
 	const curY = Math.round(this.position[1]);
 	if (curX === fallback[0] && curY === fallback[1]) {
@@ -804,12 +813,14 @@ function walkProcess() {
 	const TICK = Date.now();
 	const falconGliding = 5;
 
-	if (total == 0) {
+	// Checked with no route too: a short walk, or one a hit stopped, ends before
+	// the deadline, and the server may still not have taken it.
+	if (walk.predicted && TICK > walk.predicted.deadline) {
+		this.cancelPrediction();
 		return;
 	}
 
-	if (walk.predicted && TICK > walk.predicted.deadline) {
-		this.cancelPrediction();
+	if (total == 0) {
 		return;
 	}
 
@@ -913,7 +924,10 @@ function walkProcess() {
 				walk.onEnd = null;
 			}
 
+			// Arriving is not the server agreeing: keep waiting for its reply.
+			const predicted = walk.predicted;
 			this.resetRoute();
+			walk.predicted = predicted;
 			this.isAttacking = false;
 		};
 

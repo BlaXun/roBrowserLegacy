@@ -31,7 +31,10 @@ vi.mock('Engine/SessionStorage.js', () => ({ default: session }));
 vi.mock('Utils/PathFinding.js', () => ({ default: pathFinding }));
 vi.mock('Renderer/Map/Altitude.js', () => ({ default: { getCellHeight: () => 0 } }));
 
+vi.mock('DB/DBManager.js', () => ({ default: {} }));
+
 const { default: InitWalk, gridPathDuration } = await import('Renderer/Entity/EntityWalk.js');
+const { default: InitAction } = await import('Renderer/Entity/EntityAction.js');
 
 const ACTION = { IDLE: 0, WALK: 1, ATTACK: 2, READYFIGHT: 3, DIE: 4 };
 const SPEED = 150;
@@ -166,6 +169,61 @@ describe('predictWalkTo', () => {
 		expect(me.position[0]).toBe(10);
 		expect(me.position[1]).toBe(10);
 		expect(me.action).toBe(ACTION.IDLE);
+	});
+
+	it('walks back from a short walk the server never answers', () => {
+		const me = makeEntity(10, 10);
+		me.predictWalkTo(11, 10, 400);
+		step(me, 300); // there at 150 ms, no reply
+		expect(me.position[0]).toBe(11);
+		step(me, 2000);
+		expect([me.position[0], me.position[1]]).toEqual([10, 10]);
+		expect(me.walk.predicted).toBe(null);
+	});
+
+	it('stays put when the reply comes after a short walk ended', () => {
+		const me = makeEntity(10, 10);
+		me.predictWalkTo(11, 10, 400);
+		step(me, 250);
+		me.walkTo(10, 10, 11, 10, 0, session.serverTick);
+		expect(me.walk.predicted).toBe(null);
+		step(me, 2000);
+		expect([me.position[0], me.position[1]]).toEqual([11, 10]);
+	});
+
+	it('walks back when a hit stops a walk the server never answers', () => {
+		// The real setAction, which drops the route when a walk turns into a hurt.
+		function Pc() {}
+		Pc.TYPE_PC = 0;
+		const me = Object.assign(new Pc(), {
+			objecttype: Pc.TYPE_PC,
+			position: new Float32Array([10, 10, 0]),
+			cast: { display: false },
+			sound: { free() {} }
+		});
+		InitAction.call(me);
+		InitWalk.call(me);
+		me.action = me.ACTION.IDLE;
+		me.walk.speed = SPEED;
+		me.predictWalkTo(15, 10, 400);
+		step(me, 200);
+		me.setAction({ action: me.ACTION.HURT, frame: 0, play: true });
+		const stoppedAt = me.position[0];
+		expect(stoppedAt).toBeGreaterThan(10);
+		step(me, 2000);
+		expect([me.position[0], me.position[1]]).toEqual([10, 10]);
+	});
+
+	it('puts a player who died meanwhile where the server has it, without a walk', () => {
+		const me = makeEntity(10, 10);
+		me.predictWalkTo(15, 10, 400);
+		step(me, 200);
+		me.resetRoute(); // what the real setAction does on the way into DIE
+		me.walk.predicted = { queue: [[15, 10]], fallback: [10, 10], deadline: now + 200 };
+		me.action = ACTION.DIE;
+		step(me, 1000);
+		expect(me.action).toBe(ACTION.DIE);
+		expect([me.position[0], me.position[1]]).toEqual([10, 10]);
 	});
 });
 
