@@ -288,6 +288,258 @@ describe('JoystickWindowProfiles item windows', () => {
 	});
 });
 
+describe('JoystickWindowProfiles X menus, shop lists and tabs', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+		Object.keys(mocks.components).forEach(key => delete mocks.components[key]);
+	});
+
+	/**
+	 * A window in the page whose drops are recorded, as a registered component's host.
+	 */
+	function openHost() {
+		const host = document.createElement('div');
+		host.drops = [];
+		host.addEventListener('drop', event => host.drops.push(JSON.parse(event.dataTransfer.getData('Text'))));
+		document.body.appendChild(host);
+		return host;
+	}
+
+	/**
+	 * Items in it say what they carry when dragged, as the client's windows do.
+	 */
+	function draggable(win, from) {
+		win.root.addEventListener('dragstart', event => {
+			const item = event.target.closest('[data-index]');
+			event.dataTransfer.setData('Text', JSON.stringify({ type: 'item', from, index: item.dataset.index }));
+		});
+		return win;
+	}
+
+	function labels(entries) {
+		return entries.map(entry => entry.label);
+	}
+
+	function run(entries, label, el) {
+		entries.find(entry => entry.label === label).run(el);
+	}
+
+	it('inventory: X lists use, where the stack can go (all, or some), a gamepad slot and the ground', () => {
+		const item = { index: 3, type: 0, count: 7 };
+		const inventory = { getItemByIndex: () => item, useItem: vi.fn(), reqMoveItemToCart: vi.fn() };
+		mocks.components.Inventory = inventory;
+		const storage = { _host: openHost(), reqAddItem: vi.fn() };
+		mocks.components.Storage = storage;
+		mocks.components.CartItems = { _host: openHost() };
+		const map = document.createElement('canvas');
+		map.className = 'ro-scene';
+		map.drops = [];
+		map.addEventListener('drop', event => map.drops.push(JSON.parse(event.dataTransfer.getData('Text'))));
+		document.body.appendChild(map);
+		const win = draggable(windowOf('<div class="item" draggable="true" data-index="3"></div>'), 'Inventory');
+		const el = win.$('.item');
+		const ctx = { pickSlot: vi.fn() };
+		const actions = Profiles.forName('InventoryV3').actions(el, win, ctx);
+
+		expect(labels(actions)).toEqual([
+			'Use',
+			'Store all',
+			'Store some…',
+			'All to cart',
+			'Some to cart…',
+			'Gamepad slot…',
+			'Drop…'
+		]);
+		run(actions, 'Use', el);
+		expect(inventory.useItem).toHaveBeenCalledWith(item);
+		run(actions, 'Store all', el);
+		expect(storage.reqAddItem).toHaveBeenCalledWith(3, 7);
+		run(actions, 'All to cart', el);
+		expect(inventory.reqMoveItemToCart).toHaveBeenCalledWith(3, 7);
+		run(actions, 'Gamepad slot…', el);
+		expect(ctx.pickSlot).toHaveBeenCalledWith(el);
+
+		// "Some" drops the stack on the window, whose drop handler asks how many
+		run(actions, 'Store some…', el);
+		expect(storage._host.drops).toEqual([{ type: 'item', from: 'Inventory', index: '3' }]);
+		run(actions, 'Drop…', el);
+		expect(map.drops).toEqual([{ type: 'item', from: 'Inventory', index: '3' }]);
+	});
+
+	it('inventory: one etc item with nothing open can only be dropped, and nothing else is', () => {
+		mocks.components.Inventory = { getItemByIndex: () => ({ index: 5, type: 3, count: 1 }) };
+		const win = windowOf('<div class="item" data-index="5"></div><button class="close"></button>');
+		const profile = Profiles.forName('InventoryV3');
+
+		expect(profile.actions(win.$('.item'), win, { pickSlot: vi.fn() })).toEqual([]);
+		const map = document.createElement('canvas');
+		map.className = 'ro-scene';
+		document.body.appendChild(map);
+		expect(labels(profile.actions(win.$('.item'), win, {}))).toEqual(['Drop']);
+		expect(profile.actions(win.$('.close'), win, {})).toEqual([]);
+	});
+
+	it('storage and cart: X takes all or some, and moves stacks between them', () => {
+		const inventoryHost = openHost();
+		mocks.components.Inventory = { _host: inventoryHost };
+		const storage = { _host: openHost(), reqRemoveItem: vi.fn(), reqMoveItemToCart: vi.fn(), reqAddItemFromCart: vi.fn() };
+		mocks.components.Storage = storage;
+		const cart = { _host: openHost(), getItemByIndex: index => ({ index, count: 4 }), reqRemoveItem: vi.fn() };
+		mocks.components.CartItems = cart;
+
+		const stored = draggable(
+			windowOf(
+				'<div class="content"><div class="item" draggable="true" data-index="40"><div class="icon"></div><span class="count">12</span></div></div>'
+			),
+			'Storage'
+		);
+		const fromStorage = Profiles.forName('Storage').actions(stored.$('.item'), stored, {});
+		expect(labels(fromStorage)).toEqual(['Take all', 'Take some…', 'All to cart', 'Some to cart…']);
+		run(fromStorage, 'Take all', stored.$('.item'));
+		expect(storage.reqRemoveItem).toHaveBeenCalledWith(40, 12);
+		run(fromStorage, 'All to cart', stored.$('.item'));
+		expect(storage.reqMoveItemToCart).toHaveBeenCalledWith(40, 12);
+		run(fromStorage, 'Take some…', stored.$('.item'));
+		expect(inventoryHost.drops).toEqual([{ type: 'item', from: 'Storage', index: '40' }]);
+
+		const carted = draggable(
+			windowOf('<div class="content"><div class="item" draggable="true" data-index="2"></div></div>'),
+			'CartItems'
+		);
+		const fromCart = Profiles.forName('CartItems').actions(carted.$('.item'), carted, {});
+		expect(labels(fromCart)).toEqual(['Take all', 'Take some…', 'Store all', 'Store some…']);
+		run(fromCart, 'Take all', carted.$('.item'));
+		expect(cart.reqRemoveItem).toHaveBeenCalledWith(2, 4);
+		run(fromCart, 'Store all', carted.$('.item'));
+		expect(storage.reqAddItemFromCart).toHaveBeenCalledWith(2, 4);
+		run(fromCart, 'Store some…', carted.$('.item'));
+		expect(storage._host.drops).toEqual([{ type: 'item', from: 'CartItems', index: '2' }]);
+	});
+
+	it('skills: X uses, levels up and slots a usable skill; only those can be picked up', () => {
+		const skills = { 28: { SKID: 28, level: 10, type: 16 }, 2: { SKID: 2, level: 10, type: 0 } };
+		const list = { useSkillID: vi.fn(), getSkillById: id => skills[id] };
+		mocks.components.SkillList = list;
+		const win = windowOf(
+			'<div class="skill" draggable="true" data-index="28"><ui-button class="btn levelup"></ui-button></div><div class="skill" draggable="true" data-index="2"><ui-button class="btn levelup"></ui-button></div>'
+		);
+		place(win.$('[data-index="2"] .levelup'), 0, 0, 0, 0);
+		const levelUp = vi.fn();
+		win.$('[data-index="28"] .levelup').addEventListener('click', levelUp);
+		const profile = Profiles.forName('SkillListV2');
+		const ctx = { pickSlot: vi.fn() };
+
+		const actions = profile.actions(win.$('[data-index="28"]'), win, ctx);
+		expect(labels(actions)).toEqual(['Use', 'Level up', 'Gamepad slot…']);
+		run(actions, 'Use', win.$('[data-index="28"]'));
+		expect(list.useSkillID).toHaveBeenCalledWith(28);
+		run(actions, 'Level up', win.$('[data-index="28"]'));
+		expect(levelUp).toHaveBeenCalledTimes(1);
+
+		expect(profile.actions(win.$('[data-index="2"]'), win, ctx)).toEqual([]);
+		expect(profile.canMove(win.$('[data-index="28"]'), win)).toBe(true);
+		expect(profile.canMove(win.$('[data-index="2"]'), win)).toBe(false);
+	});
+
+	it('shortcut bar and equipment: X uses or clears a slot, takes a worn item off', () => {
+		const bar = { onShortCut: vi.fn(), removeAt: vi.fn() };
+		mocks.components.ShortCut = bar;
+		const slots = windowOf(
+			'<div class="container" data-index="10"><div class="icon"></div></div><div class="container" data-index="11"></div>'
+		);
+		const actions = Profiles.forName('ShortCut').actions(slots.$('[data-index="10"]'), slots, {});
+		expect(labels(actions)).toEqual(['Use', 'Clear']);
+		run(actions, 'Clear');
+		expect(bar.removeAt).toHaveBeenCalledWith(10);
+		expect(Profiles.forName('ShortCut').actions(slots.$('[data-index="11"]'), slots, {})).toEqual([]);
+
+		const equipment = { onUnEquip: vi.fn() };
+		mocks.components.Equipment = equipment;
+		const worn = windowOf('<div class="item" data-index="12"><button></button></div>');
+		run(Profiles.forName('EquipmentV4').actions(worn.$('.item'), worn, {}), 'Unequip');
+		expect(equipment.onUnEquip).toHaveBeenCalledWith(12);
+	});
+
+	it('NPC shop: A moves an item into the deal and back, through the lists’ own drop handlers', () => {
+		const store = { Type: { BUY: 0, SELL: 1, BUYING_STORE: 3 }, getCurrentType: () => 0 };
+		mocks.components.NpcStore = store;
+		const win = windowOf(
+			`<div class="InputWindow"><div class="content"><div class="item" draggable="true" data-index="1"><div class="icon"></div></div></div></div>
+			<div class="OutputWindow"><div class="content"><div class="item" draggable="true" data-index="4"><div class="icon"></div></div></div></div>
+			<div class="AvailableItemsWindow"><div class="content"><div class="item" draggable="true" data-index="9"><div class="icon"></div></div></div></div>`
+		);
+		win.root.addEventListener('dragstart', event => {
+			const item = event.target.closest('.item');
+			const box = item.closest('.InputWindow, .OutputWindow, .AvailableItemsWindow').className;
+			event.dataTransfer.setData('Text', JSON.stringify({ type: 'item', from: 'NpcStore', container: box, index: item.dataset.index }));
+		});
+		const drops = [];
+		['.InputWindow', '.OutputWindow', '.AvailableItemsWindow'].forEach(selector =>
+			win.$(selector).addEventListener('drop', function (event) {
+				drops.push([this.className, JSON.parse(event.dataTransfer.getData('Text')).index]);
+			})
+		);
+		const profile = Profiles.forName('NpcStore');
+		const input = win.$('.InputWindow .item');
+		const output = win.$('.OutputWindow .item');
+		const available = win.$('.AvailableItemsWindow .item');
+
+		expect(profile.primaryLabel(input, win)).toBe('Add');
+		expect(profile.primaryLabel(output, win)).toBe('Remove');
+		expect(profile.primary(input, win)).toBe(true);
+		expect(profile.primary(output, win)).toBe(true);
+		expect(drops).toEqual([
+			['OutputWindow', '1'],
+			['InputWindow', '4']
+		]);
+
+		// A buying store: what the player has goes in the deal, the buyer's own list stays
+		store.getCurrentType = () => 3;
+		drops.length = 0;
+		expect(profile.primaryLabel(input, win)).toBe('');
+		expect(profile.primary(input, win)).toBe(true);
+		profile.primary(available, win);
+		profile.primary(output, win);
+		expect(drops).toEqual([
+			['OutputWindow', '9'],
+			['AvailableItemsWindow', '4']
+		]);
+
+		// Not an item: its buttons are clicked as usual
+		expect(profile.primary(win.$('.InputWindow .content'), win)).toBe(false);
+		expect(profile.dropZones).toContain('.OutputWindow .content');
+
+		// A merchant's own stall being set up has the same two lists
+		drops.length = 0;
+		const stall = Profiles.forName('Vending');
+		expect(stall.takesFocus).toBe(true);
+		expect(stall.primaryLabel(input, win)).toBe('Add');
+		stall.primary(input, win);
+		expect(drops).toEqual([['OutputWindow', '1']]);
+	});
+
+	it('the gamepad HUD is passed by until something is carried', async () => {
+		const { default: Carry } = await import('UI/Components/JoystickUI/JoystickCarry.js');
+		const profile = Profiles.forName('JoystickUI');
+		expect(profile.skip).toBe(true);
+
+		const win = draggable(windowOf('<div class="item" draggable="true" data-index="1"></div>'), 'Inventory');
+		expect(Carry.pickUp(win.$('.item'))).toBe(true);
+		expect(profile.skip).toBe(false);
+		Carry.cancel();
+		expect(profile.skip).toBe(true);
+	});
+
+	it('inventory and storage say themselves which tab is open', () => {
+		mocks.components.Inventory = { getTab: () => 2 };
+		mocks.components.Storage = { getTab: () => 5 };
+		expect(Profiles.forName('InventoryV0').activeTab([], {})).toBe(2);
+		expect(Profiles.forName('Storage').activeTab([], {})).toBe(5);
+		delete mocks.components.Storage;
+		expect(Profiles.forName('Storage').activeTab([], {})).toBe(-1);
+	});
+});
+
 describe('JoystickNumberSpinner', () => {
 	beforeEach(() => {
 		document.body.innerHTML = '';

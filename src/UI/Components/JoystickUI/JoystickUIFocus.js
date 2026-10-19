@@ -9,10 +9,19 @@
  *            edge, into the next window (held: repeats)
  *   A        press it: a button, a row, an item (use / equip), a skill (use)
  *   B        back: the window's cancel or close button, else leave menus
+ *   X        a tap: what else can be done with it, as a menu (store some,
+ *            put on a gamepad slot, drop...); held: pick it up
  *   Y        item or skill info (a right click on it)
+ *   LB / RB  previous / next tab of the window (a tap)
  *   LT / RT  previous / next window (a tap; held, they stay modifiers)
  *   View     a tap turns menu navigation on or off; held alone, the info
  *            of what the cursor is on
+ *
+ * Something picked up (X held, or Move… in the X menu) is carried with the
+ * ring, which turns blue: A (or X) puts it down on the focused element, as
+ * dropping it there with the mouse does (storage, the shortcut bar, a
+ * gamepad HUD slot, the equipment window, a tab...), and B puts it back.
+ * Off the ring, it goes where the cursor is: on the map, to the ground.
  *
  * Shortcut combos (LB / RB / LT / RT held + a face button), the left stick,
  * Menu, L3 and R3 keep their jobs: JoystickButtonInput only leaves out the
@@ -43,6 +52,9 @@ import Cursor from './JoystickMouseCursorAdapter.js';
 import EmoteGrid from './JoystickEmoteGrid.js';
 import SelectionUI from './JoystickSelectionUI.js';
 import StickFilter from './JoystickStickFilter.js';
+import Carry from './JoystickCarry.js';
+import Tabs from './JoystickFocusTabs.js';
+import ActionMenu from './JoystickActionMenu.js';
 
 const BTN = ButtonMap.BUTTON;
 
@@ -58,12 +70,13 @@ const DPAD = {
  */
 const MODIFIERS = [BTN.LB, BTN.RB, BTN.LT, BTN.RT];
 
-const HOLD_MS = 400; // View held alone this long: info at the cursor (like the stick clicks)
-const TAP_MS = 400; // LT / RT let go within this, with nothing else pressed: a tap
+const HOLD_MS = 400; // View or X held alone this long: a hold (info at the cursor; pick up)
+const TAP_MS = 400; // X, LB, RB, LT, RT let go within this, with nothing else pressed: a tap
 const REPEAT_DELAY_MS = 350; // a held D-pad starts repeating after this
 const REPEAT_EVERY_MS = 90;
 const SCAN_EVERY_MS = 100; // how often to look for newly opened windows
 const FOLLOW_MS = 600; // a window opening this soon after A was opened by it: the focus goes there
+const TAB_FOCUS_MS = 600; // how long a switched tab may take to draw its content
 const HINTS_EVERY_MS = 150;
 const MOUSE_MOVE_PX = 6; // the real mouse moved this far: it has the UI now
 const ACTIVITY_AXIS = 0.3; // a stick pushed this far counts as using the gamepad
@@ -97,9 +110,12 @@ let _down = []; // logical buttons down, last frame
 let _downAt = [];
 let _used = []; // pressed together with another button while down: not a tap
 let _claimed = new Set(); // buttons down while menus were on: not the map's until let go
+let _armed = new Set(); // pressed while menus had the buttons: may be a tap or hold here
 let _repeatButton = -1;
 let _repeatAt = 0;
 let _viewHoldFired = false;
+let _xHoldFired = false; // X was held long enough: it picked something up (or tried)
+let _xTaken = false; // the X press put down what was carried: its release is no tap
 
 let _dialogs = new Set(); // dialogue hosts open at the last scan
 let _known = new Set(); // every window host open at the last scan
@@ -109,6 +125,9 @@ let _frameTime = 0;
 let _hintsAt = -Infinity;
 let _lostAt = -Infinity; // the window had nothing to focus when last looked
 let _skillWait = false;
+let _tabFocus = null; // a tab just switched: {host, before, until}, the focus goes into what it draws
+let _afterRelease = []; // to run once every button is let go
+let _pickSlot = null; // opens the gamepad slot picker for an item or skill (JoystickModule)
 
 let _lastPadAt = 0;
 let _lastMouseAt = 0;
@@ -161,10 +180,11 @@ function track(down, now) {
 			_downAt[i] = now;
 			_used[i] = false;
 		} else if (!down[i] && _down[i]) {
-			released.push({ button: i, held: now - (_downAt[i] || now), used: !!_used[i] });
+			released.push({ button: i, held: now - (_downAt[i] || now), used: !!_used[i], armed: _armed.has(i) });
 		}
 		if (!down[i]) {
 			_claimed.delete(i);
+			_armed.delete(i);
 		}
 	}
 	// A press while another button is down: neither is a tap any more
@@ -196,6 +216,29 @@ function noteActivity(gp, down, now) {
 }
 
 /**
+ * Run what waited for every button to be let go: a window that reads the
+ * pad itself (the slot picker) must not get the press that opened it.
+ */
+function runAfterRelease() {
+	if (!_afterRelease.length || _down.some(Boolean)) {
+		return;
+	}
+	const list = _afterRelease;
+	_afterRelease = [];
+	list.forEach(fn => {
+		try {
+			fn();
+		} catch (error) {
+			console.error('[JoystickUIFocus] deferred action failed', error);
+		}
+	});
+}
+
+function afterRelease(fn) {
+	_afterRelease.push(fn);
+}
+
+/**
  * View: a tap turns menus on or off, a hold alone shows the info of what
  * the cursor (or the ring) is on. With another button it is a modifier,
  * handled in JoystickButtonInput and JoystickCameraMotion.
@@ -224,6 +267,13 @@ function handleView(events, now) {
 	}
 }
 
+/**
+ * Whether a release ends a tap that belongs to menus.
+ */
+function isTap(entry) {
+	return entry.armed && !entry.used && entry.held < TAP_MS;
+}
+
 function handleButtons(events, now) {
 	const view = _down[BTN.VIEW];
 	// Held shoulder buttons make the face buttons shortcuts, as outside menus
@@ -250,22 +300,84 @@ function handleButtons(events, now) {
 		}
 	}
 
+	if (!view) {
+		// Taps and holds count only from presses made in menus
+		events.pressed.forEach(button => {
+			if (button === BTN.X || MODIFIERS.indexOf(button) !== -1) {
+				_armed.add(button);
+			}
+		});
+	}
+
 	if (!view && !combo && _active) {
 		if (events.pressed.indexOf(BTN.A) !== -1) {
-			activate();
+			if (Carry.isCarrying()) {
+				placeCarried();
+			} else {
+				activate();
+			}
 		} else if (events.pressed.indexOf(BTN.B) !== -1) {
-			back();
+			if (Carry.isCarrying()) {
+				cancelCarry();
+			} else {
+				back();
+			}
 		} else if (events.pressed.indexOf(BTN.Y) !== -1) {
 			info();
 		}
+		if (events.pressed.indexOf(BTN.X) !== -1) {
+			_xHoldFired = false;
+			_xTaken = Carry.isCarrying();
+			if (_xTaken) {
+				placeCarried();
+			}
+		}
 	}
+
+	handleX(events, now, view);
 
 	if (!view && _active) {
 		events.released.forEach(entry => {
-			if ((entry.button === BTN.LT || entry.button === BTN.RT) && !entry.used && entry.held < TAP_MS) {
+			if (!isTap(entry)) {
+				return;
+			}
+			if (entry.button === BTN.LT || entry.button === BTN.RT) {
 				cycleWindow(entry.button === BTN.RT ? 1 : -1);
+			} else if (entry.button === BTN.LB || entry.button === BTN.RB) {
+				switchTab(entry.button === BTN.RB ? 1 : -1);
 			}
 		});
+	}
+}
+
+/**
+ * X: held, it picks the focused element up; tapped, it opens what can be
+ * done with it. Not with a shoulder button (a shortcut combo) or View.
+ */
+function handleX(events, now, view) {
+	const x = BTN.X;
+	if (
+		_active &&
+		!view &&
+		_down[x] &&
+		_armed.has(x) &&
+		!_used[x] &&
+		!_xHoldFired &&
+		!_xTaken &&
+		now - _downAt[x] >= HOLD_MS
+	) {
+		_xHoldFired = true;
+		if (!_detached && _el && !Carry.isCarrying() && ActionMenu.canMove(_el, _win)) {
+			startCarry(_el);
+		}
+	}
+	const release = events.released.find(entry => entry.button === x);
+	if (release && isTap(release) && !_xHoldFired && !_xTaken && !view && _active) {
+		openActions();
+	}
+	if (release) {
+		_xHoldFired = false;
+		_xTaken = false;
 	}
 }
 
@@ -290,16 +402,24 @@ function raise(win) {
 }
 
 /**
- * The virtual cursor onto the focused element, so that what the cursor
- * does elsewhere (a skill click over a window is meant for the window)
- * agrees with the ring.
+ * The virtual cursor onto an element (the focused one), so that what the
+ * cursor does elsewhere (a skill click over a window is meant for the
+ * window) agrees with the ring.
  */
-function parkCursor() {
-	if (!_el) {
+function parkCursor(el = _el) {
+	if (!el) {
 		return;
 	}
-	const at = Events.centerOf(_el);
+	const at = Events.centerOf(el);
 	Cursor.moveTo(at.x, at.y);
+}
+
+/**
+ * Whether a window is passed by: never navigated, or not now (the gamepad
+ * HUD, but while something is carried).
+ */
+function skipped(win) {
+	return !!win.profile.skip;
 }
 
 function setFocus(win, el, list, moveCursor = true) {
@@ -379,7 +499,7 @@ function focusWindow(win) {
  * (which opens all the others), else whatever there is.
  */
 function pickWindow(wins) {
-	const usable = (wins || Scan.listWindows()).filter(win => !win.profile.skip && Scan.focusables(win).length);
+	const usable = (wins || Scan.listWindows()).filter(win => !skipped(win) && Scan.focusables(win).length);
 	return (
 		usable.find(win => win.profile.dialog) ||
 		usable.find(win => !win.profile.home && !win.profile.persistent) ||
@@ -396,7 +516,7 @@ function pickWindow(wins) {
 function neighbours(win) {
 	const dialog = !!(win && win.profile.dialog);
 	return Scan.listWindows().filter(
-		other => (!win || other.host !== win.host) && !other.profile.skip && !!other.profile.dialog === dialog
+		other => (!win || other.host !== win.host) && !skipped(other) && !!other.profile.dialog === dialog
 	);
 }
 
@@ -409,7 +529,7 @@ function entriesOf(win, list) {
  */
 function navigableWindows() {
 	return Scan.listWindows()
-		.filter(win => !win.profile.skip)
+		.filter(win => !skipped(win))
 		.map(win => ({ win, list: Scan.focusables(win) }))
 		.filter(entry => entry.list.length)
 		.map(entry => ({ win: entry.win, bounds: Scan.boundsOf(entry.list) }))
@@ -438,7 +558,7 @@ function windowGone() {
 			continue;
 		}
 		const win = wins.find(candidate => candidate.host === host);
-		if (win && !win.profile.skip && focusWindow(win)) {
+		if (win && !skipped(win) && focusWindow(win)) {
 			return;
 		}
 	}
@@ -482,7 +602,8 @@ function validate(now) {
 		}
 		return;
 	}
-	if (!Scan.isOpen(_win)) {
+	// Closed, or passed by now (the gamepad HUD once nothing is carried)
+	if (!Scan.isOpen(_win) || skipped(_win)) {
 		windowGone();
 		return;
 	}
@@ -522,7 +643,7 @@ function validate(now) {
  */
 function followCursor() {
 	const hit = Scan.focusableAt(Mouse.screen.x, Mouse.screen.y);
-	if (hit && !hit.win.profile.skip) {
+	if (hit && !skipped(hit.win)) {
 		if (hit.el !== _el) {
 			setFocus(hit.win, hit.el, Scan.focusables(hit.win), false);
 		} else if (_detached) {
@@ -582,6 +703,7 @@ function move(direction) {
 		next = SpatialNav.findWrap(from, own, direction);
 	}
 	if (next) {
+		_tabFocus = null;
 		setFocus(next.win, next.el, next.win === _win ? list : Scan.focusables(next.win));
 	}
 }
@@ -669,18 +791,25 @@ function back() {
 }
 
 /**
- * Y: the item's or skill's info window, as a right click opens it.
+ * The item's or skill's info window, as a right click opens it.
+ */
+function infoOn(el) {
+	if (!el) {
+		return;
+	}
+	parkCursor(el);
+	Events.contextMenu(Scan.eventTarget(el));
+}
+
+/**
+ * Y: info of the focused element, or of what the cursor is on.
  */
 function info() {
 	if (_detached) {
 		Cursor.contextMenu();
 		return;
 	}
-	if (!_el) {
-		return;
-	}
-	parkCursor();
-	Events.contextMenu(Scan.eventTarget(_el));
+	infoOn(_el);
 }
 
 /**
@@ -696,7 +825,154 @@ function cycleWindow(delta) {
 	if (_win && wins[index].host === _win.host && !_detached) {
 		return;
 	}
+	_tabFocus = null;
 	focusWindow(wins[index]);
+}
+
+/**
+ * LB / RB: the window's previous or next tab. From a tab, the focus stays
+ * on the tabs; from anywhere else it goes into what the tab shows, once it
+ * is drawn (settleTabFocus).
+ */
+function switchTab(delta) {
+	if (!_win) {
+		return;
+	}
+	const focused = _detached ? null : _el;
+	const next = Tabs.step(_win, focused, delta);
+	if (!next) {
+		return;
+	}
+	const fromTab = !!focused && Tabs.isTab(focused, _win);
+	const before = new Set(Scan.focusables(_win));
+	Events.press(Scan.eventTarget(next.tab));
+	Tabs.remember(_win, next.index);
+	_hintsAt = -Infinity;
+	if (fromTab) {
+		const list = Scan.focusables(_win);
+		if (list.indexOf(next.tab) !== -1) {
+			setFocus(_win, next.tab, list);
+		}
+		return;
+	}
+	_tabFocus = { host: _win.host, before, until: _frameTime + TAB_FOCUS_MS };
+}
+
+/**
+ * After a tab switch: the focus goes to the first item the tab drew (or
+ * showed), and to the open tab if it drew nothing.
+ */
+function settleTabFocus(now) {
+	const pending = _tabFocus;
+	if (!pending) {
+		return;
+	}
+	if (!_win || _win.host !== pending.host || !Scan.isOpen(_win)) {
+		_tabFocus = null;
+		return;
+	}
+	const list = Scan.focusables(_win);
+	const fresh = list.filter(el => !pending.before.has(el) && !Tabs.isTab(el, _win) && !el.closest('.titlebar'));
+	if (fresh.length) {
+		const items = fresh.filter(el => el.matches('[data-index], .item, .skill'));
+		_tabFocus = null;
+		setFocus(_win, firstOf(items.length ? items : fresh), list);
+		return;
+	}
+	if (now >= pending.until) {
+		_tabFocus = null;
+		const open = Tabs.activeTab(_win);
+		if (open && list.indexOf(open) !== -1) {
+			setFocus(_win, open, list);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// X: the action menu, and carrying
+// ---------------------------------------------------------------------------
+
+/**
+ * What action menu entries may call.
+ */
+function actionContext() {
+	return {
+		pickUp: el => startCarry(el),
+		info: el => infoOn(el),
+		pickSlot: _pickSlot ? el => afterRelease(() => _pickSlot(el)) : null
+	};
+}
+
+/**
+ * The element an entry chosen later runs on: the same one, or, if its
+ * window drew it anew meanwhile, the one now in its place.
+ */
+function resolver(el, win, key) {
+	return () => {
+		if (el.isConnected || !Scan.isOpen(win)) {
+			return el;
+		}
+		return Scan.findByKey(Scan.focusables(win), key) || el;
+	};
+}
+
+/**
+ * X tapped: what can be done with the focused element, as a menu.
+ */
+function openActions() {
+	if (_detached || !_el || !_win || Carry.isCarrying()) {
+		return;
+	}
+	const entries = ActionMenu.entriesFor(_el, _win, actionContext());
+	if (!entries.length) {
+		return;
+	}
+	parkCursor();
+	const menu = ActionMenu.open(entries, _el.getBoundingClientRect(), resolver(_el, _win, _key));
+	if (menu) {
+		focusComponent(menu);
+	}
+}
+
+/**
+ * Pick an element up (X held, Move…).
+ *
+ * @return {boolean} whether something is carried now
+ */
+function startCarry(el) {
+	if (!el || !Carry.pickUp(el)) {
+		return false;
+	}
+	_hintsAt = -Infinity;
+	refresh();
+	return true;
+}
+
+/**
+ * A (or X) while carrying: put it down on the focused element, or where
+ * the cursor is (the map: on the ground).
+ */
+function placeCarried() {
+	let target = null;
+	if (_detached) {
+		target = Cursor.elementAtCursor ? Cursor.elementAtCursor() : null;
+	} else if (_el) {
+		parkCursor();
+		target = _el;
+	}
+	if (target) {
+		Carry.place(target);
+	} else {
+		Carry.cancel();
+	}
+	_hintsAt = -Infinity;
+	refresh();
+}
+
+function cancelCarry() {
+	Carry.cancel();
+	_hintsAt = -Infinity;
+	refresh();
 }
 
 // ---------------------------------------------------------------------------
@@ -732,6 +1008,15 @@ function hints() {
 	if (!_win) {
 		return list;
 	}
+	const tabs = Tabs.tabsOf(_win, _detached ? null : _el).length > 0;
+	if (Carry.isCarrying()) {
+		list.push([BTN.A, 'Place'], [BTN.B, 'Cancel']);
+		if (tabs) {
+			list.push([[BTN.LB, BTN.RB], 'Tab']);
+		}
+		list.push([[BTN.LT, BTN.RT], 'Window']);
+		return list;
+	}
 	if (_detached) {
 		list.push([BTN.A, 'Click'], [BTN.Y, 'Info']);
 	} else if (_el) {
@@ -741,6 +1026,9 @@ function hints() {
 			label = genericLabel(_el);
 		}
 		list.push([BTN.A, label]);
+		if (ActionMenu.entriesFor(_el, _win, actionContext()).length) {
+			list.push([BTN.X, ActionMenu.canMove(_el, _win) ? 'Actions (hold: Move)' : 'Actions']);
+		}
 		if (Scan.isItemLike(_el)) {
 			list.push([BTN.Y, 'Info']);
 		}
@@ -750,6 +1038,9 @@ function hints() {
 	}
 	const backText = backLabel();
 	list.push([BTN.B, backText]);
+	if (tabs) {
+		list.push([[BTN.LB, BTN.RB], 'Tab']);
+	}
 	list.push([[BTN.LT, BTN.RT], 'Window']);
 	if (backText !== 'Exit') {
 		list.push([BTN.VIEW, 'Exit']);
@@ -761,10 +1052,18 @@ function refresh(now) {
 	if (!_active) {
 		return;
 	}
-	if (_detached || !_el) {
+	const carrying = Carry.isCarrying();
+	// A focused element just taken away (X's menu, once an entry is chosen) is
+	// not drawn: the next frame finds where the focus goes
+	if (_detached || !_el || !_el.isConnected) {
 		Overlay.hideRing();
+		const x = Mouse.screen.x;
+		const y = Mouse.screen.y;
+		Carry.moveGhost(_detached ? { left: x, top: y, right: x + 1, bottom: y + 1 } : null);
 	} else {
-		Overlay.showRing(_el.getBoundingClientRect());
+		const rect = _el.getBoundingClientRect();
+		Overlay.showRing(rect, carrying ? 'carry' : 'focus');
+		Carry.moveGhost(rect);
 	}
 	const time = typeof now === 'number' ? now : performance.now();
 	if (time - _hintsAt >= HINTS_EVERY_MS) {
@@ -813,6 +1112,7 @@ function exit() {
 	if (_active) {
 		claimDown();
 	}
+	Carry.cancel();
 	_active = false;
 	_auto = false;
 	_win = null;
@@ -821,6 +1121,9 @@ function exit() {
 	_detached = false;
 	_repeatButton = -1;
 	_visited = [];
+	_tabFocus = null;
+	_xHoldFired = false;
+	_xTaken = false;
 	Overlay.hide();
 }
 
@@ -847,7 +1150,7 @@ function scanWindows(now) {
 	let opened = null;
 	wins.forEach(win => {
 		known.add(win.host);
-		if (win.profile.skip) {
+		if (skipped(win)) {
 			return;
 		}
 		if (win.profile.dialog || win.profile.takesFocus) {
@@ -891,8 +1194,8 @@ function claimDown() {
 }
 
 /**
- * The gamepad opened a window (View + A / B / X / Y): menu navigation goes
- * into it.
+ * The gamepad opened a window (View + A / B / X / Y, X's menu): menu
+ * navigation goes into it.
  *
  * @param {object} component a GUIComponent
  */
@@ -905,8 +1208,14 @@ function focusComponent(component) {
 		return;
 	}
 	const win = Scan.describe(host);
-	if (win.profile.skip) {
+	if (skipped(win)) {
 		return;
+	}
+	// Known from now on: the next scan must not take it for a new dialogue
+	// and move the focus back to where it starts (X's menu, opened a moment ago)
+	_known.add(host);
+	if (win.profile.dialog || win.profile.takesFocus) {
+		_dialogs.add(host);
 	}
 	if (_active) {
 		focusWindow(win);
@@ -927,6 +1236,7 @@ function frame(gp, now) {
 	const down = readButtons(gp);
 	const events = track(down, time);
 	noteActivity(gp, down, time);
+	runAfterRelease();
 	// Presses act only in menus that were already on: not the A that opened a dialogue
 	const wasActive = _active;
 	if (wasActive) {
@@ -966,6 +1276,7 @@ function frame(gp, now) {
 	}
 	_skillWait = waiting;
 
+	settleTabFocus(time);
 	validate(time);
 	if (!_active) {
 		return;
@@ -998,7 +1309,13 @@ function onMouseMove(event) {
 	}
 }
 
-function prepare() {
+/**
+ * @param {object} [options]
+ * @param {function(Element): boolean} [options.pickSlot] opens the gamepad slot picker for an
+ *   inventory item or a skill (JoystickInteractionService.openSelectionWindow): X's "Gamepad slot…"
+ */
+function prepare(options) {
+	_pickSlot = (options && options.pickSlot) || null;
 	if (_listening || typeof window === 'undefined') {
 		return;
 	}
@@ -1017,6 +1334,7 @@ function dispose() {
 	_downAt = [];
 	_used = [];
 	_claimed = new Set();
+	_armed = new Set();
 	_dialogs = new Set();
 	_known = new Set();
 	_followUntil = -Infinity;
@@ -1029,6 +1347,8 @@ function dispose() {
 	_mouseY = NaN;
 	_skillWait = false;
 	_viewHoldFired = false;
+	_afterRelease = [];
+	_pickSlot = null;
 }
 
 export default {
@@ -1067,6 +1387,6 @@ export default {
 	 * The focused element and window, for tests and the settings window.
 	 */
 	getFocus() {
-		return { win: _win, el: _el, detached: _detached, auto: _auto };
+		return { win: _win, el: _el, detached: _detached, auto: _auto, carrying: Carry.isCarrying() };
 	}
 };

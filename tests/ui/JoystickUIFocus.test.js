@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	controls: { joyUIFocus: true, joyDeadline: 0.1, joyButtonMap: null },
 	components: {},
-	cursor: { leftClick: vi.fn(), contextMenu: vi.fn() },
+	cursor: { leftClick: vi.fn(), contextMenu: vi.fn(), elementAtCursor: vi.fn(() => null) },
 	emoteGrid: { isActive: vi.fn(() => false) },
 	selection: { active: vi.fn(() => false) }
 }));
@@ -436,5 +436,321 @@ describe('JoystickUIFocus', () => {
 		expect(UIFocus.isActive()).toBe(true);
 		expect(UIFocus.getFocus().auto).toBe(true);
 		expect(focused()).toBe(inv.$('[data-index="0"]'));
+	});
+});
+
+describe('JoystickUIFocus: X, carrying and tabs', () => {
+	beforeEach(() => {
+		document.body.innerHTML = '';
+		Object.keys(mocks.components).forEach(key => delete mocks.components[key]);
+		vi.clearAllMocks();
+		mocks.controls.joyUIFocus = true;
+		gp = { buttons: Array.from({ length: 17 }, () => ({ pressed: false })), axes: [0, 0, 0, 0] };
+		now = 1000;
+		vi.spyOn(performance, 'now').mockImplementation(() => now);
+		Mouse.state = Mouse.MOUSE_STATE.NORMAL;
+		Mouse.screen.x = 0;
+		Mouse.screen.y = 0;
+		UIFocus.dispose();
+		UIFocus.prepare();
+	});
+
+	afterEach(() => {
+		UIFocus.dispose();
+		vi.restoreAllMocks();
+		delete document.elementFromPoint;
+	});
+
+	function hold(button, ms = 420) {
+		down(button);
+		for (let t = 16; t < ms; t += 16) {
+			frame();
+		}
+	}
+
+	/**
+	 * The client's right-click menu, as far as menu navigation uses it.
+	 */
+	function contextMenu() {
+		const menu = { _host: null, win: null, focus: vi.fn() };
+		menu.append = () => {
+			menu.win = makeWindow('ContextMenu', '<div id="ContextMenu"><div class="menu"></div></div>', 200);
+			menu._host = menu.win.host;
+		};
+		menu.remove = () => {
+			if (menu._host) {
+				menu._host.remove();
+				menu._host = null;
+			}
+		};
+		menu.getRoot = () => menu.win.shadow;
+		menu.addElement = (text, callback) => {
+			const box = menu.win.$('.menu');
+			const entry = document.createElement('div');
+			entry.textContent = text;
+			entry.addEventListener('click', () => {
+				menu.remove();
+				callback();
+			});
+			box.appendChild(entry);
+			place(entry, 140, 84 + box.children.length * 16, 80, 16);
+		};
+		mocks.components.ContextMenu = menu;
+		return menu;
+	}
+
+	function entries(menu) {
+		return Array.from(menu.win.$$('.menu > div')).map(el => el.textContent);
+	}
+
+	/**
+	 * Items that can be dragged: the window says what they carry, as its dragstart handler does.
+	 */
+	function carryable(win, from) {
+		win.$$('.item').forEach(el => el.setAttribute('draggable', 'true'));
+		win.shadow.addEventListener('dragstart', event => {
+			const item = event.target.closest('[data-index]');
+			event.dataTransfer.setData('Text', JSON.stringify({ type: 'item', from, index: item.getAttribute('data-index') }));
+		});
+		return win;
+	}
+
+	function drops(target) {
+		const list = [];
+		target.addEventListener('drop', event => list.push(JSON.parse(event.dataTransfer.getData('Text')).index));
+		return list;
+	}
+
+	function hintText() {
+		return document.querySelector('.joystick-focus-hints').textContent;
+	}
+
+	it('X tapped lists what can be done with the item; A runs an entry, B closes, the focus comes back', () => {
+		const inv = inventory();
+		const useItem = vi.fn();
+		mocks.components.Inventory = { getItemByIndex: index => ({ index, type: 0, count: 1 }), useItem };
+		const menu = contextMenu();
+
+		tap(BTN.VIEW);
+		expect(hintText()).toContain('X Actions');
+		tap(BTN.X);
+		expect(entries(menu)).toEqual(['Use', 'Info']);
+		expect(UIFocus.getFocus().win.name).toBe('ContextMenu');
+		expect(focused().textContent).toBe('Use');
+		// The next look for new windows leaves the focus where the D-pad put it
+		tap(BTN.DOWN);
+		settle();
+		expect(focused().textContent).toBe('Info');
+		tap(BTN.UP);
+
+		tap(BTN.A);
+		frame();
+		expect(useItem).toHaveBeenCalledWith({ index: 0, type: 0, count: 1 });
+		expect(UIFocus.getFocus().win.name).toBe('InventoryV3');
+		expect(focused()).toBe(inv.$('[data-index="0"]'));
+
+		tap(BTN.RIGHT);
+		tap(BTN.X);
+		tap(BTN.B);
+		frame();
+		expect(menu._host).toBe(null);
+		expect(focused()).toBe(inv.$('[data-index="1"]'));
+	});
+
+	it('X held picks the item up, A puts it down in another window, as a drag there does', () => {
+		settle();
+		const inv = carryable(inventory(), 'Inventory');
+		const storage = makeWindow('Storage', '<div class="content"><div class="item" data-index="40"><div class="icon"></div></div></div>');
+		place(storage.$('.item'), 400, 100, 32, 32);
+		const stored = drops(storage.host);
+		const menu = contextMenu();
+		const ended = [];
+		inv.shadow.addEventListener('dragend', () => ended.push('end'));
+		settle();
+
+		tap(BTN.VIEW);
+		hold(BTN.X);
+		expect(UIFocus.getFocus().carrying).toBe(true);
+		expect(ring().dataset.mode).toBe('carry');
+		expect(document.querySelector('.joystick-carry-ghost')).not.toBe(null);
+		up(BTN.X);
+		expect(menu._host).toBe(null); // a hold is no tap: no menu
+		expect(hintText()).toContain('A Place');
+
+		tap(BTN.RT);
+		expect(UIFocus.getFocus().win.name).toBe('Storage');
+		tap(BTN.A);
+		expect(stored).toEqual(['0']);
+		expect(ended).toEqual(['end']);
+		expect(UIFocus.getFocus().carrying).toBe(false);
+		expect(ring().dataset.mode).toBe('focus');
+		expect(document.querySelector('.joystick-carry-ghost')).toBe(null);
+	});
+
+	it('B puts it back, X pressed again puts it down here, and leaving menus drops nothing', () => {
+		const inv = carryable(inventory(), 'Inventory');
+		const here = drops(inv.host);
+		const close = vi.fn();
+		inv.$('.titlebar .close').addEventListener('click', close);
+
+		tap(BTN.VIEW);
+		hold(BTN.X);
+		up(BTN.X);
+		tap(BTN.B);
+		expect(UIFocus.getFocus().carrying).toBe(false);
+		expect(close).not.toHaveBeenCalled();
+		expect(here).toEqual([]);
+
+		hold(BTN.X);
+		up(BTN.X);
+		tap(BTN.RIGHT);
+		tap(BTN.X);
+		expect(here).toEqual(['0']);
+		expect(UIFocus.getFocus().carrying).toBe(false);
+
+		hold(BTN.X);
+		up(BTN.X);
+		tap(BTN.VIEW);
+		expect(UIFocus.isActive()).toBe(false);
+		expect(UIFocus.getFocus().carrying).toBe(false);
+		expect(here).toEqual(['0']);
+	});
+
+	it('off the ring, what is carried goes where the cursor is: the map', () => {
+		const inv = carryable(inventory(), 'Inventory');
+		const map = document.createElement('canvas');
+		const ground = drops(map);
+		document.body.appendChild(map);
+
+		tap(BTN.VIEW);
+		hold(BTN.X);
+		up(BTN.X);
+		document.elementFromPoint = () => null;
+		Mouse.screen.x = 600;
+		Mouse.screen.y = 300;
+		UIFocus.cursorMoved();
+		expect(UIFocus.getFocus().detached).toBe(true);
+		mocks.cursor.elementAtCursor.mockReturnValueOnce(map);
+		tap(BTN.A);
+		expect(ground).toEqual(['0']);
+		expect(mocks.cursor.leftClick).not.toHaveBeenCalled();
+		expect(inv.$('.item').isConnected).toBe(true);
+	});
+
+	it('the gamepad HUD is reached only while something is carried, and takes it', () => {
+		const inv = carryable(inventory(), 'Inventory');
+		const hud = makeWindow(
+			'JoystickUI',
+			'<div class="group-container" data-group="L1"><div class="slot top"></div><div class="slot bottom"></div></div>',
+			1000
+		);
+		place(hud.$('.slot.top'), 100, 300, 32, 32);
+		place(hud.$('.slot.bottom'), 100, 340, 32, 32);
+		const slots = [];
+		hud.shadow.addEventListener('drop', event => slots.push(event.target.classList.contains('top') ? 'top' : 'other'));
+
+		tap(BTN.VIEW);
+		expect(UIFocus.getFocus().win.name).toBe('InventoryV3');
+		tap(BTN.DOWN);
+		tap(BTN.DOWN);
+		expect(focused()).toBe(inv.$('[data-index="3"]'));
+
+		hold(BTN.X);
+		up(BTN.X);
+		tap(BTN.DOWN);
+		expect(UIFocus.getFocus().win.name).toBe('JoystickUI');
+		expect(focused()).toBe(hud.$('.slot.top'));
+		tap(BTN.A);
+		expect(slots).toEqual(['top']);
+		frame();
+		// Nothing carried: the HUD is passed by again
+		expect(UIFocus.getFocus().win.name).not.toBe('JoystickUI');
+	});
+
+	it('LB / RB switch the window’s tabs; the focus goes into what the tab draws, or stays on the tabs', () => {
+		const win = makeWindow(
+			'Tabbed',
+			'<div class="tabs"><button id="t0" class="selected"></button><button id="t1"></button><button id="t2"></button></div><div class="content"></div>',
+			60
+		);
+		const tabs = Array.from(win.$$('.tabs button'));
+		tabs.forEach((button, i) => place(button, 300, 100 + i * 24, 40, 20));
+		const draw = tab => {
+			const content = win.$('.content');
+			content.innerHTML = [0, 1].map(i => `<div class="item" data-index="${tab * 10 + i}"><div class="icon"></div></div>`).join('');
+			content.querySelectorAll('.item').forEach((el, i) => place(el, 100 + i * 32, 100, 32, 32));
+		};
+		draw(0);
+		tabs.forEach((button, i) =>
+			button.addEventListener('mousedown', () => {
+				tabs.forEach(other => other.classList.remove('selected'));
+				button.classList.add('selected');
+				draw(i);
+			})
+		);
+
+		tap(BTN.VIEW);
+		expect(focused().getAttribute('data-index')).toBe('0');
+		expect(hintText()).toContain('LB/RB Tab');
+
+		tap(BTN.RB);
+		frame();
+		expect(tabs[1].classList.contains('selected')).toBe(true);
+		expect(focused().getAttribute('data-index')).toBe('10');
+
+		tap(BTN.LB);
+		frame();
+		expect(focused().getAttribute('data-index')).toBe('0');
+		tap(BTN.LB);
+		frame();
+		expect(tabs[2].classList.contains('selected')).toBe(true);
+		expect(focused().getAttribute('data-index')).toBe('20');
+
+		// From a tab, the focus stays on the tabs
+		tap(BTN.RIGHT);
+		tap(BTN.RIGHT);
+		expect(focused()).toBe(tabs[0]);
+		tap(BTN.RB);
+		expect(focused()).toBe(tabs[0]);
+		expect(tabs[0].classList.contains('selected')).toBe(true);
+		tap(BTN.RB);
+		expect(focused()).toBe(tabs[1]);
+	});
+
+	it('a shoulder button with a face button stays a shortcut: no tab switch, no menu', () => {
+		inventory();
+		mocks.components.Inventory = { getItemByIndex: index => ({ index, type: 0, count: 1 }), useItem: vi.fn() };
+		const menu = contextMenu();
+		const win = makeWindow('Tabbed', '<div class="tabs"><button id="t0" class="selected"></button><button id="t1"></button></div>', 40);
+		const switched = vi.fn();
+		win.$$('button').forEach((button, i) => {
+			place(button, 400, 100 + i * 24, 40, 20);
+			button.addEventListener('mousedown', switched);
+		});
+
+		tap(BTN.VIEW);
+		down(BTN.RB);
+		tap(BTN.X);
+		up(BTN.RB);
+		expect(switched).not.toHaveBeenCalled();
+		expect(menu._host).toBe(null);
+	});
+
+	it('"Gamepad slot…" opens the slot picker once the press that chose it is let go', () => {
+		const pickSlot = vi.fn();
+		UIFocus.prepare({ pickSlot });
+		const inv = inventory();
+		mocks.components.Inventory = { getItemByIndex: index => ({ index, type: 0, count: 1 }), useItem: vi.fn() };
+		const menu = contextMenu();
+
+		tap(BTN.VIEW);
+		tap(BTN.X);
+		expect(entries(menu)).toEqual(['Use', 'Gamepad slot…', 'Info']);
+		tap(BTN.DOWN);
+		down(BTN.A);
+		frame();
+		expect(pickSlot).not.toHaveBeenCalled();
+		up(BTN.A);
+		expect(pickSlot).toHaveBeenCalledWith(inv.$('[data-index="0"]'));
 	});
 });
