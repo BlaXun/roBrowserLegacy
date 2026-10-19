@@ -195,6 +195,33 @@ describe('JoystickKeyboard', () => {
 		expect(Keyboard.phrases()).toContain('@autoloot');
 	});
 
+	it('a password field offers no Save text, and its text is never kept', () => {
+		const { el } = field('<input type="password" />');
+		Keyboard.open(el);
+		tap(BTN.A);
+		tap(BTN.A);
+		expect(el.value).toBe('qq');
+
+		tap(BTN.VIEW);
+		tap(BTN.UP);
+		expect(key().action).toBe('letters');
+		tap(BTN.RIGHT);
+		expect(key().action).toBe('done');
+		tap(BTN.RIGHT);
+		expect(key().action).toBe('letters');
+		expect(Keyboard.phrases()).not.toContain('qq');
+	});
+
+	it('saved phrases read back from the browser are text only, and not too long', () => {
+		localStorage.setItem(
+			'JoystickKeyboard',
+			JSON.stringify({ phrases: ['Hi!', 42, null, '', 'x'.repeat(1000)], mode: 'grid', _version: 1 })
+		);
+		Keyboard.reload();
+		const list = Keyboard.phrases();
+		expect(list).toEqual(['Hi!', 'x'.repeat(255)]);
+	});
+
 	it('pages: RT goes to signs and accented letters, LT capitalises them too', () => {
 		const { el } = field();
 		Keyboard.open(el);

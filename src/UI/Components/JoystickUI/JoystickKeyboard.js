@@ -57,6 +57,7 @@ const ROW_UNITS = 10; // every row is this many keys wide
 const WIDTH = ROW_UNITS * UNIT + (ROW_UNITS - 1) * GAP; // px: the keyboard's inner width
 const PHRASES_SHOWN = 6;
 const PHRASES_MAX = 30;
+const PHRASE_LENGTH_MAX = 255; // characters a saved phrase keeps
 const DEFAULT_PHRASES = ['Hi!', 'Thanks!', '@autoloot', '@storage', '@go ', '@warp '];
 
 /**
@@ -138,11 +139,20 @@ function prefs() {
 		if (!Array.isArray(_prefs.phrases)) {
 			_prefs.phrases = DEFAULT_PHRASES.slice();
 		}
+		// Only text, however the browser's copy came to be
+		_prefs.phrases = cleanPhrases(_prefs.phrases);
 		if (_prefs.mode !== 'wheel') {
 			_prefs.mode = 'grid';
 		}
 	}
 	return _prefs;
+}
+
+function cleanPhrases(list) {
+	return list
+		.filter(phrase => typeof phrase === 'string' && phrase.length > 0)
+		.map(phrase => phrase.slice(0, PHRASE_LENGTH_MAX))
+		.slice(0, PHRASES_MAX);
 }
 
 function phrases() {
@@ -151,7 +161,7 @@ function phrases() {
 
 function storePhrases(list) {
 	const stored = prefs();
-	stored.phrases = list.slice(0, PHRASES_MAX);
+	stored.phrases = cleanPhrases(list);
 	stored.save();
 }
 
@@ -409,11 +419,19 @@ function currentRows() {
 			{ action: 'phrase', index, label: text, width: 8.5 },
 			{ action: 'delete', index, label: '✕', width: 1.5 }
 		]);
-		rows.push([
-			{ action: 'letters', label: PAGE_LABEL[_lastPage], width: 3 },
-			{ action: 'save', label: 'Save text', width: 4 },
-			{ action: 'done', label: 'Done', width: 3 }
-		]);
+		// A password is never kept: no Save text in a password field
+		rows.push(
+			_password
+				? [
+						{ action: 'letters', label: PAGE_LABEL[_lastPage], width: 5 },
+						{ action: 'done', label: 'Done', width: 5 }
+					]
+				: [
+						{ action: 'letters', label: PAGE_LABEL[_lastPage], width: 3 },
+						{ action: 'save', label: 'Save text', width: 4 },
+						{ action: 'done', label: 'Done', width: 3 }
+					]
+		);
 		return rows;
 	}
 	const rows = charRows(_page).map(chars =>
@@ -526,7 +544,7 @@ function deletePhrase(index) {
  * Keep the typed text as a phrase, first in the list.
  */
 function saveText() {
-	if (!_text.trim()) {
+	if (_password || !_text.trim()) {
 		return;
 	}
 	storePhrases([_text].concat(phrases().filter(phrase => phrase !== _text)));
