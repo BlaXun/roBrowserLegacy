@@ -104,6 +104,30 @@ describe('walkTo', () => {
 		mob.walkProcess();
 		expect(mob.position[0]).toBeCloseTo(before, 5);
 	});
+
+	it('makes up at most one cell of an old packet for a monster, all of it for a player', () => {
+		session.ping.value = 300;
+		const mob = makeEntity(10, 10);
+		mob.walkTo(10, 10, 16, 10, 0, session.serverTick - 300);
+		const mobTotal = mob.walk.segmentDurations.slice(0, 6).reduce((a, b) => a + b, 0);
+		expect(mobTotal).toBeCloseTo(6 * SPEED - SPEED);
+
+		const player = makeEntity(10, 10);
+		player.objecttype = player.constructor.TYPE_PC;
+		player.walkTo(10, 10, 16, 10, 0, session.serverTick - 300);
+		const playerTotal = player.walk.segmentDurations.slice(0, 6).reduce((a, b) => a + b, 0);
+		expect(playerTotal).toBeCloseTo(6 * SPEED - 300);
+	});
+
+	it('searches one path per move packet, from where the entity is drawn', () => {
+		const mob = makeEntity(10, 10);
+		const search = vi.spyOn(pathFinding, 'search');
+		// The server has it a cell further on than it is drawn.
+		mob.walkTo(11, 10, 16, 10, 0, session.serverTick);
+		expect(search).toHaveBeenCalledOnce();
+		expect(search.mock.calls[0].slice(0, 2)).toEqual([10, 10]);
+		search.mockRestore();
+	});
 });
 
 describe('predictWalkTo', () => {

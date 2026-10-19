@@ -479,20 +479,21 @@ function walkTo(from_x, from_y, to_x, to_y, range, moveStartTime, moveEndTime, i
 		}
 
 		// How long the server takes over its path: the packet's end time when it
-		// has one, else the cost of the server's own path from its start cell.
+		// has one, else the cost of its path from its start cell. That is the
+		// path above when both start on the same cell; from another cell, the
+		// straight-line cost stands in for it, rather than a second search.
 		let serverDuration = 0;
 		if (!isFastMove && !isPrediction) {
 			if (moveEndTime && moveStartTime && moveEndTime > moveStartTime) {
 				serverDuration = moveEndTime - moveStartTime;
-			} else if (!usedFallback && curCellX === from_x && curCellY === from_y) {
-				// Same start cell, so the path above is the server's.
+			} else if (usedFallback || (curCellX === from_x && curCellY === from_y)) {
 				serverDuration = gridPathDuration(path, total, this.walk.speed);
 			} else {
-				const serverPath = usedFallback ? path : _serverPath;
-				const serverTotal = usedFallback
-					? total
-					: PathFinding.search(from_x | 0, from_y | 0, to_x | 0, to_y | 0, range || 0, serverPath);
-				serverDuration = gridPathDuration(serverPath, serverTotal, this.walk.speed);
+				const sDx = Math.abs(to_x - from_x);
+				const sDy = Math.abs(to_y - from_y);
+				const diag = Math.min(sDx, sDy);
+				serverDuration =
+					(Math.max(sDx, sDy) - diag) * this.walk.speed + diag * this.walk.speed * DIAGONAL_FACTOR;
 			}
 		}
 
@@ -506,8 +507,18 @@ function walkTo(from_x, from_y, to_x, to_y, range, moveStartTime, moveEndTime, i
 		// stretch the segments so the client arrives when the server does, less
 		// the time the packet took to get here. Scaling keeps the pace even
 		// across segments. Fast movement / Body Relocation skips FixPathTime entirely.
+		// Other entities make up at most one cell's worth: their path can differ
+		// from the server's around other entities, and a long catch-up makes
+		// the STOPMOVE that corrects it more visible.
 		if (serverDuration > 0 && numSegments > 0 && clientDuration > 0) {
-			const elapsed = nowTick - computeWalkStartTick(nowTick, moveStartTime, serverDuration, serverDuration);
+			const isPlayerLike =
+				this.objecttype === this.constructor.TYPE_PC ||
+				this.objecttype === this.constructor.TYPE_DISGUISED ||
+				this.objecttype === this.constructor.TYPE_PET ||
+				this.objecttype === this.constructor.TYPE_HOM ||
+				this.objecttype === this.constructor.TYPE_MERC;
+			const maxCatchUp = isPlayerLike ? serverDuration : Math.min(serverDuration, this.walk.speed);
+			const elapsed = nowTick - computeWalkStartTick(nowTick, moveStartTime, serverDuration, maxCatchUp);
 			const pace = Math.max(MIN_PACE, Math.min(MAX_PACE, (serverDuration - elapsed) / clientDuration));
 			for (let i = 0; i < numSegments; i++) {
 				this.walk.segmentDurations[i] = Math.max(1, this.walk.segmentDurations[i] * pace);
@@ -536,7 +547,7 @@ function walkTo(from_x, from_y, to_x, to_y, range, moveStartTime, moveEndTime, i
 }
 
 /**
- * Scratch path for the server's route when it starts from another cell.
+ * Scratch path for checking a clicked walk the way the server would.
  */
 const _serverPath = new Int16Array(PathFinding.MAX_WALKPATH * 2);
 
