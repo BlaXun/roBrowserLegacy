@@ -348,6 +348,8 @@ describe('JoystickUIFocus', () => {
 		mocks.controls.joyUIFocus = false;
 		tap(BTN.VIEW);
 		expect(UIFocus.isActive()).toBe(false);
+		// A View tap is the info at the cursor again, as before menu navigation
+		expect(mocks.cursor.contextMenu).toHaveBeenCalledTimes(1);
 	});
 
 	it('turned on by hand, starts in a window the player opened, else the basic info menu', () => {
