@@ -1125,6 +1125,9 @@ function onEntityIdentity(pkt) {
 			}
 		}
 
+		// ZC_ACK_REQNAMEALL_NPC (0xadf) carries the mob_db / NPC title
+		entity.display.unit_title = pkt.Title || '';
+
 		entity.display.party_name = pkt.PName || '';
 		entity.display.guild_name = pkt.GName || '';
 		entity.display.guild_rank = pkt.RName || '';

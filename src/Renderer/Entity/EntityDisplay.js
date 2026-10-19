@@ -109,6 +109,7 @@ const _isUglyShadow = (function isUglyGPUShadow() {
  * @property {string} guild_name Guild name string
  * @property {string} guild_rank Guild rank title
  * @property {string} title_name Achievement / player title
+ * @property {string} unit_title Monster / NPC title from the server (mob_db Title), drawn under the name
  * @property {Image|null} emblem Static guild emblem image
  * @property {HTMLCanvasElement|null} gifEmblem Animated guild emblem canvas
  * @property {number} emblemY Emblem top offset on the canvas, in backing px
@@ -139,6 +140,7 @@ class Display {
 		this.guild_name = '';
 		this.guild_rank = '';
 		this.title_name = '';
+		this.unit_title = '';
 		this.emblem = null;
 		this.gifEmblem = null;
 		this.emblemY = 0;
@@ -244,6 +246,16 @@ class Display {
 		) {
 			// showname
 			lines[1] = this.guild_rank;
+		}
+
+		// Monster / NPC title (e.g. "Red Flame Dragon Queen"): the official client
+		// shows it on the second line, where a guild name would go.
+		if (
+			!lines[1].length &&
+			this.unit_title.length &&
+			(style === this.STYLE.MOB || style === this.STYLE.NPC)
+		) {
+			lines[1] = this.unit_title;
 		}
 
 		// Add Title name
