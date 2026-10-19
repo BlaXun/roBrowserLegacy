@@ -113,9 +113,11 @@ class Client {
 	 * @param {function} onerror
 	 * @param {Array} args - optional
 	 */
-	static loadFile(filename, onload, onerror, args = {}) {
+	static loadFile(filename, onload, onerror, args) {
+		// No default parameter: the renderer calls this several times per sprite
+		// layer every frame, and `args = {}` made an object on every call.
 		if (!Memory.exist(filename)) {
-			Thread.send('LOAD_FILE', { filename, args: args || null }, onFileLoaded);
+			Thread.send('LOAD_FILE', { filename, args: args === undefined ? {} : args || null }, onFileLoaded);
 		}
 
 		return Memory.get(filename, onload, onerror);

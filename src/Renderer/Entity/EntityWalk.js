@@ -141,6 +141,7 @@ function WalkStructure() {
 	this.onEnd = null;
 	this.index = 0;
 	this.total = 0;
+	this.stuckWarned = false;
 }
 
 /**
@@ -620,8 +621,12 @@ function walkProcess() {
 		!this.isFastMoving &&
 		this.action !== this.ACTION.WALK &&
 		this.objecttype !== this.constructor.TYPE_FALCON &&
-		this.objecttype !== this.constructor.TYPE_WUG
+		this.objecttype !== this.constructor.TYPE_WUG &&
+		!walk.stuckWarned
 	) {
+		// Once until the route is reset: a stuck entity stays stuck every frame,
+		// and warning each frame flooded the console and the heap.
+		walk.stuckWarned = true;
 		let actionName = 'UNKNOWN';
 		for (const key in this.ACTION) {
 			if (this.ACTION[key] === this.action) {
@@ -940,6 +945,7 @@ function resetRoute(keepDistance) {
 	this.walk.onEnd = null;
 	this.walk.index = 0;
 	this.walk.total = 0;
+	this.walk.stuckWarned = false;
 }
 
 function calculateOverShot(from_x, from_y, to_x, to_y) {
