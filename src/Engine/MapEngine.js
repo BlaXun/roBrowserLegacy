@@ -825,14 +825,18 @@ function onServerChange(pkt) {
 }
 
 /**
- * Resets the per-character UI state shared by the exit and restart flows.
- * Components that were never prepared have no root element to clean.
+ * The map socket closed: drop the catalog with it, then show the same
+ * message NetworkManager shows when no disconnect handler is set.
  */
 function onMapDisconnect() {
 	resetStoreSearch(true);
 	UIManager.showErrorBox('Disconnected from Server.');
 }
 
+/**
+ * Resets the per-character UI state shared by the exit and restart flows.
+ * Components that were never prepared have no root element to clean.
+ */
 function cleanGameUI() {
 	resetStoreSearch(true);
 	if (Network.onDisconnect === onMapDisconnect) {
