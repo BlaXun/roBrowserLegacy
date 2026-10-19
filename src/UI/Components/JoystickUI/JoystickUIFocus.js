@@ -273,8 +273,13 @@ function handleView(events, now) {
 			Cursor.contextMenu();
 		}
 	}
-	if (release && !release.used && !_viewHoldFired && release.held < HOLD_MS && enabled()) {
-		toggle();
+	if (release && !release.used && !_viewHoldFired && release.held < HOLD_MS) {
+		if (enabled()) {
+			toggle();
+		} else {
+			// Menu navigation turned off: a tap is the info at the cursor, as it was before
+			Cursor.contextMenu();
+		}
 	}
 }
 
