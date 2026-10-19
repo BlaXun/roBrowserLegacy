@@ -537,12 +537,18 @@ const MAPPING_ROLES = [
 	],
 	[
 		ButtonMap.BUTTON.B,
-		'Right click (hold on item/skill: options) - Support radial: close it, or cancel the waiting skill - menus: back, cancel, close, put back what is carried'
+		'Right click (hold on item/skill: options) - Support radial: close it, or cancel the waiting skill - menus: back (info windows first), cancel, close, put back what is carried'
 	],
 	[ButtonMap.BUTTON.X, 'Attack target - menus: tap: more actions, hold: pick up'],
 	[ButtonMap.BUTTON.Y, 'Pick up item - menus: item / skill info'],
-	[ButtonMap.BUTTON.LEFT, 'Previous target (Support: party member; grid left on items)'],
-	[ButtonMap.BUTTON.RIGHT, 'Next target (Support: party member, lowest HP first; grid right on items)'],
+	[
+		ButtonMap.BUTTON.LEFT,
+		'Previous target (Support: party member; grid left on items) - menus: move left (sliders and lists: lower / previous)'
+	],
+	[
+		ButtonMap.BUTTON.RIGHT,
+		'Next target (Support: party member, lowest HP first; grid right on items) - menus: move right (sliders and lists: higher / next)'
+	],
 	[ButtonMap.BUTTON.UP, 'Previous target category (menus: move up)'],
 	[ButtonMap.BUTTON.DOWN, 'Next target category (menus: move down)'],
 	[ButtonMap.BUTTON.LS, 'Tap: clear target - Hold: sit / stand'],
@@ -584,7 +590,7 @@ function getMappingCombos() {
 		[n(B.VIEW) + ' (tap)', 'Menu navigation on / off'],
 		[
 			[n(B.UP), n(B.DOWN), n(B.LEFT), n(B.RIGHT)].join(' / ') + ' (menus)',
-			'Move between buttons, items and windows'
+			'Move between buttons, items and windows; left / right change sliders and lists'
 		],
 		[n(B.LT) + ' / ' + n(B.RT) + ' (tap, menus)', 'Previous / next window'],
 		[n(B.LB) + ' / ' + n(B.RB) + ' (tap, menus)', 'Previous / next tab'],

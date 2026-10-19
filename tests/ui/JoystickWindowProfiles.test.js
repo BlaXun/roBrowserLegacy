@@ -58,6 +58,14 @@ describe('JoystickWindowProfiles matching', () => {
 		expect(Profiles.forName('ChatBoxSettings').skip).toBeUndefined();
 	});
 
+	it('marks the windows that show what an item or skill is, which B closes first', () => {
+		['ItemInfo', 'ItemCompare', 'SkillDescription', 'CardIllustration', 'ItemPreview'].forEach(name =>
+			expect(Profiles.forName(name).info).toBe(true)
+		);
+		expect(Profiles.forName('InventoryV3').info).toBeUndefined();
+		expect(Profiles.forName('ItemInfoExtra').info).toBeUndefined();
+	});
+
 	it('has an empty profile for every other window', () => {
 		expect(Profiles.forName('WinStatsV2')).toEqual({});
 		expect(Profiles.forName(undefined)).toEqual({});

@@ -8,9 +8,9 @@ The gamepad moves a focus ring between the buttons, items and rows of the open w
 |---|---|
 | View (tap) | Menu navigation on / off |
 | View (hold, alone) | Info of what the cursor or ring is on |
-| D-pad | Move to the nearest element that way; at a window's edge, into the next window. Held: repeats |
+| D-pad | Move to the nearest element that way; at a window's edge, into the next window. Held: repeats. On a slider or a drop-down list, left / right change its value |
 | A | Press: a button, a row, an item (use / equip, or move it to an open storage, trade or sell list), a skill (use), a shop item (into the deal and back) |
-| B | Back: the window's cancel or close button, else leave menus |
+| B | Back: first the item or skill info windows Y opened (all at once), then the window's cancel or close button, else leave menus. A dialogue gets B for its answer even with info open |
 | X (tap) | What else can be done with the item, skill or slot, as a menu (below) |
 | X (hold) | Pick it up (below) |
 | Y | Item or skill info |
@@ -58,6 +58,7 @@ Without a profile, a window gets:
 - **Y:** a right click;
 - **B:** a click on its close or cancel button;
 - **X:** Move… for what is draggable (`draggable="true"` on it or in it), and Info for items;
+- **D-pad left / right on a slider or a `select`:** its value. A slider moves by a twentieth of its range; the window hears `input` at every step and `change` once the steps stop, as with a mouse drag;
 - **LB / RB:** its tabs, when they look like tabs: controls in a `.tabs`, `.tab-manager`, `.action_tabs` or `#panel-menu` strip, or `.tab`, `.tab-button`, `.tab-label` controls. The open one is the one marked `selected`, `active`, `selectedtab` or `aria-selected`, or a label whose radio button is checked.
 
 Carrying uses the window's own drag and drop: it sends `dragstart` to the element (the window fills `dataTransfer` and `window._OBJ_DRAG_` as for the mouse), and `dragover` and `drop` to where it is put down. A window that takes drops needs nothing more, unless it takes them only on an element the ring cannot reach (an empty slot area): name that in `dropZones`.
@@ -72,5 +73,6 @@ When that is not enough, add a profile to `JoystickWindowProfiles.js`, matched o
 - B must not press the button the generic rule would find: `back(win)`.
 - Some elements should be left out (`exclude`), or only some taken (`only`).
 - Its tabs do not look like tabs (`tabs: selector`), or nothing on them says which is open (`activeTab(tabs, win)`).
+- It shows what an item or skill is, and B should close it before anything else: `info: true`.
 
 Profiles reach windows through `UIManager.getComponent()` when called, never by import: the windows import the gamepad code. The file's header lists every field.
