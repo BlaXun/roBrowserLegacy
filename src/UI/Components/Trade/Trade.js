@@ -247,7 +247,7 @@ Trade.addItemFromInventory = function addItemFromInventory(index, success) {
 		return;
 	}
 
-	const inventoryItem = Inventory.getUI().removeItem(index, _tmpCount[index]);
+	const inventoryItem = Inventory.removeItem(index, _tmpCount[index]);
 	const item = Object.assign({}, inventoryItem);
 	const it = DB.getItemInfo(item.ITID);
 	const idx = _send.push(item) - 1;
@@ -266,7 +266,7 @@ Trade.addItemFromInventory = function addItemFromInventory(index, success) {
 	Client.loadFile(
 		`${DB.INTERFACE_PATH}item/${item.IsIdentified ? it.identifiedResourceName : it.unidentifiedResourceName}.bmp`,
 		data => {
-			const icon = root.querySelector(`.item[data-index="${idx}"] .icon`);
+			const icon = itemDiv.querySelector('.icon');
 			if (icon && icon.closest('.box.send')) {
 				icon.style.backgroundImage = `url(${data})`;
 			}
@@ -307,7 +307,7 @@ Trade.addItem = function addItem(item) {
 	Client.loadFile(
 		`${DB.INTERFACE_PATH}item/${item.IsIdentified ? it.identifiedResourceName : it.unidentifiedResourceName}.bmp`,
 		data => {
-			const icon = root.querySelector(`.item[data-index="${idx}"] .icon`);
+			const icon = itemDiv.querySelector('.icon');
 			if (icon && icon.closest('.box.recv')) {
 				icon.style.backgroundImage = `url(${data})`;
 			}
@@ -339,7 +339,7 @@ function onRequestAddItem(index, count) {
 	}
 
 	// You cannot trade more than 10 types of items per trade.
-	if (_send.length >= 10) {
+	if (index !== 0 && _send.length >= 10) {
 		ChatBox.addText(DB.getMessage(297), ChatBox.TYPE.ERROR, ChatBox.FILTER.PUBLIC_LOG);
 		return;
 	}

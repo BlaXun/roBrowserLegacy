@@ -12,6 +12,7 @@
  * Load dependencies
  */
 import DB from 'DB/DBManager.js';
+import { canOpenSearchStore, onSearchStoreOpened } from './StoreSearch.js';
 import Session from 'Engine/SessionStorage.js';
 import Network from 'Network/NetworkManager.js';
 import PACKET from 'Network/PacketStructure.js';
@@ -79,6 +80,17 @@ function onBuyingList(pkt) {
 	VendingShop.setItems(pkt.itemList);
 }
 
+function onBuyingStoreUpdate(pkt) {
+	VendingShop.updateBuyingItem(pkt.ITID, pkt.count);
+}
+
+function onBuyingStoreClosed(pkt) {
+	// These results mean the server closed the buyer's store after a trade.
+	if (pkt.Result === 3 || pkt.Result === 4) {
+		VendingShop.closeBuyingStore();
+	}
+}
+
 function onDeleteVendingItem(pkt) {
 	// Vending Report
 	if (PACKETVER.value >= 20141016) {
@@ -126,7 +138,7 @@ function onBarterBuyList(pkt) {
 		const count = itemList.length;
 
 		for (let i = 0; i < count; ++i) {
-			const item = Inventory.getUI().getItemById(itemList[i].matcurrency);
+			const item = Inventory.getItemById(itemList[i].matcurrency);
 			const item_index = item ? item.index : -1;
 			_pkt.itemList.push({
 				itemId: itemList[i].ITID,
@@ -340,6 +352,7 @@ function onSellResult(pkt) {
  * @param {object} pkt - PACKET.ZC.PC_PURCHASE_ITEMLIST_FROMMC
  */
 function onVendingStoreList(_pkt) {
+	if (!canOpenSearchStore(_pkt.AID, _pkt.UniqueID, 0)) return;
 	NpcStore.append();
 	NpcStore.setType(NpcStore.Type.VENDING_STORE);
 	NpcStore.setList(_pkt.itemList);
@@ -377,6 +390,12 @@ function onVendingStoreList(_pkt) {
 
 		Network.sendPacket(pkt);
 	};
+	const submit = NpcStore.onSubmit;
+	onSearchStoreOpened(_pkt.AID, _pkt.UniqueID, 0, () => {
+		if (NpcStore.__active && NpcStore.onSubmit === submit) {
+			NpcStore.remove();
+		}
+	});
 }
 
 /**
@@ -385,6 +404,7 @@ function onVendingStoreList(_pkt) {
  * @param {object} pkt - PACKET.ZC.ACK_ITEMLIST_BUYING_STORE
  */
 function onBuyingStoreList(_pkt) {
+	if (!canOpenSearchStore(_pkt.AID, _pkt.UniqueID, 1)) return;
 	NpcStore.append();
 	NpcStore.setType(NpcStore.Type.BUYING_STORE);
 	NpcStore.setList(_pkt.itemList);
@@ -415,6 +435,12 @@ function onBuyingStoreList(_pkt) {
 
 		Network.sendPacket(pkt);
 	};
+	const submit = NpcStore.onSubmit;
+	onSearchStoreOpened(_pkt.AID, _pkt.UniqueID, 1, () => {
+		if (NpcStore.__active && NpcStore.onSubmit === submit) {
+			NpcStore.remove();
+		}
+	});
 }
 
 /**
@@ -542,6 +568,9 @@ export default function MainEngine() {
 	Network.hookPacket(PACKET.ZC.OPEN_BUYING_STORE, onOpenBuying);
 	Network.hookPacket(PACKET.ZC.FAILED_OPEN_BUYING_STORE_TO_BUYER, onOpenBuyingResult);
 	Network.hookPacket(PACKET.ZC.MYITEMLIST_BUYING_STORE, onBuyingList);
+	Network.hookPacket(PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE, onBuyingStoreUpdate);
+	Network.hookPacket(PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE2, onBuyingStoreUpdate);
+	Network.hookPacket(PACKET.ZC.FAILED_TRADE_BUYING_STORE_TO_BUYER, onBuyingStoreClosed);
 	Network.hookPacket(PACKET.ZC.PC_PURCHASE_ITEMLIST_FROMMC3, onVendingStoreList);
 	Network.hookPacket(PACKET.ZC.ACK_ITEMLIST_BUYING_STORE, onBuyingStoreList);
 	Network.hookPacket(PACKET.ZC.FAILED_TRADE_BUYING_STORE_TO_SELLER, onSellToBuyingStoreResult);

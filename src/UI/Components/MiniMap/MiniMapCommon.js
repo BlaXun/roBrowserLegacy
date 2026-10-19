@@ -524,6 +524,9 @@ export function createMiniMap({
 						case 6:
 							img = _kafra;
 							break;
+						// The full town tables have services with no minimap icon
+						default:
+							continue;
 					}
 
 					if (img.complete && img.width) {

@@ -114,7 +114,7 @@ vi.mock('UI/Components/InputBox/InputBox.js', () => ({
 vi.mock('UI/Components/GuildCompanion/GuildCompanion.js', () => ({ default: { openDisband: vi.fn() } }));
 vi.mock('UI/Components/SkillTargetSelection/SkillTargetSelection.js', () => ({ default: {} }));
 vi.mock('UI/Components/SkillDescription/SkillDescription.js', () => ({ default: {} }));
-vi.mock('UI/Components/WinStats/WinStats.js', () => ({ default: { getUI: () => ({ update: vi.fn() }) } }));
+vi.mock('UI/Components/WinStats/WinStats.js', () => ({ default: { update: vi.fn() } }));
 
 HTMLCanvasElement.prototype.getContext = function () {
 	const ctx = {
@@ -454,8 +454,12 @@ describe('Guild info tab', () => {
 			}
 		});
 
-		it('keeps no emblem', () => {
+		it('keeps no emblem when the old info request answers after reset', () => {
+			const paint = Guild.onRequestGuildEmblem.mock.calls.at(-1)[2];
+			mocks.session.Entity = { display: { name: 'Next character' }, GUID: 0, GEmblemVer: 0 };
 			Guild.reset();
+
+			paint({ src: 'data:image/bmp;base64,AAAA' });
 
 			expect(info('.emblem_container').style.backgroundImage).toBe('');
 		});

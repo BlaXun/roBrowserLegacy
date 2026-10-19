@@ -34,6 +34,7 @@ import * as p2022 from './Packets/packets2022_len_main.js';
 import * as p2023 from './Packets/packets2023_len_main.js';
 import * as p2024 from './Packets/packets2024_len_main.js';
 import * as p2025 from './Packets/packets2025_len_main.js';
+import * as p2026 from './Packets/packets2026_len_main.js';
 
 const packetModules = {
 	'./Packets/packets2003_len_main.js': p2003,
@@ -58,7 +59,8 @@ const packetModules = {
 	'./Packets/packets2022_len_main.js': p2022,
 	'./Packets/packets2023_len_main.js': p2023,
 	'./Packets/packets2024_len_main.js': p2024,
-	'./Packets/packets2025_len_main.js': p2025
+	'./Packets/packets2025_len_main.js': p2025,
+	'./Packets/packets2026_len_main.js': p2026
 };
 
 let packets_len = new Array();
@@ -73,8 +75,8 @@ function init(packetver) {
 
 	// Find the matching year for the packet version
 	const years = [
-		2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010, 2009, 2008,
-		2007, 2006, 2005, 2004, 2003
+		2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015, 2014, 2013, 2012, 2011, 2010, 2009,
+		2008, 2007, 2006, 2005, 2004, 2003
 	];
 
 	let selectedYear = 2003;

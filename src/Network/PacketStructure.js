@@ -4377,38 +4377,27 @@ PACKET.CZ.SEARCH_STORE_INFO = function PACKET_CZ_SEARCH_STORE_INFO() {
 	this.StoreType = 0;
 	this.maxPrice = 0;
 	this.minPrice = 0;
-	this.ItemIDList = 0;
-	this.CardIDList = 0;
+	this.ItemIDList = [];
+	this.CardIDList = [];
 };
 PACKET.CZ.SEARCH_STORE_INFO.prototype.build = function () {
-	let i, count, offset;
 	const ver = this.getPacketVersion();
-	const pkt = new BinaryWriter(ver[2]);
-
+	const width = PACKETVER.value >= 20181121 ? 4 : 2;
+	const length = ver[9] + width * (this.ItemIDList.length + this.CardIDList.length);
+	const pkt = new BinaryWriter(length);
 	pkt.writeShort(ver[1]);
-	pkt.view.setInt16(
-		ver[3],
-		2 + 2 + 1 + 4 + 4 + 1 + 1 + this.ItemIDList.length * 2 + this.CardIDList.length * 2,
-		true
-	);
-	pkt.view.setUint8(ver[4], this.StoreType, true);
+	pkt.view.setUint16(ver[3], length, true);
+	pkt.view.setUint8(ver[4], this.StoreType);
 	pkt.view.setUint32(ver[5], this.maxPrice, true);
 	pkt.view.setUint32(ver[6], this.minPrice, true);
-	pkt.view.setUint8(ver[7], this.ItemIDList.length, true);
-	pkt.view.setUint8(ver[8], this.CardIDList.length, true);
-
-	offset = ver[9];
-
-	for (i = 0, count = this.ItemIDList.length; i < count; ++i) {
-		pkt.view.setUint16(offset, this.ItemIDList[i], true);
-		offset += 2;
+	pkt.view.setUint8(ver[7], this.ItemIDList.length);
+	pkt.view.setUint8(ver[8], this.CardIDList.length);
+	let offset = ver[9];
+	for (const id of [...this.ItemIDList, ...this.CardIDList]) {
+		if (width === 4) pkt.view.setUint32(offset, id, true);
+		else pkt.view.setUint16(offset, id, true);
+		offset += width;
 	}
-
-	for (i = 0, count = this.CardIDList.length; i < count; ++i) {
-		pkt.view.setUint16(offset, this.CardIDList[i], true);
-		offset += 2;
-	}
-
 	return pkt;
 };
 
@@ -4440,13 +4429,13 @@ PACKET.CZ.SSILIST_ITEM_CLICK = function PACKET_CZ_SSILIST_ITEM_CLICK() {
 };
 PACKET.CZ.SSILIST_ITEM_CLICK.prototype.build = function () {
 	const ver = this.getPacketVersion();
-	const pkt = new BinaryWriter(ver[2]);
-
+	const modern = PACKETVER.value >= 20181121;
+	const pkt = new BinaryWriter(modern ? 14 : 12);
 	pkt.writeShort(ver[1]);
-	pkt.view.setUint32(ver[3], this.AID, true);
-	pkt.view.setULong(ver[4], this.SSI_ID, true);
-	pkt.view.setUShort(ver[5], this.ITID, true);
-
+	pkt.writeULong(this.AID);
+	pkt.writeULong(this.SSI_ID);
+	if (modern) pkt.writeULong(this.ITID);
+	else pkt.writeUShort(this.ITID);
 	return pkt;
 };
 
@@ -6196,7 +6185,7 @@ PACKET.ZC.GUILD_INFO.size = 110;
 PACKET.ZC.GUILD_EMBLEM_IMG = function PACKET_ZC_GUILD_EMBLEM_IMG(fp, end) {
 	this.GDID = fp.readLong();
 	this.emblemVersion = fp.readLong();
-	this.img = new Uint8Array(fp.buffer, fp.offset, end - fp.offset);
+	this.img = new Uint8Array(fp.view.buffer, fp.view.byteOffset + fp.offset, end - fp.offset);
 };
 PACKET.ZC.GUILD_EMBLEM_IMG.size = -1;
 
@@ -6737,9 +6726,9 @@ PACKET.ZC.PROPERTY_PET.size = 37;
 // 0x1a3
 PACKET.ZC.FEED_PET = function PACKET_ZC_FEED_PET(fp, end) {
 	this.cRet = fp.readChar();
-	this.ITID = fp.readUShort();
+	this.ITID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 };
-PACKET.ZC.FEED_PET.size = 5;
+PACKET.ZC.FEED_PET.size = PACKETVER.value >= 20181121 ? 7 : 5;
 
 // 0x1a4
 PACKET.ZC.CHANGESTATE_PET = function PACKET_ZC_CHANGESTATE_PET(fp, end) {
@@ -7812,9 +7801,9 @@ PACKET.ZC.PROPERTY_HOMUN.size = 71;
 //0x22f
 PACKET.ZC.FEED_MER = function PACKET_ZC_FEED_MER(fp, end) {
 	this.cRet = fp.readChar();
-	this.ITID = fp.readUShort();
+	this.ITID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 };
-PACKET.ZC.FEED_MER.size = 5;
+PACKET.ZC.FEED_MER.size = PACKETVER.value >= 20181121 ? 7 : 5;
 
 // 0x230
 PACKET.ZC.CHANGESTATE_MER = function PACKET_ZC_CHANGESTATE_MER(fp, end) {
@@ -9770,6 +9759,15 @@ PACKET.ZC.PLAY_NPC_BGM = function PACKET_ZC_PLAY_NPC_BGM(fp, end) {
 };
 PACKET.ZC.PLAY_NPC_BGM.size = 26;
 
+// 0xb8c: what servers send in place of 0x7fe from 2022-05-04 clients on
+// (rAthena: PACKETVER_MAIN_NUM >= 20220504). A play type, then the name, of
+// any length. The name is a file name, so it is read as bytes, as 0x7fe reads it.
+PACKET.ZC.PLAY_NPC_BGM2 = function PACKET_ZC_PLAY_NPC_BGM2(fp, end) {
+	this.playType = fp.readUChar();
+	this.Bgm = fp.readBinaryString(end - fp.tell());
+};
+PACKET.ZC.PLAY_NPC_BGM2.size = -1;
+
 // 0x7ff
 PACKET.ZC.DEFINE_CHECK = function PACKET_ZC_DEFINE_CHECK(fp, end) {
 	this.Result = fp.readLong();
@@ -10034,6 +10032,19 @@ PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE = function PACKET_ZC_UPDATE_ITEM_FROM_BU
 };
 PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE.size = 10;
 
+// 0x9e6; amount is purchased quantity, not remaining wanted stock.
+PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE2 = function PACKET_ZC_UPDATE_ITEM_FROM_BUYING_STORE2(fp, end) {
+	this.ITID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
+	this.count = fp.readUShort();
+	this.zeny = fp.readULong();
+	this.limitZeny = fp.readULong();
+	this.charId = fp.readULong();
+	this.updateTime = fp.readULong();
+};
+Object.defineProperty(PACKET.ZC.UPDATE_ITEM_FROM_BUYING_STORE2, 'size', {
+	get: () => (PACKETVER.value >= 20181121 ? 24 : 22)
+});
+
 // 0x81c
 PACKET.ZC.ITEM_DELETE_BUYING_STORE = function PACKET_ZC_ITEM_DELETE_BUYING_STORE(fp, end) {
 	this.index = fp.readShort();
@@ -10159,6 +10170,35 @@ PACKET.ZC.SEARCH_STORE_INFO_ACK = function PACKET_ZC_SEARCH_STORE_INFO_ACK(fp, e
 	})();
 };
 PACKET.ZC.SEARCH_STORE_INFO_ACK.size = -1;
+
+// 0x0b64: modern store-search rows, main clients from 2020-09-16.
+PACKET.ZC.SEARCH_STORE_INFO_ACK2 = function PACKET_ZC_SEARCH_STORE_INFO_ACK2(fp, end) {
+	this.IsFirstPage = fp.readUChar();
+	this.IsNexPage = fp.readUChar();
+	this.RemainedSearchCnt = fp.readUChar();
+	this.SSI_List = [];
+	while (fp.tell() + 142 <= end) {
+		const item = {};
+		item.SSI_ID = fp.readULong();
+		item.AID = fp.readULong();
+		item.StoreName = fp.readString(80);
+		item.ITID = fp.readULong();
+		item.type = fp.readUChar();
+		item.price = fp.readULong();
+		item.count = fp.readUShort();
+		item.slot = {};
+		for (let i = 1; i <= 4; i++) item.slot[`card${i}`] = fp.readULong();
+		item.Options = [];
+		for (let i = 1; i <= 5; i++) {
+			item.Options[i] = { index: fp.readShort(), value: fp.readShort(), param: fp.readUChar() };
+		}
+		item.RefiningLevel = fp.readUChar();
+		item.enchantgrade = fp.readUChar();
+		item.IsIdentified = 1;
+		this.SSI_List.push(item);
+	}
+};
+PACKET.ZC.SEARCH_STORE_INFO_ACK2.size = -1;
 
 // 0x837
 PACKET.ZC.SEARCH_STORE_INFO_FAILED = function PACKET_ZC_SEARCH_STORE_INFO_FAILED(fp, end) {
@@ -15855,12 +15895,12 @@ PACKET.ZC.ACK_OPEN_ROULETTE = function PACKET_ZC_ACK_OPEN_ROULETTE(fp, end) {
 	this.serial = fp.readLong(); // 4 bytes - Serial
 	this.step = fp.readChar(); // 1 byte - Step
 	this.idx = fp.readChar(); // 1 byte - Idx
-	this.additionItemID = fp.readUShort(); // 2 bytes - AdditionItemID
+	this.additionItemID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 	this.goldPoint = fp.readLong(); // 4 bytes - Gold points
 	this.silverPoint = fp.readLong(); // 4 bytes - Silver points
 	this.bronzePoint = fp.readLong(); // 4 bytes - Bronze points
 };
-PACKET.ZC.ACK_OPEN_ROULETTE.size = 23;
+PACKET.ZC.ACK_OPEN_ROULETTE.size = PACKETVER.value >= 20181121 ? 25 : 23;
 
 // 0xA1B - CZ_REQ_ROULETTE_INFO (request roulette item list)
 PACKET.CZ.REQ_ROULETTE_INFO = function PACKET_CZ_REQ_ROULETTE_INFO() {};
@@ -15873,16 +15913,20 @@ PACKET.CZ.REQ_ROULETTE_INFO.prototype.build = function () {
 
 // 0xA1C - ZC_ACK_ROULETTE_INFO (roulette item list)
 PACKET.ZC.ACK_ROULETTE_INFO = function PACKET_ZC_ACK_ROULETTE_INFO(fp, end) {
-	fp.readUShort(); // 2 bytes - packet length
+	// NetworkManager has consumed the opcode and variable-length header.
 	this.serial = fp.readULong(); // 4 bytes - RouletteSerial
 	this.items = [];
-	// Read items until end of packet (42 items max)
-	while (fp.tell() < end) {
+	// Read complete rows within the packet (42 items max).
+	const rowSize = PACKETVER.value >= 20180511 ? 12 : 8;
+	while (fp.tell() + rowSize <= end) {
 		const item = {};
 		item.row = fp.readUShort(); // 2 bytes
 		item.position = fp.readUShort(); // 2 bytes
-		item.itemId = fp.readUShort(); // 2 bytes
+		item.itemId = PACKETVER.value >= 20180511 ? fp.readULong() : fp.readUShort();
 		item.count = fp.readUShort(); // 2 bytes
+		if (PACKETVER.value >= 20180511) {
+			fp.readUShort(); // unused
+		}
 		this.items.push(item);
 	}
 };
@@ -15917,12 +15961,12 @@ PACKET.ZC.ACK_GENERATE_ROULETTE = function PACKET_ZC_ACK_GENERATE_ROULETTE(fp, e
 	this.result = fp.readUChar(); // 1 byte - Result
 	this.step = fp.readUShort(); // 2 bytes - Step
 	this.idx = fp.readUShort(); // 2 bytes - Idx
-	this.additionItemID = fp.readUShort(); // 2 bytes - AdditionItemID
+	this.additionItemID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 	this.remainGold = fp.readLong(); // 4 bytes - RemainGold
 	this.remainSilver = fp.readLong(); // 4 bytes - RemainSilver
 	this.remainBronze = fp.readLong(); // 4 bytes - RemainBronze
 };
-PACKET.ZC.ACK_GENERATE_ROULETTE.size = 21;
+PACKET.ZC.ACK_GENERATE_ROULETTE.size = PACKETVER.value >= 20181121 ? 23 : 21;
 
 // 0xA21 - CZ_RECV_ROULETTE_ITEM (request to receive roulette item)
 PACKET.CZ.RECV_ROULETTE_ITEM = function PACKET_CZ_RECV_ROULETTE_ITEM() {
@@ -15939,9 +15983,9 @@ PACKET.CZ.RECV_ROULETTE_ITEM.prototype.build = function () {
 // 0xA22 - ZC_RECV_ROULETTE_ITEM (receive roulette item result)
 PACKET.ZC.RECV_ROULETTE_ITEM = function PACKET_ZC_RECV_ROULETTE_ITEM(fp, end) {
 	this.result = fp.readUChar(); // 1 byte - Result (0=success, 1=failed, 2=overcount, 3=overweight)
-	this.additionItemID = fp.readUShort(); // 2 bytes - AdditionItemID
+	this.additionItemID = PACKETVER.value >= 20181121 ? fp.readULong() : fp.readUShort();
 };
-PACKET.ZC.RECV_ROULETTE_ITEM.size = 5;
+PACKET.ZC.RECV_ROULETTE_ITEM.size = PACKETVER.value >= 20181121 ? 7 : 5;
 
 // 0x097f - ZC_SELECTCART
 PACKET.ZC.SELECTCART = function PACKET_ZC_SELECTCART(fp, end) {

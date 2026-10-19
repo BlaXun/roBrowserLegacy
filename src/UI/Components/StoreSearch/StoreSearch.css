@@ -1,0 +1,173 @@
+:host {
+	position: absolute;
+	width: 540px;
+	top: 100px;
+	left: 100px;
+	font:
+		12px Arial,
+		sans-serif;
+	touch-action: none;
+}
+#StoreSearch {
+	background: #fff;
+	color: #111;
+}
+.head {
+	height: 20px;
+	position: relative;
+	display: flex;
+	align-items: center;
+	padding: 0 6px;
+}
+.head ui-image,
+.footer ui-image {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+}
+.head strong,
+.head .close,
+.footer > *:not(ui-image) {
+	position: relative;
+	z-index: 1;
+}
+.close {
+	width: 11px;
+	height: 11px;
+	margin-left: auto;
+}
+.body {
+	padding: 8px;
+}
+.summary,
+.prices {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+.uses {
+	margin-left: auto;
+}
+.pickers {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+	margin: 8px 0;
+}
+label {
+	display: flex;
+	gap: 5px;
+	align-items: center;
+}
+input {
+	min-width: 0;
+	width: 100%;
+}
+.prices input {
+	width: 90px;
+}
+.candidates {
+	max-height: 96px;
+	overflow: auto;
+}
+.candidates button {
+	display: flex;
+	align-items: center;
+	width: 100%;
+	text-align: left;
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+}
+.candidates button:hover,
+.result:hover {
+	background: #e6f0ff;
+}
+.icon {
+	width: 24px;
+	height: 24px;
+	flex-shrink: 0;
+	background-repeat: no-repeat;
+	background-position: center;
+}
+.selected {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 3px;
+	max-height: 64px;
+	overflow: auto;
+}
+.selected button {
+	font-size: 11px;
+}
+.card-note {
+	display: block;
+	margin-top: 4px;
+}
+.status {
+	min-height: 28px;
+	margin: 6px 0;
+}
+.results {
+	height: 230px;
+	overflow: auto;
+}
+.result {
+	display: grid;
+	grid-template-columns: 1fr auto auto;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 2px;
+	border-bottom: 1px solid #ddd;
+}
+.details {
+	display: flex;
+	align-items: center;
+	text-align: left;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+	min-width: 0;
+}
+.item-label {
+	overflow-wrap: anywhere;
+}
+.shop {
+	display: block;
+	font-size: 11px;
+	color: #555;
+}
+.price {
+	text-align: right;
+	white-space: nowrap;
+}
+.footer {
+	position: relative;
+	min-height: 25px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 8px;
+}
+ui-button {
+	background-color: transparent;
+	background-repeat: no-repeat;
+	border: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.search,
+.next {
+	min-width: 42px;
+	height: 20px;
+}
+.visit {
+	font: inherit;
+}
+button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}

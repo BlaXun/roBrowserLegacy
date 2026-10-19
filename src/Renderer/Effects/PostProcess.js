@@ -14,8 +14,14 @@ import GraphicsSettings from 'Preferences/Graphics.js';
 let _effects = [];
 let _activeEffects = [];
 
-// Passes a client plugin added (addExternal). They outlive map changes, so
-// registerExternal puts them back each time the built-ins are registered.
+// Modules whose init() has run. A built-in pass is set up the first time it
+// is active, not when it is registered: most are off, and compiling them all
+// (and Bloom's framebuffer) on every map load stalled each warp. External
+// passes are set up when added, as their isActive may depend on init.
+const _ready = new Set();
+
+// Passes a client plugin added (addExternal). They outlive map changes, and
+// registerExternal puts them in place when the built-ins are registered.
 let _external = [];
 let _externalAt = -1;
 let _gl = null;
@@ -49,7 +55,15 @@ class PostProcess {
 		}
 		_gl = gl;
 		_effects.push(module);
-		module.init(gl);
+	}
+
+	/**
+	 * Whether the built-in passes are registered. They stay registered across
+	 * map changes, until clean().
+	 * @return {boolean}
+	 */
+	static isRegistered() {
+		return _externalAt >= 0;
 	}
 
 	/**
@@ -61,7 +75,7 @@ class PostProcess {
 		_externalAt = _effects.length;
 		_external.forEach(module => {
 			_effects.push(module);
-			module.init(gl);
+			PostProcess.setUp(module, gl);
 		});
 	}
 
@@ -82,7 +96,7 @@ class PostProcess {
 		_external.push(module);
 		if (_gl && _externalAt >= 0) {
 			_effects.splice(_externalAt + _external.length - 1, 0, module);
-			module.init(_gl);
+			PostProcess.setUp(module, _gl);
 		}
 	}
 
@@ -95,7 +109,7 @@ class PostProcess {
 		const index = _effects.indexOf(module);
 		if (index >= 0) {
 			_effects.splice(index, 1);
-			if (_gl) {
+			if (_gl && _ready.delete(module)) {
 				module.clean(_gl);
 			}
 		}
@@ -111,12 +125,29 @@ class PostProcess {
 	}
 
 	/**
+	 * Run a module's init() once, until it is cleaned.
+	 * @param {ShaderModule} module
+	 * @param {WebGLRenderingContext} gl
+	 */
+	static setUp(module, gl) {
+		if (!_ready.has(module)) {
+			_ready.add(module);
+			module.init(gl);
+		}
+	}
+
+	/**
 	 * Prepare the pipeline for the scene rendering.
 	 * Always binds a full-resolution buffer to ensure the 3D scene is sharp.
 	 * @param {WebGLRenderingContext} gl - The WebGL context.
 	 */
 	static prepare(gl) {
 		_activeEffects = _effects.filter(e => e.isActive());
+
+		// Set up a pass the first time it is switched on
+		for (let i = 0; i < _activeEffects.length; i++) {
+			PostProcess.setUp(_activeEffects[i], gl);
+		}
 
 		// Ensure global buffers exist and match canvas size
 		this.validateBuffers(gl);
@@ -225,11 +256,14 @@ class PostProcess {
 	 * restart Modules when crashs
 	 */
 	static restartModules(gl) {
-		_activeEffects.forEach(module => {
-			module.clean(gl);
-			module.init(gl);
-		});
+		// Every module set up so far lost its GPU objects. External passes are
+		// set up again now, built-ins by prepare() once they are active.
+		_ready.forEach(module => module.clean(gl));
+		_ready.clear();
 		_activeEffects = [];
+		if (_externalAt >= 0) {
+			_external.forEach(module => PostProcess.setUp(module, gl));
+		}
 
 		// Physically delete Ping-Pong buffers from GPU memory
 		if (_readFbo) {
@@ -279,7 +313,7 @@ class PostProcess {
 		_writeFbo = this.createFbo(gl, scaledWidth, scaledHeight, _writeFbo);
 
 		// Notify modules to recreate their internal buffers (if any)
-		_effects.forEach(module => {
+		_ready.forEach(module => {
 			if (module.recreateFbo) {
 				module.recreateFbo(gl, scaledWidth, scaledHeight);
 			}
@@ -290,7 +324,8 @@ class PostProcess {
 	 * Clean current registered modules
 	 */
 	static clean(gl) {
-		_effects.forEach(module => module.clean(gl));
+		_ready.forEach(module => module.clean(gl));
+		_ready.clear();
 		_effects = [];
 		_activeEffects = [];
 		_externalAt = -1;

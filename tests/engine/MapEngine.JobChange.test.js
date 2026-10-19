@@ -16,25 +16,43 @@ const mocks = vi.hoisted(() => {
 		prepare: vi.fn(),
 		append: vi.fn()
 	});
-	return { hooks: new Map(), makeUI, ui: makeUI(), uiAfterSwitch: null, skillList: { onLevelUp: vi.fn() } };
+	return { hooks: new Map(), makeUI, ui: makeUI(), uiAfterSwitch: null, skillList: { onLevelUp: vi.fn() }, guildRequest: vi.fn() };
 });
 
 const stub = vi.hoisted(() => () => ({ default: {} }));
 vi.mock('Network/NetworkManager.js', () => ({
 	default: { hookPacket: (struct, fn) => mocks.hooks.set(struct, fn), sendPacket: vi.fn() }
 }));
+// A controller, as UIVersionManager.getUIController makes them: what it does not
+// have itself is passed on to the selected window.
+const controller = vi.hoisted(() => (own, selected) =>
+	new Proxy(own, {
+		get: (target, prop) => (prop in target ? target[prop] : selected()[prop]),
+		set: (target, prop, value) => {
+			(prop in target ? target : selected())[prop] = value;
+			return true;
+		}
+	})
+);
 vi.mock('UI/Components/BasicInfo/BasicInfo.js', () => ({
-	default: {
-		getUI: () => mocks.uiAfterSwitch || mocks.ui,
-		selectUIVersionWithJob: vi.fn(() => {
-			mocks.uiAfterSwitch = mocks.switchTo || null;
-		})
-	}
+	default: controller(
+		{
+			getUI: () => mocks.uiAfterSwitch || mocks.ui,
+			selectUIVersionWithJob: vi.fn(() => {
+				mocks.uiAfterSwitch = mocks.switchTo || null;
+			})
+		},
+		() => mocks.uiAfterSwitch || mocks.ui
+	)
 }));
-vi.mock('UI/Components/SkillList/SkillList.js', () => ({ default: { getUI: () => mocks.skillList } }));
-vi.mock('UI/Components/WinStats/WinStats.js', () => ({ default: { getUI: () => ({ update: vi.fn() }) } }));
+vi.mock('UI/Components/SkillList/SkillList.js', () => ({
+	default: controller({ getUI: () => mocks.skillList }, () => mocks.skillList)
+}));
+vi.mock('UI/Components/WinStats/WinStats.js', () => ({
+	default: controller({ getUI: () => ({ update: vi.fn() }) }, () => ({ update: vi.fn() }))
+}));
 vi.mock('DB/DBManager.js', () => ({ default: { getJobClass: job => (job >= 4252 ? 'Fourth_Class' : 'default') } }));
-vi.mock('Renderer/EntityManager.js', () => ({ default: { get: () => mocks.entity, forEach: vi.fn() } }));
+vi.mock('Renderer/EntityManager.js', () => ({ default: { get: GID => (mocks.entity?.GID === GID ? mocks.entity : null), forEach: vi.fn(), getOverEntity: () => null } }));
 vi.mock('Renderer/Entity/Entity.js', () => ({
 	default: { TYPE_EFFECT: 1, TYPE_UNIT: 2, TYPE_TRAP: 3, TYPE_PC: 0 }
 }));
@@ -48,7 +66,7 @@ vi.mock('Renderer/Map/Altitude.js', stub);
 vi.mock('Renderer/ScreenEffectManager.js', stub);
 vi.mock('Audio/SoundManager.js', stub);
 vi.mock('Core/Events.js', stub);
-vi.mock('Engine/MapEngine/Guild.js', stub);
+vi.mock('Engine/MapEngine/Guild.js', () => ({ default: { requestGuildEmblem: (...args) => mocks.guildRequest(...args) } }));
 vi.mock('UI/Components/ChatBox/ChatBox.js', stub);
 vi.mock('UI/Components/ChatRoom/ChatRoom.js', stub);
 vi.mock('UI/Components/Announce/Announce.js', stub);
@@ -165,5 +183,37 @@ describe('changing job', () => {
 		for (const bar of ['hp', 'sp', 'ap', 'weight']) {
 			expect(mocks.ui.update).not.toHaveBeenCalledWith(bar, expect.anything(), expect.anything());
 		}
+	});
+});
+
+// Reuse the real EntityEngine packet-hook harness above. An actor name answer
+// requests its guild image; the actor can leave before that image is decoded.
+describe('an actor waiting on a guild image', () => {
+	it('does not restore a departed peer emblem or siege marker', () => {
+		const pending = [];
+		mocks.hooks.clear();
+		mocks.guildRequest.mockImplementation((_guildId, _version, callback) => pending.push(callback));
+		PACKETVER.value = 20221005;
+		Session.Entity = { GID: 2000000, GUID: 41 };
+		Session.mapState = { isSiege: true };
+		const peer = mocks.entity = {
+			GID: 2000001, GUID: 42, GEmblemVer: 7, objecttype: 0,
+			display: { name: 'Peer', TYPE: { COMPLETE: 2 }, STYLE: { DEFAULT: 0 }, update: vi.fn() },
+			emblem: { display: false }, setEntityGuildEmblem: vi.fn()
+		};
+		EntityEngine();
+		mocks.hooks.get(PACKET.ZC.ACK_REQNAMEALL3)({
+			AID: 2000001, CName: 'Peer', PName: '', GName: 'Valhalla', RName: 'Member', TitleID: 0
+		});
+		expect(pending).toHaveLength(1);
+
+		peer.GUID = 0;
+		peer.GEmblemVer = 0;
+		peer.setEntityGuildEmblem(null, null);
+		peer.setEntityGuildEmblem.mockClear();
+		pending[0]({ src: 'data:old-guild' }, null);
+
+		expect.soft(peer.setEntityGuildEmblem).not.toHaveBeenCalled();
+		expect.soft(peer.emblem.display).toBe(false);
 	});
 });

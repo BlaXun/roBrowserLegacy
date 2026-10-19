@@ -19,6 +19,11 @@
  * main effect (EF_LEVEL150 and the rest) is the bubbles, the _SUB one is the
  * ground rings, so /aura 1 can show the rings alone.
  *
+ * Every instance's strips and rings are drawn together (AuraBatch.js), merged
+ * by texture: 54 strips a character cycle through the 27 frames, so drawn in
+ * order no two in a row share a texture, but the aura only adds light, and a
+ * crowd's whole aura comes to one draw per texture.
+ *
  * This file is part of ROBrowser, (http://www.robrowser.com/).
  */
 
@@ -28,7 +33,8 @@ import WebGL from 'Utils/WebGL.js';
 import Client from 'Core/Client.js';
 import Altitude from 'Renderer/Map/Altitude.js';
 import SpriteRenderer from 'Renderer/SpriteRenderer.js';
-import { auraUniform, beginAuraBlend, endAuraBlend } from 'Renderer/Effects/AuraBlend.js';
+import AuraBatch, { QUAD_FAN } from 'Renderer/Effects/AuraBatch.js';
+import { auraBlend, auraUniform, beginAuraBlend, endAuraBlend } from 'Renderer/Effects/AuraBlend.js';
 
 const DEG_TO_RAD = Math.PI / 180;
 const BASE_LIFT = 0.05;
@@ -78,6 +84,11 @@ let _buffer;
  */
 const _textures = new Map();
 
+/**
+ * Every aura's strips and rings, drawn together, a run per texture.
+ */
+const _batch = new AuraBatch({ fog: true, mergeAdditive: true });
+
 function loadTexture(gl, name) {
 	if (_textures.has(name)) {
 		return;
@@ -107,6 +118,7 @@ class MaxLevelAura {
 		this.color = color || { r: 1, g: 1, b: 1, dark: false };
 		this.startTick = tick || 0;
 		this.quadData = new Float32Array(30);
+		this.rgba = new Array(4);
 		this.points = [
 			[0, 0, 0],
 			[0, 0, 0],
@@ -156,6 +168,22 @@ class MaxLevelAura {
 		if (!texture) {
 			return;
 		}
+		if (_batch.active) {
+			const rgba = auraUniform(this.color, alpha, 'alpha', this.rgba);
+			_batch.quad(
+				texture,
+				auraBlend(this.color, 'alpha'),
+				this.points,
+				QUAD_FAN,
+				rgba[0],
+				rgba[1],
+				rgba[2],
+				rgba[3],
+				zIndex
+			);
+			return;
+		}
+		this.fillQuad(this.points);
 		const uniform = _program.uniform;
 		gl.bindTexture(gl.TEXTURE_2D, texture);
 		gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.quadData);
@@ -171,8 +199,16 @@ class MaxLevelAura {
 		const elapsed = Math.max(0, tick - this.startTick);
 		const groundZ = Altitude.getCellHeight(this.position[0], this.position[1]);
 		const base = [this.position[0] + 0.5, -groundZ - BASE_LIFT, this.position[1] + 0.5];
-		const self = this;
+		if (_batch.active) {
+			if (this.part === 'rings') {
+				this.renderRings(gl, base, elapsed);
+			} else {
+				this.renderBubbles(gl, base, elapsed);
+			}
+			return;
+		}
 
+		const self = this;
 		beginAuraBlend(gl, this.color, 'alpha');
 		SpriteRenderer.runWithDepth(true, false, false, function () {
 			if (self.part === 'rings') {
@@ -199,7 +235,6 @@ class MaxLevelAura {
 				this.points[k][1] = base[1] - 0.01 * (i + 1);
 				this.points[k][2] = base[2] + x * sin + z * cos;
 			}
-			this.fillQuad(this.points);
 			this.draw(gl, _textures.get(ring.texture), 1.0, 0.002 * (i + 1));
 		}
 	}
@@ -234,7 +269,6 @@ class MaxLevelAura {
 				this.points[3][0] = x0;
 				this.points[3][1] = base[1];
 				this.points[3][2] = z0;
-				this.fillQuad(this.points);
 				const texture = _textures.get(bubbleName((frame + b * 3 + r * 9) % BUBBLE_FRAMES));
 				this.draw(gl, texture, 0.55, 0.01 + r * 0.002 + b * 0.0001);
 			}
@@ -259,6 +293,7 @@ class MaxLevelAura {
 			gl.deleteBuffer(_buffer);
 			_buffer = null;
 		}
+		_batch.free(gl);
 		for (const texture of _textures.values()) {
 			if (texture) {
 				gl.deleteTexture(texture);
@@ -292,9 +327,12 @@ class MaxLevelAura {
 		gl.enableVertexAttribArray(attribute.aTextureCoord);
 		gl.vertexAttribPointer(attribute.aPosition, 3, gl.FLOAT, false, 5 * 4, 0);
 		gl.vertexAttribPointer(attribute.aTextureCoord, 2, gl.FLOAT, false, 5 * 4, 3 * 4);
+
+		_batch.begin(gl, modelView, projection, fog);
 	}
 
 	static afterRender(gl) {
+		_batch.flush(gl);
 		gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 		gl.disableVertexAttribArray(_program.attribute.aPosition);
 		gl.disableVertexAttribArray(_program.attribute.aTextureCoord);

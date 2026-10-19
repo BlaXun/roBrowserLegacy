@@ -59,6 +59,8 @@ export function createStorage(config) {
 
 	let _openFilters = {};
 
+	let _searchTerm = '';
+
 	const _preferences = Preferences.get(
 		'Storage',
 		{
@@ -266,6 +268,10 @@ export function createStorage(config) {
 			}
 		}
 
+		if (hasSearch && _openFilters[ItemType.SEARCH] && matchesSearch(item)) {
+			_openFilters[ItemType.SEARCH].addItem(item);
+		}
+
 		if (i > -1) {
 			_list[i].count += item.count;
 			const root = this.getRoot();
@@ -408,11 +414,9 @@ export function createStorage(config) {
 			if (!searchInput) {
 				return;
 			}
-			const searchTerm = searchInput.value.toLowerCase();
+			_searchTerm = searchInput.value.toLowerCase();
 
-			const filteredItems = _list.filter(item => {
-				return DB.getItemName(item).toLowerCase().indexOf(searchTerm) > -1;
-			});
+			const filteredItems = _list.filter(matchesSearch);
 
 			if (!_openFilters[ItemType.SEARCH]) {
 				const newFilter = new StorageFilter(ItemType.SEARCH);
@@ -564,6 +568,10 @@ export function createStorage(config) {
 		for (let i = 0, count = list.length; i < count; ++i) {
 			Component.addItemSub(list[i]);
 		}
+	}
+
+	function matchesSearch(item) {
+		return DB.getItemName(item).toLowerCase().includes(_searchTerm);
 	}
 
 	function getItemIndexById(index) {
@@ -732,7 +740,7 @@ export function createStorage(config) {
 	}
 
 	Component.transferItemToOtherUI = function transferItemToOtherUI(item) {
-		const isInventoryOpen = Inventory.getUI().ui ? Inventory.getUI().ui.is(':visible') : false;
+		const isInventoryOpen = Inventory.ui ? Inventory.ui.is(':visible') : false;
 		const isCartOpen = CartItems.ui ? CartItems.ui.is(':visible') : false;
 
 		if (!item) {
@@ -748,6 +756,16 @@ export function createStorage(config) {
 		}
 
 		return true;
+	};
+
+	/**
+	 * The open tab (Component.TAB), its place among the tab buttons. The tabs
+	 * are drawn as one picture, so only this says which it is (gamepad LB / RB).
+	 *
+	 * @returns {number}
+	 */
+	Component.getTab = function getTab() {
+		return _preferences.tab;
 	};
 
 	Component.onClosePressed = function onClosedPressed() {};

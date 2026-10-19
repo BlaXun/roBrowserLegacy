@@ -148,8 +148,9 @@ onmessage = function receive(event) {
 			const map = new MapLoader();
 			map.replaceModels = _replaceModels;
 
+			// Tag the events with the request: a cancelled load can still be running
 			map.onprogress = function (progress) {
-				postMessage({ type: 'MAP_PROGRESS', data: progress });
+				postMessage({ type: 'MAP_PROGRESS', data: progress, request: msg.uid });
 			};
 
 			map.onload = function (success, error) {
@@ -162,7 +163,7 @@ onmessage = function receive(event) {
 			};
 
 			map.ondata = function (type, data) {
-				postMessage({ type: type, data: data });
+				postMessage({ type: type, data: data, request: msg.uid });
 			};
 
 			map.load(msg.data);
