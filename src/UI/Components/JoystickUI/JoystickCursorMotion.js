@@ -26,6 +26,7 @@ import StickFilter from './JoystickStickFilter.js';
 import CameraMotion from './JoystickCameraMotion.js';
 import Support from './JoystickSupportMode.js';
 import UIFocus from './JoystickUIFocus.js';
+import Keyboard from './JoystickKeyboard.js';
 
 // Old behaviour moved joySense px per 100 ms poll at full deflection.
 const SENSE_TO_PX_PER_SEC = 10;
@@ -54,6 +55,7 @@ function frame(time) {
 		// Last pad gone: stop until one connects again
 		Aim.release();
 		Support.release();
+		Keyboard.close();
 		UIFocus.exit();
 		frameHandle = null;
 		return;
@@ -64,12 +66,20 @@ function frame(time) {
 	const dt = Math.min(MAX_DT, (time - lastTime) / 1000);
 	lastTime = time;
 
-	if (dt > 0) {
+	// The on-screen keyboard has the buttons and the sticks: no camera, no cursor
+	const typing = Keyboard.isOpen();
+	if (dt > 0 && !typing) {
 		CameraMotion.update(gp, dt);
 	}
 
 	// Menu navigation reads the buttons every frame: a quick D-pad tap falls between two polls
 	UIFocus.frame(gp, time);
+
+	if (typing) {
+		Aim.release();
+		Support.release();
+		return;
+	}
 
 	if (gp.axes.length < 4 || dt <= 0) {
 		Aim.release();

@@ -556,7 +556,7 @@ const MAPPING_ROLES = [
 		ButtonMap.BUTTON.RS,
 		() => (Controls.joyAimEnabled ? 'Tap: right stick aim/cursor - Hold: recenter cursor' : 'Recenter cursor')
 	],
-	[ButtonMap.BUTTON.MENU, 'Tap: Enter - Hold: emotes'],
+	[ButtonMap.BUTTON.MENU, 'Tap: Enter (the chat opens with the on-screen keyboard) - Hold: emotes'],
 	[ButtonMap.BUTTON.VIEW, 'Tap: menu navigation - Hold: info at the cursor - Camera & window modifier'],
 	[ButtonMap.BUTTON.LB, 'Shortcuts: skill bar 1, slots 1-4 - menus (tap): previous tab'],
 	[ButtonMap.BUTTON.LT, 'Shortcuts: skill bar 1, slots 5-8'],
@@ -594,6 +594,22 @@ function getMappingCombos() {
 		],
 		[n(B.LT) + ' / ' + n(B.RT) + ' (tap, menus)', 'Previous / next window'],
 		[n(B.LB) + ' / ' + n(B.RB) + ' (tap, menus)', 'Previous / next tab'],
+		[
+			n(B.A) + ' on a text field (menus)',
+			'On-screen keyboard: ' +
+				[
+					n(B.A) + ' type',
+					n(B.X) + ' delete',
+					n(B.Y) + ' space',
+					n(B.LB) + ' / ' + n(B.RB) + ' caret',
+					n(B.LT) + ' shift',
+					n(B.RT) + ' signs',
+					n(B.VIEW) + ' phrases',
+					n(B.RS) + ' grid / wheel',
+					n(B.MENU) + ' done',
+					n(B.B) + ' close'
+				].join(', ')
+		],
 		[
 			n(B.X) + ' (menus)',
 			'Tap: more actions (store some, gamepad slot, drop...) - Hold: pick up; ' +

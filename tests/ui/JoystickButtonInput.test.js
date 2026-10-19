@@ -24,7 +24,8 @@ const mocks = vi.hoisted(() => ({
 	renderer: { updateVisuals: vi.fn(), updateSetIndicator: vi.fn(), sync: vi.fn() },
 	selection: { active: vi.fn(() => false) },
 	controls: { joyAimEnabled: false },
-	uiFocus: { isClaimed: vi.fn(() => false) }
+	uiFocus: { isClaimed: vi.fn(() => false) },
+	keyboard: { isOpen: vi.fn(() => false), focusedField: vi.fn(() => null), openIfFocused: vi.fn(() => false) }
 }));
 
 vi.mock('UI/Components/JoystickUI/JoystickInteractionService.js', () => ({ default: mocks.interaction }));
@@ -34,6 +35,7 @@ vi.mock('UI/Components/JoystickUI/JoystickUIRenderer.js', () => ({ default: mock
 vi.mock('UI/Components/JoystickUI/JoystickSelectionUI.js', () => ({ default: mocks.selection }));
 vi.mock('Preferences/Controls.js', () => ({ default: mocks.controls }));
 vi.mock('UI/Components/JoystickUI/JoystickUIFocus.js', () => ({ default: mocks.uiFocus }));
+vi.mock('UI/Components/JoystickUI/JoystickKeyboard.js', () => ({ default: mocks.keyboard }));
 
 const { default: ButtonInput } = await import('UI/Components/JoystickUI/JoystickButtonInput.js');
 
@@ -273,5 +275,50 @@ describe('JoystickButtonInput with menu navigation on', () => {
 		ButtonInput.update(buttons({ 8: 'pressed' }));
 		ButtonInput.update(buttons({ 8: 'holding' }));
 		expect(mocks.interaction.showinfo).not.toHaveBeenCalled();
+	});
+});
+
+describe('JoystickButtonInput and the on-screen keyboard', () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		mocks.interaction.isEmoteGridOpen.mockReturnValue(false);
+		mocks.keyboard.isOpen.mockReturnValue(false);
+		// A click lock an earlier test set runs on real time (200 ms): let it run out
+		vi.useRealTimers();
+		await new Promise(resolve => setTimeout(resolve, 250));
+		ButtonInput.update(buttons({}));
+	});
+
+	afterEach(() => {
+		mocks.keyboard.isOpen.mockReturnValue(false);
+		mocks.keyboard.focusedField.mockReturnValue(null);
+	});
+
+	it('gives the map nothing while it is open, nor what is still held when it closes', () => {
+		mocks.keyboard.isOpen.mockReturnValue(true);
+		expect(ButtonInput.update(buttons({ 0: 'pressed', 9: 'pressed' }))).toBe(true);
+		expect(ButtonInput.update(buttons({ 0: 'holding', 9: 'holding' }))).toBe(true);
+		expect(mocks.interaction.leftClick).not.toHaveBeenCalled();
+
+		// Menu entered the text and closed it: letting Menu go is no Enter, A held is no click
+		mocks.keyboard.isOpen.mockReturnValue(false);
+		ButtonInput.update(buttons({ 0: 'holding' }));
+		ButtonInput.update(buttons({}));
+		expect(mocks.interaction.leftClick).not.toHaveBeenCalled();
+		expect(mocks.interaction.enter).not.toHaveBeenCalled();
+
+		ButtonInput.update(buttons({ 0: 'pressed' }));
+		expect(mocks.interaction.leftClick).toHaveBeenCalledTimes(1);
+	});
+
+	it('a Menu tap that opens the chat opens the keyboard on it', () => {
+		const chat = document.createElement('div');
+		mocks.keyboard.focusedField.mockReturnValue(null);
+		ButtonInput.update(buttons({ 9: 'pressed' }));
+		mocks.interaction.enter.mockImplementation(() => mocks.keyboard.focusedField.mockReturnValue(chat));
+		ButtonInput.update(buttons({}));
+		expect(mocks.interaction.enter).toHaveBeenCalledTimes(1);
+		expect(mocks.keyboard.openIfFocused).toHaveBeenCalledWith(null);
+		mocks.interaction.enter.mockImplementation(() => {});
 	});
 });
