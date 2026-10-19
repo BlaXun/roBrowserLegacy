@@ -19,6 +19,15 @@
  * shared by file name (sharedTexture), so every character's aura is drawn
  * from the same one and the runs stay long.
  *
+ * A batch made with `mergeAdditive` goes further: where consecutive runs all
+ * add light (BLEND_ADD), it draws each texture's triangles together, in one
+ * run, whatever order they came in. Adding is order-free: the auras draw
+ * with the depth test on and depth writes off, so no triangle hides another,
+ * and each blend adds to what is in the framebuffer, a value its 8 bits hold
+ * exactly, so the sum and its clamp at 1 come out the same in any order. The
+ * high-level aura (MaxLevelAura) needs it: each character's strips cycle
+ * through 27 textures, so no two neighbours share one.
+ *
  * Config `auraBatching: false` draws every quad on its own, as before.
  *
  * This file is part of ROBrowser, (http://www.robrowser.com/).
@@ -55,10 +64,13 @@ class AuraBatch {
 	 * @param {boolean} [options.discardClear] discard texels with alpha under 0.01
 	 * @param {boolean} [options.discardBlack] discard black texels
 	 * @param {boolean} [options.darken] BLEND_DARKEN draws grey from the texture's brightness
+	 * @param {boolean} [options.mergeAdditive] draw each texture's additive triangles together (see above)
 	 */
 	constructor(options) {
-		this.defines = Object.keys(options)
-			.filter(key => options[key])
+		const { mergeAdditive, ...defines } = options;
+		this.mergeAdditive = !!mergeAdditive;
+		this.defines = Object.keys(defines)
+			.filter(key => defines[key])
 			.map(key => `#define ${key.replace(/[A-Z]/g, c => `_${c}`).toUpperCase()}\n`)
 			.join('');
 
@@ -68,6 +80,13 @@ class AuraBatch {
 		this.indexCount = 0;
 		this.runs = [];
 		this.runCount = 0;
+
+		// What mergeAdditive draws instead: the indices regrouped, their runs,
+		// and the run each texture is gathered in while regrouping.
+		this.mergedIndices = new Uint32Array(0);
+		this.mergedRuns = [];
+		this.mergedRunCount = 0;
+		this.textureRun = new Map();
 
 		this.modelView = new Float32Array(16);
 		this.projection = new Float32Array(16);
@@ -251,13 +270,20 @@ class AuraBatch {
 		// A fresh store each flush: the GPU may still be reading the last one.
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
 		gl.bufferData(gl.ARRAY_BUFFER, this.vertices.subarray(0, this.vertexCount * FLOATS), gl.STREAM_DRAW);
-		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.indices.subarray(0, this.indexCount), gl.STREAM_DRAW);
+		let runs = this.runs;
+		let runCount = this.runCount;
+		let indices = this.indices;
+		if (this.mergeAdditive && this.merge()) {
+			runs = this.mergedRuns;
+			runCount = this.mergedRunCount;
+			indices = this.mergedIndices;
+		}
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices.subarray(0, this.indexCount), gl.STREAM_DRAW);
 
-		const self = this;
 		SpriteRenderer.runWithDepth(true, false, false, function () {
 			let blend = -1;
-			for (let i = 0; i < self.runCount; i++) {
-				const run = self.runs[i];
+			for (let i = 0; i < runCount; i++) {
+				const run = runs[i];
 				if (run.blend !== blend) {
 					blend = run.blend;
 					setAuraBlend(gl, blend);
@@ -274,9 +300,102 @@ class AuraBatch {
 		for (let i = 0; i < this.runCount; i++) {
 			this.runs[i].texture = null;
 		}
+		for (let i = 0; i < this.mergedRunCount; i++) {
+			this.mergedRuns[i].texture = null;
+		}
 		this.runCount = 0;
+		this.mergedRunCount = 0;
 		this.vertexCount = 0;
 		this.indexCount = 0;
+	}
+
+	/**
+	 * Regroup the recorded runs for mergeAdditive into mergedRuns and
+	 * mergedIndices: each span of consecutive BLEND_ADD runs becomes one run
+	 * per texture, in the order the textures first appear in it, with that
+	 * texture's triangles in the order they were recorded. Other runs stay
+	 * as they are, where they are. Returns false when nothing would merge.
+	 *
+	 * @return {boolean}
+	 */
+	merge() {
+		const runs = this.runs;
+		const runCount = this.runCount;
+		if (this.mergedIndices.length < this.indexCount) {
+			this.mergedIndices = new Uint32Array(this.indices.length);
+		}
+		const textureRun = this.textureRun;
+		let merged = 0;
+		let offset = 0;
+
+		for (let start = 0; start < runCount;) {
+			if (runs[start].blend !== BLEND_ADD) {
+				const run = runs[start];
+				const target = this.mergedRun(merged++, run.texture, run.blend, offset);
+				this.copyIndices(run, offset);
+				target.count = run.count;
+				offset += run.count;
+				start++;
+				continue;
+			}
+
+			// The span of additive runs from start, and how many indices each texture has in it.
+			let end = start;
+			const first = merged;
+			for (; end < runCount && runs[end].blend === BLEND_ADD; end++) {
+				const run = runs[end];
+				let target = textureRun.get(run.texture);
+				if (target === undefined) {
+					target = this.mergedRun(merged++, run.texture, BLEND_ADD, 0);
+					textureRun.set(run.texture, target);
+				}
+				target.count += run.count;
+			}
+			for (let i = first; i < merged; i++) {
+				const target = this.mergedRuns[i];
+				target.first = offset;
+				offset += target.count;
+				target.count = 0;
+			}
+			for (let i = start; i < end; i++) {
+				const run = runs[i];
+				const target = textureRun.get(run.texture);
+				this.copyIndices(run, target.first + target.count);
+				target.count += run.count;
+			}
+			textureRun.clear();
+			start = end;
+		}
+
+		this.mergedRunCount = merged;
+		return merged < runCount;
+	}
+
+	/**
+	 * Copy a recorded run's indices into mergedIndices at `offset`, without
+	 * the garbage of a subarray a run.
+	 */
+	copyIndices(run, offset) {
+		const indices = this.indices;
+		const out = this.mergedIndices;
+		for (let i = run.first, end = run.first + run.count; i < end; i++) {
+			out[offset++] = indices[i];
+		}
+	}
+
+	/**
+	 * mergedRuns[index], set to start empty at `first`.
+	 */
+	mergedRun(index, texture, blend, first) {
+		let run = this.mergedRuns[index];
+		if (!run) {
+			run = this.mergedRuns[index] = { texture: null, blend: BLEND_ADD, first: 0, count: 0 };
+		}
+		run.texture = texture;
+		run.blend = blend;
+		run.first = first;
+		run.count = 0;
+		return run;
 	}
 
 	/**
@@ -325,6 +444,8 @@ class AuraBatch {
 		this.gl = null;
 		this.active = false;
 		this.runCount = 0;
+		this.mergedRunCount = 0;
+		this.textureRun.clear();
 		this.vertexCount = 0;
 		this.indexCount = 0;
 	}
