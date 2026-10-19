@@ -240854,7 +240854,10 @@ function handleView(events, now) {
 		else JoystickMouseCursorAdapter_default.contextMenu();
 	}
 	const release = events.released.find((entry) => entry.button === view);
-	if (release && !release.used && !_viewHoldFired && release.held < HOLD_MS && enabled$1()) toggle();
+	if (release && !release.used && !_viewHoldFired && release.held < HOLD_MS) {
+		if (enabled$1()) toggle();
+		else JoystickMouseCursorAdapter_default.contextMenu();
+	}
 }
 /**
 * Whether a release ends a tap that belongs to menus.
