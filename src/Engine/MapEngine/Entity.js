@@ -22,6 +22,7 @@ import PetMessageConst from 'DB/Pets/PetMessageConst.js';
 import JobId from 'DB/Jobs/JobConst.js';
 import AttackEffect from 'DB/Monsters/AttackEffectTable.js';
 import Sound from 'Audio/SoundManager.js';
+import Configs from 'Core/Configs.js';
 import Events from 'Core/Events.js';
 import Guild from 'Engine/MapEngine/Guild.js';
 import Session from 'Engine/SessionStorage.js';
@@ -455,21 +456,29 @@ function onEntityMove(pkt) {
  */
 function onEntityStopMove(pkt) {
 	const entity = EntityManager.get(pkt.AID);
-	if (entity) {
-		if (entity.action === entity.ACTION.WALK) {
-			entity.setAction({
-				action: entity.ACTION.IDLE,
-				frame: 0,
-				repeat: true,
-				play: true
-			});
-		}
-
-		entity.resetRoute();
-		entity.position[0] = pkt.xPos;
-		entity.position[1] = pkt.yPos;
-		entity.position[2] = Altitude.getCellHeight(pkt.xPos, pkt.yPos);
+	if (!entity) {
+		return;
 	}
+
+	// With move prediction, glide the last bit of the way, walking until it gets there, rather than jump.
+	if (Configs.get('movePrediction', false)) {
+		entity.settleTo(pkt.xPos, pkt.yPos);
+		return;
+	}
+
+	if (entity.action === entity.ACTION.WALK) {
+		entity.setAction({
+			action: entity.ACTION.IDLE,
+			frame: 0,
+			repeat: true,
+			play: true
+		});
+	}
+
+	entity.resetRoute();
+	entity.position[0] = pkt.xPos;
+	entity.position[1] = pkt.yPos;
+	entity.position[2] = Altitude.getCellHeight(pkt.xPos, pkt.yPos);
 }
 
 /**

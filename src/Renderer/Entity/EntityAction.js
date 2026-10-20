@@ -124,10 +124,14 @@ function setAction(option) {
 		!this.isFastMoving &&
 		this.walk &&
 		this.walk.total > 0 &&
+		!this.walk.settling &&
 		this.objecttype !== this.constructor.TYPE_FALCON &&
 		this.objecttype !== this.constructor.TYPE_WUG
 	) {
+		// A hit stopping a predicted walk is not the server's answer to it
+		const predicted = this.walk.predicted;
 		this.resetRoute();
+		this.walk.predicted = predicted;
 	}
 
 	this.action = newAction;
