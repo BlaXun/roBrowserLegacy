@@ -33,6 +33,11 @@ vi.mock('Renderer/Map/Altitude.js', () => ({ default: { getCellHeight: () => 0 }
 
 vi.mock('DB/DBManager.js', () => ({ default: {} }));
 
+const configs = vi.hoisted(() => ({ movePrediction: true }));
+vi.mock('Core/Configs.js', () => ({
+	default: { get: (key, defaultValue) => (key in configs ? configs[key] : defaultValue) }
+}));
+
 const { default: InitWalk, gridPathDuration } = await import('Renderer/Entity/EntityWalk.js');
 const { default: InitAction } = await import('Renderer/Entity/EntityAction.js');
 
@@ -73,6 +78,7 @@ beforeEach(() => {
 	session.serverTick = 50_000;
 	session.serverTickSynced = true;
 	session.ping.value = 0;
+	configs.movePrediction = true;
 });
 
 describe('gridPathDuration', () => {
@@ -280,5 +286,34 @@ describe('settleTo', () => {
 		const mob = makeEntity(10, 10);
 		expect(mob.settleTo(20, 10)).toBe(false);
 		expect(mob.position[0]).toBe(20);
+	});
+});
+
+describe('with movePrediction off (the default)', () => {
+	beforeEach(() => {
+		delete configs.movePrediction;
+	});
+
+	it('keeps the old timing: an old packet starts the walk ahead, by at most a cell for a monster', () => {
+		session.ping.value = 300;
+		const mob = makeEntity(10, 10);
+		mob.walkTo(10, 10, 16, 10, 0, session.serverTick - 300);
+		expect(mob.walk.tick).toBe(now - SPEED);
+		// FixPathTime adds the difference to each segment; none here, as both paths are straight.
+		const total = mob.walk.segmentDurations.slice(0, 6).reduce((a, b) => a + b, 0);
+		expect(total).toBeCloseTo(6 * SPEED);
+
+		const player = makeEntity(10, 10);
+		player.objecttype = player.constructor.TYPE_PC;
+		player.walkTo(10, 10, 16, 10, 0, session.serverTick - 300);
+		expect(player.walk.tick).toBe(now - 300);
+	});
+
+	it('searches one path per move packet', () => {
+		const mob = makeEntity(10, 10);
+		const search = vi.spyOn(pathFinding, 'search');
+		mob.walkTo(11, 10, 16, 10, 0, session.serverTick);
+		expect(search).toHaveBeenCalledOnce();
+		search.mockRestore();
 	});
 });

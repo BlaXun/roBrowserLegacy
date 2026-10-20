@@ -1152,7 +1152,7 @@ function walkIntervalProcess() {
 
 		// Start walking now rather than a round trip from now; the server's
 		// reply takes the walk over where it is drawn.
-		if (Configs.get('movePrediction', true)) {
+		if (Configs.get('movePrediction', false)) {
 			const ping = Session.ping.value > 0 ? Session.ping.value : 0;
 			Session.Entity.predictWalkTo(pkt.dest[0], pkt.dest[1], Math.max(400, 2 * ping + 250));
 		}
