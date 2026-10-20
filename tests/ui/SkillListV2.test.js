@@ -105,11 +105,34 @@ const mocks = vi.hoisted(() => {
 		parseHTML() {}
 	}
 
+	// Records what a copy of the player was given and what it drew
+	class MockEntity {
+		static TYPE_PC = 0;
+
+		static made = [];
+
+		constructor() {
+			this.ACTION = { IDLE: 0, SIT: 2 };
+			this.effectColor = new Float32Array([1, 1, 1, 1]);
+			this.drawn = [];
+			MockEntity.made.push(this);
+		}
+
+		set(unit) {
+			Object.assign(this, unit);
+		}
+
+		renderEntity() {
+			this.drawn.push({ job: this.job, action: this.action, head: this.head, robe: this.robe });
+		}
+	}
+
 	return {
 		ids,
 		skillInfo,
 		skillTreeView,
 		MockGUIComponent,
+		MockEntity,
 		session: {
 			Character: { job: ids.CRUSADER },
 			Entity: { _job: ids.CRUSADER }
@@ -145,6 +168,7 @@ vi.mock('Core/Preferences.js', () => ({
 	}
 }));
 vi.mock('Renderer/Renderer.js', () => ({ default: { width: 1200, height: 800, render: vi.fn(), stop: vi.fn() } }));
+vi.mock('Renderer/Entity/Entity.js', () => ({ default: mocks.MockEntity }));
 vi.mock('Renderer/Camera.js', () => ({ default: { direction: 0 } }));
 vi.mock('Renderer/SpriteRenderer.js', () => ({ default: { bind2DContext: vi.fn() } }));
 vi.mock('Controls/MouseEventHandler.js', () => ({ default: { screen: { x: 0, y: 0 } } }));
@@ -361,6 +385,54 @@ describe('SkillListV2 sitting character', () => {
 
 		component.onRemove();
 		expect(Renderer.stop).toHaveBeenCalledWith(render);
+	});
+
+	it('draws a riding player on foot, without the mount', () => {
+		const PECO_CRUSADER = 4015;
+		const ctx = { canvas: { width: 60, height: 100 }, clearRect: vi.fn() };
+		vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx);
+		mocks.MockEntity.made.length = 0;
+		const player = {
+			GID: 150000,
+			_job: mocks.ids.CRUSADER,
+			job: PECO_CRUSADER,
+			costume: PECO_CRUSADER,
+			sex: 1,
+			body: 0,
+			head: 5,
+			headpalette: 2,
+			bodypalette: 0,
+			robe: 20,
+			ACTION: { IDLE: 0, SIT: 2 },
+			action: 0,
+			direction: 6,
+			headDir: 1,
+			animation: {},
+			effectColor: new Float32Array([1, 1, 1, 1]),
+			renderEntity: vi.fn()
+		};
+		mocks.session.Entity = player;
+
+		const component = createComponent();
+		component.onAppend();
+		const render = Renderer.render.mock.calls.at(-1)[0];
+		render(0);
+		render(1000);
+
+		expect(player.renderEntity).not.toHaveBeenCalled();
+		expect(mocks.MockEntity.made).toHaveLength(1);
+		expect(mocks.MockEntity.made[0].drawn).toEqual([
+			{ job: mocks.ids.CRUSADER, action: 2, head: 5, robe: 20 },
+			{ job: mocks.ids.CRUSADER, action: 2, head: 5, robe: 20 }
+		]);
+
+		// Off the mount: the player is drawn again
+		player.costume = 0;
+		player.job = mocks.ids.CRUSADER;
+		render(2000);
+		expect(player.renderEntity).toHaveBeenCalledTimes(1);
+
+		component.onRemove();
 	});
 });
 
