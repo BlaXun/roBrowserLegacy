@@ -1,0 +1,66 @@
+<div id="StoreSearch">
+	<div class="head">
+		<ui-image src="basic_interface/titlebar_mid.bmp"></ui-image><strong>Store Search</strong
+		><ui-button
+			class="close"
+			aria-label="Close catalog"
+			bg="btn_close.bmp"
+			hover="btn_close_a.bmp"
+			down="btn_close_b.bmp"
+		></ui-button>
+	</div>
+	<div class="body">
+		<div class="summary"><span class="effect"></span><span class="uses"></span></div>
+		<label
+			>Search for
+			<select class="store-type">
+				<option value="0">Selling shops</option>
+				<option value="1">Buying shops</option>
+			</select></label
+		>
+		<div class="pickers">
+			<section data-picker="items">
+				<label
+					>Items <input aria-label="Item name or ID" placeholder="Name or known item ID" autocomplete="off"
+				/></label>
+				<div class="candidates"></div>
+				<div class="selected"></div>
+			</section>
+			<section data-picker="cards">
+				<label
+					>Card filter
+					<input aria-label="Card name or ID" placeholder="Select a card by name or ID" autocomplete="off"
+				/></label>
+				<div class="candidates"></div>
+				<div class="selected"></div>
+				<small class="card-note">Optional: items containing any selected card.</small>
+			</section>
+		</div>
+		<div class="prices">
+			<label>Min Zeny <input class="min-price" type="number" min="0" max="4294967295" value="0" /></label
+			><label>Max Zeny <input class="max-price" type="number" min="0" max="4294967295" value="0" /></label
+			><small>0 = no limit</small
+			><ui-button
+				class="search"
+				aria-label="Search"
+				title="Search"
+				bg="reputation/btn_search.bmp"
+				hover="reputation/btn_search_over.bmp"
+				down="reputation/btn_search_press.bmp"
+			></ui-button>
+		</div>
+		<div class="status" role="status" aria-live="polite"></div>
+		<div class="results"></div>
+	</div>
+	<div class="footer">
+		<ui-image src="basic_interface/btnbar_mid2.bmp"></ui-image><span class="result-count"></span
+		><ui-button
+			class="next"
+			aria-label="More results"
+			title="More results"
+			bg="btn_next.bmp"
+			hover="btn_next_a.bmp"
+			down="btn_next_b.bmp"
+		></ui-button>
+	</div>
+</div>

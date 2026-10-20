@@ -40,6 +40,7 @@ import SKID from './Skills/SkillConst.js';
 import SkillInfo from './Skills/SkillInfo.js';
 import SkillTreeView from './Skills/SkillTreeView.js';
 import { resetSkillTree, keepBuiltInSkills } from './Skills/SkillTreeMerge.js';
+import { resetHiddenSkills, hideSkill, placeSkill } from './Skills/SkillTreeMods.js';
 import JobHitSoundTable from './Jobs/JobHitSoundTable.js';
 import WeaponTrailTable from './Items/WeaponTrailTable.js';
 import TownInfo from './TownInfo.js';
@@ -584,8 +585,8 @@ class DB {
 										});
 									});
 								}
-								// Skill Lua finished
-								onSkillEnd();
+								// Skill Lua finished, then the mods' rows
+								loadCustomSkillTables(onSkillEnd);
 							});
 						});
 					}
@@ -731,15 +732,35 @@ class DB {
 
 			// Achievements
 			if (Configs.get('enableAchievements') && PACKETVER.value >= 20150513) {
-				loadLuaValue(
-					'System/achievement_list.lub',
-					'achievement_tbl',
-					function (json) {
-						if (json) {
-							Object.assign(AchievementTable, json);
-						}
-					},
-					onLoad()
+				const onAchievementEnd = onLoad();
+				const addAchievements = json => {
+					if (json) {
+						Object.assign(AchievementTable, json);
+					}
+				};
+				// customAchievementInfo: further achievement tables, loaded after the
+				// base in the order given. Each sets its achievements by id over what
+				// came before, so one can add an achievement or reword an existing one
+				// without carrying the whole table.
+				const customAchievementInfo = Configs.get('customAchievementInfo', []);
+				const loadCustomAchievementInfo = (index = 0) => {
+					if (!Array.isArray(customAchievementInfo) || index >= customAchievementInfo.length) {
+						onAchievementEnd();
+						return;
+					}
+					// Every table is read from the same Lua global, so a file that does
+					// not set it would hand back the table before it a second time.
+					try {
+						lua.doStringSync('achievement_tbl = nil');
+					} catch (error) {
+						console.error('[customAchievementInfo] ', error);
+					}
+					loadLuaValue(customAchievementInfo[index], 'achievement_tbl', addAchievements, () =>
+						loadCustomAchievementInfo(index + 1)
+					);
+				};
+				loadLuaValue('System/achievement_list.lub', 'achievement_tbl', addAchievements, () =>
+					loadCustomAchievementInfo()
 				);
 			}
 
@@ -2763,7 +2784,7 @@ class DB {
 	 * @param {number} skill id
 	 */
 	static getSkillDescription(id) {
-		return SkillDescription[id] || '...';
+		return ModSkillDescription[id] || SkillDescription[id] || '...';
 	}
 
 	/**
@@ -3447,6 +3468,8 @@ class DB {
 
 			case JobId.GUNSLINGER:
 			case JobId.NINJA:
+			case JobId.DRUID:
+			case JobId.DRUID_B:
 			case JobId.TAEKWON:
 				return 'Expanded_First_Class';
 
@@ -3483,6 +3506,8 @@ class DB {
 			case JobId.LINKER:
 			case JobId.KAGEROU:
 			case JobId.OBORO:
+			case JobId.KARNOS:
+			case JobId.KARNOS_B:
 			case JobId.REBELLION:
 				return 'Expanded_Second_Class';
 
@@ -3548,6 +3573,7 @@ class DB {
 			case JobId.NIGHT_WATCH:
 			case JobId.HYPER_NOVICE:
 			case JobId.SPIRIT_HANDLER:
+			case JobId.ALITEA:
 			case JobId.SKY_EMPEROR2:
 				return 'Fourth_Class';
 
@@ -4793,7 +4819,8 @@ function mergeEz2Effects(EffectTable, SkillEffect) {
 				xOffset: entry.PosX || 0,
 				yOffset: entry.PosY || 0,
 				wav: entry.SoundPath ? entry.SoundPath.replace(/\\/g, '/').replace(/\.wav$/i, '') : null,
-				delayLate: entry.StartDelayTime || 0,
+				soundLoop: entry.IsSoundLoop == null ? undefined : !!entry.IsSoundLoop,
+				delayStart: entry.StartDelayTime || 0,
 				repeat: !!entry.IsInfinite,
 				attachedEntity: true
 			}
@@ -7115,6 +7142,195 @@ function loadSkillTreeViewData(filename, callback, onEnd) {
 			} finally {
 				lua.unmountFile('skilltreeview.lub');
 				lua.unmountFile('jobinheritlist.lub');
+				onEnd();
+			}
+		},
+		onEnd
+	);
+}
+
+/**
+ * The mods' skill descriptions, by skill id, read before the client's own
+ * (getSkillDescription). Kept apart: the client's table is put in place when
+ * its file has loaded, which can be after the mods' have.
+ */
+const ModSkillDescription = {};
+
+/**
+ * customSkillId, customSkillInfoList, customSkillDescript and
+ * customSkillTreeView: the mods' rows of the four skill tables, read after
+ * the client's, in mod order. Each is a list of files shaped like the
+ * client's own -- skillid.lub, skillinfolist.lub, skilldescript.lub,
+ * skilltreeview.lub -- holding only a mod's rows: its new skills, and stock
+ * ones it changes. Every mod's names come first, so the other tables can use
+ * a mod's new SKID entries.
+ *
+ * A mod's skilltreeview.lub may also take skills out of a job's window, for
+ * the skills its server no longer teaches:
+ *
+ *   SKILL_TREEVIEW_HIDE = { [JOBID.JT_GUILLOTINE_CROSS] = { SKID.GC_DARKILLUSION } }
+ *
+ * @param {function} onEnd - once every table has been read, or has failed
+ */
+function loadCustomSkillTables(onEnd) {
+	resetHiddenSkills();
+	for (const id of Object.keys(ModSkillDescription)) {
+		delete ModSkillDescription[id];
+	}
+	const steps = [
+		['customSkillId', loadCustomSkillId],
+		['customSkillInfoList', loadCustomSkillInfoList],
+		['customSkillDescript', loadCustomSkillDescript],
+		['customSkillTreeView', loadCustomSkillTreeView]
+	].flatMap(([key, load]) => {
+		const files = Configs.get(key, []);
+		return Array.isArray(files) ? files.map(file => [load, file]) : [];
+	});
+	const next = (index = 0) => {
+		if (index >= steps.length) {
+			onEnd();
+			return;
+		}
+		const [load, file] = steps[index];
+		load(
+			file,
+			once(() => next(index + 1))
+		);
+	};
+	next();
+}
+
+/** The names a mod's skillid.lub gives its skills, into SKID. */
+function loadCustomSkillId(filename, onEnd) {
+	loadLuaValue(
+		filename,
+		'SKID',
+		json => {
+			if (json && typeof json === 'object') {
+				for (const [name, id] of Object.entries(json)) {
+					if (typeof id === 'number' && id > 0) {
+						SKID[name] = id;
+					}
+				}
+			}
+		},
+		onEnd
+	);
+}
+
+/** A mod's skillinfolist.lub: each skill it lists replaces the client's entry. */
+function loadCustomSkillInfoList(filename, onEnd) {
+	// Not the client's table again, if the mod's file has none.
+	lua.doStringSync('SKILL_INFO_LIST = nil');
+	loadSkillInfoList(filename, null, onEnd);
+}
+
+/**
+ * Run a mod's skill table with SKID and JOBID as the client's tables see
+ * them, a name nobody defined reading as 0. `globals` are cleared first, so
+ * a file that leaves one out does not see the previous file's.
+ */
+async function runCustomSkillTable(filename, buffer, globals) {
+	const ctx = lua.ctx;
+	const jobIdWithJT = { ...JobId };
+	for (const [key, value] of Object.entries(JobId)) {
+		jobIdWithJT[`JT_${key}`] = value;
+	}
+	ctx.JOBID = jobIdWithJT;
+	ctx.SKID = SKID;
+	await lua.doString(`
+		for _, name in ipairs({ ${globals.map(name => `"${name}"`).join(', ')} }) do _G[name] = nil end
+		for name, unknown in pairs({ SKID = 0, JOBID = -1 }) do
+			local known = _G[name]
+			_G[name] = setmetatable({}, { __index = function(t, k) local id = known[k] return id ~= nil and id or unknown end })
+		end
+	`);
+	lua.mountFile(filename, buffer);
+	try {
+		await lua.doFile(filename);
+	} finally {
+		lua.unmountFile(filename);
+	}
+}
+
+/** A mod's skilldescript.lub: each skill it describes replaces the client's text. */
+function loadCustomSkillDescript(filename, onEnd) {
+	Client.loadFile(
+		filename,
+		async function (file) {
+			try {
+				console.log('Loading file "' + filename + '"...');
+				const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
+				await runCustomSkillTable(filename, buffer, ['SKILL_DESCRIPT']);
+				const table = {};
+				lua.ctx.addCustomSkillDescript = (skillId, line) => {
+					table[skillId] = (table[skillId] || '') + userStringDecoder.decode(line, userCharpage) + '\n';
+					return 1;
+				};
+				lua.doStringSync(`
+					for skillId, lines in pairs(SKILL_DESCRIPT or {}) do
+						if type(lines) == "table" then
+							for _, line in ipairs(lines) do addCustomSkillDescript(skillId, line) end
+						else
+							addCustomSkillDescript(skillId, lines)
+						end
+					end
+				`);
+				Object.assign(ModSkillDescription, table);
+			} catch (error) {
+				console.error(`[loadCustomSkillDescript] ${filename}: `, error);
+			} finally {
+				onEnd();
+			}
+		},
+		onEnd
+	);
+}
+
+/**
+ * A mod's skilltreeview.lub: SKILL_TREEVIEW_FOR_JOB places its skills in
+ * jobs' windows (a skill already on a slot it takes moves to a free one), and
+ * SKILL_TREEVIEW_HIDE takes skills out of them.
+ */
+function loadCustomSkillTreeView(filename, onEnd) {
+	Client.loadFile(
+		filename,
+		async function (file) {
+			try {
+				console.log('Loading file "' + filename + '"...');
+				const buffer = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
+				await runCustomSkillTable(filename, buffer, ['SKILL_TREEVIEW_FOR_JOB', 'SKILL_TREEVIEW_HIDE']);
+				// A name the client does not know reads as -1 (a job) or 0 (a skill).
+				const known = (jobId, skillId) => {
+					if (Number(jobId) >= 0 && Number(skillId) > 0) {
+						return true;
+					}
+					console.error(`[loadCustomSkillTreeView] ${filename}: an unknown job or skill name; left out`);
+					return false;
+				};
+				lua.ctx.placeCustomSkill = (jobId, pos, skillId) => {
+					if (known(jobId, skillId) && !placeSkill(SkillTreeView, jobId, pos, skillId)) {
+						console.error(`[loadCustomSkillTreeView] ${filename}: no skill tree for job ${jobId}`);
+					}
+					return 1;
+				};
+				lua.ctx.hideCustomSkill = (jobId, skillId) => {
+					if (known(jobId, skillId)) {
+						hideSkill(jobId, skillId);
+					}
+					return 1;
+				};
+				lua.doStringSync(`
+					for jobId, skills in pairs(SKILL_TREEVIEW_FOR_JOB or {}) do
+						for pos, skillId in pairs(skills) do placeCustomSkill(jobId, pos, skillId) end
+					end
+					for jobId, skills in pairs(SKILL_TREEVIEW_HIDE or {}) do
+						for _, skillId in ipairs(skills) do hideCustomSkill(jobId, skillId) end
+					end
+				`);
+			} catch (error) {
+				console.error(`[loadCustomSkillTreeView] ${filename}: `, error);
+			} finally {
 				onEnd();
 			}
 		},

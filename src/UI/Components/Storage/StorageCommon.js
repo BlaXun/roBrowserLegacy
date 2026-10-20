@@ -758,6 +758,16 @@ export function createStorage(config) {
 		return true;
 	};
 
+	/**
+	 * The open tab (Component.TAB), its place among the tab buttons. The tabs
+	 * are drawn as one picture, so only this says which it is (gamepad LB / RB).
+	 *
+	 * @returns {number}
+	 */
+	Component.getTab = function getTab() {
+		return _preferences.tab;
+	};
+
 	Component.onClosePressed = function onClosedPressed() {};
 	Component.reqAddItem = function reqAddItem() {};
 	Component.reqAddItemFromCart = function reqAddItemFromCart() {};

@@ -290,12 +290,76 @@ describe('a guild changing its emblem', () => {
 		expect(Session.Entity.GEmblemVer).toBe(3);
 	});
 
-	it('ignores a notice that carries no version, which would clear the emblem', () => {
+	it('records a guild with no emblem without downloading an image', () => {
 		Session.Entity.GEmblemVer = 3;
+		Session.Entity.setEntityGuildEmblem = vi.fn();
+		mocks.entityGet = AID => (AID === Session.AID ? Session.Entity : null);
 
-		deliver(PACKET.ZC.CHANGE_GUILD2, { GDID: 42, emblemVersion: 0, AID: 2000000 });
+		deliver(PACKET.ZC.CHANGE_GUILD3, { GDID: 42, emblemVersion: 0, AID: 2000000 });
 
-		expect(Session.Entity.GEmblemVer).toBe(3);
+		expect(Session.Entity.GEmblemVer).toBe(0);
+		expect(Session.Entity.setEntityGuildEmblem).toHaveBeenCalledWith(null, null);
+		expect(mocks.emblemRequests).toHaveLength(0);
+	});
+
+	// The stock server broadcasts one actor's new guild identity on join and
+	// departure. Image downloads may be shared, but membership cannot be.
+	it('updates each visible actor before deduplicating the guild image', () => {
+		const first = { GUID: 0, GEmblemVer: 0, setEntityGuildEmblem: vi.fn() };
+		const second = { GUID: 0, GEmblemVer: 0, setEntityGuildEmblem: vi.fn() };
+		mocks.entities.push(first, second);
+		mocks.entityGet = AID => ({ 2000001: first, 2000002: second })[AID] || null;
+
+		deliver(PACKET.ZC.CHANGE_GUILD3, { GDID: 4701, emblemVersion: 7, AID: 2000001 });
+		deliver(PACKET.ZC.CHANGE_GUILD3, { GDID: 4701, emblemVersion: 7, AID: 2000002 });
+
+		expect.soft([first.GUID, first.GEmblemVer]).toEqual([4701, 7]);
+		expect.soft([second.GUID, second.GEmblemVer]).toEqual([4701, 7]);
+		expect(mocks.emblemRequests).toEqual([{ guildId: 4701, version: 7 }]);
+
+		deliver(PACKET.ZC.CHANGE_GUILD3, { GDID: 0, emblemVersion: 0, AID: 2000001 });
+
+		expect.soft([first.GUID, first.GEmblemVer]).toEqual([0, 0]);
+		expect.soft(first.setEntityGuildEmblem).toHaveBeenCalledWith(null, null);
+		expect.soft([second.GUID, second.GEmblemVer]).toEqual([4701, 7]);
+		expect(mocks.emblemRequests).toHaveLength(1);
+	});
+
+	// Own belonging and the area notice can both await the same normal HTTP
+	// image. Leaving resets the window before either asynchronous answer arrives.
+	it('keeps pending own-guild images from repainting after departure', () => {
+		const pending = [];
+		const player = {
+			GUID: 4801,
+			GEmblemVer: 0,
+			display: { name: 'Eremes' },
+			setEntityGuildEmblem: vi.fn()
+		};
+		Session.Entity = player;
+		Session.GID = 150000;
+		Session.hasGuild = true;
+		Session.isGuildMaster = false;
+		mocks.entityGet = AID => (AID === Session.AID ? player : null);
+		mocks.guild.getMemberName = vi.fn(() => 'Eremes');
+		GuildEngine.requestGuildEmblem.mockImplementation((_guildId, _version, callback) => pending.push(callback));
+
+		deliver(PACKET.ZC.UPDATE_GDID2, {
+			GDID: 4801, emblemVersion: 7, right: 1, isMaster: 0, InterSID: 0, GName: 'Valhalla', masterGID: 150001
+		});
+		deliver(PACKET.ZC.CHANGE_GUILD3, { GDID: 4801, emblemVersion: 7, AID: 2000000 });
+		expect(pending).toHaveLength(2);
+		deliver(PACKET.ZC.ACK_LEAVE_GUILD_DELNAME, { GID: 150000, reasonDesc: 'bye' });
+		expect(Session.Entity.GUID).toBe(0);
+
+		player.setEntityGuildEmblem.mockClear();
+		mocks.guild.setEmblem.mockClear();
+		const oldImage = { src: 'data:old-guild' };
+		for (const callback of pending) {
+			callback(oldImage, null);
+		}
+
+		expect.soft(player.setEntityGuildEmblem).not.toHaveBeenCalledWith(oldImage, null);
+		expect.soft(mocks.guild.setEmblem).not.toHaveBeenCalledWith(oldImage);
 	});
 
 	// The mark that stops the burst means "asked for", not "have". Holding it
@@ -432,6 +496,8 @@ describe('a guild changing its emblem', () => {
 		// Committing the older image also lowered the stored version, so the cache
 		// stopped agreeing with what is on screen.
 		it('leaves the stored version on the one it painted', () => {
+			const noEmblem = { GUID: guildId, GEmblemVer: 0, setEntityGuildEmblem: vi.fn() };
+			mocks.entities.push(noEmblem);
 			deliver(PACKET.ZC.CHANGE_GUILD2, { GDID: guildId, emblemVersion: 7, AID: 1 });
 			deliver(PACKET.ZC.CHANGE_GUILD2, { GDID: guildId, emblemVersion: 8, AID: 1 });
 			const newer = answer(1, 'newer');
@@ -445,6 +511,16 @@ describe('a guild changing its emblem', () => {
 			expect(xhrs).toHaveLength(2);
 			expect(painted).toHaveLength(1);
 			expect(painted[0].src).toBe('data:newer');
+			expect(noEmblem.setEntityGuildEmblem).not.toHaveBeenCalled();
+
+			// A decoded image is also needed by an actor joining after the burst.
+			const joining = { GUID: 0, GEmblemVer: 0, setEntityGuildEmblem: vi.fn() };
+			mocks.entities.push(joining);
+			mocks.entityGet = AID => (AID === 2000001 ? joining : null);
+			deliver(PACKET.ZC.CHANGE_GUILD3, { GDID: guildId, emblemVersion: 8, AID: 2000001 });
+			expect([joining.GUID, joining.GEmblemVer]).toEqual([guildId, 8]);
+			expect(joining.setEntityGuildEmblem.mock.calls.at(-1)[0].src).toBe('data:newer');
+			expect(xhrs).toHaveLength(2);
 		});
 
 		// One version is asked for by several callers at once - the guild info, the
@@ -506,9 +582,11 @@ describe('a guild changing its emblem', () => {
 
 describe('uploading an emblem tells the map server about it', () => {
 	let sentRequests;
+	let deferUpload;
 
 	beforeEach(() => {
 		sentRequests = [];
+		deferUpload = false;
 		class MockXHR {
 			open(method, url) {
 				this.url = url;
@@ -517,7 +595,9 @@ describe('uploading an emblem tells the map server about it', () => {
 				sentRequests.push(this);
 				this.status = 200;
 				this.responseText = JSON.stringify({ Type: 1, version: 5 });
-				this.onload();
+				if (!deferUpload) {
+					this.onload();
+				}
 			}
 		}
 		vi.stubGlobal('XMLHttpRequest', MockXHR);
@@ -529,13 +609,19 @@ describe('uploading an emblem tells the map server about it', () => {
 	// The web tier only writes the image and answers with a version. Without
 	// this packet the map server keeps the old emblem id, so nobody else is
 	// told and a relog loses the emblem.
-	it('sends the new version on 0x0b46 once the upload comes back', () => {
+	it('announces an upload only for the player and guild that sent it', () => {
 		GuildEngine.sendEmblem(new Uint8Array([0x42, 0x4d, 0x00]));
 
 		const pkt = mocks.sent.find(p => p instanceof PACKET.CZ.REQ_ADD_NEW_EMBLEM);
 		expect(pkt).toBeDefined();
 		expect(pkt.GDID).toBe(42);
 		expect(pkt.version).toBe(5);
+
+		deferUpload = true;
+		GuildEngine.sendEmblem(new Uint8Array([0x42, 0x4d, 0x00]));
+		Session.Entity = { GUID: 99, GEmblemVer: 9 };
+		sentRequests[1].onload();
+		expect(mocks.sent.filter(p => p instanceof PACKET.CZ.REQ_ADD_NEW_EMBLEM)).toHaveLength(1);
 	});
 
 	it('builds that packet at the ten bytes the server expects', () => {

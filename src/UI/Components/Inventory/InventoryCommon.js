@@ -629,6 +629,16 @@ export function createInventory(config) {
 	};
 
 	/**
+	 * The open tab (Component.TAB), its place among the tab buttons. V0 draws
+	 * it as one picture, so only this says which it is (gamepad LB / RB).
+	 *
+	 * @returns {number}
+	 */
+	Component.getTab = function getTab() {
+		return _preferences.tab;
+	};
+
+	/**
 	 * Get the TAB constant for a given item based on its type.
 	 *
 	 * @param {object} item

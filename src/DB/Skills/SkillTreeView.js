@@ -1680,6 +1680,95 @@ SkillTreeView[JobId.SHINKIRO] = {
 	[SK.SS_FOUR_CHARM]: 42
 };
 
+// Druid / Karnos / Alitea, as kRO lays them out (skilltreeview.lub). The English
+// translation's table has no Druid jobs, so this is the layout the window uses.
+SkillTreeView[JobId.DRUID] = {
+	list: 1,
+	beforeJob: JobId.NOVICE,
+	[SK.DR_WEREWOLF]: 1,
+	[SK.DR_WERERAPTOR]: 2,
+	[SK.DR_BEASTY_NOSE]: 3,
+	[SK.DR_TRUTH_OF_ICE]: 4,
+	[SK.DR_TRUTH_OF_WIND]: 5,
+	[SK.DR_TRUTH_OF_EARTH]: 6,
+	[SK.DR_BLOOD_HOWLING]: 8,
+	[SK.DR_PREENING]: 9,
+	[SK.DR_SHARPE_EYES]: 10,
+	[SK.DR_ICE_TOTEM]: 11,
+	[SK.DR_CUTTING_WIND]: 12,
+	[SK.DR_EARTH_FLOWER]: 13,
+	[SK.DR_ENRAGE_WOLF]: 15,
+	[SK.DR_ENRAGE_RAPTOR]: 16,
+	[SK.DR_ICE_CLOUD]: 18,
+	[SK.DR_WIND_BOMB]: 19,
+	[SK.DR_AROUND_FLOWER]: 20,
+	[SK.DR_NOMERCY_CLAW]: 22,
+	[SK.DR_SHOOTING_FEATHER]: 23,
+	[SK.DR_NATURE_SHIELD]: 25,
+	[SK.DR_NATURE_LOGIC]: 26,
+	[SK.DR_CRUEL_BITE]: 29,
+	[SK.DR_LOW_FLIGHT]: 30,
+	[SK.DR_HUNGER]: 36,
+	[SK.DR_FLICKING_TONADO]: 37
+};
+SkillTreeView[JobId.KARNOS] = {
+	list: 2,
+	beforeJob: JobId.DRUID,
+	[SK.KR_DOUBLE_SLASH]: 0,
+	[SK.KR_SHARPEN_GUST]: 1,
+	[SK.KR_WOLF_INSTINCT]: 2,
+	[SK.KR_ICE_PILLAR]: 4,
+	[SK.KR_THUNDERING_FOCUS]: 5,
+	[SK.KR_EARTH_BUD]: 6,
+	[SK.KR_NASTY_SLASH]: 7,
+	[SK.KR_SHARPEN_HAIL]: 8,
+	[SK.KR_RAPTORIAL_INSTINCT]: 9,
+	[SK.KR_ICE_SPLASH]: 11,
+	[SK.KR_THUNDERING_ORB]: 12,
+	[SK.KR_EARTH_DRILL]: 13,
+	[SK.KR_CLAW_WAVE]: 14,
+	[SK.KR_FEATHER_SPRINKLE]: 15,
+	[SK.KR_THUNDERING_CALL]: 19,
+	[SK.KR_EARTH_STAMP]: 20,
+	[SK.KR_CHOP_CHOP]: 21,
+	[SK.KR_TYPHOON_WING]: 22,
+	[SK.KR_NATURE_VIGOUR]: 25,
+	[SK.KR_NATURE_PROTECTION]: 26,
+	[SK.KR_IRON_HOWLING]: 28,
+	[SK.KR_WIND_VEIL]: 29
+};
+SkillTreeView[JobId.ALITEA] = {
+	list: 3,
+	beforeJob: JobId.KARNOS,
+	[SK.AT_PULSE_OF_MADNESS]: 0,
+	[SK.AT_FLIP_FLAP]: 1,
+	[SK.AT_SIXTH_SENSE]: 2,
+	[SK.AT_GLACIER_MONOLITH]: 4,
+	[SK.AT_ROARING_CHARGE]: 5,
+	[SK.AT_TERRA_HARVEST]: 6,
+	[SK.AT_PRIMAL_CLAW]: 7,
+	[SK.AT_PINION_SHOT]: 8,
+	[SK.AT_ALPHA_PHASE]: 9,
+	[SK.AT_GLACIER_SHARD]: 11,
+	[SK.AT_ROARING_PIERCER]: 12,
+	[SK.AT_TERRA_WAVE]: 13,
+	[SK.AT_FERAL_CLAW]: 14,
+	[SK.AT_QUILL_SPEAR]: 15,
+	[SK.AT_APEX_PHASE]: 16,
+	[SK.AT_GLACIER_STOMP]: 18,
+	[SK.AT_FURIOS_STORM]: 19,
+	[SK.AT_SOLID_STOMP]: 20,
+	[SK.AT_ALPHA_CLAW]: 21,
+	[SK.AT_TEMPEST_FLAP]: 22,
+	[SK.AT_CHILLING_BLAST]: 25,
+	[SK.AT_FRENZY_FANG]: 28,
+	[SK.AT_AERO_SYNC]: 29,
+	[SK.AT_NATURE_AID]: 32,
+	[SK.AT_NATURE_HARMONY]: 33,
+	[SK.AT_GRAVITY_HOLE]: 34,
+	[SK.AT_SAVAGE_LUNGE]: 35
+};
+
 function duplicateEntry(origin) {
 	const value = SkillTreeView[origin];
 	for (let i = 1, count = arguments.length; i < count; ++i) {
@@ -1817,5 +1906,7 @@ duplicateEntry(JobId.MEISTER, JobId.MEISTER2);
 duplicateEntry(JobId.DRAGON_KNIGHT, JobId.DRAGON_KNIGHT2);
 duplicateEntry(JobId.IMPERIAL_GUARD, JobId.IMPERIAL_GUARD2);
 duplicateEntry(JobId.SKY_EMPEROR, JobId.SKY_EMPEROR2);
+duplicateEntry(JobId.DRUID, JobId.DRUID_B);
+duplicateEntry(JobId.KARNOS, JobId.KARNOS_B);
 
 export default SkillTreeView;

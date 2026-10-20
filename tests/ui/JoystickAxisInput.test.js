@@ -3,12 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	interaction: { moveCharacter: vi.fn(), releaseStick: vi.fn(), cancelQuick: false },
 	controls: { joyDeadline: 0.1, joyReverseStick: false },
-	renderer: { show: vi.fn() }
+	renderer: { show: vi.fn() },
+	keyboard: { isOpen: vi.fn(() => false) }
 }));
 
 vi.mock('UI/Components/JoystickUI/JoystickInteractionService.js', () => ({ default: mocks.interaction }));
 vi.mock('Preferences/Controls.js', () => ({ default: mocks.controls }));
 vi.mock('UI/Components/JoystickUI/JoystickUIRenderer.js', () => ({ default: mocks.renderer }));
+vi.mock('UI/Components/JoystickUI/JoystickKeyboard.js', () => ({ default: mocks.keyboard }));
 
 const { default: AxisInput } = await import('UI/Components/JoystickUI/JoystickAxisInput.js');
 
@@ -76,5 +78,26 @@ describe('JoystickAxisInput left stick release', () => {
 		AxisInput.update([0, 0.7, 0, 0]);
 
 		expect(mocks.interaction.moveCharacter).toHaveBeenLastCalledWith(0, -1);
+	});
+});
+
+describe('JoystickAxisInput and the on-screen keyboard', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	afterEach(() => {
+		mocks.keyboard.isOpen.mockReturnValue(false);
+	});
+
+	it('the character stands while the keyboard has the sticks', () => {
+		mocks.keyboard.isOpen.mockReturnValue(true);
+		AxisInput.update([-1, 0, 0, 0]);
+		expect(mocks.interaction.moveCharacter).not.toHaveBeenCalled();
+		expect(mocks.interaction.releaseStick).toHaveBeenCalled();
+
+		mocks.keyboard.isOpen.mockReturnValue(false);
+		AxisInput.update([-1, 0, 0, 0]);
+		expect(mocks.interaction.moveCharacter).toHaveBeenCalledTimes(1);
 	});
 });

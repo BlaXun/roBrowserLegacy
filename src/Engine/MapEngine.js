@@ -106,6 +106,7 @@ import PetEngine from './MapEngine/Pet.js';
 import HomunEngine from './MapEngine/Homun.js';
 import MercenaryEngine from './MapEngine/Mercenary.js';
 import StoreEngine from './MapEngine/Store.js';
+import StoreSearchEngine, { resetStoreSearch } from './MapEngine/StoreSearch.js';
 import TradeEngine from './MapEngine/Trade.js';
 import FriendsEngine from './MapEngine/Friends.js';
 import UIOpenEngine, { openPendingUI } from './MapEngine/UIOpen.js';
@@ -128,6 +129,7 @@ let _mapName = '';
  * @type {boolean} is initialized
  */
 let _isInitialised = false;
+let _mapReady = false;
 
 let _exiting = false;
 let _exitTimer = null;
@@ -153,7 +155,10 @@ class MapEngine {
 	 * @param {string} mapName
 	 */
 	static init(ip, port, mapName) {
+		resetStoreSearch(true);
+		Network.onDisconnect = onMapDisconnect;
 		_mapName = mapName;
+		_mapReady = false;
 		_exiting = false;
 		_exitTimer = null;
 
@@ -215,6 +220,8 @@ class MapEngine {
 				// Ping
 				let ping;
 				const SP = Session.ping;
+				SP.pingTime = 0;
+				SP.returned = false;
 
 				if (PACKETVER.value >= 20180307) {
 					ping = new PACKET.CZ.REQUEST_TIME2();
@@ -227,6 +234,11 @@ class MapEngine {
 				Network.setPing(() => {
 					if (is_sec_hbt) {
 						Network.sendPacket(hbt);
+					}
+
+					// The server accepts time requests only after the map-load acknowledgement.
+					if (!_mapReady) {
+						return;
 					}
 
 					ping.clientTime = Date.now() - startTick;
@@ -316,6 +328,7 @@ class MapEngine {
 			HomunEngine();
 			MercenaryEngine();
 			StoreEngine();
+			StoreSearchEngine();
 			TradeEngine();
 			FriendsEngine.init();
 			UIOpenEngine();
@@ -640,6 +653,11 @@ function onConnectionRefused(pkt) {
  * @param {object} pkt - PACKET.ZC.NPCACK_MAPMOVE
  */
 function onMapChange(pkt) {
+	resetStoreSearch();
+	_mapReady = false;
+	// A map transition can leave an in-flight time request unanswered.
+	Session.ping.pingTime = 0;
+	Session.ping.returned = false;
 	clearQuestEffects();
 
 	MapRenderer.onLoad = () => {
@@ -774,6 +792,7 @@ function onMapChange(pkt) {
 
 		// Map loaded
 		Network.sendPacket(new PACKET.CZ.NOTIFY_ACTORINIT());
+		_mapReady = true;
 
 		// Rates Info
 		if (Session.ratesInfo) {
@@ -806,10 +825,23 @@ function onServerChange(pkt) {
 }
 
 /**
+ * The map socket closed: drop the catalog with it, then show the same
+ * message NetworkManager shows when no disconnect handler is set.
+ */
+function onMapDisconnect() {
+	resetStoreSearch(true);
+	UIManager.showErrorBox('Disconnected from Server.');
+}
+
+/**
  * Resets the per-character UI state shared by the exit and restart flows.
  * Components that were never prepared have no root element to clean.
  */
 function cleanGameUI() {
+	resetStoreSearch(true);
+	if (Network.onDisconnect === onMapDisconnect) {
+		Network.onDisconnect = null;
+	}
 	WhisperBox.clearAll();
 
 	const tasks = [
@@ -1325,6 +1357,10 @@ function onConfigUpdate(type, val) {
  * Go back from map-server to char-server
  */
 function onRestart() {
+	resetStoreSearch(true);
+	if (Network.onDisconnect === onMapDisconnect) {
+		Network.onDisconnect = null;
+	}
 	// The map stays drawn under the fade and goes once the screen is black
 	import('Engine/CharEngine.js').then(m =>
 		m.default.reload(() => {
