@@ -19,6 +19,7 @@ import DB from 'DB/DBManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
 import Mouse from 'Controls/MouseEventHandler.js';
 import Preferences from 'Core/Preferences.js';
+import Entity from 'Renderer/Entity/Entity.js';
 import Renderer from 'Renderer/Renderer.js';
 import Session from 'Engine/SessionStorage.js';
 import SpriteRenderer from 'Renderer/SpriteRenderer.js';
@@ -1063,13 +1064,61 @@ export function createSkillList({
 		};
 		let _ctx = null;
 
+		// A riding character is drawn as its mount (Peco Peco, Dragon, Madogear, ...),
+		// but the window shows it on foot: a copy of it in its own class, with its look
+		const _lookProps = [
+			'head',
+			'headpalette',
+			'bodypalette',
+			'weapon',
+			'shield',
+			'accessory',
+			'accessory2',
+			'accessory3',
+			'robe'
+		];
+		let _onFoot = null;
+		let _onFootKey = '';
+
+		function onFoot(character) {
+			if (!character.costume) {
+				_onFoot = null;
+				_onFootKey = '';
+				return character;
+			}
+
+			const key = [character.GID, character._job, character.sex, character.body]
+				.concat(_lookProps.map(prop => character[prop]))
+				.join(',');
+			if (key !== _onFootKey) {
+				_onFoot = new Entity();
+				_onFoot.set({
+					GID: character.GID + '_SKILLTREE',
+					objecttype: Entity.TYPE_PC,
+					job: character._job,
+					sex: character.sex,
+					name: '',
+					hideShadow: true
+				});
+				_lookProps.forEach(prop => {
+					_onFoot[prop] = character[prop];
+				});
+				// The body style (alternative outfit)
+				if (character.body > 0 && character.body !== character._job) {
+					_onFoot.body = character.body;
+				}
+				_onFootKey = key;
+			}
+			return _onFoot;
+		}
+
 		return function renderSittingChar(tick) {
-			const character = Session.Entity;
 			const root = Component.getRoot();
 			const contentbig = root.querySelector('.contentbig');
-			if (!character || !contentbig || contentbig.style.display === 'none' || !Component.ui.is(':visible')) {
+			if (!Session.Entity || !contentbig || contentbig.style.display === 'none' || !Component.ui.is(':visible')) {
 				return;
 			}
+			const character = onFoot(Session.Entity);
 			if (!_ctx) {
 				_ctx = root.querySelector('canvas.sitting')?.getContext('2d');
 				if (!_ctx) {
