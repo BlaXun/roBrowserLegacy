@@ -27,6 +27,7 @@ import SkillInfo from 'DB/Skills/SkillInfo.js';
 import SK from 'DB/Skills/SkillConst.js';
 import SkillTargetSelection from 'UI/Components/SkillTargetSelection/SkillTargetSelection.js';
 import SkillTreeView from 'DB/Skills/SkillTreeView.js';
+import { withoutHiddenSkills } from 'DB/Skills/SkillTreeMods.js';
 import { attachTouchDrag } from 'UI/TouchDrag.js';
 import {
 	createSkillUpgradeOrder,
@@ -629,7 +630,7 @@ export function createSkillList({
 			});
 		}
 
-		return positions;
+		return withoutHiddenSkills(positions, JobId);
 	}
 
 	Component.addSkill = function addSkill(skill) {

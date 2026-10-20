@@ -123,6 +123,20 @@ const QuestMarkColors = {
 	3: 0x800080 // QMARK_PURPLE
 };
 
+function requestEntityGuildEmblem(entity) {
+	const actorId = entity.GID;
+	const guildId = entity.GUID;
+	Guild.requestGuildEmblem(guildId, entity.GEmblemVer, (image, gif) => {
+		if (EntityManager.get(actorId) !== entity || entity.GUID !== guildId || entity.GEmblemVer === 0) {
+			return;
+		}
+		entity.setEntityGuildEmblem(image, gif);
+		if (Session.mapState.isSiege && guildId !== Session.Entity?.GUID) {
+			entity.emblem.display = true;
+		}
+	});
+}
+
 /**
  * Spam an entity on the map
  * Generic packet handler
@@ -285,12 +299,7 @@ function onEntitySpam(pkt) {
 	}
 
 	if (entity.GUID) {
-		Guild.requestGuildEmblem(entity.GUID, entity.GEmblemVer, (image, gif) => {
-			entity.setEntityGuildEmblem(image, gif);
-			if (Session.mapState.isSiege && entity.GUID !== Session.Entity.GUID) {
-				entity.emblem.display = true;
-			}
-		});
+		requestEntityGuildEmblem(entity);
 	}
 
 	// load others aura
@@ -1116,6 +1125,9 @@ function onEntityIdentity(pkt) {
 			}
 		}
 
+		// ZC_ACK_REQNAMEALL_NPC (0xadf) carries the mob_db / NPC title
+		entity.display.unit_title = pkt.Title || '';
+
 		entity.display.party_name = pkt.PName || '';
 		entity.display.guild_name = pkt.GName || '';
 		entity.display.guild_rank = pkt.RName || '';
@@ -1123,12 +1135,7 @@ function onEntityIdentity(pkt) {
 		entity.display.load = entity.display.TYPE.COMPLETE;
 
 		if (entity.GUID) {
-			Guild.requestGuildEmblem(entity.GUID, entity.GEmblemVer, (image, gif) => {
-				entity.setEntityGuildEmblem(image, gif);
-				if (Session.mapState.isSiege && entity.GUID !== Session.Entity.GUID) {
-					entity.emblem.display = true;
-				}
-			});
+			requestEntityGuildEmblem(entity);
 		} else if (pkt.GID) {
 			DB.loadGroupEmblem(pkt.GID, image => {
 				entity.setEntityGuildEmblem(image);

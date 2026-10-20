@@ -454,8 +454,12 @@ describe('Guild info tab', () => {
 			}
 		});
 
-		it('keeps no emblem', () => {
+		it('keeps no emblem when the old info request answers after reset', () => {
+			const paint = Guild.onRequestGuildEmblem.mock.calls.at(-1)[2];
+			mocks.session.Entity = { display: { name: 'Next character' }, GUID: 0, GEmblemVer: 0 };
 			Guild.reset();
+
+			paint({ src: 'data:image/bmp;base64,AAAA' });
 
 			expect(info('.emblem_container').style.backgroundImage).toBe('');
 		});

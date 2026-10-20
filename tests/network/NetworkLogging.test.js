@@ -28,7 +28,7 @@ it('handles packets immediately and drains deferred logs when no idle budget is 
 		}
 	});
 	const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-	const receivedLogs = () => log.mock.calls.filter(args => args[0] === '%c[Network] Recv:');
+	const receivedLogs = () => log.mock.calls.filter(args => args[0] === '%c[Network] Recv: %s');
 	const socket = { close() {}, send() {} };
 	const received = [];
 	PacketLength.init(20260930);
@@ -44,5 +44,6 @@ it('handles packets immediately and drains deferred logs when no idle budget is 
 	expect(receivedLogs()).toHaveLength(0);
 	vi.advanceTimersByTime(1000);
 	expect(receivedLogs()).toHaveLength(1);
-	expect(receivedLogs()[0][2]).toMatchObject({ ITAID: 789 });
+	expect(receivedLogs()[0][2]).toBe('0xa1 PACKET_ZC_ITEM_DISAPPEAR');
+	expect(receivedLogs()[0][3]).toMatchObject({ ITAID: 789 });
 });

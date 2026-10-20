@@ -110,7 +110,15 @@ function _processLogEntry(entry) {
 				utilsBufferToHexString(entry.dumpBytes).toUpperCase()
 			);
 		}
-		console.log('%c[Network] Recv:', 'color:#900090', entry.instance, entry.hasCallback ? '' : '(no callback)');
+		// The name goes in as text too: a log that keeps only text (the app's
+		// client.log) gets [object Object] for the packet, and no way to tell them apart.
+		console.log(
+			'%c[Network] Recv: %s',
+			'color:#900090',
+			'0x' + entry.pktId.toString(16) + ' ' + entry.pktName,
+			entry.instance,
+			entry.hasCallback ? '' : '(no callback)'
+		);
 	} else if (entry.type === LOG_ENTRY_UNKNOWN) {
 		if (entry.dumpBytes) {
 			console.log(
@@ -272,7 +280,9 @@ function sendPacket(Packet) {
 		);
 	}
 
-	console.log('%c[Network] Send:', 'color:#007070', Packet);
+	// The name goes in as text too: a log that keeps only text (the app's
+	// client.log) gets [object Object] for the packet, and no way to tell them apart.
+	console.log('%c[Network] Send: %s', 'color:#007070', Packet.constructor.name, Packet);
 
 	// Encrypt packet
 	if (_socket && _socket.isZone) {

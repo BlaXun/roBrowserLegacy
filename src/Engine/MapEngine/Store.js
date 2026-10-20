@@ -12,6 +12,7 @@
  * Load dependencies
  */
 import DB from 'DB/DBManager.js';
+import { canOpenSearchStore, onSearchStoreOpened } from './StoreSearch.js';
 import Session from 'Engine/SessionStorage.js';
 import Network from 'Network/NetworkManager.js';
 import PACKET from 'Network/PacketStructure.js';
@@ -351,6 +352,7 @@ function onSellResult(pkt) {
  * @param {object} pkt - PACKET.ZC.PC_PURCHASE_ITEMLIST_FROMMC
  */
 function onVendingStoreList(_pkt) {
+	if (!canOpenSearchStore(_pkt.AID, _pkt.UniqueID, 0)) return;
 	NpcStore.append();
 	NpcStore.setType(NpcStore.Type.VENDING_STORE);
 	NpcStore.setList(_pkt.itemList);
@@ -388,6 +390,12 @@ function onVendingStoreList(_pkt) {
 
 		Network.sendPacket(pkt);
 	};
+	const submit = NpcStore.onSubmit;
+	onSearchStoreOpened(_pkt.AID, _pkt.UniqueID, 0, () => {
+		if (NpcStore.__active && NpcStore.onSubmit === submit) {
+			NpcStore.remove();
+		}
+	});
 }
 
 /**
@@ -396,6 +404,7 @@ function onVendingStoreList(_pkt) {
  * @param {object} pkt - PACKET.ZC.ACK_ITEMLIST_BUYING_STORE
  */
 function onBuyingStoreList(_pkt) {
+	if (!canOpenSearchStore(_pkt.AID, _pkt.UniqueID, 1)) return;
 	NpcStore.append();
 	NpcStore.setType(NpcStore.Type.BUYING_STORE);
 	NpcStore.setList(_pkt.itemList);
@@ -426,6 +435,12 @@ function onBuyingStoreList(_pkt) {
 
 		Network.sendPacket(pkt);
 	};
+	const submit = NpcStore.onSubmit;
+	onSearchStoreOpened(_pkt.AID, _pkt.UniqueID, 1, () => {
+		if (NpcStore.__active && NpcStore.onSubmit === submit) {
+			NpcStore.remove();
+		}
+	});
 }
 
 /**

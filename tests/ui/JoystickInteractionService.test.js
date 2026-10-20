@@ -48,6 +48,7 @@ const mocks = vi.hoisted(() => ({
 	session: {},
 	menuNav: { navigate: vi.fn(() => false), close: vi.fn(() => false) },
 	uiManager: { getComponent: vi.fn(() => null) },
+	uiFocus: { focusComponent: vi.fn() },
 	sts: {
 		TYPE: { ENEMY: 1, PLACE: 2, FRIEND: 16 },
 		getFlag: vi.fn(() => 1),
@@ -77,6 +78,7 @@ vi.mock('UI/Components/JoystickUI/JoystickTargetCategory.js', () => ({ default: 
 vi.mock('UI/Components/JoystickUI/JoystickSupportMode.js', () => ({ default: mocks.support }));
 vi.mock('UI/Components/JoystickUI/JoystickEmoteGrid.js', () => ({ default: {} }));
 vi.mock('UI/Components/SkillTargetSelection/SkillTargetSelection.js', () => ({ default: mocks.sts }));
+vi.mock('UI/Components/JoystickUI/JoystickUIFocus.js', () => ({ default: mocks.uiFocus }));
 
 const { default: Interaction } = await import('UI/Components/JoystickUI/JoystickInteractionService.js');
 
@@ -459,5 +461,27 @@ describe('JoystickInteractionService marked player', () => {
 		mocks.menuNav.close.mockReturnValueOnce(true);
 		Interaction.rightClick(false);
 		expect(mocks.cursor.rightClick).not.toHaveBeenCalled();
+	});
+});
+
+describe('JoystickInteractionService windows', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it('opens a window as its keyboard shortcut does, and hands it to menu navigation', () => {
+		const inventory = { onShortCut: vi.fn() };
+		mocks.uiManager.getComponent.mockReturnValueOnce(inventory);
+		Interaction.toggleWindow('Inventory');
+		expect(inventory.onShortCut).toHaveBeenCalledWith({ cmd: 'TOGGLE' });
+		expect(mocks.uiFocus.focusComponent).toHaveBeenCalledWith(inventory);
+	});
+
+	it('does nothing for a window this client version lacks', () => {
+		mocks.uiManager.getComponent.mockImplementationOnce(() => {
+			throw new Error('not found');
+		});
+		expect(() => Interaction.toggleWindow('Missing')).not.toThrow();
+		expect(mocks.uiFocus.focusComponent).not.toHaveBeenCalled();
 	});
 });
