@@ -282,15 +282,23 @@ async function onFileLoaded(data, error, input) {
 	let precision;
 
 	// A cloth colour the game data has no palette for: built from the job's
-	// own palettes instead of falling back to the sprite's (ClothPalette).
-	if (error && ClothPalette.canBuild(input.filename)) {
-		ClothPalette.build(input.filename, function (built) {
-			if (built) {
-				onFileLoaded(built.buffer, null, input);
-			} else {
-				Memory.set(input.filename, data, error);
-			}
-		});
+	// own palettes instead of falling back to the sprite's; one it has may be
+	// swapped for a hair colour (ClothPalette).
+	if (!input.clothChecked && ClothPalette.canBuild(input.filename)) {
+		input.clothChecked = true;
+		if (error) {
+			ClothPalette.build(input.filename, function (built) {
+				if (built) {
+					onFileLoaded(built.buffer, null, input);
+				} else {
+					Memory.set(input.filename, data, error);
+				}
+			});
+		} else {
+			ClothPalette.adjust(input.filename, data, function (replaced) {
+				onFileLoaded(replaced ? replaced.buffer : data, null, input);
+			});
+		}
 		return;
 	}
 
