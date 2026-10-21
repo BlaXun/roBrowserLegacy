@@ -24274,7 +24274,10 @@ export default {
 			file: 'druid/dr_cutting_wind/cutting_wind/cutting_wind',
 			texturePath: 'druid/dr_cutting_wind/cutting_wind/',
 			min: 'druid/dr_cutting_wind/cutting_wind/min_cutting_wind',
-			wav: 'effect/druid/dr_cutting_wind'
+			wav: 'effect/druid/dr_cutting_wind',
+			// The wind blade flies to the left of the caster in the file
+			rotateToTarget: true,
+			facing: 180
 		}
 	],
 	ef_druid_cutting_wind_hit: [
