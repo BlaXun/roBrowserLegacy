@@ -46,6 +46,7 @@ import WeaponTrailTable from './Items/WeaponTrailTable.js';
 import TownInfo from './TownInfo.js';
 import StatusInfo from './Status/StatusInfo.js';
 import SC from './Status/StatusConst.js';
+import { stateIconFiles, BEFORE_MOD_NAMES, AFTER_MOD_NAMES, BEFORE_MOD_ROWS } from './Status/StateIconMods.js';
 import XmlParse from 'Vendors/xmlparse.js';
 import Base62 from 'Utils/Base62.js';
 import { BSON } from 'bson';
@@ -7386,16 +7387,26 @@ function loadCustomSkillTreeView(filename, onEnd) {
  * Loads efstids.lub, stateiconimginfo.lub, and stateiconinfo.lub sequentially,
  * synchronizing EFST_IDs with StatusConst and populating the StatusInfo table.
  *
+ * customEfstIds, customStateIconImgInfo and customStateIconInfo: the mods'
+ * rows of the three tables, read after the client's, in mod order. Each is a
+ * list of files shaped like the client's own, holding only a mod's rows: the
+ * names of its own status icons (EFST_IDs.EFST_X = 20000, numbers in the
+ * range servers keep for mods), their pictures (in data/texture/effect/) and
+ * their tooltips, or new pictures and tooltips for stock icons. Every mod's
+ * names come first, so its other rows can use them; a later mod's row wins.
+ * A mod's file that fails to load is left out.
+ *
  * @param {string} basePath - Directory path (e.g., DB.LUA_PATH + 'stateicon/')
  * @param {function} callback - (Unused/Legacy)
  * @param {function} onEnd - Function to run when done
  */
 function loadStateIconInfo(basePath, callback, onEnd) {
-	const files = ['efstids.lub', 'stateiconimginfo.lub', 'stateiconinfo.lub'];
+	const dirPath = basePath.endsWith('/') ? basePath : basePath + '/';
+
+	// The client's three files and the mods' (DB/Status/StateIconMods.js).
+	const files = stateIconFiles(dirPath, Configs.get.bind(Configs));
 
 	const loadedBuffers = [];
-
-	const dirPath = basePath.endsWith('/') ? basePath : basePath + '/';
 
 	function loadNext(index) {
 		if (index >= files.length) {
@@ -7403,17 +7414,22 @@ function loadStateIconInfo(basePath, callback, onEnd) {
 			return;
 		}
 
-		const fullPath = dirPath + files[index];
-		console.log('Loading file "' + fullPath + '"...');
+		const file = files[index];
+		console.log('Loading file "' + file.path + '"...');
 
 		Client.loadFile(
-			fullPath,
+			file.path,
 			function (data) {
-				loadedBuffers.push({ name: files[index], data: data });
+				loadedBuffers.push(Object.assign({ data: data }, file));
 				loadNext(index + 1);
 			},
 			function () {
-				console.error('[loadStateIconInfo] - Failed to load ' + fullPath);
+				if (file.mod) {
+					console.error("[loadStateIconInfo] - Failed to load a mod's table, left out: " + file.path);
+					loadNext(index + 1);
+					return;
+				}
+				console.error('[loadStateIconInfo] - Failed to load ' + file.path);
 				if (onEnd) {
 					onEnd();
 				}
@@ -7479,30 +7495,6 @@ function loadStateIconInfo(basePath, callback, onEnd) {
 				return 1;
 			};
 
-			for (let i = 0; i < loadedBuffers.length; i++) {
-				const f = loadedBuffers[i];
-				const buffer = f.data instanceof ArrayBuffer ? new Uint8Array(f.data) : f.data;
-				lua.mountFile(f.name, buffer);
-				await lua.doFile(f.name);
-
-				// This prevents the 'table index is nil' crash in stateiconimginfo.lub.
-				// return SC.BLANK on nil
-				if (f.name === 'efstids.lub') {
-					await lua.doString(`
-							if EFST_IDs then
-								__EFST_IDS_ORIGINAL = EFST_IDs 
-
-								EFST_IDs = setmetatable({}, {
-									__index = function(t, k)
-										local id = __EFST_IDS_ORIGINAL[k]
-										return id ~= nil and id or -1
-									end
-								})
-							end
-						`);
-				}
-			}
-
 			lua.doStringSync(`
 					function extract_status_info()
 						-- Sync StatusConst (SC) with the full list of EFST_IDs from the original table
@@ -7558,8 +7550,49 @@ function loadStateIconInfo(basePath, callback, onEnd) {
 						end
 					end
 
-					extract_status_info()
 				`);
+
+			for (let i = 0; i < loadedBuffers.length; i++) {
+				const f = loadedBuffers[i];
+				const buffer = f.data instanceof ArrayBuffer ? new Uint8Array(f.data) : f.data;
+
+				// A mod's file sets the client's table names to its own rows:
+				// keep the client's, and take only the mod's rows from them.
+				if (f.mod && f.stage === 'efstids') {
+					await lua.doString(BEFORE_MOD_NAMES);
+				} else if (f.mod) {
+					await lua.doString(BEFORE_MOD_ROWS);
+				}
+
+				lua.mountFile(f.name, buffer);
+				await lua.doFile(f.name);
+
+				if (f.mod && f.stage === 'efstids') {
+					await lua.doString(AFTER_MOD_NAMES);
+				}
+				// The client's pictures and tooltips are read together once both
+				// have run; each mod's file on its own.
+				if (f.mod ? f.stage !== 'efstids' : f.stage === 'stateiconinfo') {
+					lua.doStringSync('extract_status_info()');
+				}
+
+				// This prevents the 'table index is nil' crash in stateiconimginfo.lub.
+				// return SC.BLANK on nil
+				if (!f.mod && f.stage === 'efstids') {
+					await lua.doString(`
+							if EFST_IDs then
+								__EFST_IDS_ORIGINAL = EFST_IDs 
+
+								EFST_IDs = setmetatable({}, {
+									__index = function(t, k)
+										local id = __EFST_IDS_ORIGINAL[k]
+										return id ~= nil and id or -1
+									end
+								})
+							end
+						`);
+				}
+			}
 		} catch (e) {
 			console.error('[loadStateIconInfo] Lua Error:', e);
 		} finally {
