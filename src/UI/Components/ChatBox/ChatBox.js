@@ -185,6 +185,9 @@ ChatBox.PrivateMessageStorage = {
 
 const views = new Map();
 const captionWidths = new Map();
+// Each tab's log while the box is off screen: it is taken down on every map
+// change, a teleport on the same map included, and gets its messages back
+const keptLogs = new Map();
 let lastRowWidth = 595;
 ChatBox.tabStore = new ChatTabStore();
 ChatBox.views = views;
@@ -194,6 +197,7 @@ Object.defineProperties(ChatBox, {
 		set(tabs) {
 			ChatBox.tabStore = new ChatTabStore(tabs);
 			views.clear();
+			keptLogs.clear();
 			captionWidths.clear();
 		}
 	},
@@ -667,15 +671,29 @@ ChatBox.clean = function Clean() {
 	const logs = new Set([...root.querySelectorAll('.content'), ...Array.from(views.values(), view => view.log)]);
 	logs.forEach(clearChatLog);
 
+	keptLogs.forEach(clearChatLog);
+	keptLogs.clear();
+	resetInput(root);
+
+	// Exit and character select: the next character starts without them
+	_historyMessage.clear();
+	_historyNickName.clear();
+};
+
+/**
+ * Empty the input. What was typed stays in the history: onRemove() uses this,
+ * so Up still recalls it once a map change has built the box again.
+ */
+function resetInput(root) {
 	const inputChatbox = root.querySelector('.input-chatbox');
 	if (inputChatbox) inputChatbox.innerHTML = '';
 
 	const nickBox = root.querySelector('.input .username');
 	if (nickBox) nickBox.value = '';
 
-	_historyMessage.clear();
-	_historyNickName.clear();
-};
+	_historyMessage.rewind();
+	_historyNickName.rewind();
+}
 
 ChatBox.toggleChatBattleOption = function toggleChatBattleOption() {
 	if (ChatBoxSettings._host?.style.display !== 'none' && ChatBoxSettings.activeTab === this.activeTab) {
@@ -1017,7 +1035,8 @@ function createTabView(tab) {
 	const root = _root();
 	const caption = buildCaption(tab);
 	root.querySelector('table.header tr .opttab').before(caption);
-	const log = document.createElement('div');
+	const log = keptLogs.get(tab.id) || document.createElement('div');
+	keptLogs.delete(tab.id);
 	log.className = 'content chat-log';
 	log.dataset.content = tab.id;
 	log.dataset.scrollbarSkin = 'chatbox';
@@ -1089,6 +1108,7 @@ ChatBox.onRemove = function OnRemove() {
 	this.cancelResize?.();
 	this.cancelTabGesture?.();
 	for (const view of views.values()) view.floating?.cancelInteraction();
+	flushMessageBuffer();
 	cancelMessageDelivery();
 	// The bottom on screen: the window may be drawn scaled (UI/UIScale.js)
 	_preferences.y = (parseInt(this._host.style.top, 10) || 0) + this._host.getBoundingClientRect().height;
@@ -1104,10 +1124,11 @@ ChatBox.onRemove = function OnRemove() {
 
 	ChatBoxSettings.ui.hide();
 	ChatBoxSettings.activeTab = null;
-	this.clean();
-	for (const view of views.values()) {
+	resetInput(_root());
+	for (const [id, view] of views) {
 		view.log._disposeChatLog?.();
 		view.log.remove();
+		keptLogs.set(id, view.log);
 		view.caption.remove();
 		if (view.floating) UIManager.removeComponent(view.floating);
 	}
@@ -1571,8 +1592,9 @@ function flushMessageBuffer() {
 	try {
 		Object.values(ChatBox.tabs).forEach(tab => {
 			const id = tab.id;
-			const log = views.get(id)?.log || _root().querySelector(`.content[data-content="${id}"]`);
-			const filters = ChatBoxSettings.tabOption[id];
+			const log =
+				views.get(id)?.log || keptLogs.get(id) || _root().querySelector(`.content[data-content="${id}"]`);
+			const filters = ChatBoxSettings.tabOption[id] || tab.filters;
 			if (!log || !filters) return;
 			appendChatMessages(
 				log,

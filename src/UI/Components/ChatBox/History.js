@@ -85,6 +85,13 @@ History.prototype.next = function next() {
 };
 
 /**
+ * Point past the newest message again, so the next previous() returns it
+ */
+History.prototype.rewind = function rewind() {
+	this.index = this.list.length;
+};
+
+/**
  * Clean history message
  */
 History.prototype.clear = function clear() {

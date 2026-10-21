@@ -49,6 +49,7 @@ const ScrollBar = (await import('UI/Scrollbar.js')).default;
 const UIScale = (await import('UI/UIScale.js')).default;
 const Cursor = (await import('UI/CursorManager.js')).default;
 const Mouse = (await import('Controls/MouseEventHandler.js')).default;
+const KEYS = (await import('Controls/KeyEventHandler.js')).default;
 await import('UI/Components/WinPopup/WinPopup.js');
 let root;
 const rectangle = (left, top, width, height) => ({left,top,right:left+width,bottom:top+height,width,height,x:left,y:top});
@@ -195,6 +196,36 @@ it('creates floating tabs when full and disposes frames on docking/deletion whil
 	expect(UIManager.components[detached.name]).toBeUndefined();
 });
 
+it('keeps the sent-message history through a map change, and clean() empties it', () => {
+	const talk=ChatBox.onRequestTalk;
+	ChatBox.onRequestTalk=vi.fn();
+	try {
+		for(const text of ['first','second']) {
+			root.querySelector('.input-chatbox').textContent=text;
+			ChatBox.submit();
+		}
+	} finally {
+		ChatBox.onRequestTalk=talk;
+	}
+	// A map change, a teleport on the same map included: removeComponents(), then the box again
+	ChatBox.remove();
+	ChatBox.append();
+	const input=ChatBox.getRoot().querySelector('.input-chatbox');
+	expect(input.textContent).toBe('');
+	input.focus();
+	const key=which=>ChatBox.onKeyDown({which,key:'',target:input,preventDefault:vi.fn(),stopImmediatePropagation:vi.fn(),getModifierState:()=>false});
+	key(KEYS.UP);
+	expect(input.textContent).toBe('second');
+	key(KEYS.UP);
+	expect(input.textContent).toBe('first');
+	key(KEYS.DOWN);
+	expect(input.textContent).toBe('second');
+	// Exit and character select clean the box: the next character starts with no history
+	ChatBox.clean();
+	key(KEYS.UP);
+	expect(input.textContent).toBe('');
+});
+
 it('locks main and existing floating movement through one toggle, and guards the last docked tab', () => {
 	expect(ChatBox.tabStore.locked).toBe(true);
 	expect(root.querySelector('.lockdragwnd').style.width).toBe('9px');
@@ -329,7 +360,7 @@ it('migrates sparse IDs and filters, then restores versioned order, floats, name
 
 });
 
-it('disposes manager-owned floating views and queued exports before reconnect without stale delivery or gestures', () => {
+it('disposes manager-owned floating views and gestures on removal, keeping each log and its exports for the next append', () => {
 	ChatBox.setLocked(false);
 	URL.createObjectURL=vi.fn().mockReturnValueOnce('blob:displayed').mockReturnValueOnce('blob:pending');
 	URL.revokeObjectURL=vi.fn();
@@ -357,19 +388,24 @@ it('disposes manager-owned floating views and queued exports before reconnect wi
 	expect(ordinary.onRemove).toHaveBeenCalledTimes(1);
 	expect(UIManager.components.OrdinaryCleanup).toBe(ordinary);
 	delete UIManager.components.OrdinaryCleanup;
-	expect(URL.revokeObjectURL.mock.calls.map(([url])=>url).sort()).toEqual(['blob:displayed','blob:pending']);
+	// Every map change removes the box: the log, the message still queued and
+	// their exports are kept for the box that comes back
+	expect(URL.revokeObjectURL).not.toHaveBeenCalled();
 	expect(ChatBox.views.size).toBe(0);
 	expect(UIManager.components[floating.name]).toBeUndefined();
 	expect(floating._cancelDrag).toBeNull();
 	expect(floating._host.style.opacity).toBe('1');
 	expect(Settings.activeTab).toBeNull();
-	expect(oldLog.querySelector('.chat-message')).toBeNull();
+	expect(oldLog.isConnected).toBe(false);
+	expect(Array.from(oldLog.querySelectorAll('a'),link=>link.href)).toEqual(['blob:displayed','blob:pending']);
 	const oldScale=floating._host.style.scale;
 	UIScale.setGlobal(2);
 	expect(floating._host.style.scale).toBe(oldScale);
 	ChatBox.append();
 	const restored=ChatBox.views.get(id).floating;
 	expect(restored).not.toBe(floating);
+	expect(ChatBox.views.get(id).log).toBe(oldLog);
+	expect(oldLog.isConnected).toBe(true);
 	expect(Object.keys(UIManager.components).filter(name=>name.startsWith('ChatBox:tab:'))).toEqual([restored.name]);
 	ChatBox.addText('new session',ChatBox.TYPE.PUBLIC);
 	queued[0]();
