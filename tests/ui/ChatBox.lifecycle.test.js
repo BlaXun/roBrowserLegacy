@@ -329,7 +329,7 @@ it('migrates sparse IDs and filters, then restores versioned order, floats, name
 
 });
 
-it('disposes manager-owned floating views and queued exports before reconnect without stale delivery or gestures', () => {
+it('disposes manager-owned floating views and gestures on removal, keeping each log and its exports for the next append', () => {
 	ChatBox.setLocked(false);
 	URL.createObjectURL=vi.fn().mockReturnValueOnce('blob:displayed').mockReturnValueOnce('blob:pending');
 	URL.revokeObjectURL=vi.fn();
@@ -357,19 +357,24 @@ it('disposes manager-owned floating views and queued exports before reconnect wi
 	expect(ordinary.onRemove).toHaveBeenCalledTimes(1);
 	expect(UIManager.components.OrdinaryCleanup).toBe(ordinary);
 	delete UIManager.components.OrdinaryCleanup;
-	expect(URL.revokeObjectURL.mock.calls.map(([url])=>url).sort()).toEqual(['blob:displayed','blob:pending']);
+	// Every map change removes the box: the log, the message still queued and
+	// their exports are kept for the box that comes back
+	expect(URL.revokeObjectURL).not.toHaveBeenCalled();
 	expect(ChatBox.views.size).toBe(0);
 	expect(UIManager.components[floating.name]).toBeUndefined();
 	expect(floating._cancelDrag).toBeNull();
 	expect(floating._host.style.opacity).toBe('1');
 	expect(Settings.activeTab).toBeNull();
-	expect(oldLog.querySelector('.chat-message')).toBeNull();
+	expect(oldLog.isConnected).toBe(false);
+	expect(Array.from(oldLog.querySelectorAll('a'),link=>link.href)).toEqual(['blob:displayed','blob:pending']);
 	const oldScale=floating._host.style.scale;
 	UIScale.setGlobal(2);
 	expect(floating._host.style.scale).toBe(oldScale);
 	ChatBox.append();
 	const restored=ChatBox.views.get(id).floating;
 	expect(restored).not.toBe(floating);
+	expect(ChatBox.views.get(id).log).toBe(oldLog);
+	expect(oldLog.isConnected).toBe(true);
 	expect(Object.keys(UIManager.components).filter(name=>name.startsWith('ChatBox:tab:'))).toEqual([restored.name]);
 	ChatBox.addText('new session',ChatBox.TYPE.PUBLIC);
 	queued[0]();
