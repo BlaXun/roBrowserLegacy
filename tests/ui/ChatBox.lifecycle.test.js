@@ -49,6 +49,7 @@ const ScrollBar = (await import('UI/Scrollbar.js')).default;
 const UIScale = (await import('UI/UIScale.js')).default;
 const Cursor = (await import('UI/CursorManager.js')).default;
 const Mouse = (await import('Controls/MouseEventHandler.js')).default;
+const KEYS = (await import('Controls/KeyEventHandler.js')).default;
 await import('UI/Components/WinPopup/WinPopup.js');
 let root;
 const rectangle = (left, top, width, height) => ({left,top,right:left+width,bottom:top+height,width,height,x:left,y:top});
@@ -193,6 +194,36 @@ it('creates floating tabs when full and disposes frames on docking/deletion whil
 	detached.getRoot().querySelector('.delete').click();
 	expect(ChatBox.tabCount).toBe(count-1);
 	expect(UIManager.components[detached.name]).toBeUndefined();
+});
+
+it('keeps the sent-message history through a map change, and clean() empties it', () => {
+	const talk=ChatBox.onRequestTalk;
+	ChatBox.onRequestTalk=vi.fn();
+	try {
+		for(const text of ['first','second']) {
+			root.querySelector('.input-chatbox').textContent=text;
+			ChatBox.submit();
+		}
+	} finally {
+		ChatBox.onRequestTalk=talk;
+	}
+	// A map change, a teleport on the same map included: removeComponents(), then the box again
+	ChatBox.remove();
+	ChatBox.append();
+	const input=ChatBox.getRoot().querySelector('.input-chatbox');
+	expect(input.textContent).toBe('');
+	input.focus();
+	const key=which=>ChatBox.onKeyDown({which,key:'',target:input,preventDefault:vi.fn(),stopImmediatePropagation:vi.fn(),getModifierState:()=>false});
+	key(KEYS.UP);
+	expect(input.textContent).toBe('second');
+	key(KEYS.UP);
+	expect(input.textContent).toBe('first');
+	key(KEYS.DOWN);
+	expect(input.textContent).toBe('second');
+	// Exit and character select clean the box: the next character starts with no history
+	ChatBox.clean();
+	key(KEYS.UP);
+	expect(input.textContent).toBe('');
 });
 
 it('locks main and existing floating movement through one toggle, and guards the last docked tab', () => {

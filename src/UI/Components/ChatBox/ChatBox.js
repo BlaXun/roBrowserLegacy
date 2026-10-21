@@ -674,11 +674,15 @@ ChatBox.clean = function Clean() {
 	keptLogs.forEach(clearChatLog);
 	keptLogs.clear();
 	resetInput(root);
+
+	// Exit and character select: the next character starts without them
+	_historyMessage.clear();
+	_historyNickName.clear();
 };
 
 /**
- * Empty the input. What was typed stays in the history: Up recalls it after
- * the box is taken down and built again on a map change.
+ * Empty the input. What was typed stays in the history: onRemove() uses this,
+ * so Up still recalls it once a map change has built the box again.
  */
 function resetInput(root) {
 	const inputChatbox = root.querySelector('.input-chatbox');
