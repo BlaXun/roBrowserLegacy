@@ -14,6 +14,7 @@ import KEYS from 'Controls/KeyEventHandler.js';
 import UIManager from 'UI/UIManager.js';
 import GUIComponent from 'UI/GUIComponent.js';
 import ScreenHooks from 'UI/ScreenHooks.js';
+import PerfProbe from 'Core/PerfProbe.js';
 import 'UI/Elements/Elements.js';
 
 export function createWinLogin({ name, htmlText, cssText }) {
@@ -127,6 +128,10 @@ export function createWinLogin({ name, htmlText, cssText }) {
 		}
 
 		Component.placeOnTop();
+
+		if (PerfProbe.enabled) {
+			PerfProbe.loginShown();
+		}
 
 		// A plugin may draw this screen instead
 		ScreenHooks.show('login', _screen, this._host);

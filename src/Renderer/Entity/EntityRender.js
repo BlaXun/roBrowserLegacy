@@ -47,6 +47,41 @@ import GR2ModelRenderer from 'Renderer/GR2/GR2ModelRenderer.js';
 const WALK_STEP_SIZE = 4.6;
 const WALK_DIST_TO_MOTION = WALK_STEP_SIZE * 0.37 * 4 * 25; // ≈ 170.2
 
+// ---------------------------------------------------------------------------
+// Trail snapshot buffer pool
+//
+// Trail snapshots persist across frames but are recycled FIFO as they age out.
+// Recycling their numeric buffers avoids allocating a vec3 / Int32Array /
+// Float32Array every time a snapshot is captured — which can happen at up to
+// ~30ms intervals per entity under fast-movement conditions.
+// ---------------------------------------------------------------------------
+const _snapshotPool = [];
+
+function acquireSnapshotBuffers() {
+	const buf = _snapshotPool.pop();
+	if (buf) return buf;
+	return {
+		position: new Float32Array(3),
+		_position: new Int32Array(2),
+		color: new Float32Array(4)
+	};
+}
+
+function releaseSnapshotBuffers(snapshot) {
+	// Soft cap: avoids unbounded growth if many distinct trails run concurrently.
+	if (_snapshotPool.length < 64) {
+		_snapshotPool.push({
+			position: snapshot.position,
+			_position: snapshot._position,
+			color: snapshot.color
+		});
+	}
+}
+
+// Scratch buffers reused for the duration of a single renderSecondBody() call.
+const _scratchPosition = new Float32Array(3);
+const _scratchColor = new Float32Array(4);
+
 /**
  * Render an Entity
  *
@@ -290,6 +325,10 @@ const calculateBoundingRect = (function calculateBoundingRectClosure() {
 	};
 })();
 
+function isLookingBack(direction) {
+	return direction > 2 && direction < 6;
+}
+
 /**
  * Render Entity
  */
@@ -340,9 +379,11 @@ const renderEntity = (function renderEntityClosure() {
 			SpriteRenderer.position[2] = Altitude.getCellHeight(this.position[0], this.position[1]) + 0.05;
 
 			// Keep shadow on ground: depth test on, depth write off, disabledepthcorrection
+			SpriteRenderer.shadowQueue = true;
 			SpriteRenderer.runWithDepth(true, false, false, function () {
 				renderElement(self, self.files.shadow, 'shadow', _position, false);
 			});
+			SpriteRenderer.shadowQueue = false;
 		}
 
 		SpriteRenderer.position.set(self.position);
@@ -393,6 +434,15 @@ const renderEntity = (function renderEntityClosure() {
 											: COMPENSATION) >
 								self.bodyHeight + HEAD_SIZE
 							) {
+								if (
+									(self.action === self.ACTION.ATTACK ||
+										self.action === self.ACTION.ATTACK1 ||
+										self.action === self.ACTION.ATTACK2 ||
+										self.action === self.ACTION.ATTACK3) &&
+									!lookingFront
+								) {
+									return -450;
+								}
 								if (self.action === self.ACTION.SIT) {
 									return lookingFront ? -450 : RIDING_STATUS ? 1 : -100;
 								}
@@ -413,7 +463,7 @@ const renderEntity = (function renderEntityClosure() {
 						});
 					}
 
-					if (!(direction > 2 && direction < 6)) {
+					if (!isLookingBack(direction)) {
 						// looking front
 						if (Session.Playing == true && self.hasCart == true) {
 							cartidx = DB.isSuperNovice(self._job) ? 0 : self.CartNum;
@@ -437,7 +487,7 @@ const renderEntity = (function renderEntityClosure() {
 					SpriteRenderer.zIndex = 150;
 					if (
 						RIDING_STATUS &&
-						!(direction > 2 && direction < 6) &&
+						!isLookingBack(direction) &&
 						(self.action === self.ACTION.SIT || self.action === self.ACTION.WALK)
 					) {
 						SpriteRenderer.zIndex *= 2;
@@ -487,7 +537,7 @@ const renderEntity = (function renderEntityClosure() {
 						renderElement(self, self.files.accessory, 'head', _position, false);
 					}
 
-					if (direction > 2 && direction < 6) {
+					if (isLookingBack(direction)) {
 						// looking back
 
 						// Draw Robe
@@ -739,26 +789,32 @@ function renderSecondBody(entity, layers, spr, pal, files, type, _position, enab
 		}
 
 		if (shouldCapture) {
+			const buffers = acquireSnapshotBuffers();
+			buffers.position.set(entity.position);
+			buffers._position.set(_position);
+			buffers.color.set(entity.effectColor);
+
 			trail.snapshots.unshift({
-				position: glMatrix.vec3.clone(entity.position),
+				position: buffers.position,
+				_position: buffers._position,
+				color: buffers.color,
 				tick: now,
-				layers: layers, // Reference current animation frames
+				layers: layers,
 				spr: spr,
-				pal: pal,
-				_position: new Int32Array(_position),
-				color: [...entity.effectColor]
+				pal: pal
 			});
 			trail.lastTick = now;
 
 			if (trail.snapshots.length > maxLen) {
-				trail.snapshots.pop();
+				const dropped = trail.snapshots.pop();
+				releaseSnapshotBuffers(dropped);
 			}
 		}
 
 		if (trail.snapshots.length) {
-			const originalPos = glMatrix.vec3.clone(SpriteRenderer.position);
+			_scratchPosition.set(SpriteRenderer.position);
 			const originalZ = SpriteRenderer.zIndex;
-			const originalColor = new Float32Array(entity.effectColor);
+			_scratchColor.set(entity.effectColor);
 
 			SpriteRenderer.runWithDepth(true, false, false, function () {
 				const duration = blurType === 4 || blurType === 3 ? 800 : 400; // Static image lasts longer
@@ -797,9 +853,9 @@ function renderSecondBody(entity, layers, spr, pal, files, type, _position, enab
 			});
 
 			// Restore global/entity state
-			SpriteRenderer.position.set(originalPos);
+			SpriteRenderer.position.set(_scratchPosition);
 			SpriteRenderer.zIndex = originalZ;
-			entity.effectColor.set(originalColor);
+			entity.effectColor.set(_scratchColor);
 		}
 	}
 }
@@ -1240,6 +1296,8 @@ function renderLayer(layer, spr, pal, size, pos, type, isBlendModeOne) {
 	SpriteRenderer.xSize = this.xSize;
 	SpriteRenderer.ySize = this.ySize;
 	SpriteRenderer.image.texture = frame.texture;
+	SpriteRenderer.image.spr = spr;
+	SpriteRenderer.image.frame = frame;
 
 	// Draw Sprite
 	SpriteRenderer.render(isBlendModeOne);

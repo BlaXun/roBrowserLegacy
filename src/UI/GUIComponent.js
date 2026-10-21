@@ -16,6 +16,7 @@ import Session from 'Engine/SessionStorage.js';
 import Targa from 'Loaders/Targa.js';
 import ClampToViewport from 'UI/ClampToViewport.js';
 import UIScale from 'UI/UIScale.js';
+import whenDrawn from 'UI/WhenDrawn.js';
 
 /**
  * Heavy modules loaded lazily to keep viewer bundles lightweight.
@@ -299,7 +300,8 @@ class GUIComponent {
 		}
 
 		// Process legacy data-* attributes (background, hover, down, text, etc.)
-		this._processAllDataAttrs();
+		// Text now; each image when its node is first drawn.
+		this._processAllDataAttrs(true);
 
 		// Create jQuery compatibility proxy
 		this._createUIProxy();
@@ -315,6 +317,7 @@ class GUIComponent {
 		this._setupMouseMode();
 
 		this._host.remove();
+		whenDrawn.suspend(this._host);
 	}
 
 	// ─── Lifecycle: append ─────────────────────────────────
@@ -343,6 +346,7 @@ class GUIComponent {
 		}
 
 		parent.appendChild(this._host);
+		whenDrawn.resume(this._host);
 		if (this._noCursorStyle) {
 			_trackNoCursorStyle(this._noCursorStyle);
 		}
@@ -423,6 +427,7 @@ class GUIComponent {
 			// Detach from DOM
 			this._host.remove();
 			UIScale.detach(this);
+			whenDrawn.suspend(this._host);
 			if (this._noCursorStyle) {
 				_untrackNoCursorStyle(this._noCursorStyle);
 			}
@@ -1197,10 +1202,18 @@ class GUIComponent {
 	 * Process legacy data-* attributes on a single DOM element.
 	 * Handles: data-background, data-hover, data-down, data-active, data-text, data-preload.
 	 * Static so it can be called from anywhere (e.g. dynamically created buttons).
+	 *
+	 * @param {HTMLElement} node
+	 * @param {object} [options]
+	 * @param {boolean} [options.text] - set the localized text
+	 * @param {boolean} [options.images] - fetch the images
+	 * @param {string} [options.deferredFrom] - the node's inline background
+	 *   when its images were deferred: a different one set since then by the
+	 *   window itself stays
 	 */
-	static processDataAttrs(node) {
+	static processDataAttrs(node, { text = true, images = true, deferredFrom } = {}) {
 		if (!_Client || !_DB) {
-			_ensureDeps().then(() => GUIComponent.processDataAttrs(node));
+			_ensureDeps().then(() => GUIComponent.processDataAttrs(node, { text, images, deferredFrom }));
 			return;
 		}
 		const background = node.dataset.background;
@@ -1232,9 +1245,11 @@ class GUIComponent {
 		};
 
 		// Localized text
-		if (msgId && _DB?.getMessage(msgId, '')) {
+		if (text && msgId && _DB?.getMessage(msgId, '')) {
 			node.textContent = _DB?.getMessage(msgId, '');
 		}
+
+		if (!images) return;
 
 		// Default background
 		if (background) {
@@ -1250,6 +1265,9 @@ class GUIComponent {
 					}
 				}
 				node.classList.remove('no-texture');
+				// Fetched late, the window may have set its own background
+				// meanwhile (a mini layout, a selected tab): that one stays.
+				if (deferredFrom !== undefined && node.style.backgroundImage !== deferredFrom) return;
 				updateBg();
 			}, () => {
 				// Not every client's data has every window's textures (iRO's
@@ -1340,15 +1358,27 @@ class GUIComponent {
 	/**
 	 * Walk the shadow DOM and process all elements with data-* attributes.
 	 * Called once during prepare().
+	 *
+	 * @param {boolean} [deferImages] - set the text now, and fetch each
+	 *   node's images when it is first drawn (UI/WhenDrawn.js)
 	 */
-	_processAllDataAttrs() {
+	_processAllDataAttrs(deferImages = false) {
 		const root = this._shadow || this._host;
 		if (!root) return;
 
 		const selector = '[data-background],[data-hover],[data-down],[data-active],[data-text],[data-preload]';
 		const nodes = root.querySelectorAll(selector);
 		for (const node of nodes) {
-			GUIComponent.processDataAttrs(node);
+			if (!deferImages) {
+				GUIComponent.processDataAttrs(node);
+				continue;
+			}
+			GUIComponent.processDataAttrs(node, { images: false });
+			const { background, hover, down, active, preload } = node.dataset;
+			if (background || hover || down || active || preload) {
+				const deferredFrom = node.style.backgroundImage;
+				whenDrawn(node, () => GUIComponent.processDataAttrs(node, { text: false, deferredFrom }));
+			}
 		}
 	}
 

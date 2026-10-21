@@ -61,6 +61,7 @@ import PACKETVER from 'Network/PacketVerManager.js';
 import MemoryManager from 'Core/MemoryManager.js';
 import { escapeHtml } from 'Utils/HtmlHelper.js';
 import LenientEnums from 'DB/LenientEnums.js';
+import LuaModuleLoader from 'Core/LuaModuleLoader.js';
 
 //Pet
 //MapName
@@ -317,6 +318,7 @@ class DB {
 		// it again, and drop the previous answer the file cache keeps by name.
 		// A request still on its way would land in the file cache under that
 		// name: it is dropped once it lands instead.
+		LuaModuleLoader.clearCache();
 		mountPalettes = undefined;
 		if (mountPalettesProbe) {
 			mountPalettesProbe.stale = true;
@@ -4246,6 +4248,7 @@ class DB {
 }
 
 async function startLua() {
+	LuaModuleLoader.clearCache();
 	const wasmUrl = (await import('Vendors/liblua5.1.wasm?url')).default;
 	const CLua = (await import('Vendors/wasmoon-lua5.1.js')).default;
 	const [l, ha, ma, dha, dma] = await Promise.all([
@@ -4255,11 +4258,51 @@ async function startLua() {
 		CLua.Lua.create({ customWasmUri: wasmUrl }),
 		CLua.Lua.create({ customWasmUri: wasmUrl })
 	]);
-	lua = oneRunAtATime(l);
-	HO_AI = ha;
-	MER_AI = ma;
-	default_HO_AI = dha;
-	default_MER_AI = dma;
+	lua = oneRunAtATime(LuaModuleLoader.setup(l));
+	HO_AI = LuaModuleLoader.setup(ha, {
+		searchPaths: [
+			'./?.lua',
+			'./?.lub',
+			'AI/USER_AI/?.lua',
+			'AI/USER_AI/?.lub',
+			'AI/?.lua',
+			'AI/?.lub',
+			...LuaModuleLoader.DEFAULT_SEARCH_PATHS
+		]
+	});
+	MER_AI = LuaModuleLoader.setup(ma, {
+		searchPaths: [
+			'./?.lua',
+			'./?.lub',
+			'AI/USER_AI/?.lua',
+			'AI/USER_AI/?.lub',
+			'AI/?.lua',
+			'AI/?.lub',
+			...LuaModuleLoader.DEFAULT_SEARCH_PATHS
+		]
+	});
+	default_HO_AI = LuaModuleLoader.setup(dha, {
+		searchPaths: [
+			'./?.lua',
+			'./?.lub',
+			'AI/?.lua',
+			'AI/?.lub',
+			'AI/USER_AI/?.lua',
+			'AI/USER_AI/?.lub',
+			...LuaModuleLoader.DEFAULT_SEARCH_PATHS
+		]
+	});
+	default_MER_AI = LuaModuleLoader.setup(dma, {
+		searchPaths: [
+			'./?.lua',
+			'./?.lub',
+			'AI/?.lua',
+			'AI/?.lub',
+			'AI/USER_AI/?.lua',
+			'AI/USER_AI/?.lub',
+			...LuaModuleLoader.DEFAULT_SEARCH_PATHS
+		]
+	});
 }
 
 /**
