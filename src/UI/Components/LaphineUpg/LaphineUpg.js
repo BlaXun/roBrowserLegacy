@@ -22,6 +22,7 @@ import htmlText from './LaphineUpg.html?raw';
 import cssText from './LaphineUpg.css?raw';
 import PACKET from 'Network/PacketStructure.js';
 import { sanitizeHtml } from 'Utils/HtmlHelper.js';
+import whenDrawn from 'UI/WhenDrawn.js';
 
 /**
  * Create Component
@@ -213,7 +214,10 @@ LaphineUpg.init = function init() {
 	});
 
 	// Setting scrollbar styles inside shadow DOM
-	Client.loadFiles(
+	// Fetched when the window is first drawn, not on entering the map
+	// (UI/WhenDrawn.js).
+	const loadFiles = (files, callback) => whenDrawn(this._host, () => Client.loadFiles(files, callback));
+	loadFiles(
 		[
 			DB.INTERFACE_PATH + 'lapine/scrollbar_bg_btm.bmp',
 			DB.INTERFACE_PATH + 'lapine/scrollbar_bg_mid.bmp',
