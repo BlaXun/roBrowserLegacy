@@ -373,10 +373,12 @@ class StrEffect {
 	}
 
 	/**
-	 * How far to turn an effect that flies at its target, so the way its art
-	 * travels points at the target on screen.
+	 * How far to turn an effect aimed between two entities, so it lines up
+	 * with them on screen.
 	 *
-	 * The art is drawn facing `facing` degrees (0 = right, 180 = left).
+	 * `facing` is where the other entity sits in the file, in degrees (0 =
+	 * right, 180 = left): the target for an effect on the caster, the caster
+	 * for one on the target.
 	 *
 	 * @return {number} counter-clockwise turn in degrees, 0 when not aimed
 	 */
