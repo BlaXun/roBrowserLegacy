@@ -157,6 +157,39 @@ describe('ChatBox — Enter on a focused button', () => {
 	});
 });
 
+describe('ChatBox — sent-message history', () => {
+	// The box is removed and appended again on every map change, a teleport on
+	// the same map included: onRemove() cleans it, and Up must still recall
+	// what was typed before.
+	it('survives clean()', () => {
+		document.body.innerHTML = '';
+		const host = mountChatBox();
+		const input = host.querySelector('.input-chatbox');
+		const onRequestTalk = ChatBox.onRequestTalk;
+		ChatBox.onRequestTalk = vi.fn();
+		try {
+			for (const text of ['first', 'second']) {
+				input.textContent = text;
+				ChatBox.submit();
+			}
+		} finally {
+			ChatBox.onRequestTalk = onRequestTalk;
+		}
+		input.textContent = 'half typed';
+		ChatBox.clean();
+		expect(input.textContent).toBe('');
+
+		input.focus();
+		const key = which => ({ ...enterEvent(input), which });
+		ChatBox.onKeyDown(key(KEYS.UP));
+		expect(input.textContent).toBe('second');
+		ChatBox.onKeyDown(key(KEYS.UP));
+		expect(input.textContent).toBe('first');
+		ChatBox.onKeyDown(key(KEYS.DOWN));
+		expect(input.textContent).toBe('second');
+	});
+});
+
 describe('ChatBox — height cycle position', () => {
 	it.each([
 		[800, 1, false],

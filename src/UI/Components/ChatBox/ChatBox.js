@@ -673,8 +673,10 @@ ChatBox.clean = function Clean() {
 	const nickBox = root.querySelector('.input .username');
 	if (nickBox) nickBox.value = '';
 
-	_historyMessage.clear();
-	_historyNickName.clear();
+	// Keep what was typed: the box is taken down and built again on every map
+	// change, a teleport on the same map included, and Up must still recall it
+	_historyMessage.rewind();
+	_historyNickName.rewind();
 };
 
 ChatBox.toggleChatBattleOption = function toggleChatBattleOption() {
