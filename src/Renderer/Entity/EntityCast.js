@@ -112,10 +112,12 @@ class Cast {
 	 */
 	render(matrix) {
 		const canvas = this.canvas;
-		const percent = +((Date.now() - this.tick) / this.delay).toFixed(2);
+		const ratio = (Date.now() - this.tick) / this.delay;
+		const percent = +ratio.toFixed(2);
 
-		// Cast complete remove it
-		if (percent >= 1.0) {
+		// Cast complete remove it. Use the unrounded ratio: the rounded one reaches
+		// 1.00 at 99.5%, and the server treats an early completion as a cancel.
+		if (ratio >= 1.0) {
 			this.remove();
 
 			if (this.onComplete) {
