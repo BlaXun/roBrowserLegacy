@@ -337025,7 +337025,7 @@ var init_StatusIcons = __esmMin((() => {
 		ScreenEffectManager.clean();
 	};
 	MOD_ICON_FIRST = 2e4;
-	MOD_ICON_LAST = 29999;
+	MOD_ICON_LAST = 22999;
 	/**
 	* Update icon on screen
 	*
