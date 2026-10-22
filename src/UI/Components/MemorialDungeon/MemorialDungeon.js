@@ -1,17 +1,18 @@
 /**
  * UI/Components/MemorialDungeon/MemorialDungeon.js
  *
- * Memorial Dungeon (instance) window: name, standby position, time left,
- * and a button to destroy the instance.
+ * Memorial Dungeon (instance) window: name, standby position, when the
+ * instance ends, and a button to destroy it.
  *
  * This file is part of ROBrowser, (http://www.robrowser.com/).
  */
 
 import DB from 'DB/DBManager.js';
+import Client from 'Core/Client.js';
 import Preferences from 'Core/Preferences.js';
-import Renderer from 'Renderer/Renderer.js';
 import PACKET from 'Network/PacketStructure.js';
 import Network from 'Network/NetworkManager.js';
+import Renderer from 'Renderer/Renderer.js';
 import 'UI/Elements/Elements.js';
 import GUIComponent from 'UI/GUIComponent.js';
 import UIManager from 'UI/UIManager.js';
@@ -23,7 +24,7 @@ import cssText from './MemorialDungeon.css?raw';
  */
 const STATE = {
 	STANDBY: 0, // queued, maps not created yet
-	AVAILABLE: 1, // created, nobody entered yet
+	AVAILABLE: 1, // created, nobody inside
 	PROGRESS: 2 // someone is inside
 };
 
@@ -39,17 +40,12 @@ MemorialDungeon.STATE = STATE;
 /**
  * @var {Preferences} structure
  */
-const _preferences = Preferences.get('MemorialDungeon', { x: -1, y: 200 }, 1.0);
+const _preferences = Preferences.get('MemorialDungeon', { x: 10, y: -1 }, 1.0);
 
 /**
  * Current instance, null when there is none
  */
 let _data = null;
-
-/**
- * @var {number} refresh interval
- */
-let _timer = null;
 
 MemorialDungeon.render = () => htmlText;
 
@@ -61,23 +57,20 @@ MemorialDungeon.init = function init() {
 	closeBtn.addEventListener('mousedown', e => e.stopImmediatePropagation());
 	closeBtn.addEventListener('click', () => this.remove());
 
-	root.querySelector('.destroy').addEventListener('click', onDestroy);
+	const destroy = root.querySelector('.destroy');
+	destroy.addEventListener('click', onDestroy);
+	initTextButton(destroy);
 };
 
 MemorialDungeon.onAppend = function onAppend() {
-	// First time: right side, below the minimap
-	const x = _preferences.x < 0 ? Renderer.width - 280 : _preferences.x;
-	this._host.style.left = `${x}px`;
-	this._host.style.top = `${_preferences.y}px`;
+	// First time: left side, half way down
+	const y = _preferences.y < 0 ? Math.round(Renderer.height / 2) : _preferences.y;
+	this._host.style.left = `${_preferences.x}px`;
+	this._host.style.top = `${y}px`;
 	this.refresh();
-	if (!_timer) {
-		_timer = setInterval(() => this.refresh(), 1000);
-	}
 };
 
 MemorialDungeon.onRemove = function onRemove() {
-	clearInterval(_timer);
-	_timer = null;
 	_preferences.x = parseInt(this._host.style.left, 10);
 	_preferences.y = parseInt(this._host.style.top, 10);
 	_preferences.save();
@@ -152,50 +145,92 @@ MemorialDungeon.refresh = function refresh() {
 	const root = this.getRoot();
 	if (!root || !_data) return;
 
-	const now = Date.now() / 1000;
-	const nameMsg = [1337, 1338, 1339][_data.state]; // %s in Standby / Available / in Progress
+	// [name] in Standby / Available / in Progress
+	const name = root.querySelector('.name');
+	name.textContent = '';
+	const [before, after = ''] = DB.getMessage([1337, 1338, 1339][_data.state]).split('%s');
+	const span = document.createElement('span');
+	span.className = 'md-name';
+	span.textContent = `[${_data.name}]`;
+	name.append(before, span, after);
 
-	root.querySelector('.name').textContent = DB.getMessage(nameMsg).replace('%s', _data.name);
-
-	const priority = root.querySelector('.priority');
-	priority.textContent = '';
-	if (_data.state === STATE.STANDBY) {
-		appendColored(priority, DB.getMessage(1342).replace('%d', _data.priority)); // Your Standby Priority: %d
+	const info = root.querySelector('.info');
+	info.textContent = '';
+	switch (_data.state) {
+		case STATE.STANDBY:
+			// Your Standby Priority: %d
+			appendColored(info, DB.getMessage(1342).replace('%d', _data.priority));
+			break;
+		case STATE.AVAILABLE:
+			// The requested dungeon will be removed if you do not enter before %s.
+			appendColored(info, DB.getMessage(1343).replace('%s', formatDate(_data.enterDate)));
+			break;
+		case STATE.PROGRESS:
+			if (_data.destroyDate) {
+				const date = document.createElement('div');
+				date.className = 'date';
+				date.textContent = formatDate(_data.destroyDate);
+				info.append(DB.getMessage(1344), date); // Dungeon Mission Time Limit:
+			}
+			break;
 	}
 
-	const limit = root.querySelector('.limit');
-	limit.classList.toggle('hidden', _data.state === STATE.STANDBY || !_data.destroyDate);
-	root.querySelector('.limit-value').textContent = formatTime(_data.destroyDate - now);
-
-	const enter = root.querySelector('.enter');
-	enter.textContent = '';
-	if (_data.state === STATE.AVAILABLE) {
-		// The requested dungeon will be removed if you do not enter within %s.
-		appendColored(enter, DB.getMessage(1343).replace('%s', formatTime(_data.enterDate - now)));
-	}
+	root.querySelector('.buttons').classList.toggle('visible', _data.state === STATE.AVAILABLE);
 };
 
 /**
- * Destroy button
+ * Destroy button: the window closes at once, the server confirms in the chat
  */
 function onDestroy() {
-	UIManager.showPromptBox(`${DB.getMessage(3270)}?`, 'ok', 'cancel', () => {
-		const pkt = new PACKET.CZ.MEMORIALDUNGEON_COMMAND();
-		pkt.Command = COMMAND_DESTROY_FORCE;
-		Network.sendPacket(pkt);
-	});
+	const pkt = new PACKET.CZ.MEMORIALDUNGEON_COMMAND();
+	pkt.Command = COMMAND_DESTROY_FORCE;
+	Network.sendPacket(pkt);
+	MemorialDungeon.remove();
 }
 
 /**
- * @param {number} seconds
- * @return {string} h:mm:ss or m:ss
+ * Generic text button, drawn from basic_interface/btn_<state>_{left,mid,right}.bmp
+ *
+ * @param {HTMLElement} button
  */
-function formatTime(seconds) {
-	const total = Math.max(0, Math.floor(seconds));
-	const h = Math.floor(total / 3600);
-	const m = Math.floor((total % 3600) / 60);
-	const s = String(total % 60).padStart(2, '0');
-	return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
+function initTextButton(button) {
+	const images = {};
+	let current = 'out';
+	const set = state => {
+		const img = images[state];
+		if (img.left && img.right && img.mid) {
+			button.style.backgroundImage = `url(${img.left}), url(${img.right}), url(${img.mid})`;
+		}
+	};
+
+	['out', 'over', 'press'].forEach(state => {
+		images[state] = {};
+		['left', 'mid', 'right'].forEach(part => {
+			Client.loadFile(`${DB.INTERFACE_PATH}basic_interface/btn_${state}_${part}.bmp`, url => {
+				images[state][part] = url;
+				if (state === current) set(state);
+			});
+		});
+	});
+
+	const to = state => () => {
+		current = state;
+		set(state);
+	};
+	button.addEventListener('mouseenter', to('over'));
+	button.addEventListener('mouseleave', to('out'));
+	button.addEventListener('mousedown', to('press'));
+	button.addEventListener('mouseup', to('over'));
+}
+
+/**
+ * @param {number} time - unix time
+ * @return {string} MM/DD HH:MM in local time
+ */
+function formatDate(time) {
+	const date = new Date(time * 1000);
+	const pad = n => String(n).padStart(2, '0');
+	return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 /**
