@@ -149430,7 +149430,7 @@ var init_StateIconMods = __esmMin((() => {
 	AFTER_MOD_NAMES = `
 if type(EFST_IDs) == "table" and type(__EFST_IDS_ORIGINAL) == "table" then
 	for k, v in pairs(EFST_IDs) do
-		if type(k) == "string" and type(v) == "number" then
+		if type(k) == "string" and type(v) == "number" and v >= 20000 and v <= 22999 and __EFST_IDS_ORIGINAL[k] == nil then
 			__EFST_IDS_ORIGINAL[k] = v
 		end
 	end
@@ -324888,7 +324888,14 @@ function loadStateIconInfo(basePath, callback, onEnd) {
 				if (f.mod && f.stage === "efstids") await lua.doString(BEFORE_MOD_NAMES);
 				else if (f.mod) await lua.doString(BEFORE_MOD_ROWS);
 				lua.mountFile(f.name, buffer);
-				await lua.doFile(f.name);
+				if (f.mod) try {
+					await lua.doFile(f.name);
+				} catch (e) {
+					console.error(`[loadStateIconInfo] ${f.name} left out:`, e);
+					if (f.stage === "efstids") await lua.doString("EFST_IDs = __MOD_EFST_SAVE");
+					continue;
+				}
+				else await lua.doFile(f.name);
 				if (f.mod && f.stage === "efstids") await lua.doString(AFTER_MOD_NAMES);
 				if (f.mod ? f.stage !== "efstids" : f.stage === "stateiconinfo") lua.doStringSync("extract_status_info()");
 				if (!f.mod && f.stage === "efstids") await lua.doString(`
