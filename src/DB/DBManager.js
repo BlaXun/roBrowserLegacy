@@ -4726,6 +4726,32 @@ const HARDCODED_FIELD_MAPPING = {
 };
 
 /**
+ * Whether a skill's effects already draw this STR file.
+ *
+ * @param {object} skillEntry SkillEffect row, or undefined
+ * @param {object} EffectTable
+ * @param {string} file STR path without extension
+ * @return {boolean}
+ */
+function skillPlaysFile(skillEntry, EffectTable, file) {
+	if (!skillEntry || !file) {
+		return false;
+	}
+	const wanted = file.toLowerCase();
+	for (const field in skillEntry) {
+		const value = skillEntry[field];
+		const names = Array.isArray(value) ? value : [value];
+		for (const name of names) {
+			const effects = typeof name === 'string' ? EffectTable[name] : null;
+			if (Array.isArray(effects) && effects.some(effect => (effect.file || '').toLowerCase() === wanted)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+/**
  * Merge Ez2STREffect from BSON into EffectTable and SkillEffect
  */
 function mergeEz2Effects(EffectTable, SkillEffect) {
@@ -4872,7 +4898,9 @@ function mergeEz2Effects(EffectTable, SkillEffect) {
 		count++;
 
 		// Pass 6: SkillEffect Mapping with differentiated fields
-		if (skillId) {
+		// A skill that already plays this file, from a hand-written entry, would
+		// draw it twice.
+		if (skillId && !skillPlaysFile(SkillEffect[skillId], EffectTable, EffectTable[effectName][0].file)) {
 			const skillEntry = SkillEffect[skillId] || (SkillEffect[skillId] = {});
 			const field = meta.field;
 

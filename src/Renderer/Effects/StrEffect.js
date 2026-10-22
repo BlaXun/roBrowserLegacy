@@ -464,7 +464,17 @@ class StrEffect {
 		// Send texture and data
 		gl.blendFunc(D3DBLEND[animat.srcalpha], D3DBLEND[animat.destalpha]);
 		gl.bindTexture(gl.TEXTURE_2D, material);
-		gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+		// An aimed effect stands at one entity and reaches the other. Turned
+		// towards the camera, it runs through the ground and the other entity
+		// in front of where it stands, which would hide part of it.
+		if (this.aimAngle) {
+			gl.disable(gl.DEPTH_TEST);
+			gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+			gl.enable(gl.DEPTH_TEST);
+		} else {
+			gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+		}
 	}
 
 	/**
