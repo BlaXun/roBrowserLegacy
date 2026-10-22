@@ -9,6 +9,7 @@
 
 import DB from 'DB/DBManager.js';
 import Preferences from 'Core/Preferences.js';
+import Renderer from 'Renderer/Renderer.js';
 import PACKET from 'Network/PacketStructure.js';
 import Network from 'Network/NetworkManager.js';
 import 'UI/Elements/Elements.js';
@@ -38,7 +39,7 @@ MemorialDungeon.STATE = STATE;
 /**
  * @var {Preferences} structure
  */
-const _preferences = Preferences.get('MemorialDungeon', { x: 120, y: 120 }, 1.0);
+const _preferences = Preferences.get('MemorialDungeon', { x: -1, y: 200 }, 1.0);
 
 /**
  * Current instance, null when there is none
@@ -64,7 +65,9 @@ MemorialDungeon.init = function init() {
 };
 
 MemorialDungeon.onAppend = function onAppend() {
-	this._host.style.left = `${_preferences.x}px`;
+	// First time: right side, below the minimap
+	const x = _preferences.x < 0 ? Renderer.width - 280 : _preferences.x;
+	this._host.style.left = `${x}px`;
 	this._host.style.top = `${_preferences.y}px`;
 	this.refresh();
 	if (!_timer) {
