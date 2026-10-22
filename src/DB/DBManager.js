@@ -7565,7 +7565,22 @@ function loadStateIconInfo(basePath, callback, onEnd) {
 				}
 
 				lua.mountFile(f.name, buffer);
-				await lua.doFile(f.name);
+				if (f.mod) {
+					// One mod's broken file is left out on its own: an error here
+					// would otherwise end the loop before the client's own
+					// pictures and tooltips are read.
+					try {
+						await lua.doFile(f.name);
+					} catch (e) {
+						console.error(`[loadStateIconInfo] ${f.name} left out:`, e);
+						if (f.stage === 'efstids') {
+							await lua.doString('EFST_IDs = __MOD_EFST_SAVE');
+						}
+						continue;
+					}
+				} else {
+					await lua.doFile(f.name);
+				}
 
 				if (f.mod && f.stage === 'efstids') {
 					await lua.doString(AFTER_MOD_NAMES);

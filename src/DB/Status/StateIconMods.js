@@ -51,11 +51,14 @@ const BEFORE_MOD_NAMES = '__MOD_EFST_SAVE = EFST_IDs; EFST_IDs = {}';
 /**
  * After a mod's efstids.lub: add its names to the client's
  * (__EFST_IDS_ORIGINAL, which EFST_IDs reads through), and put those back.
+ * Only new names, for numbers in the range servers keep for mods: a mod
+ * cannot rename or renumber a stock icon (EFST_HIDING = 20000 would remap
+ * SC.HIDING for the whole client).
  */
 const AFTER_MOD_NAMES = `
 if type(EFST_IDs) == "table" and type(__EFST_IDS_ORIGINAL) == "table" then
 	for k, v in pairs(EFST_IDs) do
-		if type(k) == "string" and type(v) == "number" then
+		if type(k) == "string" and type(v) == "number" and v >= 20000 and v <= 22999 and __EFST_IDS_ORIGINAL[k] == nil then
 			__EFST_IDS_ORIGINAL[k] = v
 		end
 	end

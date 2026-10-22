@@ -72,6 +72,15 @@ print(EFST_IDs.EFST_GCX_FLURRY, EFST_IDs.EFST_HIDING, EFST_IDs.EFST_NOPE)`);
 		expect(out[0]).toBe('20000\t4\t-1');
 	});
 
+	it("takes no name a mod gives a stock icon, nor a number outside the mods' range", () => {
+		const out = lua(`${CLIENT}
+${BEFORE_MOD_NAMES}
+EFST_IDs = { EFST_HIDING = 20000, EFST_GCX_LOW = 1999, EFST_GCX_HIGH = 23000, EFST_GCX_OK = 22999 }
+${AFTER_MOD_NAMES}
+print(EFST_IDs.EFST_HIDING, EFST_IDs.EFST_GCX_LOW, EFST_IDs.EFST_GCX_HIGH, EFST_IDs.EFST_GCX_OK)`);
+		expect(out[0]).toBe('4\t-1\t-1\t22999');
+	});
+
 	it("starts a mod's pictures and tooltips from empty tables", () => {
 		const out = lua(`${CLIENT}
 ${BEFORE_MOD_ROWS}
