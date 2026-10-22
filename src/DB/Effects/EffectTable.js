@@ -24199,7 +24199,10 @@ export default {
 			file: 'druid/dr_shooting_feather/shooting_feather/shooting_feather',
 			texturePath: 'druid/dr_shooting_feather/shooting_feather/',
 			min: 'druid/dr_shooting_feather/shooting_feather/min_shooting_feather',
-			wav: 'effect/druid/dr_shooting_feather'
+			wav: 'effect/druid/dr_shooting_feather',
+			// The feathers fly to the right of the caster in the file
+			rotateToTarget: true,
+			facing: 0
 		}
 	],
 	ef_druid_shooting_feather_hit: [
@@ -24207,7 +24210,10 @@ export default {
 			type: 'STR',
 			file: 'druid/dr_shooting_feather/shooting_feather_attack/shooting_feather_attack',
 			texturePath: 'druid/dr_shooting_feather/shooting_feather_attack/',
-			min: 'druid/dr_shooting_feather/shooting_feather_attack/min_shooting_feather_attack'
+			min: 'druid/dr_shooting_feather/shooting_feather_attack/min_shooting_feather_attack',
+			// The feathers land from the left, the caster's side, in the file
+			rotateToTarget: true,
+			facing: 180
 		}
 	],
 	ef_druid_flicking_tonado: [
@@ -24232,7 +24238,10 @@ export default {
 			file: 'druid/dr_low_flight/low_flight_horizon/low_flight_horizon',
 			texturePath: 'druid/dr_low_flight/low_flight_horizon/',
 			min: 'druid/dr_low_flight/low_flight_horizon/min_low_flight_horizon',
-			wav: 'effect/druid/dr_low_flight'
+			wav: 'effect/druid/dr_low_flight',
+			// The raptor sweeps in from the right, the caster's side, in the file
+			rotateToTarget: true,
+			facing: 0
 		},
 		{
 			type: 'STR',
@@ -24274,7 +24283,10 @@ export default {
 			file: 'druid/dr_cutting_wind/cutting_wind/cutting_wind',
 			texturePath: 'druid/dr_cutting_wind/cutting_wind/',
 			min: 'druid/dr_cutting_wind/cutting_wind/min_cutting_wind',
-			wav: 'effect/druid/dr_cutting_wind'
+			wav: 'effect/druid/dr_cutting_wind',
+			// The wind blade flies to the left of the caster in the file
+			rotateToTarget: true,
+			facing: 180
 		}
 	],
 	ef_druid_cutting_wind_hit: [
@@ -24399,7 +24411,10 @@ export default {
 			file: 'druid/kr_sharpen_gust/sharpen_gust/sharpen_gust',
 			texturePath: 'druid/kr_sharpen_gust/sharpen_gust/',
 			min: 'druid/kr_sharpen_gust/sharpen_gust/min_sharpen_gust',
-			wav: 'effect/druid/kr_sharpen_gust'
+			wav: 'effect/druid/kr_sharpen_gust',
+			// The gust flies to the right of the caster in the file
+			rotateToTarget: true,
+			facing: 0
 		},
 		{
 			type: 'STR',
@@ -24761,7 +24776,10 @@ export default {
 			file: 'druid/at_pinion_shot/pinion_shot/pinion_shot',
 			texturePath: 'druid/at_pinion_shot/pinion_shot/',
 			min: 'druid/at_pinion_shot/pinion_shot/min_pinion_shot',
-			wav: 'effect/druid/at_pinion_shot'
+			wav: 'effect/druid/at_pinion_shot',
+			// The feathers fly to the right of the caster in the file
+			rotateToTarget: true,
+			facing: 0
 		}
 	],
 	ef_druid_quill_spear: [
@@ -24770,7 +24788,10 @@ export default {
 			file: 'druid/at_quill_spear/quill_spear_3x7/quill_spear_3x7',
 			texturePath: 'druid/at_quill_spear/quill_spear_3x7/',
 			min: 'druid/at_quill_spear/quill_spear_3x7/min_quill_spear_3x7',
-			wav: 'effect/druid/at_quill_spear'
+			wav: 'effect/druid/at_quill_spear',
+			// The spear flies to the right of the caster in the file
+			rotateToTarget: true,
+			facing: 0
 		}
 	],
 	ef_druid_quill_spear_s: [
@@ -24779,7 +24800,10 @@ export default {
 			file: 'druid/at_quill_spear/quill_spear_5x7/quill_spear_5x7',
 			texturePath: 'druid/at_quill_spear/quill_spear_5x7/',
 			min: 'druid/at_quill_spear/quill_spear_5x7/min_quill_spear_5x7',
-			wav: 'effect/druid/at_quill_spear'
+			wav: 'effect/druid/at_quill_spear',
+			// The spear flies to the right of the caster in the file
+			rotateToTarget: true,
+			facing: 0
 		}
 	],
 	ef_druid_tempest_flap: [
@@ -24931,7 +24955,10 @@ export default {
 			file: 'druid/at_roaring_piercer/roaring_piercer_g/roaring_piercer_g',
 			texturePath: 'druid/at_roaring_piercer/roaring_piercer_g/',
 			min: 'druid/at_roaring_piercer/roaring_piercer_g/min_roaring_piercer_g',
-			wav: 'effect/druid/at_roaring_piercer_g'
+			wav: 'effect/druid/at_roaring_piercer_g',
+			// The spear flies to the left of the caster in the file
+			rotateToTarget: true,
+			facing: 180
 		}
 	],
 	ef_druid_roaring_piercer_y: [
@@ -24940,7 +24967,10 @@ export default {
 			file: 'druid/at_roaring_piercer/roaring_piercer_y/roaring_piercer_y',
 			texturePath: 'druid/at_roaring_piercer/roaring_piercer_y/',
 			min: 'druid/at_roaring_piercer/roaring_piercer_y/min_roaring_piercer_y',
-			wav: 'effect/druid/at_roaring_piercer_y'
+			wav: 'effect/druid/at_roaring_piercer_y',
+			// The spear flies to the left of the caster in the file
+			rotateToTarget: true,
+			facing: 180
 		}
 	],
 	ef_druid_roaring_charge: [
