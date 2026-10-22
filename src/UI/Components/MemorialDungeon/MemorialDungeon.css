@@ -1,0 +1,90 @@
+:host {
+	top: 300px;
+	left: 10px;
+	width: 160px;
+}
+
+#MemorialDungeon {
+	position: relative;
+	width: 160px;
+}
+
+#MemorialDungeon .titlebar {
+	position: relative;
+	height: 17px;
+	background-repeat: repeat-x;
+	border-radius: 4px 4px 0 0;
+}
+
+#MemorialDungeon .titlebar .title {
+	position: absolute;
+	left: 6px;
+	top: 2px;
+	text-shadow: 1px 1px 0px white;
+	white-space: nowrap;
+	font-size: 11px;
+}
+
+#MemorialDungeon .titlebar .close {
+	position: absolute;
+	right: 3px;
+	top: 3px;
+	width: 11px;
+	height: 11px;
+	border: none;
+	background-repeat: no-repeat;
+	background-color: transparent;
+}
+
+#MemorialDungeon .content {
+	background-color: white;
+	border: 1px solid #c6c6c6;
+	border-top: none;
+	border-radius: 0 0 4px 4px;
+	padding: 6px 6px 8px;
+	font-size: 12px;
+	line-height: 15px;
+	text-align: center;
+}
+
+#MemorialDungeon .content .name .md-name {
+	color: #3c5ac8;
+}
+
+#MemorialDungeon .content .info {
+	margin-top: 2px;
+}
+
+#MemorialDungeon .content .info .date {
+	color: #ff0000;
+}
+
+#MemorialDungeon .content .buttons {
+	display: none;
+	margin-top: 6px;
+}
+
+#MemorialDungeon .content .buttons.visible {
+	display: block;
+}
+
+/* Generic text button: left and right caps over a stretched middle */
+#MemorialDungeon .destroy {
+	height: 20px;
+	padding: 0 10px;
+	border: none;
+	background-color: transparent;
+	background-repeat: no-repeat, no-repeat, repeat-x;
+	background-position:
+		left top,
+		right top,
+		left top;
+	background-size:
+		6px 20px,
+		6px 20px,
+		auto 20px;
+	background-origin: border-box;
+	font-size: 12px;
+	color: black;
+	cursor: pointer;
+}
