@@ -102,7 +102,7 @@ StatusIcons.clean = function clean() {
  * mods (DB/Status/StateIconMods.js), and send the status's stacks as val1.
  */
 const MOD_ICON_FIRST = 20000;
-const MOD_ICON_LAST = 29999;
+const MOD_ICON_LAST = 22999;
 
 /**
  * Update icon on screen
