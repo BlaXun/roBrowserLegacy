@@ -64,6 +64,7 @@ import Rodex from 'UI/Components/Rodex/Rodex.js';
 import RodexIcon from 'UI/Components/Rodex/RodexIcon.js';
 import Roulette from 'UI/Components/Roulette/Roulette.js';
 import PCGoldTimer from 'UI/Components/PCGoldTimer/PCGoldTimer.js';
+import MemorialDungeon from 'UI/Components/MemorialDungeon/MemorialDungeon.js';
 import Refine from 'UI/Components/Refine/Refine.js';
 import Reputation from 'UI/Components/Reputation/Reputation.js';
 import PetInformations from 'UI/Components/PetInformations/PetInformations.js';
@@ -114,6 +115,7 @@ import QuestEngine from './MapEngine/Quest.js';
 import RodexEngine from './MapEngine/Rodex.js';
 import RouletteEngine from './MapEngine/Roulette.js';
 import PCGoldTimerEngine from './MapEngine/PCGoldTimer.js';
+import MemorialDungeonEngine from './MapEngine/MemorialDungeon.js';
 import CaptchaEngine from './MapEngine/Captcha.js';
 import ClanEngine from './MapEngine/Clan.js';
 import CashShopEngine from './MapEngine/CashShop.js';
@@ -336,6 +338,7 @@ class MapEngine {
 			RodexEngine();
 			RouletteEngine();
 			PCGoldTimerEngine();
+			MemorialDungeonEngine();
 			CaptchaEngine();
 			ClanEngine();
 			if (Configs.get('enableCashShop')) {
@@ -376,6 +379,7 @@ class MapEngine {
 			RodexIcon.prepare();
 			Roulette.prepare();
 			PCGoldTimer.prepare();
+			MemorialDungeon.prepare();
 			Navigation.prepare();
 			CaptchaUpload.prepare();
 			CaptchaSelector.prepare();

@@ -1,0 +1,78 @@
+:host {
+	top: 120px;
+	left: 120px;
+	width: 260px;
+}
+
+#MemorialDungeon {
+	position: relative;
+	width: 260px;
+}
+
+#MemorialDungeon .titlebar {
+	position: relative;
+	height: 17px;
+	background-repeat: repeat-x;
+	border-radius: 4px 4px 0 0;
+}
+
+#MemorialDungeon .titlebar .title {
+	position: absolute;
+	left: 6px;
+	top: 2px;
+	text-shadow: 1px 1px 0px white;
+	white-space: nowrap;
+	font-size: 11px;
+	font-weight: bold;
+}
+
+#MemorialDungeon .titlebar .close {
+	position: absolute;
+	right: 3px;
+	top: 3px;
+	width: 11px;
+	height: 11px;
+	border: none;
+	background-repeat: no-repeat;
+	background-color: transparent;
+}
+
+#MemorialDungeon .content {
+	background-color: white;
+	border-top: 1px solid #c6c6c6;
+	padding: 6px 8px;
+	font-size: 12px;
+	line-height: 16px;
+}
+
+#MemorialDungeon .content .name {
+	font-weight: bold;
+	margin-bottom: 4px;
+}
+
+#MemorialDungeon .content > div:empty,
+#MemorialDungeon .content .limit.hidden {
+	display: none;
+}
+
+#MemorialDungeon .content .limit-value {
+	color: #ff0000;
+}
+
+#MemorialDungeon .footer {
+	position: relative;
+	height: 24px;
+	border-radius: 0 0 4px 4px;
+	background-repeat: repeat-x;
+}
+
+#MemorialDungeon .footer .destroy {
+	position: absolute;
+	right: 5px;
+	top: 3px;
+	width: 42px;
+	height: 20px;
+	border: none;
+	background-repeat: no-repeat;
+	background-color: transparent;
+}
