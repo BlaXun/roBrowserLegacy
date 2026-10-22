@@ -427,6 +427,7 @@ export function createSkillList({
 
 		// The skill tree follows the real job, never a transformation/disguise
 		const entity = Session.Entity;
+		const previousJobId = skillJobId;
 		skillJobId = entity ? entity._job || entity.job : 0;
 
 		skillPosition = getSkillPosition(skillJobId);
@@ -480,10 +481,35 @@ export function createSkillList({
 					tabl.style.display = bigSkills.length > 0 ? '' : 'none';
 				}
 			}
+
+			// Open on the current job's tab after login or a job change,
+			// not on the 1st job tab the HTML marks as checked
+			if (skillJobId !== previousJobId) {
+				selectCurrentJobTab(root);
+			}
 		}
 
 		onResetChoice(this);
 	};
+
+	/**
+	 * Check the highest job tab that has skills (2nd-4th), else the 1st,
+	 * in whichever view (mini or big) is shown
+	 */
+	function selectCurrentJobTab(root) {
+		let tab = 1;
+		for (let i = 4; i >= 2; i--) {
+			if (root.querySelectorAll(`#positionSkills${i} .skill`).length > 0) {
+				tab = i;
+				break;
+			}
+		}
+
+		const radio = root.querySelector(_preferences.mini ? `#tab-${tab}-mini` : `#tab-${tab}`);
+		if (radio) {
+			radio.checked = true;
+		}
+	}
 
 	function createSkillDependencyTree() {
 		skillPosition.forEach((items, list) => {
