@@ -24,6 +24,7 @@ vi.mock('Utils/HtmlHelper.js', () => ({
 }));
 
 import Background from 'UI/Background.js';
+import Configs from 'Core/Configs.js';
 
 function finishAnimation() {
 	mocks.animations.shift().callback();
@@ -33,6 +34,7 @@ describe('Background.remove', () => {
 	beforeEach(() => {
 		mocks.animations.length = 0;
 		document.body.innerHTML = '';
+		Configs.get.mockReset();
 	});
 
 	it('fades through black before the callback when no background is displayed', () => {
@@ -54,6 +56,37 @@ describe('Background.remove', () => {
 		finishAnimation();
 
 		expect(overlay.parentNode).toBeNull();
+	});
+
+	it('moves the view at once on a same-map teleport when transitions are instant', () => {
+		Configs.get.mockImplementation(key => (key === 'transitionDuration' ? 1 : undefined));
+		const callback = vi.fn();
+
+		Background.remove(callback);
+
+		expect(callback).toHaveBeenCalledOnce();
+		expect(mocks.animations).toHaveLength(0);
+		expect(document.body.children).toHaveLength(0);
+	});
+
+	it('still takes the loading image away through the overlay when transitions are instant', () => {
+		Configs.get.mockImplementation(key => (key === 'transitionDuration' ? 1 : undefined));
+		Background.setImage('loading01.jpg');
+		finishAnimation();
+		finishAnimation();
+		const background = [...document.body.children].find(el => el.tagName === 'DIV');
+		expect(background).toBeDefined();
+
+		const callback = vi.fn();
+		Background.remove(callback);
+
+		expect(mocks.animations).toHaveLength(1);
+		expect(callback).not.toHaveBeenCalled();
+
+		finishAnimation();
+
+		expect(callback).toHaveBeenCalledOnce();
+		expect(background.parentNode).toBeNull();
 	});
 
 	it('keeps a background set while its fade is running', () => {
