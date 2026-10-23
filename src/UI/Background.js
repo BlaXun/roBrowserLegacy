@@ -292,6 +292,17 @@ class Background {
 	 */
 	static remove(callback) {
 		Background._imageId++;
+
+		// With nothing on screen to take away, this is a teleport on the same
+		// map. When transitions are instant, its fade would be a single black
+		// frame and nothing else: the view moves at once instead.
+		if (!_container.parentNode && getTransitionDuration() <= 1) {
+			if (callback) {
+				callback();
+			}
+			return;
+		}
+
 		const removal = { zIndex: [_container.style.zIndex, _canvas.style.zIndex] };
 		Background._removal = removal;
 
@@ -354,12 +365,22 @@ class Background {
 }
 
 /**
+ * Length of each half of a transition. 0 reads as the default, so 1 ms is the
+ * shortest a configuration can ask for: an instant transition.
+ *
+ * @returns {number} milliseconds
+ */
+function getTransitionDuration() {
+	return Configs.get('transitionDuration') ? Configs.get('transitionDuration') : 500;
+}
+
+/**
  * Play with the overlay
  *
  * @param {function} callback once the overlay hide the window
  */
 function transition(callback) {
-	const transitionDuration = Configs.get('transitionDuration') ? Configs.get('transitionDuration') : 500;
+	const transitionDuration = getTransitionDuration();
 
 	if (Background._overlayAnim) {
 		Background._overlayAnim.stop();
