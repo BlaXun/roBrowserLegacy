@@ -7593,6 +7593,7 @@ function loadStateIconInfo(basePath, callback, onEnd) {
 				}
 
 				lua.mountFile(f.name, buffer);
+				f.mounted = true;
 				if (f.mod) {
 					// One mod's broken file is left out on its own: an error here
 					// would otherwise end the loop before the client's own
@@ -7639,7 +7640,9 @@ function loadStateIconInfo(basePath, callback, onEnd) {
 		} catch (e) {
 			console.error('[loadStateIconInfo] Lua Error:', e);
 		} finally {
-			loadedBuffers.forEach(f => lua.unmountFile(f.name));
+			// An error part way leaves the later files unmounted: unlinking one
+			// would throw past onEnd, and the client would wait for it forever.
+			loadedBuffers.forEach(f => f.mounted && lua.unmountFile(f.name));
 			if (onEnd) {
 				onEnd();
 			}

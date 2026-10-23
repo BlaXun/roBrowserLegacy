@@ -81,6 +81,18 @@ print(EFST_IDs.EFST_HIDING, EFST_IDs.EFST_GCX_LOW, EFST_IDs.EFST_GCX_HIGH, EFST_
 		expect(out[0]).toBe('4\t-1\t-1\t22999');
 	});
 
+	it("adds a mod's names to a client table that refuses new names (iRO's of 2026)", () => {
+		const out = lua(`${CLIENT.replace(
+			'EFST_IDs = { EFST_HIDING = 4, EFST_TOXIN = 1086 }',
+			'EFST_IDs = setmetatable({ EFST_HIDING = 4 }, { __newindex = function() error("unknown state") end })'
+		)}
+${BEFORE_MOD_NAMES}
+EFST_IDs = { EFST_GCX_FLURRY = 20000 }
+${AFTER_MOD_NAMES}
+print(EFST_IDs.EFST_GCX_FLURRY, EFST_IDs.EFST_HIDING)`);
+		expect(out[0]).toBe('20000\t4');
+	});
+
 	it("starts a mod's pictures and tooltips from empty tables", () => {
 		const out = lua(`${CLIENT}
 ${BEFORE_MOD_ROWS}

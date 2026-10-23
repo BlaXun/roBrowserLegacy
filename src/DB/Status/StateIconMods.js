@@ -53,13 +53,18 @@ const BEFORE_MOD_NAMES = '__MOD_EFST_SAVE = EFST_IDs; EFST_IDs = {}';
  * (__EFST_IDS_ORIGINAL, which EFST_IDs reads through), and put those back.
  * Only new names, for numbers in the range servers keep for mods: a mod
  * cannot rename or renumber a stock icon (EFST_HIDING = 20000 would remap
- * SC.HIDING for the whole client).
+ * SC.HIDING for the whole client). Some clients' efstids.lub guards the
+ * table against new names (iRO's of 2026: a __newindex that raises "unknown
+ * state"), so a name is added with rawset, and looked up under pcall.
  */
 const AFTER_MOD_NAMES = `
 if type(EFST_IDs) == "table" and type(__EFST_IDS_ORIGINAL) == "table" then
 	for k, v in pairs(EFST_IDs) do
-		if type(k) == "string" and type(v) == "number" and v >= 20000 and v <= 22999 and __EFST_IDS_ORIGINAL[k] == nil then
-			__EFST_IDS_ORIGINAL[k] = v
+		if type(k) == "string" and type(v) == "number" and v >= 20000 and v <= 22999 then
+			local ok, known = pcall(function() return __EFST_IDS_ORIGINAL[k] end)
+			if ok and known == nil then
+				rawset(__EFST_IDS_ORIGINAL, k, v)
+			end
 		end
 	end
 end
